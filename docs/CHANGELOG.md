@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 03:45 CDT — Assemble immutable startup configuration
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `9ac37c6928bf095f122dc97b69bdf17e04c9dafa`
 
 Affected files:
 
