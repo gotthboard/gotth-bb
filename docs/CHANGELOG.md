@@ -5,6 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 06:18 CDT — Bound PostgreSQL pool configuration
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `go.mod`
+- `go.sum`
+- `internal/config/database_pool.go`
+- `internal/config/database_pool_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Pinned pgx v5.10.0 and added the narrow boundary that parses the redacted
+`DATABASE_URL` into a pgx pool configuration. The application overrides every
+connection-string pool-size and lifetime control used by alpha with fixed,
+bounded values and caps connection establishment at five seconds. A missing
+secret fails before pgx can fall back to ambient `PG*` process variables, and
+parse failures return a fixed diagnostic that cannot echo the connection
+string.
+
+Verification:
+
+- Red-before-green tests for missing-secret rejection and hostile
+  connection-string pool overrides
+- pgx v5.10.0 `pgxpool.Config`, `ParseConfig`, and `NewWithConfig` contracts and
+  source inspected
+- `go test -mod=readonly -race -cover ./internal/config` with 100% statement
+  coverage
+- `make verify`
+
+Risks / non-goals:
+
+- This unit constructs configuration only; it does not open a connection,
+  create a pool, check schema compatibility, or make readiness succeed.
+- Pool lifecycle and PostgreSQL integration evidence remain the next A1-02
+  units.
+
 ### 2026-09-01 05:20 CDT — Wire the bounded HTTP executable lifecycle
 
 Commit: `b4e0a7ae9b48b4fbf4c175bfa127a18cea5731c3`

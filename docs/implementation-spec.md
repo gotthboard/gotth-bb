@@ -35,7 +35,7 @@ The initial implementation shall use:
 - Templ for compiled server-side components.
 - HTMX pinned and served as a versioned static asset.
 - Tailwind CSS pinned and run at build time.
-- `pgx/v5` for PostgreSQL access.
+- `pgx/v5` version `v5.10.0` for PostgreSQL access.
 - `sqlc` for typed query generation from reviewed SQL.
 - A migration tool that records ordered migrations in PostgreSQL and fails on
   drift; the exact tool is selected after its up/down and transaction behavior
@@ -117,6 +117,10 @@ Rules:
 - The configuration loader requires a nonempty `DATABASE_URL` without parsing
   or logging it. A1-02 passes it directly to pgx's documented configuration
   parser; driver rejection aborts startup before readiness or request serving.
+  The application then overrides connection-string pool controls with its
+  bounded alpha policy: at most 10 connections, no prewarmed connections, a
+  5-second connect timeout, a 30-minute connection lifetime, a 5-minute idle
+  lifetime, a 30-second health-check period, and a 2-second ping timeout.
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
   must use positive Go duration syntax such as `30m` or `24h`; zero and
   negative durations fail startup. Idle timeout and Authentik revalidation
