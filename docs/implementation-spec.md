@@ -30,11 +30,16 @@ The implementation must preserve these invariants:
 The initial implementation shall use:
 
 - Go with the version pinned in `go.mod` and the CI/toolchain configuration.
-- `net/http` with a small Go router such as Chi; route semantics shall be
-  verified against its current documented contract before selection.
-- Templ for compiled server-side components.
-- HTMX pinned and served as a versioned static asset.
-- Tailwind CSS pinned and run at build time.
+- `net/http` with Chi version `v5.3.2`; the custom not-found hook, default
+  method-not-allowed/`Allow` behavior, route context, and standard middleware
+  interface are verified against that release's documentation and source.
+- Templ version `v0.3.1020`, pinned as a Go tool and runtime dependency, for
+  compiled server-side components.
+- HTMX version `2.0.10`, copied from the exact npm lock and served as a
+  versioned same-origin embedded asset.
+- Tailwind CSS and `@tailwindcss/cli` version `4.3.3`, pinned through npm
+  `12.0.2` on Node.js `26.7.0` and run at build time. Automatic source
+  detection is disabled; only reviewed `.templ` files supply utility classes.
 - `pgx/v5` version `v5.10.0` for PostgreSQL access.
 - PostgreSQL 17 for alpha, with PostgreSQL 17.10 as the pinned integration
   reference. Other major versions are unsupported until the same migration,
@@ -512,8 +517,9 @@ bounded.
 
 ## 11. Full-page and HTMX responses
 
-- Every router response, including `404`, `405`, validation, HTMX, and health
-  responses, receives the same fixed browser boundary before handler execution:
+- Every browser-facing service response, including request-ID failure, panic
+  recovery, `404`, `405`, validation, HTMX, static, and health responses,
+  receives the same fixed browser boundary before handler execution:
   `default-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
   `frame-ancestors 'none'`, `object-src 'none'`, and self-only script, style,
   image, font, connection, and manifest sources (with `data:` additionally
@@ -522,6 +528,10 @@ bounded.
   and a deny-by-default camera/geolocation/microphone/payment/USB permissions
   policy. HSTS remains Caddy-owned because the application transport is
   deliberately loopback HTTP.
+- Middleware order is outer-to-inner: browser security headers, generated
+  request ID, access logging, panic recovery, route-pattern bridge, Chi routing,
+  then the matched handler. This lets recovery clear unsafe application headers
+  while restoring the preinstalled browser policy on its bounded `500`.
 - `HX-Request` selects a documented fragment only after the same handler,
   authorization, validation, and service path runs.
 - Fragment selection requires the exact `HX-Request: true` value. An exact
@@ -529,6 +539,13 @@ bounded.
   headers are added to `Vary` whenever they can affect the representation.
   The page config disables `historyRestoreAsHxRequest` so history cache misses
   request full documents under HTMX's documented contract.
+- The HTMX page configuration is valid JSON and disables eval, response script
+  processing, injected indicator styles, and client-side history DOM storage;
+  requests remain same-origin. It enables native form-validity reporting and
+  explicitly swaps `422` validation fragments while retaining the non-success
+  status/error classification. HTML responses are
+  `private, no-store`; release-versioned CSS and JavaScript are immutable for
+  one year.
 - Full-page successful form submission uses a `303` redirect.
 - HTMX success may return a fragment plus `HX-Redirect` or documented swap
   headers.

@@ -90,6 +90,14 @@ func run(ctx context.Context, lookup config.LookupEnv, logOutput io.Writer, open
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+	urlBuilder, err := httpui.NewURLBuilder(configured.PublicBaseURL, configured.BasePath)
+	if err != nil {
+		return fmt.Errorf("construct browser URL authority: %w", err)
+	}
+	applicationHandler, err := httpui.NewHandler(urlBuilder)
+	if err != nil {
+		return fmt.Errorf("construct HTTP routing shell: %w", err)
+	}
 	poolConfig, err := configured.DatabasePoolConfig()
 	if err != nil {
 		return fmt.Errorf("configure PostgreSQL pool: %w", err)
@@ -109,9 +117,13 @@ func run(ctx context.Context, lookup config.LookupEnv, logOutput io.Writer, open
 	}
 	defer pool.Close()
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
-	handler, err := app.NewHTTPHandler(httpui.NewHandler(), logger, rand.Reader, time.Now)
+	handler, err := app.NewHTTPHandler(applicationHandler, logger, rand.Reader, time.Now)
 	if err != nil {
 		return fmt.Errorf("construct HTTP handler: %w", err)
+	}
+	handler, err = httpui.NewBrowserSecurityHandler(handler)
+	if err != nil {
+		return fmt.Errorf("construct browser security boundary: %w", err)
 	}
 	server, err := app.NewHTTPServer(configured, handler, slog.NewLogLogger(logger.Handler(), slog.LevelError))
 	if err != nil {

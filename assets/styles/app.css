@@ -1,0 +1,20 @@
+@import "tailwindcss" source(none);
+@source "../../internal/httpui/**/*.templ";
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+}
+
+@layer components {
+  .htmx-indicator {
+    opacity: 0;
+    transition: opacity 150ms ease-in;
+  }
+
+  .htmx-request .htmx-indicator,
+  .htmx-request.htmx-indicator {
+    opacity: 1;
+  }
+}

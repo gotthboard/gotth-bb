@@ -102,3 +102,13 @@ func (builder URLBuilder) PathWithQuery(segments []string, query url.Values) (st
 	}
 	return browserPath + "?" + encoded, nil
 }
+
+// CookiePath returns the application root with a trailing slash so the session
+// cookie matches the configured subtree without also matching sibling paths
+// that merely share the BASE_PATH byte prefix.
+//
+// Complexity: time and auxiliary space are tight Theta(1), delegated to Path
+// with no variable route segments.
+func (builder URLBuilder) CookiePath() (string, error) {
+	return builder.Path()
+}

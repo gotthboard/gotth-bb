@@ -153,6 +153,36 @@ func TestURLBuilderPathWithQuery(t *testing.T) {
 	}
 }
 
+func TestURLBuilderCookiePathUsesNarrowApplicationRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		basePath string
+		want     string
+	}{
+		{want: "/"},
+		{basePath: "/bb", want: "/bb/"},
+		{basePath: "/community/board", want: "/community/board/"},
+	}
+	for _, test := range tests {
+		publicBase, err := url.Parse("https://forum.example.test" + test.basePath)
+		if err != nil {
+			t.Fatalf("url.Parse() returned error: %v", err)
+		}
+		builder, err := NewURLBuilder(*publicBase, test.basePath)
+		if err != nil {
+			t.Fatalf("NewURLBuilder() returned error: %v", err)
+		}
+		got, err := builder.CookiePath()
+		if err != nil || got != test.want {
+			t.Fatalf("CookiePath() = (%q, %v), want (%q, nil)", got, err, test.want)
+		}
+	}
+	if got, err := (URLBuilder{}).CookiePath(); err == nil {
+		t.Fatalf("zero-value CookiePath() = %q, want error", got)
+	}
+}
+
 func TestNewURLBuilderRejectsInvalidBasePath(t *testing.T) {
 	t.Parallel()
 

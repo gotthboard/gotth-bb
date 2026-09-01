@@ -5,9 +5,74 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 09:08 CDT — Make HTMX representation selection cache-safe
+### 2026-09-01 09:29 CDT — Render the responsive base-path-safe public shell
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `.node-version`, `.npmrc`, `package.json`, `package-lock.json`
+- `go.mod`, `go.sum`, `Makefile`
+- `assets/styles/app.css`
+- `cmd/forum/main.go`
+- `internal/httpui/handler.go`, `internal/httpui/handler_test.go`
+- `internal/httpui/render.go`, `internal/httpui/render_test.go`
+- `internal/httpui/route_pattern.go`, `internal/httpui/route_pattern_test.go`
+- `internal/httpui/shell.templ`, `internal/httpui/shell_templ.go`
+- `internal/httpui/static.go`, `internal/httpui/static_test.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static/htmx-2.0.10.min.js`
+- `internal/httpui/url_builder.go`, `internal/httpui/url_builder_test.go`
+- `internal/httpui/view.go`, `internal/httpui/view_test.go`
+- `README.md`, `docs/implementation-spec.md`, `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the compiled Templ public document and fragment shell, responsive
+Tailwind layout, keyboard-visible focus treatment, skip link, breadcrumbs,
+navigation, canonical URL, custom full/fragment `404`, and immutable embedded
+Tailwind and HTMX assets. Chi now owns the internal route table while an
+explicit bridge preserves the existing method-qualified `request.Pattern`
+observability contract across Chi's request clone. The forum process constructs
+all browser URLs from immutable configuration before opening PostgreSQL.
+The browser policy wraps the full request-ID/logging/recovery chain so bounded
+panic responses retain the same CSP and defensive headers.
+
+Verification:
+
+- Read current templ, Chi, Tailwind, HTMX, npm, and Go tool contracts before
+  pinning exact versions
+- Red-before-green page-view, renderer, static-handler, router, cookie-path,
+  and route-pattern tests
+- Root and alternate-prefix full pages, HTMX fragments, history restoration,
+  health, CSS, JavaScript, `404`, and standards-compliant default `405`
+- Rendered-link scan covering `href`, `src`, `action`, `hx-get`, and `hx-post`
+  proves no application URL escapes the configured alternate prefix
+- Panic-recovery response retains the exact browser security boundary after
+  recovery clears unsafe application-added headers
+- Exact CSS and HTMX SHA-256 checks; Tailwind scans only `.templ` sources
+- Valid restrictive HTMX JSON; no inline script/style dependency
+- `npm audit` reported zero known vulnerabilities across the locked graph
+- Touched handwritten HTTP UI functions at 100% statement coverage except
+  three structurally unreachable hard-coded asset-path error returns in
+  `newPageView`; generated Templ code brings the package aggregate to 80.6%
+- Actual forum process connected to PostgreSQL 17.10, served full/fragment/CSS/
+  `404` responses, logged `GET /` and the static matched pattern, and stopped
+  cleanly on SIGTERM
+- `make verify` from a clean generated state
+
+Risks / non-goals:
+
+- The area index is deliberately an honest empty-state shell; database-backed
+  reads arrive in A1-06.
+- Sign-in remains non-interactive until A1-04. No placeholder authentication
+  route or fake session is exposed.
+- npm permits integrity-locked remote tarballs because Tailwind publishes its
+  WASI fallback that way; package scripts and Git dependencies remain disabled.
+
+### 2026-09-01 09:08 CDT — Make HTMX representation selection cache-safe
+
+Commit: `db5eb33aac5c72bb2e2b12c6b4d6fd7529f2bb1a`
 
 Affected files:
 

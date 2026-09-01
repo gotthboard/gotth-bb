@@ -1,0 +1,77 @@
+package httpui
+
+templ document(view pageView, content templ.Component) {
+	<!doctype html>
+	<html lang="en" class="h-full bg-slate-950">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="htmx-config" content={ htmxConfiguration }/>
+			<title>{ view.Title } · { view.SiteName }</title>
+			if view.CanonicalURL != "" {
+				<link rel="canonical" href={ view.CanonicalURL }/>
+			}
+			<link rel="stylesheet" href={ view.StylesheetURL }/>
+		</head>
+		<body class="min-h-full bg-slate-950 text-slate-100 antialiased">
+			<a href="#main-content" class="sr-only fixed left-4 top-4 z-50 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 focus:not-sr-only focus:outline-2 focus:outline-offset-2 focus:outline-cyan-100">Skip to main content</a>
+			<header class="border-b border-slate-800 bg-slate-950/95">
+				<div class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+					<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ view.SiteName }</a>
+					<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+					</nav>
+				</div>
+			</header>
+			@content
+			<footer class="border-t border-slate-800">
+				<div class="mx-auto max-w-6xl px-4 py-6 text-sm text-slate-400 sm:px-6 lg:px-8">
+					GOTTH Board · a simple place for durable community discussion
+				</div>
+			</footer>
+			<script src={ view.HTMXURL } defer></script>
+		</body>
+	</html>
+}
+
+templ areaIndexPage(view pageView) {
+	@document(view, areaIndexContent(view))
+}
+
+templ areaIndexContent(view pageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm text-slate-400">
+			<ol>
+				<li><span aria-current="page">Areas</span></li>
+			</ol>
+		</nav>
+		<section aria-labelledby="areas-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Community index</p>
+			<h1 id="areas-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">Discussion areas</h1>
+			<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">No public discussion areas are available yet.</p>
+			<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
+				This community is ready for its first discussion area.
+			</div>
+		</section>
+	</main>
+}
+
+templ errorPage(view pageView, status int, heading, message string) {
+	@document(view, errorContent(view, status, heading, message))
+}
+
+templ errorContent(view pageView, status int, heading, message string) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-600">/</span>
+			<span aria-current="page" class="text-slate-400">Error { status }</span>
+		</nav>
+		<section aria-labelledby="error-title" aria-live="assertive" class="rounded-xl border border-rose-900/70 bg-slate-900 p-6 sm:p-8">
+			<p class="text-sm font-semibold text-rose-300">Error { status }</p>
+			<h1 id="error-title" class="mt-2 text-3xl font-bold tracking-tight text-white">{ heading }</h1>
+			<p class="mt-4 max-w-2xl leading-7 text-slate-300">{ message }</p>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="mt-8 inline-flex rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Return to areas</a>
+		</section>
+	</main>
+}
