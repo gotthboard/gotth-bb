@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 10:37 CDT — Generate fail-closed OIDC login material
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_material.go`
+- `internal/auth/login_material_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added one injected-entropy generator for independent 256-bit state, nonce, and
+PKCE verifier values. All values use unpadded base64url encoding, matching the
+PKCE verifier alphabet and producing 43-byte browser parameters. Entropy
+failure returns no partial material, and the mutable source buffer is cleared
+before return.
+
+Verification:
+
+- Exact deterministic separation of all three 32-byte entropy blocks
+- Base64url decoding proves 256 bits per value and 43-byte encoded length
+- Nil, short, and failing readers return zero material and preserve the cause
+- Production function and package at 100% statement coverage
+
+Risks / non-goals:
+
+- The generated strings are intentionally live secrets until the login attempt
+  is consumed; Go strings cannot be reliably zeroed.
+- Database hashing/protection and one-time persistence are separate subsequent
+  boundaries.
+
 ### 2026-09-01 10:23 CDT — Validate configured internal return paths
 
 Commit: current commit; hash assigned by Git after commit
