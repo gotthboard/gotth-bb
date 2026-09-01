@@ -5,9 +5,33 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 11:31 CDT — Add atomic login-attempt persistence and consumption
+### 2026-09-01 10:34 CDT — Correct unreleased change chronology
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Replaced inferred future heading times with the authoritative local Git commit
+times for the eight shell/auth units from `f07eb57` through `92c77db`. Assigned
+the now-known atomic-consume commit hash. No implementation or release behavior
+changed.
+
+Verification:
+
+- Compared every corrected heading against `git log --date=local`
+- Change-log order remains strictly newest-first
+
+Risks / non-goals:
+
+- Heading precision is minutes; commit timestamps retain seconds.
+
+### 2026-09-01 10:30 CDT — Add atomic login-attempt persistence and consumption
+
+Commit: `92c77dba2b6018aa07a24adaf69427ba064bb3c1`
 
 Affected files:
 
@@ -43,7 +67,7 @@ Risks / non-goals:
 - Consumed rows are retained temporarily as replay evidence and removed later
   by bounded idempotent cleanup.
 
-### 2026-09-01 11:17 CDT — Authenticate and recover login-attempt secrets
+### 2026-09-01 10:22 CDT — Authenticate and recover login-attempt secrets
 
 Commit: `2009847c095e0404f4a567266adf66b78c0c2a17`
 
@@ -79,7 +103,7 @@ Risks / non-goals:
 - Recovery authenticates transient material only. Database one-time
   consumption, expiry, and callback transaction policy remain separate.
 
-### 2026-09-01 11:01 CDT — Protect login-attempt database secrets
+### 2026-09-01 10:17 CDT — Protect login-attempt database secrets
 
 Commit: `ca15f844876000c6294c076a1dc1b688dc616f1e`
 
@@ -117,7 +141,7 @@ Risks / non-goals:
   failure, and their two closure error propagations. Fake cipher injection
   merely to color those lines would weaken the mechanism.
 
-### 2026-09-01 10:46 CDT — Reject repeated OIDC secret blocks
+### 2026-09-01 10:10 CDT — Reject repeated OIDC secret blocks
 
 Commit: `c6283bf0a43e56ce55de9ddf9a80f7f76005db71`
 
@@ -145,7 +169,7 @@ Risks / non-goals:
 - Exact-repeat detection does not attempt to estimate entropy quality. The
   production caller still must use `crypto/rand.Reader`.
 
-### 2026-09-01 10:37 CDT — Generate fail-closed OIDC login material
+### 2026-09-01 10:06 CDT — Generate fail-closed OIDC login material
 
 Commit: `5c11449dda4abf259c672ba7d03724745739070c`
 
@@ -177,7 +201,7 @@ Risks / non-goals:
 - Database hashing/protection and one-time persistence are separate subsequent
   boundaries.
 
-### 2026-09-01 10:23 CDT — Validate configured internal return paths
+### 2026-09-01 10:02 CDT — Validate configured internal return paths
 
 Commit: `d214516c473f414e26f5f055c416b0f6b6903575`
 
@@ -213,7 +237,7 @@ Risks / non-goals:
   authorization, or CSRF authority.
 - Individual destination handlers still validate their own query values.
 
-### 2026-09-01 10:06 CDT — Remove the base-path literal from login-attempt storage
+### 2026-09-01 09:56 CDT — Remove the base-path literal from login-attempt storage
 
 Commit: `09f9b612ff0eaea0fceaa5739cbb08a1f92f38ec`
 
@@ -248,7 +272,7 @@ Risks / non-goals:
 - Database structure is not a substitute for application base-path validation;
   that boundary is implemented before login-attempt persistence.
 
-### 2026-09-01 09:29 CDT — Render the responsive base-path-safe public shell
+### 2026-09-01 09:47 CDT — Render the responsive base-path-safe public shell
 
 Commit: `f07eb57612aac7995901b3d3e38207ccdaf0c6a4`
 
