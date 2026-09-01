@@ -137,7 +137,9 @@ Rules:
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
   must use positive Go duration syntax such as `30m` or `24h`; zero and
   negative durations fail startup. Idle timeout and Authentik revalidation
-  interval may not exceed the absolute session maximum.
+  interval may not exceed the absolute session maximum. `SESSION_MAX_AGE` must
+  be at least one second because browser cookie expiry has whole-second
+  precision; a shorter server session cannot produce a reliably live cookie.
 - `SESSION_COOKIE_NAME` must be a valid HTTP cookie token. Browser magic
   prefixes (`__Host-`, `__Secure-`, `__Http-`, and `__Host-Http-`) are rejected
   case-insensitively because their transport and path requirements conflict

@@ -5,6 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:35 CDT — Own authentication dependencies at startup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the immutable authentication service constructor and its exact PostgreSQL
+interface. Startup now validates the database, entropy, clock, session lifetime,
+and return-path validator before performing one hardened OIDC discovery. A
+failure returns no partial service and performs no PostgreSQL work.
+
+The service redacts its entire retained state for every formatting verb because
+it owns the OIDC client secret, PostgreSQL object, and entropy source. Session
+maximum age is rejected below one second: Go serializes browser-cookie expiry at
+whole-second precision even though PostgreSQL accepts microseconds.
+
+Verification:
+
+- Controlled issuer discovery and exact retained provider/database/session
+  dependencies
+- Every invalid local dependency and pre-canceled context rejects before a
+  panic-on-use transport can perform discovery
+- Discovery failure returns no partial service
+- Whole-second cookie boundary covered one nanosecond below, exactly at, one
+  nanosecond above, and materially beyond
+- Five formatting verbs produce only `[REDACTED AUTH SERVICE]`
+- `NewService` and `Service.Format` at 100% statement coverage; race-enabled
+  auth package tests pass
+
+Risks / non-goals:
+
+- Construction performs OIDC discovery and therefore must complete before the
+  listener is bound; PostgreSQL readiness remains a separate startup check.
+- Login begin/completion methods and process-level secret wiring are subsequent
+  units.
+
 ### 2026-09-01 12:25 CDT — Enforce the browser callback boundary
 
 Commit: current commit; hash assigned by Git after commit
