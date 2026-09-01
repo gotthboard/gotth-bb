@@ -464,7 +464,9 @@ than relying on OAuth2 authentication-style probing.
   key. The authentication service exposes this as one redacted, cancellation-
   preserving start operation and builds the same state/nonce/PKCE authorization
   URL as initial login. Browser input can select only a validated internal
-  return path.
+  return path. Its five-minute state cookie uses the fixed
+  `_oidc_revalidate_state` suffix, distinct from initial login's `_oidc_state`;
+  only server route construction selects either namespace.
 
 ### 8.3 Callback transaction
 

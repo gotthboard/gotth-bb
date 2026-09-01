@@ -17,7 +17,7 @@ func TestNewInitialLoginStartHandlerSetsStateCookieAndRedirects(t *testing.T) {
 
 	state := base64.RawURLEncoding.EncodeToString(bytesOf(0x73, 32))
 	calls := 0
-	handler, err := newInitialLoginStartHandler(
+	handler, err := newLoginStartHandler(
 		func(_ context.Context, returnPath string) (string, string, error) {
 			calls++
 			if returnPath != "/bb/topics/7?view=new" {
@@ -25,10 +25,10 @@ func TestNewInitialLoginStartHandlerSetsStateCookieAndRedirects(t *testing.T) {
 			}
 			return "https://auth.example/application/o/authorize/?client_id=gotth-bb&state=" + state, state, nil
 		},
-		"gotth_bb_session", callbackTestURLBuilder(t), true,
+		initialLoginStateCookieSuffix, "gotth_bb_session", callbackTestURLBuilder(t), true,
 	)
 	if err != nil {
-		t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/login?return="+url.QueryEscape("/bb/topics/7?view=new"), nil)
 	response := httptest.NewRecorder()
@@ -54,17 +54,17 @@ func TestNewInitialLoginStartHandlerUsesApplicationRootByDefault(t *testing.T) {
 	t.Parallel()
 
 	state := base64.RawURLEncoding.EncodeToString(bytesOf(0x31, 32))
-	handler, err := newInitialLoginStartHandler(
+	handler, err := newLoginStartHandler(
 		func(_ context.Context, returnPath string) (string, string, error) {
 			if returnPath != "/bb/" {
 				t.Fatalf("default return path = %q", returnPath)
 			}
 			return "http://auth.example/authorize?state=" + state, state, nil
 		},
-		"session", callbackTestURLBuilder(t), false,
+		initialLoginStateCookieSuffix, "session", callbackTestURLBuilder(t), false,
 	)
 	if err != nil {
-		t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -73,15 +73,37 @@ func TestNewInitialLoginStartHandlerUsesApplicationRootByDefault(t *testing.T) {
 	}
 }
 
+func TestNewInitialLoginStartHandlerCanIssueRevalidationStateCookie(t *testing.T) {
+	t.Parallel()
+
+	state := base64.RawURLEncoding.EncodeToString(bytesOf(0x32, 32))
+	handler, err := newLoginStartHandler(
+		func(context.Context, string) (string, string, error) {
+			return "https://auth.example/authorize?state=" + state, state, nil
+		},
+		revalidationStateCookieSuffix, "gotth_bb_session", callbackTestURLBuilder(t), true,
+	)
+	if err != nil {
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/auth/revalidate", nil))
+	cookies := response.Result().Cookies()
+	if response.Code != http.StatusSeeOther || len(cookies) != 1 ||
+		cookies[0].Name != "gotth_bb_session_oidc_revalidate_state" || cookies[0].Value != state {
+		t.Fatalf("revalidation response = (status %d, cookies %+v)", response.Code, cookies)
+	}
+}
+
 func TestNewInitialLoginStartHandlerRejectsMalformedRequestsBeforeBegin(t *testing.T) {
 	t.Parallel()
 
-	handler, err := newInitialLoginStartHandler(
+	handler, err := newLoginStartHandler(
 		func(context.Context, string) (string, string, error) { panic("begin must not run") },
-		"session", callbackTestURLBuilder(t), true,
+		initialLoginStateCookieSuffix, "session", callbackTestURLBuilder(t), true,
 	)
 	if err != nil {
-		t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
 	}
 	for _, test := range []struct {
 		name       string
@@ -116,14 +138,14 @@ func TestNewInitialLoginStartHandlerRejectsMalformedRequestsBeforeBegin(t *testi
 func TestNewInitialLoginStartHandlerEnforcesRawQueryBoundary(t *testing.T) {
 	t.Parallel()
 
-	handler, err := newInitialLoginStartHandler(
+	handler, err := newLoginStartHandler(
 		func(context.Context, string) (string, string, error) {
 			panic("invalid return path must not reach begin")
 		},
-		"session", callbackTestURLBuilder(t), true,
+		initialLoginStateCookieSuffix, "session", callbackTestURLBuilder(t), true,
 	)
 	if err != nil {
-		t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
 	}
 	for _, size := range []int{
 		maxInitialLoginQueryBytes - 1,
@@ -156,14 +178,14 @@ func TestNewInitialLoginStartHandlerCollapsesBeginFailure(t *testing.T) {
 	t.Parallel()
 
 	const secret = "do-not-leak-login-start-failure"
-	handler, err := newInitialLoginStartHandler(
+	handler, err := newLoginStartHandler(
 		func(context.Context, string) (string, string, error) {
 			return "https://" + secret + ".example/", secret, errors.New(secret)
 		},
-		"session", callbackTestURLBuilder(t), true,
+		initialLoginStateCookieSuffix, "session", callbackTestURLBuilder(t), true,
 	)
 	if err != nil {
-		t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+		t.Fatalf("newLoginStartHandler() returned error: %v", err)
 	}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -196,12 +218,12 @@ func TestNewInitialLoginStartHandlerRejectsUnsafeSuccessfulResult(t *testing.T) 
 		result := result
 		t.Run(result.name, func(t *testing.T) {
 			t.Parallel()
-			handler, err := newInitialLoginStartHandler(
+			handler, err := newLoginStartHandler(
 				func(context.Context, string) (string, string, error) { return result.raw, result.state, nil },
-				"session", callbackTestURLBuilder(t), true,
+				initialLoginStateCookieSuffix, "session", callbackTestURLBuilder(t), true,
 			)
 			if err != nil {
-				t.Fatalf("newInitialLoginStartHandler() returned error: %v", err)
+				t.Fatalf("newLoginStartHandler() returned error: %v", err)
 			}
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -218,20 +240,22 @@ func TestNewInitialLoginStartHandlerRejectsMissingDependencies(t *testing.T) {
 	builder := callbackTestURLBuilder(t)
 	begin := func(context.Context, string) (string, string, error) { return "", "", nil }
 	for _, test := range []struct {
-		name    string
-		begin   func(context.Context, string) (string, string, error)
-		cookie  string
-		builder URLBuilder
+		name        string
+		begin       func(context.Context, string) (string, string, error)
+		stateSuffix string
+		cookie      string
+		builder     URLBuilder
 	}{
-		{name: "begin", cookie: "session", builder: builder},
-		{name: "cookie", begin: begin, builder: builder},
-		{name: "builder", begin: begin, cookie: "session"},
+		{name: "begin", stateSuffix: initialLoginStateCookieSuffix, cookie: "session", builder: builder},
+		{name: "state suffix", begin: begin, stateSuffix: "_untrusted", cookie: "session", builder: builder},
+		{name: "cookie", begin: begin, stateSuffix: initialLoginStateCookieSuffix, builder: builder},
+		{name: "builder", begin: begin, stateSuffix: initialLoginStateCookieSuffix, cookie: "session"},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got, err := newInitialLoginStartHandler(test.begin, test.cookie, test.builder, true); err == nil || got != nil {
-				t.Fatalf("newInitialLoginStartHandler() = (%v, %v), want nil/error", got, err)
+			if got, err := newLoginStartHandler(test.begin, test.stateSuffix, test.cookie, test.builder, true); err == nil || got != nil {
+				t.Fatalf("newLoginStartHandler() = (%v, %v), want nil/error", got, err)
 			}
 		})
 	}

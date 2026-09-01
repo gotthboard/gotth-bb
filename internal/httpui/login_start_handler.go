@@ -15,10 +15,12 @@ const (
 	maxOIDCAuthorizationURLBytes = 8192
 )
 
-// newInitialLoginStartHandler constructs the exact GET login-start boundary.
-// It validates an optional internal return target before invoking the service
-// once, then validates and commits one state cookie plus one provider redirect.
-// Every failure is generic, non-cacheable, and returns no browser state.
+// newLoginStartHandler constructs the exact GET login-start boundary for
+// either initial login or revalidation. The caller selects one of the two fixed
+// state-cookie namespaces; browser input never supplies that selection. It
+// validates an optional internal return target before invoking the service once,
+// then validates and commits one state cookie plus one provider redirect. Every
+// failure is generic, non-cacheable, and returns no browser state.
 //
 // Complexity: construction scans n cookie-name and p base-path bytes in tight
 // Theta(n+p) time and retains Theta(p) builder state. For q request-query bytes,
@@ -26,14 +28,18 @@ const (
 // time is O(q*log(q)+u+D+n+p), Omega(q+u), and auxiliary space O(q+u+n+p).
 // q and u are each capped at 8,192 bytes; D performs one bounded database write
 // without retry.
-func newInitialLoginStartHandler(
+func newLoginStartHandler(
 	begin func(context.Context, string) (string, string, error),
+	stateCookieSuffix string,
 	sessionCookieName string,
 	builder URLBuilder,
 	secure bool,
 ) (http.Handler, error) {
 	if begin == nil {
 		return nil, fmt.Errorf("initial login start is required")
+	}
+	if stateCookieSuffix != initialLoginStateCookieSuffix && stateCookieSuffix != revalidationStateCookieSuffix {
+		return nil, fmt.Errorf("login state cookie suffix is invalid")
 	}
 	validatedCookieName, err := config.ParseSessionCookieName(sessionCookieName)
 	if err != nil || validatedCookieName != sessionCookieName {
@@ -97,6 +103,7 @@ func newInitialLoginStartHandler(
 			http.Error(response, "authentication failed", http.StatusInternalServerError)
 			return
 		}
+		cookie.Name = sessionCookieName + stateCookieSuffix
 		http.SetCookie(response, &cookie)
 		response.Header().Set("Location", authorizationURL)
 		response.WriteHeader(http.StatusSeeOther)

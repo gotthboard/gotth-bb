@@ -10,6 +10,7 @@ import (
 
 const (
 	initialLoginStateCookieSuffix        = "_oidc_state"
+	revalidationStateCookieSuffix        = "_oidc_revalidate_state"
 	initialLoginStateCookieMaximumAgeSec = 5 * 60
 )
 

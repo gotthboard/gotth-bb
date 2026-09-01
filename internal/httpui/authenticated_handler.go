@@ -37,7 +37,9 @@ func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, 
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
 	}
-	loginHandler, err := newInitialLoginStartHandler(service.BeginInitialLogin, sessionCookieName, builder, secure)
+	loginHandler, err := newLoginStartHandler(
+		service.BeginInitialLogin, initialLoginStateCookieSuffix, sessionCookieName, builder, secure,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("construct initial login route: %w", err)
 	}

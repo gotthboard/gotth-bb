@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:21 CDT — Separate initial and revalidation browser state
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/login_state_cookie.go`
+- `internal/httpui/login_start_handler.go`
+- `internal/httpui/login_start_handler_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Generalized the hardened login-start HTTP boundary over exactly two server-
+selected state-cookie namespaces. Initial login retains `_oidc_state`;
+revalidation uses `_oidc_revalidate_state`. Browser input cannot select a
+purpose, and both flows retain the same strict return-path, authorization-URL,
+state, cookie, cache, and redirect controls.
+
+Verification:
+
+- Initial-login cookie name and behavior remain byte-for-byte compatible
+- Revalidation emits only the distinct fixed cookie name with identical path,
+  lifetime, HttpOnly, Secure, and SameSite policy
+- Unknown suffixes fail construction before request work
+- The changed production function reaches 100% statement coverage and passes
+  20 race-detector repetitions
+
+Risks / non-goals:
+
+- The revalidation route and dual-purpose callback remain subsequent units.
+- The fixed suffix is internal construction policy, never a query/form value.
+
 ### 2026-09-01 17:13 CDT — Expose revalidation completion through auth service
 
 Commit: current commit; hash assigned by Git after commit
