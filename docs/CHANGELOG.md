@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 03:30 CDT — Close logging and cookie-name configuration
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/log_level.go`
+- `internal/config/log_level_test.go`
+- `internal/config/session_cookie_name.go`
+- `internal/config/session_cookie_name_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added a closed structured-log threshold with an `info` default and an
+RFC-cookie-token session name with an application-specific default. Cookie
+prefixes with incompatible browser-enforced path or transport semantics are
+rejected rather than silently producing unusable sessions.
+
+Verification:
+
+- Focused red-before-green unit tests for both production units
+- Go `net/http.Cookie.Valid` contract and source checked
+- `make verify`
+- Package statement coverage report
+
+Risks / non-goals:
+
+- Cookie attributes are set by the later session HTTP boundary, not this
+  parser.
+- Logger construction and secret-redaction handlers remain separate work.
+
 ### 2026-09-01 03:20 CDT — Validate the exact Authentik issuer
 
 Commit: `4d6fedd85768271a7acc91cc5529d5676cea0f0c`

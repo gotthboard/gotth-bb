@@ -98,11 +98,11 @@ Unknown or malformed security-sensitive settings fail startup.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
-| `SESSION_COOKIE_NAME` | No | Defaults to a host-specific opaque name |
+| `SESSION_COOKIE_NAME` | No | Defaults to `gotth_bb_session` |
 | `SESSION_MAX_AGE` | Yes | Absolute authenticated-session lifetime |
 | `SESSION_IDLE_TIMEOUT` | Yes | Idle session expiry |
 | `AUTH_REVALIDATE_INTERVAL` | Yes | Maximum accepted Authentik identity staleness |
-| `LOG_LEVEL` | No | Structured log severity threshold |
+| `LOG_LEVEL` | No | `debug`, `info`, `warn`, or `error`; defaults to `info` |
 
 Rules:
 
@@ -115,6 +115,10 @@ Rules:
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
   must use positive Go duration syntax such as `30m` or `24h`; zero and
   negative durations fail startup.
+- `SESSION_COOKIE_NAME` must be a valid HTTP cookie token. Browser magic
+  prefixes (`__Host-`, `__Secure-`, `__Http-`, and `__Host-Http-`) are rejected
+  case-insensitively because their transport and path requirements conflict
+  with supported HTTP development and `/bb` deployment semantics.
 - `OIDC_ISSUER_URL` must be the exact Authentik per-provider issuer in
   `/application/o/<application_slug>/` form: an absolute HTTP(S) URL with no
   credentials, query, or fragment. Production requires HTTPS. Encoding and
