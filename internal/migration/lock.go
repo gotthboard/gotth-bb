@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -20,7 +18,7 @@ const (
 
 type migrationLockConnection interface {
 	migrationExecer
-	QueryRow(context.Context, string, ...any) pgx.Row
+	migrationRowQuerier
 }
 
 // withMigrationLock serializes one migration action on a PostgreSQL session.

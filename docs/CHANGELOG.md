@@ -5,9 +5,51 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:28 CDT — Apply one migration atomically
+### 2026-09-01 07:35 CDT — Attest the migration ledger schema
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/attest.go`
+- `internal/migration/attest_test.go`
+- `internal/migration/attest_integration_test.go`
+- `internal/migration/lock.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added an exact PostgreSQL 17 catalog attestation for the migration ledger.
+Before history is trusted, the runner can now prove the permanent ordinary
+table, four ordered column types/nullability/defaults, three named validated
+constraints and definitions, no inheritance, no row security, and no external
+triggers or rewrite rules. This closes the false assurance left by
+`CREATE TABLE IF NOT EXISTS`.
+
+Verification:
+
+- Red-before-green compile failure before `attestHistoryTable` existed
+- Exact query plus nil/canceled/query-failure/catalog-mismatch unit paths
+- PostgreSQL 17.10 acceptance of the exact created table
+- PostgreSQL 17.10 rejection after removing the digest constraint, adding an
+  extra column, changing the timestamp default, or enabling row security
+- PostgreSQL 17.10 rejection of an insert-suppressing rewrite rule
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- PostgreSQL integration run with the `integration` build tag and 100%
+  migration-package statement coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- The attestation is intentionally pinned to PostgreSQL 17.10 catalog output.
+  Supporting another major version requires rerunning and admitting the full
+  migration, constraint, concurrency, and readiness evidence.
+
+### 2026-09-01 07:28 CDT — Apply one migration atomically
+
+Commit: `b6e1ceaaf983717ab6c1cd9cc5a568ee9d5e5d51`
 
 Affected files:
 
