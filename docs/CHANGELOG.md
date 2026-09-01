@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 15:00 CDT — Load sessions at the HTTP boundary
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/session_authentication_handler.go`
+- `internal/httpui/session_authentication_handler_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the HTTP session boundary. It admits at most one unquoted configured
+cookie, delegates current local authentication once, attaches the typed result
+to the request, and varies downstream responses by cookie state. Missing state
+is anonymous. Duplicate, quoted, malformed, and inactive state is anonymous and
+expired. PostgreSQL/authentication failures stop with a generic non-cacheable
+503 rather than silently becoming anonymous.
+
+Verification:
+
+- Authenticated and revalidation-required snapshots reach downstream exactly
+- Missing state performs no authentication work
+- Inactive, duplicate, and quoted cookies expire at the exact application path
+- Authentication errors are redacted 503 responses and do not call downstream
+- Constructor dependency failures are fail-closed
+- `newSessionAuthenticationHandler` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- Route composition and protected-route revalidation policy remain subsequent
+  units; this boundary reports the freshness fact without inventing a redirect.
+
 ### 2026-09-01 14:40 CDT — Define request authentication lookup
 
 Commit: current commit; hash assigned by Git after commit
