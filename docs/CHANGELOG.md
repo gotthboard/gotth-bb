@@ -5,6 +5,40 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:06 CDT — Complete revalidation in one ordered workflow
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/complete_revalidation.go`
+- `internal/auth/complete_revalidation_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the fail-closed revalidation completion coordinator. It consumes exactly
+one purpose-bound attempt, exchanges the authorization code once, and invokes
+atomic session rotation with the attempt's server-owned session ID and the old
+browser token. It returns the replacement token and validated navigation path
+only after all three stages succeed.
+
+Verification:
+
+- Exact `consume -> exchange -> rotate` ordering and arguments are asserted
+- Every stage failure stops later work, returns no browser state, and redacts
+  non-context causes
+- Cancellation from every stage remains process-inspectable
+- Invalid dependencies and incomplete successful stage results fail closed
+- The production function reaches 100% statement coverage and passes 20 race-
+  detector repetitions
+
+Risks / non-goals:
+
+- Service and HTTP wiring remain subsequent units.
+- No stage is retried, including a rotation commit with unknown outcome.
+
 ### 2026-09-01 16:59 CDT — Rotate revalidated sessions atomically
 
 Commit: current commit; hash assigned by Git after commit

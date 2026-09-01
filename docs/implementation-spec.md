@@ -520,6 +520,9 @@ For revalidation, the callback additionally verifies the existing session,
 updates the identity/profile snapshot, creates a rotated replacement session,
 and revokes the old session in the transaction. A failed or abandoned
 reauthorization leaves the stale session unable to authorize protected routes.
+The completion boundary runs exactly one attempt consumption, one authorization-
+code exchange, and one rotation in that order; it retries none of them and
+returns no replacement browser state unless every stage succeeds.
 The rotation transaction first selects the exact session ID plus SHA-256 hash
 of the old browser token, requires current absolute/idle lifetime and current
 local nonsuspension, rejects issue/activity/validation timestamps in the future,
