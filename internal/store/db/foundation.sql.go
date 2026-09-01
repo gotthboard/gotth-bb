@@ -42,6 +42,62 @@ func (q *Queries) CountGovernanceRows(ctx context.Context) (int64, error) {
 	return column_1, err
 }
 
+const getActiveSessionForRotation = `-- name: GetActiveSessionForRotation :one
+SELECT
+    session.user_id,
+    identity.issuer,
+    identity.subject,
+    session.expires_at
+FROM public.sessions AS session
+JOIN public.users AS forum_user ON forum_user.id = session.user_id
+JOIN public.external_identities AS identity ON identity.user_id = session.user_id
+WHERE session.id = $1
+  AND session.token_hash = $2
+  AND session.revoked_at IS NULL
+  AND session.issued_at <= $3
+  AND session.last_seen_at <= $3
+  AND session.validated_at <= $3
+  AND session.expires_at > $3
+  AND session.last_seen_at > $4
+  AND (
+      forum_user.suspended_at IS NULL
+      OR forum_user.suspended_at > $3
+      OR forum_user.suspended_until <= $3
+  )
+FOR UPDATE OF session, forum_user, identity
+`
+
+type GetActiveSessionForRotationParams struct {
+	SessionID  int64
+	TokenHash  []byte
+	ObservedAt pgtype.Timestamptz
+	IdleCutoff pgtype.Timestamptz
+}
+
+type GetActiveSessionForRotationRow struct {
+	UserID    int64
+	Issuer    string
+	Subject   string
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetActiveSessionForRotation(ctx context.Context, arg GetActiveSessionForRotationParams) (GetActiveSessionForRotationRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSessionForRotation,
+		arg.SessionID,
+		arg.TokenHash,
+		arg.ObservedAt,
+		arg.IdleCutoff,
+	)
+	var i GetActiveSessionForRotationRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Issuer,
+		&i.Subject,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const getUserByExternalIdentity = `-- name: GetUserByExternalIdentity :one
 SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at
 FROM public.users AS u

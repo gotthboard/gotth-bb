@@ -520,6 +520,12 @@ For revalidation, the callback additionally verifies the existing session,
 updates the identity/profile snapshot, creates a rotated replacement session,
 and revokes the old session in the transaction. A failed or abandoned
 reauthorization leaves the stale session unable to authorize protected routes.
+The rotation transaction first selects the exact session ID plus SHA-256 hash
+of the old browser token, requires current absolute/idle lifetime and current
+local nonsuspension, rejects issue/activity/validation timestamps in the future,
+joins the sole stored issuer/subject, and row-locks the
+session, user, and identity together. Missing, revoked, expired, idle, suspended,
+or mismatched state is the same no-row failure before profile or session writes.
 
 The first administrator is granted only through an explicit operator command
 against an already provisioned `(issuer, subject)` identity. The command

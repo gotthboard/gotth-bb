@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:00 CDT — Lock exact active session for rotation
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/foundation.sql`
+- `internal/store/db/foundation.sql.go`
+- `internal/store/db/foundation_rotation_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated `GetActiveSessionForRotation` query. It selects only the
+exact session ID plus old-token hash while enforcing revocation, issue,
+nonfuture activity/validation, absolute-expiry, idle-expiry, and current local
+suspension state. It returns the
+stored user/issuer/subject/expiry and row-locks the session, user, and identity
+together before any rotation write.
+
+Verification:
+
+- Generated method forwards the exact context, ID, 32-byte hash, observed time,
+  and idle cutoff in fixed order and scans all identity/session fields
+- Query text asserts exact revocation and suspension predicates plus the three-
+  row `FOR UPDATE` boundary
+- Scan failure returns the zero row and exact cause
+- Generated method reaches 100% statement coverage
+
+Risks / non-goals:
+
+- This unit adds no schema migration; it is a query over the admitted alpha
+  schema.
+- The replacement insert and exact old-session revoke are subsequent units.
+
 ### 2026-09-01 19:45 CDT — Consume initial and revalidation attempts distinctly
 
 Commit: current commit; hash assigned by Git after commit
