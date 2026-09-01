@@ -5,9 +5,52 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:20 CDT — Serialize migration sessions
+### 2026-09-01 07:28 CDT — Apply one migration atomically
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/apply_one.go`
+- `internal/migration/apply_one_test.go`
+- `internal/migration/apply_one_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the one-file transactional executor. It revalidates the private loaded
+identity and digest, begins a PostgreSQL transaction, executes the exact SQL,
+inserts its version/name/SHA-256 record, and commits. Every pre-commit failure
+receives a bounded cancellation-detached rollback. Commit failure is reported
+as outcome-unknown and explicitly requires ledger inspection before retry.
+
+Verification:
+
+- Red-before-green compile failure before `applyMigration` existed
+- Exact SQL/record order and identity arguments
+- Invalid context, connection, version, filename, content, and digest
+- Begin, SQL, ledger, commit, and rollback failures including joined causes
+- PostgreSQL 17.10 proof that successful DDL and its ledger row commit together
+- PostgreSQL 17.10 proof that partial multi-statement DDL and DDL followed by a
+  duplicate ledger record both roll back without residue
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- PostgreSQL integration run with the `integration` build tag and 100%
+  migration-package statement coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- Migration SQL is trusted reviewed release code and may not contain explicit
+  transaction control; the runner cannot sandbox arbitrary privileged SQL.
+- No automatic retry occurs after a commit error because its outcome may be
+  unknown.
+
+### 2026-09-01 07:20 CDT — Serialize migration sessions
+
+Commit: `3d9f08a477844ce4c5ac83569563a1076783a82f`
 
 Affected files:
 

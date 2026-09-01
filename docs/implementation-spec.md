@@ -571,6 +571,9 @@ event only when the action contract explicitly defines it as idempotent.
   renamed files, changed applied bytes, unknown applied versions, and files
   larger than one MiB.
 - Each migration documents lock and data-rewrite risk.
+- Migration files contain no explicit transaction-control statements such as
+  `BEGIN`, `COMMIT`, or `ROLLBACK`; the project-owned runner owns that boundary.
+  Migration SQL is trusted reviewed release code, not a sandboxed input.
 - Transactional DDL is used when PostgreSQL permits it.
 - Destructive schema removal uses expand/migrate/contract across compatible
   releases, not a single irreversible deploy.
