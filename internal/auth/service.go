@@ -153,6 +153,48 @@ func (service *Service) BeginInitialLogin(ctx context.Context, returnPath string
 	return authorizationURL, material.state, nil
 }
 
+// BeginRevalidation persists one protected OIDC attempt bound to an already
+// authenticated server-side session and constructs its authorization URL. The
+// caller supplies a session ID only from the immutable authentication snapshot;
+// no browser parameter is accepted for that binding.
+//
+// Complexity: local dependency validation and result projection are tight
+// Theta(1). Delegated work performs fixed-size cryptography, return-path
+// validation, one database insert, and bounded URL construction without retry
+// or background work.
+func (service *Service) BeginRevalidation(ctx context.Context, sessionID int64, returnPath string) (string, string, error) {
+	if service == nil || service.provider.provider == nil || service.provider.verifier == nil || service.provider.httpClient == nil ||
+		service.provider.oauth2Config.ClientID == "" || service.provider.oauth2Config.Endpoint.AuthURL == "" ||
+		service.provider.oauth2Config.RedirectURL == "" ||
+		!slices.Equal(service.provider.oauth2Config.Scopes, []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}) ||
+		service.database == nil || service.queries == nil || service.entropy == nil || service.clock == nil ||
+		service.validateReturnPath == nil {
+		return "", "", fmt.Errorf("authentication service is not initialized for revalidation start")
+	}
+	material, err := beginRevalidation(
+		ctx,
+		service.queries.InsertOIDCLoginAttempt,
+		service.entropy,
+		service.clock,
+		service.validateReturnPath,
+		sessionID,
+		returnPath,
+	)
+	if err != nil {
+		if ctx != nil {
+			if contextError := ctx.Err(); contextError != nil {
+				return "", "", fmt.Errorf("begin revalidation: %w", contextError)
+			}
+		}
+		return "", "", fmt.Errorf("begin revalidation failed")
+	}
+	authorizationURL, err := service.provider.initialAuthorizationURL(material)
+	if err != nil {
+		return "", "", fmt.Errorf("build revalidation authorization URL failed")
+	}
+	return authorizationURL, material.state, nil
+}
+
 // CompleteInitialLogin consumes one live attempt, exchanges its code, and
 // commits its verified identity/session through the service-owned dependencies.
 // It returns only the browser token, validated navigation path, and expiry.

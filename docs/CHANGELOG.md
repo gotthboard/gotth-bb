@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:30 CDT — Expose revalidation start through authentication service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_revalidation_begin_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `Service.BeginRevalidation`. It validates the retained provider/store/
+entropy/clock/path dependencies, persists one session-bound revalidation
+attempt, constructs the state/nonce/PKCE authorization URL, and returns only
+the public URL and state. Non-context causes collapse at the service boundary.
+
+Verification:
+
+- Exact positive session ID, `revalidate` purpose, and return path reach the
+  single SQL insert before the provider URL is returned
+- Invalid service state and session IDs return no browser material
+- Canceled context is preserved; database causes are redacted
+- `Service.BeginRevalidation` reaches 91.7% statement coverage
+
+Risks / non-goals:
+
+- The sole uncovered branch handles an authorization-builder error made
+  unreachable after the method's provider validation and freshly generated
+  fixed-valid material; no fake injection seam is justified.
+- The HTTP start boundary remains the next unit.
+
 ### 2026-09-01 19:15 CDT — Bind revalidation attempts to server sessions
 
 Commit: current commit; hash assigned by Git after commit

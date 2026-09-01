@@ -461,7 +461,10 @@ than relying on OAuth2 authentication-style probing.
 - Revalidation attempt creation receives the positive session ID only from the
   authenticated server request snapshot, rewrites the protected attempt
   metadata to `purpose=revalidate`, and stores that ID as the required foreign
-  key. Browser input can select only a validated internal return path.
+  key. The authentication service exposes this as one redacted, cancellation-
+  preserving start operation and builds the same state/nonce/PKCE authorization
+  URL as initial login. Browser input can select only a validated internal
+  return path.
 
 ### 8.3 Callback transaction
 
