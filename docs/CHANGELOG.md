@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 04:00 CDT — Add bounded HTTP observability
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `bf1131eab34cc0dacb2a0f769b63114baedb3f89`
 
 Affected files:
 
