@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 03:30 CDT — Close logging and cookie-name configuration
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `4d9703d0ac21c9f97e006a12676d4d45c323c9f4`
 
 Affected files:
 
