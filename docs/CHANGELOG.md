@@ -5,9 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 09:01 CDT — Install the fixed browser security boundary
+### 2026-09-01 09:08 CDT — Make HTMX representation selection cache-safe
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/response_mode.go`
+- `internal/httpui/response_mode_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the shared full-page/fragment selector using HTMX's documented exact
+`HX-Request: true` contract. History restoration always receives a full page,
+and every representation-varying response marks both request headers in
+`Vary` without replacing an existing cache key.
+
+Verification:
+
+- Read HTMX 2.0.10's current request-header, history-restoration, response
+  handling, and cache variation documentation
+- Red-before-green response-mode compile failure
+- Ordinary, exact HTMX, noncanonical, history-restore, and explicit non-history
+  request cases
+- Existing `Vary` value preserved before both representation headers
+- `go test -mod=readonly -race -cover ./internal/httpui` at 100% statement
+  coverage
+- 20 repeated race-enabled HTTP UI package runs
+- `make verify`
+
+Risks / non-goals:
+
+- `HX-Request` changes representation only; it conveys no identity,
+  authorization, CSRF, or validation authority.
+- The page-level HTMX configuration that swaps `422` forms and requests full
+  history restoration remains part of the layout unit.
+
+### 2026-09-01 09:01 CDT — Install the fixed browser security boundary
+
+Commit: `143ec1ac64e879fa851b686cabe648ec358687eb`
 
 Affected files:
 

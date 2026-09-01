@@ -524,6 +524,11 @@ bounded.
   deliberately loopback HTTP.
 - `HX-Request` selects a documented fragment only after the same handler,
   authorization, validation, and service path runs.
+- Fragment selection requires the exact `HX-Request: true` value. An exact
+  `HX-History-Restore-Request: true` always selects a full document, and both
+  headers are added to `Vary` whenever they can affect the representation.
+  The page config disables `historyRestoreAsHxRequest` so history cache misses
+  request full documents under HTMX's documented contract.
 - Full-page successful form submission uses a `303` redirect.
 - HTMX success may return a fragment plus `HX-Redirect` or documented swap
   headers.
