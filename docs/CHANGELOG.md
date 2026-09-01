@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:50 CDT — Bind callback completion to the service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_complete_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the service-level completion method used by the HTTP callback. It binds
+the service-owned attempt consumer, hardened provider exchange, and atomic
+identity/session transaction to the previously admitted exactly-once
+coordinator. Only the opaque browser token, validated internal return path, and
+expiry cross the package boundary; every error returns zero browser state.
+
+Verification:
+
+- Nil, zero, and incomplete service values reject without database work; empty
+  callback inputs reject before a query
+- Real PostgreSQL 17.10 plus the controlled ES256 issuer proves attempt insert
+  and consumption, one confidential PKCE exchange, approved profile admission,
+  member-only role creation despite an injected administrator claim, exact
+  session creation, and browser result projection
+- Replaying the consumed state returns zero values and does not issue a second
+  token request
+- `Service.CompleteInitialLogin` at 100% statement coverage in the tagged
+  integration suite; auth package 96.2% with the real boundary enabled
+
+Risks / non-goals:
+
+- This method is the initial-login path only. Revalidation must additionally
+  verify and revoke the old session in its transaction.
+- Login-start and process/route wiring remain subsequent units.
+
 ### 2026-09-01 12:35 CDT — Own authentication dependencies at startup
 
 Commit: current commit; hash assigned by Git after commit

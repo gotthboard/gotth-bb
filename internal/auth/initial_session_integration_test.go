@@ -7,12 +7,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -200,5 +202,52 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 			!storedPrecisionExpiry.Equal(wantExpiresAt) {
 			t.Fatalf("stored precision expiry %s = (%s, %v), want %s", maximumAge, storedPrecisionExpiry, err, wantExpiresAt)
 		}
+	}
+
+	harness := newOIDCExchangeHarness(t)
+	defer harness.server.Close()
+	serviceTime := refreshTime.Add(5 * time.Minute).UTC().Truncate(time.Microsecond)
+	serviceEntropy := bytes.NewReader(sequentialBytes(256))
+	serviceReturnPath := "/bb/topics/42"
+	service := &Service{
+		provider: harness.discover(t), database: connections[0], queries: db.New(connections[0]),
+		entropy: serviceEntropy, clock: func() time.Time { return serviceTime }, sessionMaximumAge: 24 * time.Hour,
+		validateReturnPath: func(raw string) (string, error) {
+			if raw != serviceReturnPath {
+				return "", errors.New("unexpected return path")
+			}
+			return raw, nil
+		},
+	}
+	serviceMaterial, err := beginInitialLogin(
+		ctx, service.queries.InsertOIDCLoginAttempt, service.entropy, service.clock,
+		service.validateReturnPath, serviceReturnPath,
+	)
+	if err != nil {
+		t.Fatalf("beginInitialLogin() service attempt: %v", err)
+	}
+	harness.material = serviceMaterial
+	serviceToken, returnedPath, serviceExpiresAt, err := service.CompleteInitialLogin(ctx, serviceMaterial.state, "service-success")
+	decodedServiceToken, decodeErr := base64.RawURLEncoding.Strict().DecodeString(serviceToken)
+	if err != nil || decodeErr != nil || len(decodedServiceToken) != sessionTokenBytes || returnedPath != serviceReturnPath ||
+		!serviceExpiresAt.Equal(serviceTime.Add(24*time.Hour)) || harness.tokenRequestCount("service-success") != 1 {
+		t.Fatalf("Service.CompleteInitialLogin() = (token bytes %d, path %q, expiry %s, requests %d, errors %v/%v)",
+			len(decodedServiceToken), returnedPath, serviceExpiresAt, harness.tokenRequestCount("service-success"), err, decodeErr)
+	}
+	var serviceDisplayName, serviceRole string
+	var serviceSessions int
+	if err := connections[0].QueryRow(ctx, `SELECT u.display_name, u.role,
+		(SELECT count(*) FROM public.sessions AS s WHERE s.user_id = u.id)
+		FROM public.users AS u
+		JOIN public.external_identities AS i ON i.user_id = u.id
+		WHERE i.issuer = $1 AND i.subject = $2`, harness.issuer, "subject-1").Scan(
+		&serviceDisplayName, &serviceRole, &serviceSessions,
+	); err != nil || serviceDisplayName != "Danny Hunn" || serviceRole != "member" || serviceSessions != 1 {
+		t.Fatalf("service-created identity = (%q, %q, %d sessions, %v)", serviceDisplayName, serviceRole, serviceSessions, err)
+	}
+	replayToken, replayPath, replayExpiry, err := service.CompleteInitialLogin(ctx, serviceMaterial.state, "service-success")
+	if err == nil || replayToken != "" || replayPath != "" || !replayExpiry.IsZero() || harness.tokenRequestCount("service-success") != 1 {
+		t.Fatalf("replayed Service.CompleteInitialLogin() = (%q, %q, %s, requests %d, %v)",
+			replayToken, replayPath, replayExpiry, harness.tokenRequestCount("service-success"), err)
 	}
 }

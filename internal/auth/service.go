@@ -6,9 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -96,4 +98,46 @@ func NewService(
 		sessionMaximumAge:  sessionMaximumAge,
 		validateReturnPath: validateReturnPath,
 	}, nil
+}
+
+// CompleteInitialLogin consumes one live attempt, exchanges its code, and
+// commits its verified identity/session through the service-owned dependencies.
+// It returns only the browser token, validated navigation path, and expiry.
+//
+// Complexity: local validation and result projection are tight Theta(1). With
+// delegated consume, exchange, and create times Ct, Et, St and spaces Cs, Es,
+// Ss, total time is O(Ct+Et+St), Omega(Ct), and auxiliary space O(Cs+Es+Ss),
+// Omega(1); no tight Theta bound is established because later network/database
+// stages may not run. No stage is retried.
+func (service *Service) CompleteInitialLogin(ctx context.Context, state, code string) (string, string, time.Time, error) {
+	if service == nil || service.provider.provider == nil || service.provider.verifier == nil || service.provider.httpClient == nil ||
+		service.provider.oauth2Config.ClientID == "" || service.provider.oauth2Config.Endpoint.TokenURL == "" ||
+		service.provider.oauth2Config.RedirectURL == "" ||
+		!slices.Equal(service.provider.oauth2Config.Scopes, []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}) ||
+		service.database == nil || service.queries == nil || service.entropy == nil || service.clock == nil ||
+		service.sessionMaximumAge < time.Second || service.validateReturnPath == nil {
+		return "", "", time.Time{}, fmt.Errorf("authentication service is not initialized for login completion")
+	}
+	completed, err := completeInitialLogin(
+		ctx,
+		func(stageContext context.Context, stateValue string) (consumedInitialLogin, error) {
+			return consumeInitialLogin(
+				stageContext, service.queries.ConsumeOIDCLoginAttempt, service.clock,
+				service.validateReturnPath, stateValue,
+			)
+		},
+		service.provider.exchangeInitialLogin,
+		func(stageContext context.Context, claims verifiedIdentityClaims) (createdInitialSession, error) {
+			return createInitialSession(
+				stageContext, service.database, service.entropy, service.clock,
+				service.sessionMaximumAge, claims,
+			)
+		},
+		state,
+		code,
+	)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return completed.token, completed.returnPath, completed.expiresAt, nil
 }
