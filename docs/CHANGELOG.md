@@ -5,9 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:09 CDT — Bound applied migration history queries
+### 2026-09-01 07:14 CDT — Bootstrap the migration history ledger
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/bootstrap.go`
+- `internal/migration/bootstrap_test.go`
+- `internal/migration/bootstrap_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the idempotent PostgreSQL migration-ledger definition with a positive
+bigint primary-key version, non-null name, exact 32-byte digest constraint, and
+database-generated application timestamp. The operation accepts pgx
+connections or transactions through a private execution contract and requires
+the caller to hold the migration advisory lock.
+
+Verification:
+
+- Red-before-green compile failure before `ensureHistoryTable` existed
+- Exact statement and nil context/executor/execution-failure unit paths
+- Idempotent creation on PostgreSQL 17.10
+- Successful row/default round trip and rejection of nonpositive version, null
+  name, short digest, and duplicate version
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- PostgreSQL integration run with the `integration` build tag and 100%
+  migration-package statement coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- `CREATE TABLE IF NOT EXISTS` creates but does not attest a pre-existing table
+  definition. Schema attestation and advisory-lock ownership remain required in
+  the executor coordinator.
+
+### 2026-09-01 07:09 CDT — Bound applied migration history queries
+
+Commit: `cfcf74a849c402274152047d72173f7995415e81`
 
 Affected files:
 
