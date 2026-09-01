@@ -5,6 +5,32 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 14:40 CDT — Define request authentication lookup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/session_context.go`
+- `internal/httpui/session_context_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Defined the request-scoped authentication context key and the single typed
+lookup used by HTTP handlers. Missing, nil, or malformed context state resolves
+to the exact anonymous zero value rather than a synthetic identity.
+
+Verification:
+
+- Complete authenticated snapshots round-trip without interpretation
+- Nil, absent, and wrong-typed context values are anonymous
+- `sessionAuthenticationFromContext` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The next unit is the only writer of this private request-context key.
+
 ### 2026-09-01 14:25 CDT — Expose session authentication through the service
 
 Commit: current commit; hash assigned by Git after commit
