@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const schemaTestDatabase = "gotth_bb_alpha1_schema_test"
@@ -106,6 +108,20 @@ VALUES ($1, 'https://auth.example.test/application/o/forum/', 'admin-subject')`,
 VALUES ($1, 'https://other.example.test/', 'other-subject')`, administratorID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.sessions (token_hash, user_id, expires_at)
 VALUES (decode('00', 'hex'), $1, clock_timestamp() + interval '1 hour')`, memberID)
+	queries := db.New(conn)
+	if governanceRows, err := queries.CountGovernanceRows(ctx); err != nil || governanceRows != 1 {
+		t.Fatalf("CountGovernanceRows() = (%d, %v), want (1, nil)", governanceRows, err)
+	}
+	if activeAdministrators, err := queries.CountActiveAdministrators(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true}); err != nil || activeAdministrators != 1 {
+		t.Fatalf("CountActiveAdministrators() = (%d, %v), want (1, nil)", activeAdministrators, err)
+	}
+	identityUser, err := queries.GetUserByExternalIdentity(ctx, db.GetUserByExternalIdentityParams{
+		Issuer:  "https://auth.example.test/application/o/forum/",
+		Subject: "admin-subject",
+	})
+	if err != nil || identityUser.ID != administratorID {
+		t.Fatalf("GetUserByExternalIdentity() = (id %d, %v), want (%d, nil)", identityUser.ID, err, administratorID)
+	}
 
 	var groupID int64
 	if err := conn.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by)

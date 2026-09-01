@@ -5,9 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:08 CDT — Create the alpha database schema
+### 2026-09-01 08:14 CDT — Generate typed foundation queries
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `sqlc.yaml`
+- `internal/store/queries/foundation.sql`
+- `internal/store/db/db.go`
+- `internal/store/db/models.go`
+- `internal/store/db/foundation.sql.go`
+- `migrations/schema_integration_test.go`
+- `Makefile`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Configured pinned sqlc v1.31.1 for local PostgreSQL analysis and pgx/v5
+generation. Generated schema models plus the first typed identity, governance,
+and active-administrator queries. `make generate` is explicit; `make verify`
+regenerates with `--no-remote` and rejects working-tree or untracked output
+drift before compiling and testing.
+
+Verification:
+
+- Two consecutive `go tool sqlc generate --no-remote` runs produced identical
+  SHA-256 values for every generated file
+- Full race-enabled Go test suite
+- PostgreSQL 17.10 round trips for governance cardinality, active administrator
+  count, and external-identity lookup through generated queries
+- Fresh-schema integration test remains at 100% migrations-package coverage
+- `make verify`, including generation-drift checks
+
+Risks / non-goals:
+
+- Generated code is committed and never hand-edited. This unit provides typed
+  primitives only; transaction ownership and repository policy stay in
+  handwritten code.
+- Database-backed sqlc analysis and managed/remote generation remain disabled.
+
+### 2026-09-01 08:08 CDT — Create the alpha database schema
+
+Commit: `3707087ffe7237fcb4c19496aebb07442f4f0223`
 
 Affected files:
 

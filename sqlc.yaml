@@ -1,0 +1,14 @@
+version: "2"
+sql:
+  - name: foundation
+    engine: postgresql
+    schema: migrations
+    queries: internal/store/queries
+    analyzer:
+      database: false
+    gen:
+      go:
+        package: db
+        out: internal/store/db
+        sql_package: pgx/v5
+        emit_empty_slices: true
