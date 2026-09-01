@@ -241,6 +241,56 @@ func (service *Service) CompleteInitialLogin(ctx context.Context, state, code st
 	return completed.token, completed.returnPath, completed.expiresAt, nil
 }
 
+// CompleteRevalidation consumes one purpose-bound attempt, exchanges its code,
+// and atomically replaces the exact old browser session through service-owned
+// dependencies. It returns only the replacement token, validated navigation
+// path, and fresh absolute expiry.
+//
+// Complexity: local dependency validation and result projection are tight
+// Theta(1). Delegated consumption, exchange, and rotation perform fixed bounded
+// local work plus external database/network I/O. No stage retries or detaches.
+func (service *Service) CompleteRevalidation(ctx context.Context, state, code, oldToken string) (string, string, time.Time, error) {
+	if service == nil || service.provider.provider == nil || service.provider.verifier == nil || service.provider.httpClient == nil ||
+		service.provider.oauth2Config.ClientID == "" || service.provider.oauth2Config.Endpoint.TokenURL == "" ||
+		service.provider.oauth2Config.RedirectURL == "" ||
+		!slices.Equal(service.provider.oauth2Config.Scopes, []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}) ||
+		service.database == nil || service.queries == nil || service.entropy == nil || service.clock == nil ||
+		service.sessionMaximumAge < time.Second || service.sessionIdleTimeout < time.Second ||
+		service.sessionIdleTimeout > service.sessionMaximumAge || service.validateReturnPath == nil {
+		return "", "", time.Time{}, fmt.Errorf("authentication service is not initialized for revalidation completion")
+	}
+	completed, err := completeRevalidation(
+		ctx,
+		func(stageContext context.Context, stateValue string) (consumedRevalidation, error) {
+			consumed, consumeErr := consumeLoginAttempt(
+				stageContext, service.queries.ConsumeOIDCLoginAttempt, service.clock,
+				service.validateReturnPath, "revalidate", stateValue,
+			)
+			if consumeErr != nil {
+				return consumedRevalidation{}, consumeErr
+			}
+			return consumedRevalidation{
+				material: consumed.material, returnPath: consumed.returnPath, sessionID: consumed.sessionID,
+			}, nil
+		},
+		service.provider.exchangeInitialLogin,
+		func(stageContext context.Context, sessionID int64, oldCredential string, claims verifiedIdentityClaims) (createdRevalidatedSession, error) {
+			return rotateRevalidatedSession(
+				stageContext, service.database, service.entropy, service.clock,
+				service.sessionMaximumAge, service.sessionIdleTimeout,
+				sessionID, oldCredential, claims,
+			)
+		},
+		state,
+		code,
+		oldToken,
+	)
+	if err != nil {
+		return "", "", time.Time{}, err
+	}
+	return completed.token, completed.returnPath, completed.expiresAt, nil
+}
+
 // AuthenticateSession resolves one opaque browser credential through the
 // service-owned database, clock, idle, and revalidation policy. It returns the
 // exact anonymous zero value for an absent/invalid/inactive credential.

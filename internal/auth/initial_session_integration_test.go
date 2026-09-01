@@ -454,4 +454,61 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	}); err != nil || touched != 0 {
 		t.Fatalf("revoked TouchSession() = (%d, %v), want zero/nil", touched, err)
 	}
+
+	revalidationInitialAt := authenticatedAt.Add(5 * time.Minute)
+	revalidationClaims := verifiedIdentityClaims{
+		issuer: harness.issuer, subject: "subject-1", displayName: "Danny Hunn",
+	}
+	revalidationOld, err := createInitialSession(
+		ctx, connections[0], bytes.NewReader(bytes.Repeat([]byte{0x61}, sessionTokenBytes)),
+		func() time.Time { return revalidationInitialAt }, 24*time.Hour, revalidationClaims,
+	)
+	if err != nil {
+		t.Fatalf("create revalidation source session: %v", err)
+	}
+	revalidationAt := revalidationInitialAt.Add(time.Minute)
+	service.clock = func() time.Time { return revalidationAt }
+	revalidationMaterial, err := beginRevalidation(
+		ctx, service.queries.InsertOIDCLoginAttempt, service.entropy, service.clock,
+		service.validateReturnPath, revalidationOld.sessionID, serviceReturnPath,
+	)
+	if err != nil {
+		t.Fatalf("beginRevalidation() service completion attempt: %v", err)
+	}
+	harness.material = revalidationMaterial
+	revalidatedToken, revalidatedPath, revalidatedExpiry, err := service.CompleteRevalidation(
+		ctx, revalidationMaterial.state, "service-revalidation-success", revalidationOld.token,
+	)
+	decodedRevalidatedToken, decodeErr := base64.RawURLEncoding.Strict().DecodeString(revalidatedToken)
+	if err != nil || decodeErr != nil || len(decodedRevalidatedToken) != sessionTokenBytes ||
+		revalidatedPath != serviceReturnPath || !revalidatedExpiry.Equal(revalidationAt.Add(24*time.Hour)) ||
+		harness.tokenRequestCount("service-revalidation-success") != 1 {
+		t.Fatalf("Service.CompleteRevalidation() = (token bytes %d, path %q, expiry %s, requests %d, errors %v/%v)",
+			len(decodedRevalidatedToken), revalidatedPath, revalidatedExpiry,
+			harness.tokenRequestCount("service-revalidation-success"), err, decodeErr)
+	}
+	revalidationOldHash := sha256.Sum256([]byte(revalidationOld.token))
+	revalidatedHash := sha256.Sum256([]byte(revalidatedToken))
+	revalidationObservedAt := pgtype.Timestamptz{Time: revalidationAt, Valid: true}
+	revalidationIdleCutoff := pgtype.Timestamptz{Time: revalidationAt.Add(-30 * time.Minute), Valid: true}
+	if got, err := service.queries.GetActiveSession(ctx, db.GetActiveSessionParams{
+		TokenHash: revalidationOldHash[:], ObservedAt: revalidationObservedAt, IdleCutoff: revalidationIdleCutoff,
+	}); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("service old revalidated session = (%+v, %v), want zero/no rows", got, err)
+	}
+	if got, err := service.queries.GetActiveSession(ctx, db.GetActiveSessionParams{
+		TokenHash: revalidatedHash[:], ObservedAt: revalidationObservedAt, IdleCutoff: revalidationIdleCutoff,
+	}); err != nil || got.SessionID <= 0 || got.SessionID == revalidationOld.sessionID || got.UserID != revalidationOld.userID ||
+		!got.ValidatedAt.Time.Equal(revalidationAt) || !got.ExpiresAt.Time.Equal(revalidatedExpiry) {
+		t.Fatalf("service replacement revalidated session = (%+v, %v)", got, err)
+	}
+	revalidationReplayToken, revalidationReplayPath, revalidationReplayExpiry, err := service.CompleteRevalidation(
+		ctx, revalidationMaterial.state, "service-revalidation-success", revalidationOld.token,
+	)
+	if err == nil || revalidationReplayToken != "" || revalidationReplayPath != "" || !revalidationReplayExpiry.IsZero() ||
+		harness.tokenRequestCount("service-revalidation-success") != 1 {
+		t.Fatalf("replayed Service.CompleteRevalidation() = (%q, %q, %s, requests %d, %v)",
+			revalidationReplayToken, revalidationReplayPath, revalidationReplayExpiry,
+			harness.tokenRequestCount("service-revalidation-success"), err)
+	}
 }

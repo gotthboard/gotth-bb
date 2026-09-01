@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:13 CDT — Expose revalidation completion through auth service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_revalidation_complete_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `Service.CompleteRevalidation`. It binds service-owned attempt
+consumption, OIDC exchange, entropy, session policy, PostgreSQL transaction,
+and exact old browser token to the ordered completion coordinator. Only the
+replacement token, validated navigation path, and fresh expiry cross the public
+service boundary.
+
+Verification:
+
+- Invalid service/callback state fails before database work
+- PostgreSQL 17 plus the real signed OIDC harness proves one-shot attempt
+  consumption, one token exchange, old-session revocation, replacement
+  authentication, exact validation/expiry timestamps, and replay rejection
+- The service method reaches 100% statement coverage with unit and integration
+  tests combined
+- Three repeated end-to-end PostgreSQL runs pass under the race detector
+
+Risks / non-goals:
+
+- HTTP callback routing and cookie replacement remain subsequent units.
+- Provider, database, and transaction failures return no browser credential and
+  are not retried.
+
 ### 2026-09-01 17:06 CDT — Complete revalidation in one ordered workflow
 
 Commit: current commit; hash assigned by Git after commit
