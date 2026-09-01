@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 13:05 CDT — Bind login state to one browser cookie
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/login_state_cookie.go`
+- `internal/httpui/login_state_cookie_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the transient browser cookie used to bind one initial OIDC attempt to the
+browser that started it. The cookie name is derived from the configured session
+cookie name, its value is the exact 256-bit public state, its path is the
+application subtree, and its five-minute `Max-Age` matches the database attempt
+lifetime. The subsequent handlers use that single derived cookie slot so a new
+login replaces the browser's prior usable state.
+
+Verification:
+
+- Exact derived name, 43-character state, `/bb/` path, five-minute `Max-Age`,
+  host-only scope, `HttpOnly`, `SameSite=Lax`, and production `Secure` flag
+- Explicit insecure-cookie support for loopback HTTP development
+- Invalid configured names, browser magic prefixes, zero URL builder, short,
+  empty, and malformed state all return a zero cookie
+- `newInitialLoginStateCookie` reaches 95.0% statement coverage; the only
+  uncovered branch is final `http.Cookie.Valid` failure after every field's
+  stricter constructor precondition has passed
+
+Risks / non-goals:
+
+- The login-start and callback handlers consume this constructor in the next
+  units. This commit alone does not register a route or set a browser cookie.
+
 ### 2026-09-01 12:55 CDT — Start login through the authentication service
 
 Commit: current commit; hash assigned by Git after commit
