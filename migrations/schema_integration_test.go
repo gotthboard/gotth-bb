@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -270,6 +272,107 @@ WHERE get_byte(state_hash, 0) IN (204, 221, 238)`).Scan(&consumedAttempts, &unco
 	})
 	if err != nil || transactionUser.ID != transactionUserID {
 		t.Fatalf("transaction identity = (id %d, %v), want (%d, nil)", transactionUser.ID, err, transactionUserID)
+	}
+	if _, err := conn.Exec(ctx, "UPDATE public.users SET role = 'moderator' WHERE id = $1", transactionUserID); err != nil {
+		t.Fatalf("set local role before OIDC refresh: %v", err)
+	}
+	refreshTime := pgtype.Timestamptz{Time: transactionTime.Time.Add(time.Minute).UTC().Truncate(time.Microsecond), Valid: true}
+	refreshEmail := pgtype.Text{String: "member@example.test", Valid: true}
+	refreshAvatar := pgtype.Text{String: "https://auth.example.test/avatar.png", Valid: true}
+	sessionTokenHash := bytes.Repeat([]byte{0xf1}, 32)
+	sessionUserAgentHash := bytes.Repeat([]byte{0xf2}, 32)
+	sessionIP := netip.MustParseAddr("192.0.2.42")
+	var insertedSession db.Session
+	if err := store.WithinTx(ctx, conn, func(transactionQueries *db.Queries) error {
+		locked, err := transactionQueries.LockExternalIdentity(ctx, db.LockExternalIdentityParams{
+			Issuer: "https://auth.example.test/application/o/forum/", Subject: "transaction-subject",
+		})
+		if err != nil || !locked {
+			return fmt.Errorf("lock external identity: locked=%t: %w", locked, err)
+		}
+		updated, err := transactionQueries.UpdateUserFromOIDC(ctx, db.UpdateUserFromOIDCParams{
+			DisplayName: "Refreshed Member", Email: refreshEmail, AvatarUrl: refreshAvatar,
+			LoginAt: refreshTime, UserID: transactionUserID,
+		})
+		if err != nil {
+			return err
+		}
+		if updated.Role != "moderator" || updated.DisplayName != "Refreshed Member" {
+			return fmt.Errorf("OIDC refresh changed local role or missed profile")
+		}
+		if err := transactionQueries.UpdateExternalIdentityVerification(ctx, db.UpdateExternalIdentityVerificationParams{
+			VerifiedAt: refreshTime, UserID: transactionUserID,
+		}); err != nil {
+			return err
+		}
+		insertedSession, err = transactionQueries.InsertSession(ctx, db.InsertSessionParams{
+			TokenHash: sessionTokenHash, UserID: transactionUserID, IssuedAt: refreshTime,
+			ExpiresAt:     pgtype.Timestamptz{Time: refreshTime.Time.Add(24 * time.Hour), Valid: true},
+			UserAgentHash: sessionUserAgentHash, IpPrefix: &sessionIP,
+		})
+		return err
+	}); err != nil {
+		t.Fatalf("WithinTx() OIDC refresh/session: %v", err)
+	}
+	if insertedSession.ID == 0 || insertedSession.UserID != transactionUserID || insertedSession.RevokedAt.Valid ||
+		!bytes.Equal(insertedSession.TokenHash, sessionTokenHash) || !bytes.Equal(insertedSession.UserAgentHash, sessionUserAgentHash) ||
+		insertedSession.IpPrefix == nil || *insertedSession.IpPrefix != sessionIP ||
+		!insertedSession.IssuedAt.Valid || !insertedSession.IssuedAt.Time.Equal(refreshTime.Time) ||
+		!insertedSession.LastSeenAt.Valid || !insertedSession.LastSeenAt.Time.Equal(refreshTime.Time) ||
+		!insertedSession.ValidatedAt.Valid || !insertedSession.ValidatedAt.Time.Equal(refreshTime.Time) ||
+		!insertedSession.ExpiresAt.Valid || !insertedSession.ExpiresAt.Time.Equal(refreshTime.Time.Add(24*time.Hour)) {
+		t.Fatal("InsertSession() returned incorrect session state")
+	}
+	var verifiedAt time.Time
+	if err := conn.QueryRow(ctx, "SELECT last_verified_at FROM public.external_identities WHERE user_id = $1", transactionUserID).Scan(&verifiedAt); err != nil || !verifiedAt.Equal(refreshTime.Time) {
+		t.Fatalf("external identity verification time = (%s, %v)", verifiedAt, err)
+	}
+	lockTx, err := consumers[0].Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin identity lock holder: %v", err)
+	}
+	lockParams := db.LockExternalIdentityParams{Issuer: "https://auth.example.test/application/o/forum/", Subject: "contended-subject"}
+	if locked, err := db.New(lockTx).LockExternalIdentity(ctx, lockParams); err != nil || !locked {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("acquire identity lock holder = (%t, %v)", locked, err)
+	}
+	contenderTx, err := consumers[1].Begin(ctx)
+	if err != nil {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("begin identity lock contender: %v", err)
+	}
+	if _, err := contenderTx.Exec(ctx, "SET LOCAL lock_timeout = '100ms'"); err != nil {
+		_ = contenderTx.Rollback(ctx)
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("set identity lock timeout: %v", err)
+	}
+	if _, err := db.New(contenderTx).LockExternalIdentity(ctx, lockParams); err == nil {
+		_ = contenderTx.Rollback(ctx)
+		_ = lockTx.Rollback(ctx)
+		t.Fatal("same external identity lock did not contend")
+	}
+	if err := contenderTx.Rollback(ctx); err != nil {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("rollback identity lock contender: %v", err)
+	}
+	independentTx, err := consumers[1].Begin(ctx)
+	if err != nil {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("begin independent identity lock: %v", err)
+	}
+	if locked, err := db.New(independentTx).LockExternalIdentity(ctx, db.LockExternalIdentityParams{
+		Issuer: lockParams.Issuer, Subject: "independent-subject",
+	}); err != nil || !locked {
+		_ = independentTx.Rollback(ctx)
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("independent identity lock = (%t, %v)", locked, err)
+	}
+	if err := independentTx.Commit(ctx); err != nil {
+		_ = lockTx.Rollback(ctx)
+		t.Fatalf("commit independent identity lock: %v", err)
+	}
+	if err := lockTx.Commit(ctx); err != nil {
+		t.Fatalf("commit identity lock holder: %v", err)
 	}
 	rollbackMarker := errors.New("rollback marker")
 	if err := store.WithinTx(ctx, conn, func(transactionQueries *db.Queries) error {

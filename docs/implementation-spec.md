@@ -461,6 +461,14 @@ The callback:
 
 Failure after code exchange creates no authenticated browser state.
 
+The identity/session transaction first acquires a transaction-scoped PostgreSQL
+advisory lock on the separately hashed verified issuer and subject. A hash
+collision may serialize unrelated logins but cannot merge identities. Under the
+lock it selects or creates the external identity, updates only approved profile
+and verification timestamps for an existing user, preserves local role/group/
+suspension state, and inserts the new session before one commit. Unknown commit
+outcomes are never retried automatically.
+
 The accepted identity snapshot contains only verified `iss`, `sub`, `name`,
 `email` when `email_verified=true`, and `picture`. Bounds match the database:
 issuer 2,048 characters, subject 512, display name 80, email 320, and avatar URL

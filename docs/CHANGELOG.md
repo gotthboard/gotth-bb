@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:30 CDT — Add atomic identity and session query primitives
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/foundation.sql`
+- `internal/store/db/foundation.sql.go`
+- `migrations/schema_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added deterministic sqlc primitives for the login transaction: a transaction-
+scoped advisory lock keyed by separately hashed issuer and subject, approved-
+profile-only user refresh, identity verification timestamp refresh, and exact
+opaque-session insertion. The lock serializes concurrent creation of the same
+verified identity so the later transaction boundary cannot create orphan users;
+hash collisions only serialize unrelated identities.
+
+Verification:
+
+- PostgreSQL 17.10 proves the same identity lock contends while a different
+  subject proceeds independently
+- Profile refresh preserves a deliberately assigned local moderator role
+- Verification timestamp, token/user-agent hashes, IP address, issued/seen/
+  validated/expiry timestamps, and unrevoked session result are exact
+- Deterministic no-remote sqlc generation and three fresh PostgreSQL 17.10 race/
+  coverage runs; integration package 100% statement coverage
+
+Risks / non-goals:
+
+- Advisory hash collisions reduce concurrency only; identity equality still
+  uses the full issuer/subject unique key.
+- These are transaction primitives. The orchestration that chooses insert or
+  refresh and commits the new session is the next unit.
+
 ### 2026-09-01 11:18 CDT — Exchange and verify OIDC codes exactly once
 
 Commit: current commit; hash assigned by Git after commit

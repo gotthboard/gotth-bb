@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"net/netip"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -100,6 +101,64 @@ func (q *Queries) InsertExternalIdentity(ctx context.Context, arg InsertExternal
 	return err
 }
 
+const insertSession = `-- name: InsertSession :one
+INSERT INTO public.sessions (
+    token_hash,
+    user_id,
+    issued_at,
+    last_seen_at,
+    validated_at,
+    expires_at,
+    user_agent_hash,
+    ip_prefix
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $3,
+    $3,
+    $4,
+    $5,
+    $6
+)
+RETURNING id, token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at, revoked_at, user_agent_hash, ip_prefix
+`
+
+type InsertSessionParams struct {
+	TokenHash     []byte
+	UserID        int64
+	IssuedAt      pgtype.Timestamptz
+	ExpiresAt     pgtype.Timestamptz
+	UserAgentHash []byte
+	IpPrefix      *netip.Addr
+}
+
+func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (Session, error) {
+	row := q.db.QueryRow(ctx, insertSession,
+		arg.TokenHash,
+		arg.UserID,
+		arg.IssuedAt,
+		arg.ExpiresAt,
+		arg.UserAgentHash,
+		arg.IpPrefix,
+	)
+	var i Session
+	err := row.Scan(
+		&i.ID,
+		&i.TokenHash,
+		&i.UserID,
+		&i.IssuedAt,
+		&i.LastSeenAt,
+		&i.ValidatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.UserAgentHash,
+		&i.IpPrefix,
+	)
+	return i, err
+}
+
 const insertUser = `-- name: InsertUser :one
 INSERT INTO public.users (display_name, email, avatar_url, created_at, updated_at, last_login_at)
 VALUES (
@@ -142,6 +201,29 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 	return i, err
 }
 
+const lockExternalIdentity = `-- name: LockExternalIdentity :one
+WITH acquired AS MATERIALIZED (
+    SELECT pg_advisory_xact_lock(
+        hashtext($1::text),
+        hashtext($2::text)
+    ) AS ignored
+)
+SELECT true::boolean AS locked
+FROM acquired
+`
+
+type LockExternalIdentityParams struct {
+	Issuer  string
+	Subject string
+}
+
+func (q *Queries) LockExternalIdentity(ctx context.Context, arg LockExternalIdentityParams) (bool, error) {
+	row := q.db.QueryRow(ctx, lockExternalIdentity, arg.Issuer, arg.Subject)
+	var locked bool
+	err := row.Scan(&locked)
+	return locked, err
+}
+
 const lockGovernanceState = `-- name: LockGovernanceState :one
 SELECT singleton
 FROM public.governance_state
@@ -154,4 +236,66 @@ func (q *Queries) LockGovernanceState(ctx context.Context) (bool, error) {
 	var singleton bool
 	err := row.Scan(&singleton)
 	return singleton, err
+}
+
+const updateExternalIdentityVerification = `-- name: UpdateExternalIdentityVerification :exec
+UPDATE public.external_identities
+SET last_verified_at = $1
+WHERE user_id = $2
+`
+
+type UpdateExternalIdentityVerificationParams struct {
+	VerifiedAt pgtype.Timestamptz
+	UserID     int64
+}
+
+func (q *Queries) UpdateExternalIdentityVerification(ctx context.Context, arg UpdateExternalIdentityVerificationParams) error {
+	_, err := q.db.Exec(ctx, updateExternalIdentityVerification, arg.VerifiedAt, arg.UserID)
+	return err
+}
+
+const updateUserFromOIDC = `-- name: UpdateUserFromOIDC :one
+UPDATE public.users
+SET display_name = $1,
+    email = $2,
+    avatar_url = $3,
+    updated_at = $4,
+    last_login_at = $4
+WHERE id = $5
+RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at
+`
+
+type UpdateUserFromOIDCParams struct {
+	DisplayName string
+	Email       pgtype.Text
+	AvatarUrl   pgtype.Text
+	LoginAt     pgtype.Timestamptz
+	UserID      int64
+}
+
+func (q *Queries) UpdateUserFromOIDC(ctx context.Context, arg UpdateUserFromOIDCParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserFromOIDC,
+		arg.DisplayName,
+		arg.Email,
+		arg.AvatarUrl,
+		arg.LoginAt,
+		arg.UserID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Email,
+		&i.AvatarUrl,
+		&i.Bio,
+		&i.Role,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.SuspensionReason,
+		&i.MutedUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
 }
