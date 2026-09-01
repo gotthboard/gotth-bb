@@ -208,11 +208,15 @@ limits. Suspensions do not delete the row.
 ### 6.2 `governance_state`
 
 One seeded singleton row exists solely as a transaction lock for
-administrator-continuity decisions. Bootstrap and every role or suspension
-transition that can change the active-administrator set lock this row with
-`SELECT ... FOR UPDATE` before evaluating state. An active administrator has
-`role = administrator` and no suspension effective at the transaction time.
-The row contains no cached administrator count that could drift.
+administrator-continuity decisions. Its key is a boolean primary key constrained
+to `true`, so the schema permits at most one row; the initial migration inserts
+that row. The runtime role has no UPDATE or DELETE privilege on it, and
+readiness fails if exact cardinality one is not observed. Bootstrap and every
+role or suspension transition that can change the active-administrator set lock
+this row with `SELECT ... FOR UPDATE` before evaluating state. An active
+administrator has `role = administrator` and no suspension effective at the
+transaction time. The row contains no cached administrator count that could
+drift.
 
 ### 6.3 `external_identities`
 

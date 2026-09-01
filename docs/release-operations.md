@@ -16,7 +16,8 @@
 - Release artifacts are immutable and traceable to one commit.
 - Configuration and secrets are external to the artifact and repository.
 - Database migration is a separate, visible release step.
-- Readiness is enabled only after configuration and schema compatibility pass.
+- Readiness is enabled only after configuration, schema compatibility, and the
+  required singleton governance row pass validation.
 - Rollback is planned before deployment.
 - Unknown commit outcomes are investigated, not blindly retried.
 - Backups are not considered valid until restoration succeeds.

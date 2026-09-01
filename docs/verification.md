@@ -135,6 +135,9 @@ Automated tests cover:
 - Governance singleton locking is exercised with concurrent bootstrap,
   demotion, and suspension transactions; the completeness oracle is at least
   one unsuspended administrator-role row after every committed transition.
+- Fresh migration proves exact `governance_state` cardinality one. A missing
+  row makes readiness fail, and the runtime database role cannot update or
+  delete it.
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.

@@ -5,6 +5,35 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 03:00 CDT — Make the governance lock structural
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `docs/verification.md`
+- `docs/release-operations.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+The governance lock is now a real schema invariant: one boolean primary key
+constrained to true, seeded by migration, protected from runtime mutation, and
+validated by readiness. This prevents missing or multiple coordination rows
+from defeating administrator-continuity serialization.
+
+Verification:
+
+- Schema/cardinality contract review
+- Readiness and runtime-privilege failure cases added to verification
+- Markdown link and whitespace checks
+
+Risks / non-goals:
+
+- Migration privileges can still repair a damaged row deliberately; runtime
+  application privileges cannot.
+
 ### 2026-09-01 02:50 CDT — Serialize administrator invariants
 
 Commit: `652b48961dcb5b41464f8676f4bf5902e5b1416d`
