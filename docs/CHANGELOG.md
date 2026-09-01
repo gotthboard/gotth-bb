@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 03:00 CDT — Make the governance lock structural
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `1401728efb30c6fa942f4bd4542f43fd45c96056`
 
 Affected files:
 
