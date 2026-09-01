@@ -15,6 +15,7 @@ const maxLogoutFormBytes = 4096
 // consumed by the browser router.
 type AuthenticationService interface {
 	BeginInitialLogin(context.Context, string) (string, string, error)
+	BeginRevalidation(context.Context, int64, string) (string, string, error)
 	CompleteInitialLogin(context.Context, string, string) (string, string, time.Time, error)
 	AuthenticateSession(context.Context, string) (auth.SessionAuthentication, error)
 	RevokeSession(context.Context, string) (bool, error)
@@ -43,6 +44,31 @@ func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, 
 	if err != nil {
 		return nil, fmt.Errorf("construct initial login route: %w", err)
 	}
+	revalidationHandler, err := newLoginStartHandler(
+		func(ctx context.Context, returnPath string) (string, string, error) {
+			authentication := sessionAuthenticationFromContext(ctx)
+			if !authentication.Access.Authenticated || authentication.SessionID <= 0 {
+				return "", "", fmt.Errorf("authenticated session is required for revalidation")
+			}
+			return service.BeginRevalidation(ctx, authentication.SessionID, returnPath)
+		},
+		revalidationStateCookieSuffix,
+		sessionCookieName,
+		builder,
+		secure,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("construct revalidation route: %w", err)
+	}
+	authorizedRevalidationHandler := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		authentication := sessionAuthenticationFromContext(request.Context())
+		if !authentication.Access.Authenticated || authentication.SessionID <= 0 {
+			response.Header().Set("Cache-Control", "no-store")
+			http.Error(response, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		revalidationHandler.ServeHTTP(response, request)
+	})
 	callbackHandler, err := newInitialLoginCallbackHandler(
 		func(ctx context.Context, state, code string) (completedBrowserLogin, error) {
 			token, returnPath, expiresAt, completionErr := service.CompleteInitialLogin(ctx, state, code)
@@ -73,6 +99,12 @@ func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, 
 	if err != nil {
 		return nil, fmt.Errorf("construct logout session boundary: %w", err)
 	}
+	authenticatedRevalidationHandler, err := newSessionAuthenticationHandler(
+		authorizedRevalidationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("construct revalidation session boundary: %w", err)
+	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -81,6 +113,9 @@ func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, 
 		case "/auth/callback":
 			request.Pattern = request.Method + " /auth/callback"
 			callbackHandler.ServeHTTP(response, request)
+		case "/auth/revalidate":
+			request.Pattern = request.Method + " /auth/revalidate"
+			authenticatedRevalidationHandler.ServeHTTP(response, request)
 		case "/logout":
 			request.Pattern = request.Method + " /logout"
 			authenticatedLogoutHandler.ServeHTTP(response, request)

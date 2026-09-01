@@ -602,6 +602,7 @@ Internal routes are shown without the external `/bb` prefix.
 | `GET` | `/` | Area index | Visitor |
 | `GET` | `/login` | Start Authentik login | Visitor |
 | `GET` | `/auth/callback` | OIDC callback | Login attempt |
+| `GET` | `/auth/revalidate` | Start session-bound Authentik revalidation | Member session |
 | `POST` | `/logout` | Revoke local session | Member |
 | `GET` | `/areas/{slug}` | Area topic list | Area viewer |
 | `GET` | `/topics/{id}` | Topic and posts | Area viewer |

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,6 +20,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 	builder := callbackTestURLBuilder(t)
 	sessionToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x51}, 32))
 	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, 32))
+	revalidationState := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x63}, 32))
 	service := &authenticatedHandlerTestService{}
 	service.begin = func(_ context.Context, returnPath string) (string, string, error) {
 		service.beginCalls++
@@ -33,12 +36,19 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		}
 		return sessionToken, "/bb/", time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC), nil
 	}
+	service.beginRevalidation = func(_ context.Context, sessionID int64, returnPath string) (string, string, error) {
+		service.beginRevalidationCalls++
+		if sessionID != 11 || returnPath != "/bb/topics/7" {
+			t.Fatalf("revalidation start = (%d, %q)", sessionID, returnPath)
+		}
+		return "https://auth.example/authorize?state=" + revalidationState, revalidationState, nil
+	}
 	service.authenticate = func(_ context.Context, token string) (auth.SessionAuthentication, error) {
 		service.authenticateCalls++
 		if token != sessionToken {
 			t.Fatalf("session token = %q", token)
 		}
-		return auth.SessionAuthentication{Access: auth.AccessContext{
+		return auth.SessionAuthentication{SessionID: 11, Access: auth.AccessContext{
 			Authenticated: true,
 			UserID:        17,
 			Role:          auth.RoleMember,
@@ -91,11 +101,25 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		t.Fatalf("callback response = (status %d, calls %d, pattern %q)", callbackResponse.Code, service.completeCalls, callbackRequest.Pattern)
 	}
 
+	revalidationRequest := httptest.NewRequest(http.MethodGet, "/auth/revalidate?return=%2Fbb%2Ftopics%2F7", nil)
+	revalidationRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	revalidationResponse := httptest.NewRecorder()
+	handler.ServeHTTP(revalidationResponse, revalidationRequest)
+	revalidationCookies := revalidationResponse.Result().Cookies()
+	if revalidationResponse.Code != http.StatusSeeOther || service.authenticateCalls != 1 ||
+		service.beginRevalidationCalls != 1 || revalidationRequest.Pattern != "GET /auth/revalidate" ||
+		len(revalidationCookies) != 1 || revalidationCookies[0].Name != "gotth_bb_session_oidc_revalidate_state" ||
+		revalidationCookies[0].Value != revalidationState {
+		t.Fatalf("revalidation response = (status %d, auth/begin calls %d/%d, pattern %q, cookies %+v)",
+			revalidationResponse.Code, service.authenticateCalls, service.beginRevalidationCalls,
+			revalidationRequest.Pattern, revalidationCookies)
+	}
+
 	rootRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	rootRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
 	rootResponse := httptest.NewRecorder()
 	handler.ServeHTTP(rootResponse, rootRequest)
-	if rootResponse.Code != http.StatusOK || service.authenticateCalls != 1 || rootRequest.Pattern != "GET /" {
+	if rootResponse.Code != http.StatusOK || service.authenticateCalls != 2 || rootRequest.Pattern != "GET /" {
 		t.Fatalf("root response = (status %d, auth calls %d, pattern %q)", rootResponse.Code, service.authenticateCalls, rootRequest.Pattern)
 	}
 
@@ -108,7 +132,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 	logoutRequest.Header.Set(csrfHeaderName, csrfToken)
 	logoutResponse := httptest.NewRecorder()
 	handler.ServeHTTP(logoutResponse, logoutRequest)
-	if logoutResponse.Code != http.StatusSeeOther || service.authenticateCalls != 2 || service.revokeCalls != 1 || logoutRequest.Pattern != "POST /logout" {
+	if logoutResponse.Code != http.StatusSeeOther || service.authenticateCalls != 3 || service.revokeCalls != 1 || logoutRequest.Pattern != "POST /logout" {
 		t.Fatalf("logout response = (status %d, auth/revoke calls %d/%d, pattern %q)", logoutResponse.Code, service.authenticateCalls, service.revokeCalls, logoutRequest.Pattern)
 	}
 }
@@ -119,6 +143,9 @@ func TestNewAuthenticatedHandlerRejectsInvalidDependencies(t *testing.T) {
 	builder := callbackTestURLBuilder(t)
 	service := &authenticatedHandlerTestService{
 		begin: func(context.Context, string) (string, string, error) { return "", "", nil },
+		beginRevalidation: func(context.Context, int64, string) (string, string, error) {
+			return "", "", nil
+		},
 		complete: func(context.Context, string, string) (string, string, time.Time, error) {
 			return "", "", time.Time{}, nil
 		},
@@ -148,15 +175,85 @@ func TestNewAuthenticatedHandlerRejectsInvalidDependencies(t *testing.T) {
 	}
 }
 
+func TestNewAuthenticatedHandlerFailsRevalidationWithoutServerSessionAuthority(t *testing.T) {
+	t.Parallel()
+
+	const secret = "do-not-leak-revalidation-start-cause"
+	sessionToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x71}, 32))
+	for _, test := range []struct {
+		name           string
+		withCookie     bool
+		authentication auth.SessionAuthentication
+		beginFailure   bool
+		wantStatus     int
+		wantAuthCalls  int
+		wantBeginCalls int
+	}{
+		{name: "anonymous", wantStatus: http.StatusUnauthorized, wantAuthCalls: 0},
+		{name: "missing session ID", withCookie: true, authentication: auth.SessionAuthentication{Access: auth.AccessContext{Authenticated: true}}, wantStatus: http.StatusUnauthorized, wantAuthCalls: 1},
+		{name: "begin failure", withCookie: true, authentication: auth.SessionAuthentication{SessionID: 9, Access: auth.AccessContext{Authenticated: true}}, beginFailure: true, wantStatus: http.StatusServiceUnavailable, wantAuthCalls: 1, wantBeginCalls: 1},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			service := &authenticatedHandlerTestService{
+				begin: func(context.Context, string) (string, string, error) { return "", "", nil },
+				beginRevalidation: func(context.Context, int64, string) (string, string, error) {
+					if !test.beginFailure {
+						panic("revalidation begin must not run")
+					}
+					return "https://" + secret + ".example/", secret, errors.New(secret)
+				},
+				complete: func(context.Context, string, string) (string, string, time.Time, error) {
+					return "", "", time.Time{}, nil
+				},
+				authenticate: func(context.Context, string) (auth.SessionAuthentication, error) {
+					return test.authentication, nil
+				},
+				revoke: func(context.Context, string) (bool, error) { return false, nil },
+			}
+			originalBegin := service.beginRevalidation
+			service.beginRevalidation = func(ctx context.Context, sessionID int64, returnPath string) (string, string, error) {
+				service.beginRevalidationCalls++
+				return originalBegin(ctx, sessionID, returnPath)
+			}
+			originalAuthenticate := service.authenticate
+			service.authenticate = func(ctx context.Context, token string) (auth.SessionAuthentication, error) {
+				service.authenticateCalls++
+				return originalAuthenticate(ctx, token)
+			}
+			handler, err := NewAuthenticatedHandler(callbackTestURLBuilder(t), service, "gotth_bb_session", true)
+			if err != nil {
+				t.Fatalf("NewAuthenticatedHandler() returned error: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodGet, "/auth/revalidate", nil)
+			if test.withCookie {
+				request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || service.authenticateCalls != test.wantAuthCalls ||
+				service.beginRevalidationCalls != test.wantBeginCalls || response.Header().Get("Location") != "" ||
+				strings.Contains(response.Body.String(), secret) {
+				t.Fatalf("response = (status %d, auth/begin calls %d/%d, headers %v, body %q)",
+					response.Code, service.authenticateCalls, service.beginRevalidationCalls,
+					response.Header(), response.Body.String())
+			}
+		})
+	}
+}
+
 type authenticatedHandlerTestService struct {
-	begin             func(context.Context, string) (string, string, error)
-	complete          func(context.Context, string, string) (string, string, time.Time, error)
-	authenticate      func(context.Context, string) (auth.SessionAuthentication, error)
-	revoke            func(context.Context, string) (bool, error)
-	beginCalls        int
-	completeCalls     int
-	authenticateCalls int
-	revokeCalls       int
+	begin                  func(context.Context, string) (string, string, error)
+	beginRevalidation      func(context.Context, int64, string) (string, string, error)
+	complete               func(context.Context, string, string) (string, string, time.Time, error)
+	authenticate           func(context.Context, string) (auth.SessionAuthentication, error)
+	revoke                 func(context.Context, string) (bool, error)
+	beginCalls             int
+	beginRevalidationCalls int
+	completeCalls          int
+	authenticateCalls      int
+	revokeCalls            int
 }
 
 func (service *authenticatedHandlerTestService) BeginInitialLogin(ctx context.Context, returnPath string) (string, string, error) {
@@ -165,6 +262,10 @@ func (service *authenticatedHandlerTestService) BeginInitialLogin(ctx context.Co
 
 func (service *authenticatedHandlerTestService) CompleteInitialLogin(ctx context.Context, state, code string) (string, string, time.Time, error) {
 	return service.complete(ctx, state, code)
+}
+
+func (service *authenticatedHandlerTestService) BeginRevalidation(ctx context.Context, sessionID int64, returnPath string) (string, string, error) {
+	return service.beginRevalidation(ctx, sessionID, returnPath)
 }
 
 func (service *authenticatedHandlerTestService) AuthenticateSession(ctx context.Context, token string) (auth.SessionAuthentication, error) {

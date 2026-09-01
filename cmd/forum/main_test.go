@@ -82,6 +82,10 @@ func (fakeAuthenticationService) BeginInitialLogin(context.Context, string) (str
 	return "https://auth.example/authorize?state=" + state, state, nil
 }
 
+func (fakeAuthenticationService) BeginRevalidation(context.Context, int64, string) (string, string, error) {
+	return "", "", errors.New("revalidation is not expected")
+}
+
 func (fakeAuthenticationService) CompleteInitialLogin(context.Context, string, string) (string, string, time.Time, error) {
 	return "", "", time.Time{}, errors.New("callback is not expected")
 }

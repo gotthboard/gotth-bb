@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:30 CDT — Start revalidation from authenticated browser state
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `GET /auth/revalidate` to the authenticated browser router. The route
+loads the exact session cookie through the existing session boundary, reads the
+positive session ID only from private request context, invokes
+`BeginRevalidation`, and emits the distinct revalidation state cookie plus the
+provider redirect. No query or form field can provide the session binding.
+
+Verification:
+
+- A live authenticated session propagates its exact server-owned ID and a
+  validated internal return path
+- Anonymous and internally inconsistent authenticated snapshots return a non-
+  cacheable 401 before OIDC attempt creation
+- Begin failures remain generic, non-cacheable 503 responses with no redirect
+  or state cookie
+- Infrastructure and unknown routes still bypass session lookup
+- Focused router tests pass 20 times under the race detector
+
+Risks / non-goals:
+
+- Protected-route freshness redirects and dual-purpose callback completion
+  remain subsequent units.
+- The route intentionally permits a signed-in member to refresh before the
+  interval is due; it grants no authority and still requires Authentik success.
+
 ### 2026-09-01 17:21 CDT — Separate initial and revalidation browser state
 
 Commit: current commit; hash assigned by Git after commit
