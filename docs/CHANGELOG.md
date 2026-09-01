@@ -5,6 +5,54 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:48 CDT — Commit identity and session atomically
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/initial_session.go`
+- `internal/auth/initial_session_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the initial-login transaction boundary. It generates one opaque browser
+credential, serializes creation by verified issuer and subject, creates or
+refreshes only the approved local profile snapshot, preserves forum-local
+authorization, and inserts the hashed session before one commit. Any entropy,
+database, session-insert, rollback, or unknown-commit failure returns no browser
+credential and is never retried by this boundary.
+
+Session issue and expiry times are normalized to PostgreSQL's microsecond
+precision before persistence. A positive duration that would collapse to a
+non-advancing expiry is rejected before entropy or database work.
+
+Verification:
+
+- PostgreSQL 17.10 first login creates one member, one external identity, and
+  one session whose stored hash and timestamps exactly match the returned
+  browser credential and configured lifetime
+- A later login refreshes the approved profile while preserving an assigned
+  local moderator role
+- Concurrent first logins for one issuer/subject converge on one user and
+  create two distinct sessions without an orphan account
+- A duplicate session hash forces the whole profile/session transaction to
+  roll back and returns no credential
+- PostgreSQL duration boundary checks cover one nanosecond below, exactly at,
+  and one nanosecond above its one-microsecond timestamp precision
+- Three fresh race-enabled PostgreSQL 17.10 integration runs; auth package
+  95.7% statement coverage and `createInitialSession` 88.1%
+
+Risks / non-goals:
+
+- Concrete database error branches that require corrupting or removing schema
+  mid-transaction remain uncovered; no fake sqlc/database framework was added
+  to manufacture them.
+- This unit does not yet set a cookie or expose the callback route. Browser
+  rotation and error collapsing belong to the HTTP callback boundary.
+
 ### 2026-09-01 11:34 CDT — Generate opaque session material
 
 Commit: current commit; hash assigned by Git after commit
