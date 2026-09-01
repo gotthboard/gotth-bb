@@ -87,6 +87,8 @@ mix both policies.
 
 Configuration is loaded once at startup, validated, then treated as immutable.
 Unknown or malformed security-sensitive settings fail startup.
+Required settings distinguish a missing key from a deliberately empty value;
+the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 
 | Setting | Required | Purpose |
 | --- | --- | --- |
@@ -94,7 +96,7 @@ Unknown or malformed security-sensitive settings fail startup.
 | `LISTEN_ADDR` | Yes | Numeric IP and nonzero port; loopback in production |
 | `PUBLIC_BASE_URL` | Yes | Exact external base, including `/bb` |
 | `BASE_PATH` | Yes | Browser path prefix, `/bb` in production |
-| `DATABASE_URL` | Yes | PostgreSQL connection string supplied as a secret |
+| `DATABASE_URL` | Yes | Opaque PostgreSQL connection string supplied as a secret |
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
@@ -112,9 +114,13 @@ Rules:
   contains no traversal or encoded separator.
 - `LISTEN_ADDR` must be an explicit numeric IP/port. Production accepts only
   IPv4 or IPv6 loopback so the service cannot bypass the Caddy edge boundary.
+- The configuration loader requires a nonempty `DATABASE_URL` without parsing
+  or logging it. A1-02 passes it directly to pgx's documented configuration
+  parser; driver rejection aborts startup before readiness or request serving.
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
   must use positive Go duration syntax such as `30m` or `24h`; zero and
-  negative durations fail startup.
+  negative durations fail startup. Idle timeout and Authentik revalidation
+  interval may not exceed the absolute session maximum.
 - `SESSION_COOKIE_NAME` must be a valid HTTP cookie token. Browser magic
   prefixes (`__Host-`, `__Secure-`, `__Http-`, and `__Host-Http-`) are rejected
   case-insensitively because their transport and path requirements conflict
@@ -131,7 +137,13 @@ Rules:
 - OIDC callback is computed as `PUBLIC_BASE_URL + /auth/callback`; it is not a
   separate free-form setting.
 - OIDC claims never assign forum roles or local group membership.
-- Secrets are not available to templates, logs, diagnostics, or health output.
+- `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
+  non-production public-client test setup.
+- Database and OIDC client secrets use an unexported redacting value type with
+  no general-purpose reveal method. Later PostgreSQL and OIDC constructors
+  will receive them through narrow boundary-specific wiring. The secrets are
+  not available to templates, ordinary formatting, logs, diagnostics, or
+  health output.
 
 ## 5. Core types
 

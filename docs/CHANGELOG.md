@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 03:45 CDT — Assemble immutable startup configuration
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/config.go`
+- `internal/config/config_test.go`
+- `internal/config/secret.go`
+- `internal/config/secret_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the all-or-nothing startup loader and a formatting-safe secret value.
+Every required key is read once. Non-database values pass bounded parsers, and
+the result is admitted only when production transport, session lifetime, and
+confidential-client invariants all hold. The database string is treated as an
+opaque nonempty secret until pgx validates it in A1-02. Failed loads return a
+zero configuration.
+
+Verification:
+
+- Focused red-before-green tests for secret redaction, template isolation, and
+  loading
+- Missing, malformed, default, production, and cross-field failure matrices
+- `make verify`
+- Package statement coverage report
+
+Risks / non-goals:
+
+- Environment acquisition is dependency-injected; executable `os.LookupEnv`
+  wiring remains separate.
+- PostgreSQL syntax and connection validation remain an explicit A1-02 startup
+  gate; this loader checks only that `DATABASE_URL` is present and nonempty.
+- Secret-bearing fields and the value type are unexported. Future database and
+  OIDC client wiring must not add a general-purpose public reveal method.
+
 ### 2026-09-01 03:30 CDT — Close logging and cookie-name configuration
 
 Commit: `4d9703d0ac21c9f97e006a12676d4d45c323c9f4`
