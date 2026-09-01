@@ -37,14 +37,15 @@ func TestNewServiceOwnsValidatedLoginDependencies(t *testing.T) {
 	for _, maximumAge := range []time.Duration{time.Second, time.Second + time.Nanosecond, 24 * time.Hour} {
 		service, err := NewService(
 			context.Background(), harness.server.Client().Transport, *issuer, "gotth-bb", "client-secret",
-			"https://forum.example/bb/auth/callback", database, entropy, clock, maximumAge, validator,
+			"https://forum.example/bb/auth/callback", database, entropy, clock, maximumAge, maximumAge, maximumAge, validator,
 		)
 		if err != nil {
 			t.Fatalf("NewService(%s) returned error: %v", maximumAge, err)
 		}
 		if service == nil || service.provider.provider == nil || service.provider.verifier == nil || service.provider.httpClient == nil ||
 			service.database != database || service.queries == nil || service.entropy != entropy || service.clock == nil ||
-			service.sessionMaximumAge != maximumAge || service.validateReturnPath == nil {
+			service.sessionMaximumAge != maximumAge || service.sessionIdleTimeout != maximumAge || service.revalidationInterval != maximumAge ||
+			service.validateReturnPath == nil {
 			t.Fatalf("service dependencies are incomplete for %s", maximumAge)
 		}
 	}
@@ -100,7 +101,7 @@ func TestNewServiceRejectsInvalidLocalDependenciesBeforeDiscovery(t *testing.T) 
 			t.Parallel()
 			got, err := NewService(
 				test.ctx, panicTransport, issuer, "gotth-bb", "secret", "https://forum.example/bb/auth/callback",
-				test.database, test.entropy, test.clock, test.maxAge, test.validator,
+				test.database, test.entropy, test.clock, test.maxAge, time.Minute, time.Minute, test.validator,
 			)
 			if err == nil || got != nil {
 				t.Fatalf("NewService() = (%v, %v), want nil/error", got, err)
@@ -118,10 +119,41 @@ func TestNewServiceReturnsNoPartialServiceWhenDiscoveryFails(t *testing.T) {
 	})
 	got, err := NewService(
 		context.Background(), transport, issuer, "gotth-bb", "secret", "https://forum.example/bb/auth/callback",
-		&constructorSessionDatabase{}, bytes.NewReader(make([]byte, 512)), time.Now, time.Hour,
+		&constructorSessionDatabase{}, bytes.NewReader(make([]byte, 512)), time.Now, time.Hour, time.Minute, time.Minute,
 		func(raw string) (string, error) { return raw, nil },
 	)
 	if err == nil || got != nil {
 		t.Fatalf("NewService() = (%v, %v), want nil/error", got, err)
+	}
+}
+
+func TestNewServiceRejectsInvalidSessionPolicyBeforeDiscovery(t *testing.T) {
+	t.Parallel()
+
+	issuer := url.URL{Scheme: "https", Host: "auth.example", Path: "/application/o/gotth-bb/"}
+	panicTransport := roundTripperFunc(func(*http.Request) (*http.Response, error) { panic("discovery must not run") })
+	for _, test := range []struct {
+		name       string
+		maximumAge time.Duration
+		idle       time.Duration
+		revalidate time.Duration
+	}{
+		{name: "subsecond idle", maximumAge: time.Hour, idle: time.Second - time.Nanosecond, revalidate: time.Minute},
+		{name: "idle exceeds maximum", maximumAge: time.Hour, idle: time.Hour + time.Nanosecond, revalidate: time.Minute},
+		{name: "subsecond revalidation", maximumAge: time.Hour, idle: time.Minute, revalidate: time.Second - time.Nanosecond},
+		{name: "revalidation exceeds maximum", maximumAge: time.Hour, idle: time.Minute, revalidate: time.Hour + time.Nanosecond},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			service, err := NewService(
+				context.Background(), panicTransport, issuer, "gotth-bb", "secret", "https://forum.example/bb/auth/callback",
+				&constructorSessionDatabase{}, bytes.NewReader(make([]byte, 512)), time.Now,
+				test.maximumAge, test.idle, test.revalidate, func(raw string) (string, error) { return raw, nil },
+			)
+			if err == nil || service != nil {
+				t.Fatalf("NewService() = (%v, %v), want nil/error", service, err)
+			}
+		})
 	}
 }

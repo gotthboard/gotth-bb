@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 14:15 CDT — Retain complete session policy in authentication
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Extended the immutable authentication constructor to retain the idle timeout
+and Authentik revalidation interval beside absolute session age. Startup rejects
+either interval below one second or above the absolute lifetime before OIDC
+discovery or PostgreSQL work. The service now owns every duration needed for
+session authentication instead of requiring request handlers to reinterpret
+configuration.
+
+Verification:
+
+- Exact one-second, one-nanosecond-above, and normal-duration construction
+- Sub-second idle/revalidation and values one nanosecond above maximum fail
+  before a panic-on-use discovery transport can run
+- All retained duration values match the constructor inputs
+- `NewService` remains at 100% statement coverage
+
+Risks / non-goals:
+
+- The next unit exposes session authentication through the service. Process
+  wiring remains later.
+
 ### 2026-09-01 14:05 CDT — Authenticate opaque sessions into local access facts
 
 Commit: current commit; hash assigned by Git after commit

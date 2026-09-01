@@ -24,13 +24,15 @@ type SessionDatabase interface {
 // Service owns the immutable Authentik and PostgreSQL dependencies used by
 // authentication requests.
 type Service struct {
-	provider           discoveredOIDCProvider
-	database           SessionDatabase
-	queries            *db.Queries
-	entropy            io.Reader
-	clock              func() time.Time
-	sessionMaximumAge  time.Duration
-	validateReturnPath func(string) (string, error)
+	provider             discoveredOIDCProvider
+	database             SessionDatabase
+	queries              *db.Queries
+	entropy              io.Reader
+	clock                func() time.Time
+	sessionMaximumAge    time.Duration
+	sessionIdleTimeout   time.Duration
+	revalidationInterval time.Duration
+	validateReturnPath   func(string) (string, error)
 }
 
 // Format prevents recursive formatting of retained OIDC, PostgreSQL, entropy,
@@ -62,6 +64,8 @@ func NewService(
 	entropy io.Reader,
 	clock func() time.Time,
 	sessionMaximumAge time.Duration,
+	sessionIdleTimeout time.Duration,
+	revalidationInterval time.Duration,
 	validateReturnPath func(string) (string, error),
 ) (*Service, error) {
 	if ctx == nil {
@@ -79,6 +83,12 @@ func NewService(
 	if sessionMaximumAge < time.Second {
 		return nil, fmt.Errorf("authentication session maximum age is below browser cookie precision")
 	}
+	if sessionIdleTimeout < time.Second || sessionIdleTimeout > sessionMaximumAge {
+		return nil, fmt.Errorf("authentication session idle timeout is outside the supported session lifetime")
+	}
+	if revalidationInterval < time.Second || revalidationInterval > sessionMaximumAge {
+		return nil, fmt.Errorf("authentication revalidation interval is outside the supported session lifetime")
+	}
 	if validateReturnPath == nil {
 		return nil, fmt.Errorf("authentication return-path validator is required")
 	}
@@ -90,13 +100,15 @@ func NewService(
 		return nil, err
 	}
 	return &Service{
-		provider:           provider,
-		database:           database,
-		queries:            db.New(database),
-		entropy:            entropy,
-		clock:              clock,
-		sessionMaximumAge:  sessionMaximumAge,
-		validateReturnPath: validateReturnPath,
+		provider:             provider,
+		database:             database,
+		queries:              db.New(database),
+		entropy:              entropy,
+		clock:                clock,
+		sessionMaximumAge:    sessionMaximumAge,
+		sessionIdleTimeout:   sessionIdleTimeout,
+		revalidationInterval: revalidationInterval,
+		validateReturnPath:   validateReturnPath,
 	}, nil
 }
 
