@@ -5,9 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:51 CDT — Own the migration connection lifetime
+### 2026-09-01 07:57 CDT — Expose the migration runner
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/api.go`
+- `internal/migration/api_test.go`
+- `internal/migration/coordinator_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Exposed `migration.Apply` as the only production entry point. It accepts a
+configuration produced by `pgx.ParseConfig`, opens one direct connection with
+`pgx.ConnectConfig`, delegates to the tested owner/coordinator chain, and never
+creates a pool or retries an unknown transaction outcome. The adapter
+normalizes pgx's typed nil pointer on failed connection attempts before it
+crosses the ownership interface.
+
+Verification:
+
+- Red-before-green compile failure before `Apply` existed
+- Parsed pgx configuration with a deterministic injected dial failure
+- Nil public context/config rejection
+- Local race-enabled package coverage at 99.5%; the only local gap is the
+  successful real-connection adapter return
+- PostgreSQL 17.10 integration suite now enters through public `Apply`, proving
+  the successful adapter, connection ownership, lock, migration, unlock, and
+  close path at 100% migration-package statement coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- `configured` must come from `pgx.ParseConfig`, matching pgx's documented
+  precondition. The migration command wiring and embedded release files remain
+  subsequent units.
+
+### 2026-09-01 07:51 CDT — Own the migration connection lifetime
+
+Commit: `d0c6daab823520411da17e2c3af20579fbb4c136`
 
 Affected files:
 

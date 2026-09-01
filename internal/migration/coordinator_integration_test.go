@@ -5,7 +5,6 @@ package migration
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"os"
 	"testing"
 	"testing/fstest"
@@ -14,17 +13,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func runIntegrationRelease(ctx context.Context, databaseURL string, filesystem fstest.MapFS) (result error) {
-	conn, err := pgx.Connect(ctx, databaseURL)
+func runIntegrationRelease(ctx context.Context, databaseURL string, filesystem fstest.MapFS) error {
+	configured, err := pgx.ParseConfig(databaseURL)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		closeContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		result = errors.Join(result, conn.Close(closeContext))
-	}()
-	return applyRelease(ctx, conn, filesystem)
+	return Apply(ctx, configured, filesystem)
 }
 
 func TestApplyReleaseFreshIdempotentAndDriftOnPostgreSQL17(t *testing.T) {
