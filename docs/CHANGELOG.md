@@ -5,9 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:04 CDT — Read applied migration identities
+### 2026-09-01 07:09 CDT — Bound applied migration history queries
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/query.go`
+- `internal/migration/query_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the exact ordered PostgreSQL history query. Its row limit is the loaded
+release count plus one: enough to prove that the database contains an unknown
+version, but unable to scan an inconsistent history without a release-derived
+bound. Query execution stays behind a private one-method pgx contract used by
+real connections and deterministic tests.
+
+Verification:
+
+- Red-before-green compile failure before `readAppliedMigrations` existed
+- Exact SQL, ascending version order, and release-plus-one argument
+- Nil context, nil connection, empty/overflowing count, and query failure paths
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- The migration state table is created by the executor bootstrap unit. Locking
+  and transactional execution remain subsequent units.
+
+### 2026-09-01 07:04 CDT — Read applied migration identities
+
+Commit: `b76bc546b8d411dc1ba90388f981f223fa985342`
 
 Affected files:
 
