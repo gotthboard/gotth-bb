@@ -532,6 +532,12 @@ the first grant.
   context only after the opaque credential authenticates. Anonymous requests
   receive no CSRF authority. An internally inconsistent authenticated result
   paired with a malformed credential fails 500 and expires that browser state.
+- Unsafe browser requests validate either exactly one `X-CSRF-Token` header
+  (HTMX) without touching the body, or exactly one `_csrf` field in an
+  `application/x-www-form-urlencoded` ordinary-form body after a route-specific
+  bound is applied. The form body is restored byte-for-byte for later parsing.
+  Missing, duplicate, malformed, or mismatched values fail before mutation;
+  comparison is fixed-length and constant-time.
 - Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/bb`.
 - Session rotation occurs after login and any future privilege elevation.
 - Once `AUTH_REVALIDATE_INTERVAL` elapses, protected routes require a fresh OIDC

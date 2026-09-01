@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:20 CDT — Validate CSRF submissions in constant time
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/csrf_validation.go`
+- `internal/httpui/csrf_validation_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the concrete mutation CSRF validator. HTMX supplies one exact header
+without body access. Ordinary forms supply one hidden field in a caller-bounded
+URL-encoded body that is restored byte-for-byte. Both channels require strict
+32-byte base64url values and use fixed-length constant-time comparison against
+the authenticated request token.
+
+Verification:
+
+- Exact header and form values pass; header validation never reads the body
+- Valid form bodies are closed and restored exactly for downstream parsing
+- Method, context, bounds, content type, body lifecycle, encoding, cardinality,
+  and mismatch failures all fail closed
+- Streaming and declared oversize bodies are rejected
+- `validateCSRFRequest` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- Multipart ordinary forms will require a route-specific bounded strategy;
+  arbitrary multipart parsing is deliberately not smuggled into this validator.
+
 ### 2026-09-01 17:00 CDT — Bind CSRF authority to authenticated requests
 
 Commit: current commit; hash assigned by Git after commit
