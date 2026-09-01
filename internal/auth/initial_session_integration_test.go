@@ -308,10 +308,10 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 			Time: authenticatedAt.Add(-5 * time.Minute), Valid: true,
 		},
 	}
-	authentication, err := authenticateSession(
-		ctx, service.queries.GetActiveSession, service.queries.TouchSession,
-		func() time.Time { return authenticatedAt }, 30*time.Minute, 5*time.Minute, serviceToken,
-	)
+	service.clock = func() time.Time { return authenticatedAt }
+	service.sessionIdleTimeout = 30 * time.Minute
+	service.revalidationInterval = 5 * time.Minute
+	authentication, err := service.AuthenticateSession(ctx, serviceToken)
 	var storedLastSeen time.Time
 	if scanErr := connections[0].QueryRow(ctx, "SELECT last_seen_at FROM public.sessions WHERE id = $1", activeSession.SessionID).Scan(&storedLastSeen); err != nil || scanErr != nil ||
 		!authentication.Access.Authenticated || authentication.Access.UserID != activeSession.UserID ||

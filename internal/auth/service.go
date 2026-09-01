@@ -194,3 +194,26 @@ func (service *Service) CompleteInitialLogin(ctx context.Context, state, code st
 	}
 	return completed.token, completed.returnPath, completed.expiresAt, nil
 }
+
+// AuthenticateSession resolves one opaque browser credential through the
+// service-owned database, clock, idle, and revalidation policy. It returns the
+// exact anonymous zero value for an absent/invalid/inactive credential.
+//
+// Complexity: local dependency validation and dispatch are tight Theta(1).
+// Delegated authentication performs one indexed lookup and, only when due, one
+// conditional activity update; no operation is retried or detached.
+func (service *Service) AuthenticateSession(ctx context.Context, token string) (SessionAuthentication, error) {
+	if service == nil || service.database == nil || service.queries == nil || service.clock == nil ||
+		service.sessionIdleTimeout < time.Second || service.revalidationInterval < time.Second {
+		return SessionAuthentication{}, fmt.Errorf("authentication service is not initialized for session lookup")
+	}
+	return authenticateSession(
+		ctx,
+		service.queries.GetActiveSession,
+		service.queries.TouchSession,
+		service.clock,
+		service.sessionIdleTimeout,
+		service.revalidationInterval,
+		token,
+	)
+}

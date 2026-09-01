@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 14:25 CDT — Expose session authentication through the service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_authenticate_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the public service method that binds opaque-session authentication to the
+service-owned PostgreSQL queries, clock, idle timeout, and revalidation policy.
+HTTP middleware can now receive only the typed authentication result instead of
+owning SQL or policy durations.
+
+Verification:
+
+- Nil, zero, and incomplete service values return zero/error
+- Malformed cookie state returns the anonymous zero result without PostgreSQL
+  work
+- Real PostgreSQL 17.10 proves the full service-owned credential lookup,
+  revalidation decision, typed member access, and throttled activity update
+- `Service.AuthenticateSession` reaches 100% statement coverage in local and
+  tagged integration suites
+
+Risks / non-goals:
+
+- HTTP cookie loading and request-context propagation remain the next unit.
+
 ### 2026-09-01 14:15 CDT — Retain complete session policy in authentication
 
 Commit: current commit; hash assigned by Git after commit
