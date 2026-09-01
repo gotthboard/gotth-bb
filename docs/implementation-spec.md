@@ -512,6 +512,16 @@ bounded.
 
 ## 11. Full-page and HTMX responses
 
+- Every router response, including `404`, `405`, validation, HTMX, and health
+  responses, receives the same fixed browser boundary before handler execution:
+  `default-src 'none'`, `base-uri 'none'`, `form-action 'self'`,
+  `frame-ancestors 'none'`, `object-src 'none'`, and self-only script, style,
+  image, font, connection, and manifest sources (with `data:` additionally
+  allowed for images). Responses also send `nosniff`, `DENY` framing,
+  `no-referrer`, same-origin opener/resource isolation, origin-agent isolation,
+  and a deny-by-default camera/geolocation/microphone/payment/USB permissions
+  policy. HSTS remains Caddy-owned because the application transport is
+  deliberately loopback HTTP.
 - `HX-Request` selects a documented fragment only after the same handler,
   authorization, validation, and service path runs.
 - Full-page successful form submission uses a `303` redirect.

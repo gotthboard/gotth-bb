@@ -14,7 +14,7 @@ func NewHandler() http.Handler {
 	router := http.NewServeMux()
 	router.HandleFunc("GET /health/live", serveLiveness)
 	router.HandleFunc("GET /health/ready", serveNotReady)
-	return router
+	return browserSecurityHeaders(router)
 }
 
 // serveLiveness reports only that the process can execute its HTTP loop.

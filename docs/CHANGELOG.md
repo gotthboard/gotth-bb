@@ -5,9 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:52 CDT — Bind relative and canonical URLs to one authority
+### 2026-09-01 09:01 CDT — Install the fixed browser security boundary
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/security_headers.go`
+- `internal/httpui/security_headers_test.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Wrapped the complete application router with one fixed defensive browser
+policy. The CSP permits only same-origin scripts, styles, fonts, connections,
+and manifests, same-origin plus data images, same-origin form actions, and no
+default, base, frame-ancestor, or object sources. The boundary also installs
+content-sniffing, framing, referrer, cross-origin isolation, origin-agent, and
+permissions headers before any handler writes a response.
+
+Verification:
+
+- Red-before-green policy-constructor compile failure
+- Policy visible inside the delegated handler before status output
+- Exact fixed value for every admitted defensive header
+- HSTS explicitly absent because TLS transport policy is Caddy-owned
+- Successful health, failed readiness, unknown route, and method-not-allowed
+  responses all retain the CSP
+- `go test -mod=readonly -race -cover ./internal/httpui` at 100% statement
+  coverage
+- 20 repeated race-enabled HTTP UI package runs
+- `make verify`
+
+Risks / non-goals:
+
+- The fixed policy intentionally rejects inline script and style. Templates and
+  HTMX integration must use versioned same-origin assets.
+- HSTS, TLS, and the external `/bb` redirect remain Caddy responsibilities.
+
+### 2026-09-01 08:52 CDT — Bind relative and canonical URLs to one authority
+
+Commit: `9d86882ca2fab692478e26e287fb4bdfece34abc`
 
 Affected files:
 

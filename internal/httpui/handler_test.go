@@ -39,6 +39,9 @@ func TestHealthRoutes(t *testing.T) {
 			if got := response.Header().Get("Content-Type"); got != "text/plain; charset=utf-8" {
 				t.Fatalf("GET %s Content-Type = %q", test.path, got)
 			}
+			if got := response.Header().Get("Content-Security-Policy"); got != browserContentSecurityPolicy {
+				t.Fatalf("GET %s Content-Security-Policy = %q", test.path, got)
+			}
 		})
 	}
 }
@@ -58,6 +61,9 @@ func TestHealthRoutesRejectMutationMethods(t *testing.T) {
 
 			if response.Code != http.StatusMethodNotAllowed {
 				t.Fatalf("POST %s status = %d, want %d", path, response.Code, http.StatusMethodNotAllowed)
+			}
+			if got := response.Header().Get("Content-Security-Policy"); got != browserContentSecurityPolicy {
+				t.Fatalf("POST %s Content-Security-Policy = %q", path, got)
 			}
 		})
 	}
