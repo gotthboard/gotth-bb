@@ -43,6 +43,71 @@ func (q *Queries) ConsumeOIDCLoginAttempt(ctx context.Context, arg ConsumeOIDCLo
 	return i, err
 }
 
+const getActiveSession = `-- name: GetActiveSession :one
+SELECT
+    session.id AS session_id,
+    session.user_id,
+    session.issued_at,
+    session.last_seen_at,
+    session.validated_at,
+    session.expires_at,
+    forum_user.display_name,
+    forum_user.email,
+    forum_user.avatar_url,
+    forum_user.role,
+    forum_user.muted_until
+FROM public.sessions AS session
+JOIN public.users AS forum_user ON forum_user.id = session.user_id
+WHERE session.token_hash = $1
+  AND session.revoked_at IS NULL
+  AND session.expires_at > $2
+  AND session.last_seen_at > $3
+  AND (
+      forum_user.suspended_at IS NULL
+      OR forum_user.suspended_at > $2
+      OR forum_user.suspended_until <= $2
+  )
+`
+
+type GetActiveSessionParams struct {
+	TokenHash  []byte
+	ObservedAt pgtype.Timestamptz
+	IdleCutoff pgtype.Timestamptz
+}
+
+type GetActiveSessionRow struct {
+	SessionID   int64
+	UserID      int64
+	IssuedAt    pgtype.Timestamptz
+	LastSeenAt  pgtype.Timestamptz
+	ValidatedAt pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+	DisplayName string
+	Email       pgtype.Text
+	AvatarUrl   pgtype.Text
+	Role        string
+	MutedUntil  pgtype.Timestamptz
+}
+
+func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSession, arg.TokenHash, arg.ObservedAt, arg.IdleCutoff)
+	var i GetActiveSessionRow
+	err := row.Scan(
+		&i.SessionID,
+		&i.UserID,
+		&i.IssuedAt,
+		&i.LastSeenAt,
+		&i.ValidatedAt,
+		&i.ExpiresAt,
+		&i.DisplayName,
+		&i.Email,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.MutedUntil,
+	)
+	return i, err
+}
+
 const insertOIDCLoginAttempt = `-- name: InsertOIDCLoginAttempt :exec
 INSERT INTO public.oidc_login_attempts (
     state_hash,

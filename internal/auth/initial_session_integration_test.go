@@ -18,6 +18,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const initialSessionTestDatabase = "gotth_bb_alpha1_auth_session_test"
@@ -282,5 +283,59 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	); err != nil || storedPurpose != "login" || storedReturnPath != serviceReturnPath || !unconsumed {
 		t.Fatalf("service-started login attempt = (%q, %q, unconsumed %t, %v)",
 			storedPurpose, storedReturnPath, unconsumed, err)
+	}
+
+	serviceTokenHash := sha256.Sum256([]byte(serviceToken))
+	authenticatedAt := serviceTime.Add(10 * time.Minute)
+	authenticate := func(observedAt, idleCutoff time.Time) (db.GetActiveSessionRow, error) {
+		return service.queries.GetActiveSession(ctx, db.GetActiveSessionParams{
+			TokenHash:  serviceTokenHash[:],
+			ObservedAt: pgtype.Timestamptz{Time: observedAt, Valid: true},
+			IdleCutoff: pgtype.Timestamptz{Time: idleCutoff, Valid: true},
+		})
+	}
+	activeSession, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute))
+	if err != nil || activeSession.SessionID <= 0 || activeSession.UserID <= 0 ||
+		activeSession.DisplayName != "Danny Hunn" || activeSession.Role != "member" ||
+		!activeSession.IssuedAt.Time.Equal(serviceTime) || !activeSession.LastSeenAt.Time.Equal(serviceTime) ||
+		!activeSession.ValidatedAt.Time.Equal(serviceTime) || !activeSession.ExpiresAt.Time.Equal(serviceExpiresAt) {
+		t.Fatalf("GetActiveSession() = (%+v, %v)", activeSession, err)
+	}
+	idleBoundaryAt := serviceTime.Add(40 * time.Minute)
+	idleCutoff := idleBoundaryAt.Add(-30 * time.Minute)
+	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET last_seen_at = $1 WHERE id = $2", idleCutoff, activeSession.SessionID); err != nil {
+		t.Fatalf("set exact idle boundary: %v", err)
+	}
+	if got, err := authenticate(idleBoundaryAt, idleCutoff); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("idle-boundary GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
+	}
+	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET last_seen_at = $1, expires_at = $2 WHERE id = $3",
+		serviceTime, authenticatedAt, activeSession.SessionID); err != nil {
+		t.Fatalf("set exact absolute boundary: %v", err)
+	}
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("expiry-boundary GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
+	}
+	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET expires_at = $1 WHERE id = $2", serviceExpiresAt, activeSession.SessionID); err != nil {
+		t.Fatalf("restore active-session expiry: %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, "UPDATE public.users SET suspended_at = $1, suspended_until = NULL, suspension_reason = 'integration test' WHERE id = $2",
+		serviceTime, activeSession.UserID); err != nil {
+		t.Fatalf("suspend active user: %v", err)
+	}
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("suspended GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
+	}
+	if _, err := connections[0].Exec(ctx, "UPDATE public.users SET suspended_until = $1 WHERE id = $2", authenticatedAt, activeSession.UserID); err != nil {
+		t.Fatalf("set exact suspension end: %v", err)
+	}
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); err != nil || got.SessionID != activeSession.SessionID {
+		t.Fatalf("ended-suspension GetActiveSession() = (%+v, %v)", got, err)
+	}
+	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET revoked_at = $1 WHERE id = $2", authenticatedAt, activeSession.SessionID); err != nil {
+		t.Fatalf("revoke active session: %v", err)
+	}
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("revoked GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 }

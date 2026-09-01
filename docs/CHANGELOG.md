@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 13:45 CDT — Add the active-session lookup primitive
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the single indexed lookup that joins an opaque-token hash to its current
+session and local user facts. It admits only unrevoked sessions strictly before
+absolute expiry and strictly inside idle expiry, and rejects a currently local-
+suspended user in the same PostgreSQL snapshot. It returns the current local
+role/profile and validation timestamps needed by the later request boundary.
+
+Verification:
+
+- Real PostgreSQL 17.10 proves exact token-hash lookup and the returned session,
+  member role, profile, issuance, activity, validation, and expiry facts
+- Exact idle and absolute expiry boundaries return `pgx.ErrNoRows`
+- Indefinite local suspension returns no row; the exact suspension-end boundary
+  restores the same session
+- Revocation immediately returns no row
+- Generated sqlc output is reproducible and all repository tests pass
+
+Risks / non-goals:
+
+- This query deliberately does not update `last_seen_at`; the service layer
+  will issue a conditional write only after the configured throttle elapses.
+- Revalidation policy and browser middleware consume these facts in subsequent
+  units.
+
 ### 2026-09-01 13:25 CDT — Require browser-owned callback state
 
 Commit: current commit; hash assigned by Git after commit

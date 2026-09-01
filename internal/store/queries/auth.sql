@@ -28,3 +28,28 @@ WHERE state_hash = sqlc.arg(state_hash)
   AND created_at <= sqlc.arg(consumed_at)
   AND expires_at > sqlc.arg(consumed_at)
 RETURNING *;
+
+-- name: GetActiveSession :one
+SELECT
+    session.id AS session_id,
+    session.user_id,
+    session.issued_at,
+    session.last_seen_at,
+    session.validated_at,
+    session.expires_at,
+    forum_user.display_name,
+    forum_user.email,
+    forum_user.avatar_url,
+    forum_user.role,
+    forum_user.muted_until
+FROM public.sessions AS session
+JOIN public.users AS forum_user ON forum_user.id = session.user_id
+WHERE session.token_hash = sqlc.arg(token_hash)
+  AND session.revoked_at IS NULL
+  AND session.expires_at > sqlc.arg(observed_at)
+  AND session.last_seen_at > sqlc.arg(idle_cutoff)
+  AND (
+      forum_user.suspended_at IS NULL
+      OR forum_user.suspended_at > sqlc.arg(observed_at)
+      OR forum_user.suspended_until <= sqlc.arg(observed_at)
+  );
