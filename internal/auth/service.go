@@ -100,6 +100,47 @@ func NewService(
 	}, nil
 }
 
+// BeginInitialLogin persists one validated login attempt and constructs its
+// Authentik authorization URL. Only the public state value is returned beside
+// the URL; the nonce and PKCE verifier remain protected in PostgreSQL.
+//
+// Complexity: local dependency validation and result projection are tight
+// Theta(1). With delegated begin time Bt and space Bs, total time is O(Bt),
+// Omega(1), and auxiliary space O(Bs), Omega(1). The delegated work performs
+// fixed-size cryptography, return-path validation, one database insert, and
+// bounded URL construction without retries or background work.
+func (service *Service) BeginInitialLogin(ctx context.Context, returnPath string) (string, string, error) {
+	if service == nil || service.provider.provider == nil || service.provider.verifier == nil || service.provider.httpClient == nil ||
+		service.provider.oauth2Config.ClientID == "" || service.provider.oauth2Config.Endpoint.AuthURL == "" ||
+		service.provider.oauth2Config.RedirectURL == "" ||
+		!slices.Equal(service.provider.oauth2Config.Scopes, []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}) ||
+		service.database == nil || service.queries == nil || service.entropy == nil || service.clock == nil ||
+		service.validateReturnPath == nil {
+		return "", "", fmt.Errorf("authentication service is not initialized for login start")
+	}
+	material, err := beginInitialLogin(
+		ctx,
+		service.queries.InsertOIDCLoginAttempt,
+		service.entropy,
+		service.clock,
+		service.validateReturnPath,
+		returnPath,
+	)
+	if err != nil {
+		if ctx != nil {
+			if contextError := ctx.Err(); contextError != nil {
+				return "", "", fmt.Errorf("begin initial login: %w", contextError)
+			}
+		}
+		return "", "", fmt.Errorf("begin initial login failed")
+	}
+	authorizationURL, err := service.provider.initialAuthorizationURL(material)
+	if err != nil {
+		return "", "", fmt.Errorf("build initial authorization URL failed")
+	}
+	return authorizationURL, material.state, nil
+}
+
 // CompleteInitialLogin consumes one live attempt, exchanges its code, and
 // commits its verified identity/session through the service-owned dependencies.
 // It returns only the browser token, validated navigation path, and expiry.

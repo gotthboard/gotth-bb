@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -207,7 +208,7 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	harness := newOIDCExchangeHarness(t)
 	defer harness.server.Close()
 	serviceTime := refreshTime.Add(5 * time.Minute).UTC().Truncate(time.Microsecond)
-	serviceEntropy := bytes.NewReader(sequentialBytes(256))
+	serviceEntropy := bytes.NewReader(sequentialBytes(512))
 	serviceReturnPath := "/bb/topics/42"
 	service := &Service{
 		provider: harness.discover(t), database: connections[0], queries: db.New(connections[0]),
@@ -249,5 +250,37 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	if err == nil || replayToken != "" || replayPath != "" || !replayExpiry.IsZero() || harness.tokenRequestCount("service-success") != 1 {
 		t.Fatalf("replayed Service.CompleteInitialLogin() = (%q, %q, %s, requests %d, %v)",
 			replayToken, replayPath, replayExpiry, harness.tokenRequestCount("service-success"), err)
+	}
+
+	authorizationURL, browserState, err := service.BeginInitialLogin(ctx, serviceReturnPath)
+	parsedAuthorizationURL, parseErr := url.Parse(authorizationURL)
+	decodedBrowserState, decodeErr := base64.RawURLEncoding.Strict().DecodeString(browserState)
+	if err != nil || parseErr != nil || decodeErr != nil || len(decodedBrowserState) != loginSecretBytes {
+		t.Fatalf("Service.BeginInitialLogin() = (URL %q, state bytes %d, errors %v/%v/%v)",
+			authorizationURL, len(decodedBrowserState), err, parseErr, decodeErr)
+	}
+	authorizationQuery := parsedAuthorizationURL.Query()
+	exactAuthorizationParameters := len(authorizationQuery) == 8
+	for _, values := range authorizationQuery {
+		exactAuthorizationParameters = exactAuthorizationParameters && len(values) == 1
+	}
+	if parsedAuthorizationURL.Scheme != "http" || parsedAuthorizationURL.Host != harness.server.Listener.Addr().String() ||
+		parsedAuthorizationURL.Path != "/authorize" || authorizationQuery.Get("state") != browserState ||
+		authorizationQuery.Get("client_id") != "gotth-bb" || authorizationQuery.Get("response_type") != "code" ||
+		authorizationQuery.Get("redirect_uri") != "https://forum.example/bb/auth/callback" ||
+		authorizationQuery.Get("scope") != "openid profile email" || authorizationQuery.Get("nonce") == "" ||
+		authorizationQuery.Get("code_challenge") == "" || authorizationQuery.Get("code_challenge_method") != "S256" || !exactAuthorizationParameters ||
+		authorizationQuery.Has("code_verifier") || authorizationQuery.Has("client_secret") {
+		t.Fatalf("Service.BeginInitialLogin() authorization URL = %q", authorizationURL)
+	}
+	stateHash := sha256.Sum256([]byte(browserState))
+	var storedPurpose, storedReturnPath string
+	var unconsumed bool
+	if err := connections[0].QueryRow(ctx, `SELECT purpose, return_path, consumed_at IS NULL
+		FROM public.oidc_login_attempts WHERE state_hash = $1`, stateHash[:]).Scan(
+		&storedPurpose, &storedReturnPath, &unconsumed,
+	); err != nil || storedPurpose != "login" || storedReturnPath != serviceReturnPath || !unconsumed {
+		t.Fatalf("service-started login attempt = (%q, %q, unconsumed %t, %v)",
+			storedPurpose, storedReturnPath, unconsumed, err)
 	}
 }

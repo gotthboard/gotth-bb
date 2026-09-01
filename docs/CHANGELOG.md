@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:55 CDT — Start login through the authentication service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_begin_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the service-level login-start method. It validates the retained service,
+validates the internal return path before entropy or PostgreSQL work, creates
+and protects one five-minute attempt, performs one synchronous insert, and
+builds the Authentik Authorization Code URL. Only the authorization URL and
+public state value cross the package boundary; the nonce and PKCE verifier stay
+protected in PostgreSQL.
+
+Verification:
+
+- Nil, zero, incomplete, nil-context, canceled-context, invalid-return-path,
+  and database-failure cases return zero browser state
+- Return-path and database causes are redacted; cancellation remains detectable
+- Real PostgreSQL 17.10 plus the controlled issuer proves the stored live
+  attempt and exact state/nonce/S256-PKCE authorization request
+- The URL contains neither the PKCE verifier nor the OAuth client secret
+- `Service.BeginInitialLogin` reaches 91.7% tagged statement coverage; its only
+  uncovered branch is the defensive URL-builder failure after the same
+  provider preconditions and generated-material invariants have already passed
+
+Risks / non-goals:
+
+- Browser ownership of the state is the next HTTP unit. Until that boundary is
+  wired, this method deliberately does not impose cookie policy.
+- The method performs no retry. A failed insert returns no browser material.
+
 ### 2026-09-01 12:50 CDT — Bind callback completion to the service
 
 Commit: current commit; hash assigned by Git after commit
