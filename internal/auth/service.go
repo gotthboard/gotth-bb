@@ -217,3 +217,18 @@ func (service *Service) AuthenticateSession(ctx context.Context, token string) (
 		token,
 	)
 }
+
+// RevokeSession invalidates at most the server-side session named by one opaque
+// browser credential through the service-owned database and clock. Missing,
+// malformed, unknown, and already-revoked credentials are idempotent false
+// results.
+//
+// Complexity: local dependency validation and dispatch are tight Theta(1).
+// Delegated revocation performs fixed-size validation/hashing and at most one
+// indexed update; no operation is retried or detached.
+func (service *Service) RevokeSession(ctx context.Context, token string) (bool, error) {
+	if service == nil || service.database == nil || service.queries == nil || service.clock == nil {
+		return false, fmt.Errorf("authentication service is not initialized for session revocation")
+	}
+	return revokeSession(ctx, service.queries.RevokeSession, service.clock, token)
+}

@@ -355,19 +355,24 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	}
 	wrongTokenHash := sha256.Sum256([]byte("wrong-token"))
 	for _, test := range []struct {
-		name        string
-		params      db.RevokeSessionParams
-		wantRevoked int64
+		name   string
+		params db.RevokeSessionParams
 	}{
 		{name: "wrong token", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true}, TokenHash: wrongTokenHash[:]}},
 		{name: "before issue", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: serviceTime.Add(-time.Microsecond), Valid: true}, TokenHash: serviceTokenHash[:]}},
-		{name: "active", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true}, TokenHash: serviceTokenHash[:]}, wantRevoked: 1},
-		{name: "repeat", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt.Add(time.Minute), Valid: true}, TokenHash: serviceTokenHash[:]}},
 	} {
 		revoked, err := service.queries.RevokeSession(ctx, test.params)
-		if err != nil || revoked != test.wantRevoked {
-			t.Fatalf("%s RevokeSession() = (%d, %v), want (%d, nil)", test.name, revoked, err, test.wantRevoked)
+		if err != nil || revoked != 0 {
+			t.Fatalf("%s RevokeSession() = (%d, %v), want (0, nil)", test.name, revoked, err)
 		}
+	}
+	service.clock = func() time.Time { return authenticatedAt }
+	if revoked, err := service.RevokeSession(ctx, serviceToken); err != nil || !revoked {
+		t.Fatalf("Service.RevokeSession() = (%t, %v), want true/nil", revoked, err)
+	}
+	service.clock = func() time.Time { return authenticatedAt.Add(time.Minute) }
+	if revoked, err := service.RevokeSession(ctx, serviceToken); err != nil || revoked {
+		t.Fatalf("repeated Service.RevokeSession() = (%t, %v), want false/nil", revoked, err)
 	}
 	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
 		t.Fatalf("revoked GetActiveSession() = (%+v, %v), want zero/no rows", got, err)

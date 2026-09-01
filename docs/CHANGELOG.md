@@ -5,6 +5,35 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 16:00 CDT — Expose idempotent session revocation
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/service.go`
+- `internal/auth/service_revoke_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the public service method that binds strict session revocation to the
+service-owned sqlc query and clock. Logout callers receive only a boolean
+revocation outcome and a redacted error contract; they do not own hashes,
+timestamps, or SQL.
+
+Verification:
+
+- Nil, zero, and every incomplete service form fails closed
+- Malformed credentials are false/no-error without PostgreSQL work
+- PostgreSQL 17.10 proves service-owned true revocation and false repeat
+- `Service.RevokeSession` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The POST logout boundary and browser-cookie expiration remain the next unit.
+
 ### 2026-09-01 15:35 CDT — Validate and revoke opaque credentials
 
 Commit: current commit; hash assigned by Git after commit
