@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:05 CDT — Build exact session cookies
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/session_cookie.go`
+- `internal/httpui/session_cookie_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the browser session-cookie constructor. It accepts only the canonical
+256-bit opaque token, derives the subtree-safe path from the immutable URL
+builder, and emits a host-only `HttpOnly`, `SameSite=Lax` cookie with explicit
+expiry. Trusted environment wiring selects `Secure`; production must pass true
+while explicit HTTP development passes false.
+
+The complete cookie is checked with Go's documented `http.Cookie.Valid`
+contract before it reaches `http.SetCookie`, which otherwise silently drops an
+invalid cookie name.
+
+Verification:
+
+- Exact `/bb/` path, credential, expiry, `HttpOnly`, `Secure`, and
+  `SameSite=Lax` attributes
+- Explicit HTTP-development behavior without an accidental `Secure` attribute
+- Empty/invalid name, zero URL builder, wrong-length or invalid token, and
+  zero/invalid expiry return no cookie
+- `newSessionCookie` at 100% statement coverage; race-enabled HTTP UI package
+  tests pass
+
+Risks / non-goals:
+
+- This constructor does not write a response header. The callback handler owns
+  the single `http.SetCookie` call after authentication and persistence succeed.
+- Logout expiration is a separate constructor because it intentionally uses an
+  empty value and past expiry rather than a live 256-bit credential.
+
 ### 2026-09-01 11:48 CDT — Commit identity and session atomically
 
 Commit: current commit; hash assigned by Git after commit
