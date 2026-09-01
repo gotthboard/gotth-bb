@@ -20,12 +20,13 @@ func TestNewInitialLoginCallbackHandlerSetsCookieAndRedirects(t *testing.T) {
 
 	builder := callbackTestURLBuilder(t)
 	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x3c}, 32))
+	browserState := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x7a}, 32))
 	expiresAt := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
 	calls := 0
 	handler, err := newInitialLoginCallbackHandler(
 		func(_ context.Context, state, code string) (completedBrowserLogin, error) {
 			calls++
-			if state != "browser-state" || code != "authorization-code" {
+			if state != browserState || code != "authorization-code" {
 				t.Fatalf("completion input = (%q, %q)", state, code)
 			}
 			return completedBrowserLogin{token: token, returnPath: "/bb/topics/7?view=new", expiresAt: expiresAt}, nil
@@ -35,7 +36,8 @@ func TestNewInitialLoginCallbackHandlerSetsCookieAndRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newInitialLoginCallbackHandler() returned error: %v", err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=authorization-code&state=browser-state", nil)
+	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=authorization-code&state="+browserState, nil)
+	request.AddCookie(&http.Cookie{Name: "gotth_bb_session_oidc_state", Value: browserState})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusSeeOther || calls != 1 || response.Header().Get("Location") != "/bb/topics/7?view=new" || response.Body.Len() != 0 {
@@ -45,9 +47,12 @@ func TestNewInitialLoginCallbackHandlerSetsCookieAndRedirects(t *testing.T) {
 		t.Fatalf("cache headers = %v", response.Header())
 	}
 	setCookies := response.Result().Cookies()
-	if len(setCookies) != 1 || setCookies[0].Name != "gotth_bb_session" || setCookies[0].Value != token ||
-		setCookies[0].Path != "/bb/" || !setCookies[0].HttpOnly || !setCookies[0].Secure ||
-		setCookies[0].SameSite != http.SameSiteLaxMode || !setCookies[0].Expires.Equal(expiresAt) {
+	if len(setCookies) != 2 || setCookies[0].Name != "gotth_bb_session_oidc_state" || setCookies[0].Value != "" ||
+		setCookies[0].Path != "/bb/" || setCookies[0].MaxAge != -1 || !setCookies[0].HttpOnly || !setCookies[0].Secure ||
+		setCookies[0].SameSite != http.SameSiteLaxMode || !setCookies[0].Expires.Equal(time.Unix(1, 0).UTC()) ||
+		setCookies[1].Name != "gotth_bb_session" || setCookies[1].Value != token || setCookies[1].Path != "/bb/" ||
+		!setCookies[1].HttpOnly || !setCookies[1].Secure || setCookies[1].SameSite != http.SameSiteLaxMode ||
+		!setCookies[1].Expires.Equal(expiresAt) {
 		t.Fatalf("Set-Cookie = %+v", setCookies)
 	}
 }
@@ -99,6 +104,7 @@ func TestNewInitialLoginCallbackHandlerCollapsesCompletionFailure(t *testing.T) 
 	t.Parallel()
 
 	const secret = "do-not-leak-callback-failure"
+	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x4f}, 32))
 	handler, err := newInitialLoginCallbackHandler(
 		func(context.Context, string, string) (completedBrowserLogin, error) {
 			return completedBrowserLogin{}, errors.New(secret)
@@ -109,17 +115,63 @@ func TestNewInitialLoginCallbackHandlerCollapsesCompletionFailure(t *testing.T) 
 		t.Fatalf("newInitialLoginCallbackHandler() returned error: %v", err)
 	}
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/auth/callback?code=secret-code&state=secret-state", nil))
+	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=secret-code&state="+state, nil)
+	request.AddCookie(&http.Cookie{Name: "gotth_bb_session_oidc_state", Value: state})
+	handler.ServeHTTP(response, request)
 	serialized := response.Header().Values("Set-Cookie")
-	if response.Code != http.StatusBadRequest || len(serialized) != 0 || response.Header().Get("Location") != "" ||
-		strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "secret-code") || strings.Contains(response.Body.String(), "secret-state") {
+	if response.Code != http.StatusBadRequest || len(serialized) != 1 || response.Header().Get("Location") != "" ||
+		!strings.Contains(serialized[0], "gotth_bb_session_oidc_state=;") || !strings.Contains(serialized[0], "Max-Age=0") ||
+		strings.Contains(response.Body.String(), secret) || strings.Contains(response.Body.String(), "secret-code") || strings.Contains(response.Body.String(), state) {
 		t.Fatalf("failed response = (status %d, headers %v, body %q)", response.Code, response.Header(), response.Body.String())
+	}
+}
+
+func TestNewInitialLoginCallbackHandlerRequiresOneMatchingStateCookie(t *testing.T) {
+	t.Parallel()
+
+	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x35}, 32))
+	otherState := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x36}, 32))
+	invalidEncodedState := state[:len(state)-1] + "*"
+	handler, err := newInitialLoginCallbackHandler(
+		func(context.Context, string, string) (completedBrowserLogin, error) { panic("completion must not run") },
+		"gotth_bb_session", callbackTestURLBuilder(t), true,
+	)
+	if err != nil {
+		t.Fatalf("newInitialLoginCallbackHandler() returned error: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		header string
+		state  string
+	}{
+		{name: "missing", state: state},
+		{name: "unrelated", header: "other=value", state: state},
+		{name: "mismatch", header: "gotth_bb_session_oidc_state=" + otherState, state: state},
+		{name: "duplicate", header: "gotth_bb_session_oidc_state=" + state + "; gotth_bb_session_oidc_state=" + state, state: state},
+		{name: "quoted", header: `gotth_bb_session_oidc_state="` + state + `"`, state: state},
+		{name: "short matching state", header: "gotth_bb_session_oidc_state=invalid", state: "invalid"},
+		{name: "invalid encoded matching state", header: "gotth_bb_session_oidc_state=" + invalidEncodedState, state: invalidEncodedState},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state="+test.state, nil)
+			if test.header != "" {
+				request.Header.Set("Cookie", test.header)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || response.Header().Get("Set-Cookie") != "" || response.Header().Get("Location") != "" {
+				t.Fatalf("response = (status %d, headers %v)", response.Code, response.Header())
+			}
+		})
 	}
 }
 
 func TestNewInitialLoginCallbackHandlerEnforcesRawQueryBoundary(t *testing.T) {
 	t.Parallel()
 
+	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x55}, 32))
 	for _, size := range []int{
 		maxOIDCCallbackQueryBytes - 1,
 		maxOIDCCallbackQueryBytes,
@@ -140,9 +192,10 @@ func TestNewInitialLoginCallbackHandlerEnforcesRawQueryBoundary(t *testing.T) {
 			if err != nil {
 				t.Fatalf("newInitialLoginCallbackHandler() returned error: %v", err)
 			}
-			const fixedQueryBytes = len("code=") + len("&state=state")
-			target := "/auth/callback?code=" + strings.Repeat("a", size-fixedQueryBytes) + "&state=state"
+			fixedQueryBytes := len("code=") + len("&state=") + len(state)
+			target := "/auth/callback?code=" + strings.Repeat("a", size-fixedQueryBytes) + "&state=" + state
 			request := httptest.NewRequest(http.MethodGet, target, nil)
+			request.AddCookie(&http.Cookie{Name: "gotth_bb_session_oidc_state", Value: state})
 			if len(request.URL.RawQuery) != size {
 				t.Fatalf("raw query length = %d, want %d", len(request.URL.RawQuery), size)
 			}
@@ -164,6 +217,7 @@ func TestNewInitialLoginCallbackHandlerRejectsUnsafeSuccessfulResult(t *testing.
 
 	builder := callbackTestURLBuilder(t)
 	validToken := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, 32))
 	validExpiry := time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC)
 	for _, result := range []completedBrowserLogin{
 		{token: validToken, returnPath: "https://evil.example/", expiresAt: validExpiry},
@@ -181,8 +235,12 @@ func TestNewInitialLoginCallbackHandlerRejectsUnsafeSuccessfulResult(t *testing.
 				t.Fatalf("newInitialLoginCallbackHandler() returned error: %v", err)
 			}
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state=state", nil))
-			if response.Code != http.StatusInternalServerError || response.Header().Get("Set-Cookie") != "" || response.Header().Get("Location") != "" {
+			request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=code&state="+state, nil)
+			request.AddCookie(&http.Cookie{Name: "gotth_bb_session_oidc_state", Value: state})
+			handler.ServeHTTP(response, request)
+			serialized := response.Header().Values("Set-Cookie")
+			if response.Code != http.StatusInternalServerError || len(serialized) != 1 ||
+				!strings.Contains(serialized[0], "gotth_bb_session_oidc_state=;") || response.Header().Get("Location") != "" {
 				t.Fatalf("response = (status %d, headers %v)", response.Code, response.Header())
 			}
 		})

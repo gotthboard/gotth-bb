@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 13:25 CDT — Require browser-owned callback state
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/callback_handler.go`
+- `internal/httpui/callback_handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Strengthened the initial callback to require exactly one unquoted transient
+cookie whose value matches the exact query state. Missing, duplicate, quoted,
+mismatched, and malformed state now fail before PostgreSQL or the provider. A
+valid match is expired before completion, so success and every later failure
+rotate that browser binding away. This makes overwriting the one cookie slot at
+login start the enforced per-browser outstanding-attempt limit.
+
+Verification:
+
+- Missing, unrelated, mismatched, duplicate, quoted, and invalid matching
+  cookies cannot invoke completion or produce response state; exact 43-byte
+  values are compared in constant time
+- Successful callback emits the state-cookie deletion before the new session
+  cookie and redirects with an empty `303` body
+- Completion, unsafe return path, malformed session token, and invalid session
+  expiry failures retain only the state-cookie deletion and no redirect
+- Exact 8,192-byte callback-query boundary remains enforced before cookie or
+  completion work
+- Go 1.26 `Request.CookiesNamed` behavior was checked in the standard-library
+  source; duplicate parsed names are preserved and excess cookie counts fail
+  closed as an empty result
+- Race-enabled callback tests pass; the handler reaches 96.3% statement
+  coverage, with only the defensive validation failure of a cookie already
+  constructed valid and then changed to mechanically valid deletion fields
+
+Risks / non-goals:
+
+- Provider-denial callbacks without a code remain generic failures and leave
+  their cookie until it is overwritten or expires after five minutes.
+- Process route registration remains a later unit.
+
 ### 2026-09-01 13:15 CDT — Enforce the login-start HTTP boundary
 
 Commit: current commit; hash assigned by Git after commit

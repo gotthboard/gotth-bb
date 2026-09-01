@@ -457,6 +457,13 @@ than relying on OAuth2 authentication-style probing.
 
 ### 8.3 Callback transaction
 
+The initial callback admits exactly one `state` and `code` query value and
+exactly one unquoted derived state cookie whose value equals the query state.
+Missing, duplicate, quoted, malformed, or mismatched cookie state fails before
+database or provider work. Once the pair matches and its encoding is valid, the
+handler emits expiration of the transient cookie before invoking completion;
+success and every later failure therefore rotate that browser state away.
+
 The callback:
 
 1. Atomically consumes the login attempt.
