@@ -37,9 +37,6 @@ SELECT
     session.last_seen_at,
     session.validated_at,
     session.expires_at,
-    forum_user.display_name,
-    forum_user.email,
-    forum_user.avatar_url,
     forum_user.role,
     forum_user.muted_until
 FROM public.sessions AS session

@@ -135,9 +135,10 @@ Rules:
   5-second connect timeout, a 30-minute connection lifetime, a 5-minute idle
   lifetime, a 30-second health-check period, and a 2-second ping timeout.
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
-  must use positive Go duration syntax such as `30m` or `24h`; zero and
-  negative durations fail startup. Idle timeout and Authentik revalidation
-  interval may not exceed the absolute session maximum. `SESSION_MAX_AGE` must
+  must use Go duration syntax such as `30m` or `24h` and be at least one
+  second; sub-second, zero, and negative durations fail startup. Idle timeout
+  and Authentik revalidation interval may not exceed the absolute session
+  maximum. `SESSION_MAX_AGE` must
   be at least one second because browser cookie expiry has whole-second
   precision; a shorter server session cannot produce a reliably live cookie.
 - `SESSION_COOKIE_NAME` must be a valid HTTP cookie token. Browser magic
@@ -533,7 +534,10 @@ the first grant.
 - Cleanup deletes expired/revoked sessions in bounded batches and is safe to
   run repeatedly.
 - Session reads update `last_seen_at` at a throttled interval to avoid one write
-  per request.
+  per request. Alpha.1 uses a five-minute maximum threshold, reduced to half
+  the configured idle timeout when that is shorter: equality is due, the normal
+  hot path performs only the indexed read, and the conditional update rechecks
+  revocation and absolute expiry.
 
 ## 10. HTTP and route contract
 

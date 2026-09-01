@@ -5,6 +5,55 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 14:05 CDT — Authenticate opaque sessions into local access facts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_authentication.go`
+- `internal/auth/session_authentication_test.go`
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the session-authentication core. It strictly decodes the 256-bit opaque
+cookie value, hashes the exact encoded bytes, loads one active local snapshot,
+maps the closed database role into the canonical typed `AccessContext`, marks
+the exact revalidation boundary, and performs the conditional activity write
+at a five-minute maximum threshold reduced to half a shorter idle timeout.
+Invalid/missing/no-row credentials are anonymous;
+database and corrupt-row failures deny authentication with redacted errors.
+
+The active query was narrowed to the authorization facts actually consumed by
+this boundary instead of dragging display profile fields through every request.
+
+Verification:
+
+- Exact credential hash, observation/idle thresholds, local member/moderator/
+  administrator mapping, mute state, and validation timestamp
+- Missing, short, malformed, and absent credentials return the exact anonymous
+  zero value without a touch
+- Exact five-minute and short-idle half-time touch boundaries plus the exact
+  revalidation boundary, including benign concurrent zero-row touch results
+- Sub-second idle and revalidation policy is rejected as below supported
+  browser/PostgreSQL precision
+- Every dependency, context, duration, clock, row-invariant, unknown-role,
+  query-failure, touch-failure, impossible row-count, and cancellation path
+- Non-context database causes are redacted; cancellation remains detectable
+- `authenticateSession` reaches 100% statement coverage
+- Real PostgreSQL 17.10 proves full cookie-to-access behavior and the exact
+  throttled write
+
+Risks / non-goals:
+
+- Group IDs remain empty until A1-05 adds the access-model membership lookup.
+- The service method and HTTP middleware bind this core in subsequent units.
+
 ### 2026-09-01 13:50 CDT — Throttle session activity writes
 
 Commit: current commit; hash assigned by Git after commit

@@ -51,9 +51,6 @@ SELECT
     session.last_seen_at,
     session.validated_at,
     session.expires_at,
-    forum_user.display_name,
-    forum_user.email,
-    forum_user.avatar_url,
     forum_user.role,
     forum_user.muted_until
 FROM public.sessions AS session
@@ -82,9 +79,6 @@ type GetActiveSessionRow struct {
 	LastSeenAt  pgtype.Timestamptz
 	ValidatedAt pgtype.Timestamptz
 	ExpiresAt   pgtype.Timestamptz
-	DisplayName string
-	Email       pgtype.Text
-	AvatarUrl   pgtype.Text
 	Role        string
 	MutedUntil  pgtype.Timestamptz
 }
@@ -99,9 +93,6 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.LastSeenAt,
 		&i.ValidatedAt,
 		&i.ExpiresAt,
-		&i.DisplayName,
-		&i.Email,
-		&i.AvatarUrl,
 		&i.Role,
 		&i.MutedUntil,
 	)
