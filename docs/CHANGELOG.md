@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 10:06 CDT — Remove the base-path literal from login-attempt storage
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `migrations/000001_identity_and_sessions.sql`
+- `migrations/schema_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Corrected the unreleased initial login-attempt constraint so it accepts an
+internal browser path for root or configured-prefix deployments instead of
+hard-coding the temporary `/bb` development prefix. PostgreSQL rejects empty,
+relative, network-path, absolute-URL, backslash, fragment, control-character,
+and overlong values. The application remains responsible for proving the exact
+configured base-path containment and canonical encoding before insertion.
+
+Verification:
+
+- PostgreSQL 17.10 fresh migration accepts `/`, `/bb/`, and an alternate nested
+  prefix with a query
+- PostgreSQL rejects each unsafe structural class without relying on an HTTP
+  handler
+- Existing migration/schema and full race/coverage verification
+
+Risks / non-goals:
+
+- This changes an initial migration only because no alpha.1 tag or deployed
+  migration ledger exists. Once released, migration bytes are immutable.
+- Database structure is not a substitute for application base-path validation;
+  that boundary is implemented before login-attempt persistence.
+
 ### 2026-09-01 09:29 CDT — Render the responsive base-path-safe public shell
 
 Commit: current commit; hash assigned by Git after commit

@@ -301,7 +301,9 @@ revoked sessions never authenticate.
 - hashed/state lookup key
 - protected nonce and PKCE verifier material
 - purpose (`login` or `revalidate`) and existing session reference when needed
-- `return_path`, validated as an internal `/bb` path
+- `return_path`, structurally constrained by PostgreSQL to an internal browser
+  path and validated by the application against the exact configured base path
+  and canonical encoding before storage
 - `created_at`, `expires_at`, `consumed_at`
 
 State is single use. Cleanup is bounded and safe to repeat.

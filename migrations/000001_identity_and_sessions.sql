@@ -104,10 +104,13 @@ CREATE TABLE public.oidc_login_attempts (
         OR (purpose = 'revalidate' AND session_id IS NOT NULL)
     ),
     CONSTRAINT oidc_login_attempts_return_path_internal CHECK (
-        char_length(return_path) BETWEEN 3 AND 2048
-        AND (return_path = '/bb' OR return_path LIKE '/bb/%' OR return_path LIKE '/bb?%')
+        octet_length(return_path) BETWEEN 1 AND 2048
+        AND return_path LIKE '/%'
+        AND return_path NOT LIKE '//%'
         AND return_path NOT LIKE '%://%'
-        AND return_path NOT LIKE E'%\\%'
+        AND position(chr(92) IN return_path) = 0
+        AND return_path NOT LIKE '%#%'
+        AND return_path !~ '[[:cntrl:]]'
     ),
     CONSTRAINT oidc_login_attempts_times_ordered CHECK (
         expires_at > created_at

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -110,6 +111,24 @@ VALUES ($1, 'https://auth.example.test/application/o/forum/', 'admin-subject')`,
 VALUES ($1, 'https://other.example.test/', 'other-subject')`, administratorID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.sessions (token_hash, user_id, expires_at)
 VALUES (decode('00', 'hex'), $1, clock_timestamp() + interval '1 hour')`, memberID)
+	for index, returnPath := range []string{"/", "/bb/", "/community/board/topics?sort=new"} {
+		if _, err := conn.Exec(ctx, `INSERT INTO public.oidc_login_attempts
+    (state_hash, nonce_ciphertext, pkce_verifier_ciphertext, purpose, return_path, expires_at)
+VALUES (decode(repeat($1, 32), 'hex'), decode('01', 'hex'), decode('02', 'hex'),
+        'login', $2, clock_timestamp() + interval '5 minutes')`,
+			[]string{"11", "22", "33"}[index], returnPath); err != nil {
+			t.Fatalf("insert login attempt with return path %q: %v", returnPath, err)
+		}
+	}
+	for index, returnPath := range []string{"", "relative", "//evil.example/path", "https://evil.example/path", `/bb\\escape`, "/bb/path#fragment", "/bb/path\nheader", "/" + strings.Repeat("a", 2048)} {
+		if _, err := conn.Exec(ctx, `INSERT INTO public.oidc_login_attempts
+    (state_hash, nonce_ciphertext, pkce_verifier_ciphertext, purpose, return_path, expires_at)
+VALUES (decode(repeat($1, 32), 'hex'), decode('01', 'hex'), decode('02', 'hex'),
+        'login', $2, clock_timestamp() + interval '5 minutes')`,
+			[]string{"44", "55", "66", "77", "88", "99", "aa", "bb"}[index], returnPath); err == nil {
+			t.Fatalf("unsafe login-attempt return path succeeded: %q", returnPath)
+		}
+	}
 	queries := db.New(conn)
 	if governanceRows, err := queries.CountGovernanceRows(ctx); err != nil || governanceRows != 1 {
 		t.Fatalf("CountGovernanceRows() = (%d, %v), want (1, nil)", governanceRows, err)
