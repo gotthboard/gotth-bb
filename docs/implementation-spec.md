@@ -427,6 +427,12 @@ Requirements:
 - Not-found and unauthorized direct reads have indistinguishable public
   behavior.
 
+`ListVisibleAreas` is the first concrete repository primitive. It applies this
+predicate before ordering by `(display_order, id)`, treats nil and empty group
+arrays as no group authority, and returns full area rows only after PostgreSQL
+has removed restricted rows. Its booleans and group IDs are internal repository
+facts; browser parameters never bind them directly.
+
 ## 8. OIDC implementation
 
 ### 8.1 Discovery and validation

@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:03 CDT — Enforce area-list visibility in PostgreSQL
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/areas.sql`
+- `internal/store/db/areas.sql.go`
+- `internal/store/db/areas_test.go`
+- `internal/store/db/areas_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added generated `ListVisibleAreas`. PostgreSQL removes unauthorized rows before
+materialization and ordering: staff bypass explicitly, visitors receive only
+public areas, accepted members add authenticated areas, and group-restricted
+areas require a current local group-ID intersection. Nil and empty group arrays
+are explicit no-group authority. Results remain stable by display order and ID;
+no Go-side filtering can leak restricted counts or row existence.
+
+Verification:
+
+- Generated binding tests prove exact staff/member/group argument order, every
+  area field scan, row closure, and preservation of query/scan/iteration errors
+- The generated method reaches 100% statement coverage and passes 20 repeated
+  race-detector runs
+- Five PostgreSQL 17 integration repetitions cover visitor, empty-group member,
+  each matching/nonmatching group member, and staff against public,
+  authenticated, matching-group, other-group, and unmapped staff-only areas
+
+Risks / non-goals:
+
+- The generated query accepts internal access facts. The next repository unit
+  must derive them from `policy.AccessContext`; request data must never bind the
+  staff boolean or group list directly.
+
 ### 2026-09-01 18:55 CDT — Define the closed area-view policy
 
 Commit: current commit; hash assigned by Git after commit
