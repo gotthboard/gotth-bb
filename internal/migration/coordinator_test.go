@@ -26,6 +26,7 @@ type stubReleaseConnection struct {
 	unlock         pgx.Row
 	queryResults   []coordinatorQueryResult
 	queryCount     int
+	queryHook      func()
 	transactions   []pgx.Tx
 	beginCount     int
 }
@@ -49,6 +50,9 @@ func (connection *stubReleaseConnection) QueryRow(_ context.Context, statement s
 }
 
 func (connection *stubReleaseConnection) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
+	if connection.queryHook != nil {
+		connection.queryHook()
+	}
 	result := connection.queryResults[connection.queryCount]
 	connection.queryCount++
 	return result.rows, result.err

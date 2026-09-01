@@ -5,9 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:45 CDT — Coordinate a migration release
+### 2026-09-01 07:51 CDT — Own the migration connection lifetime
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/owner.go`
+- `internal/migration/owner_test.go`
+- `internal/migration/coordinator_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the private connection owner around the release coordinator. It validates
+inputs before connecting, owns any non-nil connection even when the connector
+also returns an error, preserves cancellation identity, and always closes on a
+five-second cancellation-detached context. Close failure is joined with the
+connection or coordinator failure rather than hiding either.
+
+Verification:
+
+- Red-before-green compile failure before `applyWithConnector` existed
+- Exact context/config forwarding and cancellation during release work
+- Nil/canceled inputs, connect failure, cancellation during connect,
+  inconsistent nil connection, coordinator failure, and close failure
+- Proof that close begins uncanceled after caller cancellation
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- This unit accepts an injected private connector so ownership failures are
+  deterministic in unit tests. The next unit is the public wrapper pinned to
+  `pgx.ConnectConfig`; callers never select a connector.
+
+### 2026-09-01 07:45 CDT — Coordinate a migration release
+
+Commit: `8997208617d606d672653181ccdcdbb10ce5cb80`
 
 Affected files:
 
