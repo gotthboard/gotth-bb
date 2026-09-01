@@ -218,6 +218,11 @@ const (
 
 Database check constraints contain the same closed values. Unknown stored
 values are errors, not a default policy.
+The in-memory view predicate also rejects contradictory anonymous/authenticated
+authority, nonpositive group IDs, and group mappings on non-group visibility.
+Suspension and mute state do not change visibility; publishing predicates apply
+those restrictions separately. Read repositories still repeat the equivalent
+predicate inside SQL and do not authorize by filtering fetched rows in Go.
 
 ### 5.3 Explicit policy functions
 

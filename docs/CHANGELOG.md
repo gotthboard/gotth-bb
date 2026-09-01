@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 18:55 CDT — Define the closed area-view policy
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/policy/area_view.go`
+- `internal/policy/area_view_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the canonical role, access-context, visibility, posting-mode, and area-
+policy types plus the narrow `CanViewArea` predicate. It distinguishes
+visibility from publishing state, grants the documented moderator/
+administrator read bypass, uses exact local group-ID intersection for members,
+and fails closed on contradictory authority, unknown closed values, invalid
+group IDs, or impossible group mappings. Suspension and mute state remain
+publishing restrictions rather than hidden visibility values.
+
+Verification:
+
+- The full visitor/member/matching-group/nonmatching-group/moderator/
+  administrator matrix covers all three visibility values
+- Malformed anonymous and authenticated authority, unknown visibility/posting
+  values, nonpositive group IDs, and group mappings on non-group areas all deny
+- The production predicate reaches 100% statement coverage and passes 50
+  repeated race-detector runs
+
+Risks / non-goals:
+
+- This predicate supports mutation decisions and policy explanation. Every
+  repository returning area-owned rows must still enforce equivalent access in
+  SQL before aggregation or materialization.
+
 ### 2026-09-01 18:40 CDT — Add the first-administrator operator command
 
 Commit: current commit; hash assigned by Git after commit
