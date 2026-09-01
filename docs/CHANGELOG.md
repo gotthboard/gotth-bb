@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 02:50 CDT — Serialize administrator invariants
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `652b48961dcb5b41464f8676f4bf5902e5b1416d`
 
 Affected files:
 
