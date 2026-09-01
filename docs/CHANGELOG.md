@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 06:32 CDT — Prove PostgreSQL pool startup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/pool.go`
+- `internal/store/pool_test.go`
+- `internal/store/pool_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/release-operations.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the PostgreSQL pool ownership boundary. It accepts only a configuration
+created through pgx's parser, rejects missing or canceled dependencies, proves
+one initial database round trip within five seconds, closes the pool on every
+failed startup check, and returns ownership only after success. PostgreSQL 17
+is the alpha support target, with PostgreSQL 17.10 and its exact container
+digest recorded as the integration reference.
+
+Verification:
+
+- Red-before-green dependency tests before `OpenPool` existed
+- pgx v5.10.0 `NewWithConfig`, `Ping`, `Close`, and pool source inspected
+- `go test -mod=readonly -race -cover ./internal/store`
+- PostgreSQL 17.10 integration tests for successful connection/version proof,
+  connection-failure redaction, invalid configuration, and cancellation with
+  100% statement coverage of `internal/store`
+- `make verify`
+
+Risks / non-goals:
+
+- The executable does not own this pool yet; startup/shutdown wiring is the
+  next production unit.
+- Migration head, schema invariants, governance cardinality, and readiness
+  remain deliberately unimplemented and fail closed.
+
 ### 2026-09-01 06:18 CDT — Bound PostgreSQL pool configuration
 
 Commit: current commit; hash assigned by Git after commit

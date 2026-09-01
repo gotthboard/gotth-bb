@@ -154,6 +154,8 @@ notes, screenshots, or repository files.
 
 ## 7. PostgreSQL contract
 
+- Alpha supports PostgreSQL 17; integration evidence is pinned to PostgreSQL
+  17.10 (`postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d`).
 - The forum uses a dedicated database role with only required privileges.
 - Migration privileges are separated from runtime privileges where practical.
 - Connections require the deployment's approved transport protection.

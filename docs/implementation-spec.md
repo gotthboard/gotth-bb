@@ -36,6 +36,9 @@ The initial implementation shall use:
 - HTMX pinned and served as a versioned static asset.
 - Tailwind CSS pinned and run at build time.
 - `pgx/v5` version `v5.10.0` for PostgreSQL access.
+- PostgreSQL 17 for alpha, with PostgreSQL 17.10 as the pinned integration
+  reference. Other major versions are unsupported until the same migration,
+  constraint, concurrency, and readiness evidence is run against them.
 - `sqlc` for typed query generation from reviewed SQL.
 - A migration tool that records ordered migrations in PostgreSQL and fails on
   drift; the exact tool is selected after its up/down and transaction behavior
@@ -602,6 +605,9 @@ operator logs.
 - Liveness reports whether the process event loop can serve requests.
 - Readiness checks required configuration, migration compatibility, and a
   bounded PostgreSQL round trip.
+- Pool startup uses the pgx-parsed immutable configuration, permits at most
+  five seconds for its initial round trip, closes the new pool on failure, and
+  transfers close ownership only after that round trip succeeds.
 - Authentik availability does not necessarily make existing-session reads
   unready; login failures are reported separately.
 - The internal HTTP server permits at most 5 seconds for request headers, 30
