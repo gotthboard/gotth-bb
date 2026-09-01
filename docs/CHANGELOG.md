@@ -6,6 +6,9 @@ separate artifact governed by the release and operations plan.
 ## 2026-09-01 — Alpha foundation begins
 
 - Implementation commit: `8382c8f374ec22d60a90786bb0006e4a06776631`
+- Evidence commit: `ac0df0a4d0c2f7966bbad02290262ce038aa0830`
+- Review-fix commits: `cf2bebd5c25b67b3ca7e5939a2472218fe9c5e22`,
+  `d5e9f5e3e947ed40abc40ab99704a3b9a0484a77`
 - Branch: `feature/alpha-1-foundation`
 - Requirements partially addressed: READ-005, OPS-002, OPS-005
 - Delivery item: A1-01, incomplete
@@ -44,5 +47,7 @@ Still incomplete in A1-01: the full immutable configuration loader, structured
 logging, request IDs, panic boundary, PostgreSQL-backed readiness, executable
 service lifecycle, Templ/Tailwind asset build, CI, and secret scanning.
 
-Rollback is `git revert 8382c8f374ec22d60a90786bb0006e4a06776631` before later
-work depends on these contracts.
+Before admission, rollback is deletion of the isolated feature branch and
+worktree. After admission by a merge commit, revert that merge commit; do not
+rewrite shared history. If these commits are admitted individually, revert
+them newest-to-oldest using the exact hashes recorded above.
