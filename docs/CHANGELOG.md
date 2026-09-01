@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 15:35 CDT — Validate and revoke opaque credentials
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_revocation.go`
+- `internal/auth/session_revocation_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the credential-to-revocation core. It strictly validates the fixed
+base64url token, hashes the exact encoded browser bytes, obtains one
+microsecond-precision observation time, and delegates one idempotent update.
+Malformed state is a no-op; database failures are redacted and cancellation is
+preserved.
+
+Verification:
+
+- Exact hash and UTC/microsecond timestamp projection for zero/one-row outcomes
+- Missing, short, and invalid-encoding credentials perform no database work
+- Nil dependencies, zero time, and impossible row counts fail closed
+- Database causes do not leak and context cancellation remains inspectable
+- `revokeSession` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The public service method and POST logout HTTP boundary remain subsequent
+  units.
+
 ### 2026-09-01 15:20 CDT — Revoke sessions by opaque credential hash
 
 Commit: current commit; hash assigned by Git after commit
