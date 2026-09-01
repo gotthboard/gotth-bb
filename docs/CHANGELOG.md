@@ -5,6 +5,32 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 16:30 CDT — Define request CSRF-token lookup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/csrf_context.go`
+- `internal/httpui/csrf_context_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Defined the private request-context slot and typed lookup for the session-bound
+CSRF synchronizer token. Nil, absent, and wrong-typed state returns empty so
+mutation validation fails closed.
+
+Verification:
+
+- Stored string tokens round-trip exactly
+- Nil, absent, and wrong-typed context state is empty
+- `csrfTokenFromContext` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- Token derivation and the session-bound writer follow in subsequent units.
+
 ### 2026-09-01 16:15 CDT — Enforce local logout ordering
 
 Commit: current commit; hash assigned by Git after commit
