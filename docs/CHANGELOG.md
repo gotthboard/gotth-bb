@@ -5,6 +5,33 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:30 CDT — Preserve authenticated route attribution
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/session_authentication_handler.go`
+- `internal/httpui/session_authentication_handler_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+The session boundary now copies the downstream matched route pattern back to
+the caller-owned request after adding authentication context. The copy runs
+during panic unwinding as well as ordinary completion, preserving bounded route
+attribution for both access and recovery logs.
+
+Verification:
+
+- Ordinary authenticated dispatch preserves the downstream route pattern
+- Anonymous downstream panic preserves the route pattern and original panic
+- `newSessionAuthenticationHandler` remains at 100% statement coverage
+
+Risks / non-goals:
+
+- This changes no authentication, cookie, CSRF, routing, or response behavior.
+
 ### 2026-09-01 17:20 CDT — Validate CSRF submissions in constant time
 
 Commit: current commit; hash assigned by Git after commit

@@ -41,6 +41,7 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 			if got := csrfTokenFromContext(request.Context()); got != wantCSRF {
 				t.Fatalf("downstream CSRF token = %q, want %q", got, wantCSRF)
 			}
+			request.Pattern = "GET /topics/{topicID}"
 			response.WriteHeader(http.StatusAccepted)
 		}),
 		func(ctx context.Context, credential string) (auth.SessionAuthentication, error) {
@@ -59,8 +60,32 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 	request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: token})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusAccepted || calls != 1 || response.Header().Get("Vary") != "Cookie" || response.Header().Get("Set-Cookie") != "" {
-		t.Fatalf("response = (status %d, calls %d, headers %v)", response.Code, calls, response.Header())
+	if response.Code != http.StatusAccepted || calls != 1 || response.Header().Get("Vary") != "Cookie" || response.Header().Get("Set-Cookie") != "" ||
+		request.Pattern != "GET /topics/{topicID}" {
+		t.Fatalf("response = (status %d, calls %d, pattern %q, headers %v)", response.Code, calls, request.Pattern, response.Header())
+	}
+}
+
+func TestSessionAuthenticationHandlerPropagatesRoutePatternDuringPanic(t *testing.T) {
+	t.Parallel()
+
+	handler, err := newSessionAuthenticationHandler(
+		http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+			request.Pattern = "POST /topics/{topicID}/replies"
+			panic(errTestResponseWrite)
+		}),
+		func(context.Context, string) (auth.SessionAuthentication, error) {
+			panic("authentication must not run")
+		},
+		"session", callbackTestURLBuilder(t), true,
+	)
+	if err != nil {
+		t.Fatalf("newSessionAuthenticationHandler() returned error: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/topics/7/replies", nil)
+	recovered := captureHandlerPanic(func() { handler.ServeHTTP(httptest.NewRecorder(), request) })
+	if !errors.Is(asError(recovered), errTestResponseWrite) || request.Pattern != "POST /topics/{topicID}/replies" {
+		t.Fatalf("panic/pattern = (%v, %q)", recovered, request.Pattern)
 	}
 }
 

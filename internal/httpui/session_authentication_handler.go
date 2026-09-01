@@ -92,6 +92,8 @@ func newSessionAuthenticationHandler(
 		if csrfToken != "" {
 			requestContext = context.WithValue(requestContext, csrfTokenContextKey{}, csrfToken)
 		}
-		next.ServeHTTP(response, request.WithContext(requestContext))
+		downstreamRequest := request.WithContext(requestContext)
+		defer func() { request.Pattern = downstreamRequest.Pattern }()
+		next.ServeHTTP(response, downstreamRequest)
 	}), nil
 }
