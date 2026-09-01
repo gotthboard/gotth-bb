@@ -1,7 +1,9 @@
 package httpui
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -25,18 +27,26 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 		},
 		RequiresRevalidation: true,
 	}
+	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x6a}, sessionCookieTokenBytes))
+	wantCSRF, err := deriveCSRFToken(token)
+	if err != nil {
+		t.Fatalf("deriveCSRFToken() returned error: %v", err)
+	}
 	calls := 0
 	handler, err := newSessionAuthenticationHandler(
 		http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			if got := sessionAuthenticationFromContext(request.Context()); !reflect.DeepEqual(got, want) {
 				t.Fatalf("downstream authentication = %+v, want %+v", got, want)
 			}
+			if got := csrfTokenFromContext(request.Context()); got != wantCSRF {
+				t.Fatalf("downstream CSRF token = %q, want %q", got, wantCSRF)
+			}
 			response.WriteHeader(http.StatusAccepted)
 		}),
-		func(ctx context.Context, token string) (auth.SessionAuthentication, error) {
+		func(ctx context.Context, credential string) (auth.SessionAuthentication, error) {
 			calls++
-			if ctx == nil || token != "opaque-token" {
-				t.Fatalf("authenticate input = (%v, %q)", ctx, token)
+			if ctx == nil || credential != token {
+				t.Fatalf("authenticate input = (%v, %q)", ctx, credential)
 			}
 			return want, nil
 		},
@@ -46,7 +56,7 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 		t.Fatalf("newSessionAuthenticationHandler() returned error: %v", err)
 	}
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
-	request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: "opaque-token"})
+	request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: token})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusAccepted || calls != 1 || response.Header().Get("Vary") != "Cookie" || response.Header().Get("Set-Cookie") != "" {
@@ -61,6 +71,9 @@ func TestSessionAuthenticationHandlerUsesAnonymousContextWithoutCookie(t *testin
 		http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
 			if got := sessionAuthenticationFromContext(request.Context()); !reflect.DeepEqual(got, auth.SessionAuthentication{}) {
 				t.Fatalf("downstream authentication = %+v, want anonymous", got)
+			}
+			if got := csrfTokenFromContext(request.Context()); got != "" {
+				t.Fatalf("anonymous CSRF token = %q, want empty", got)
 			}
 		}),
 		func(context.Context, string) (auth.SessionAuthentication, error) {
@@ -134,6 +147,15 @@ func TestSessionAuthenticationHandlerKeepsParallelRequestsIsolated(t *testing.T)
 			if !got.Access.Authenticated || got.Access.UserID != wantUserID {
 				t.Errorf("downstream authentication = %+v, want user %d", got, wantUserID)
 			}
+			cookies := request.CookiesNamed("session")
+			if len(cookies) != 1 {
+				t.Errorf("downstream session cookies = %+v", cookies)
+				return
+			}
+			wantCSRF, err := deriveCSRFToken(cookies[0].Value)
+			if got := csrfTokenFromContext(request.Context()); err != nil || got != wantCSRF {
+				t.Errorf("downstream CSRF token = (%q, %v), want %q", got, err, wantCSRF)
+			}
 		}),
 		func(ctx context.Context, _ string) (auth.SessionAuthentication, error) {
 			userID, _ := ctx.Value(parallelSessionUserIDContextKey{}).(int64)
@@ -155,9 +177,36 @@ func TestSessionAuthenticationHandlerKeepsParallelRequestsIsolated(t *testing.T)
 			t.Parallel()
 			ctx := context.WithValue(context.Background(), parallelSessionUserIDContextKey{}, userID)
 			request := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
-			request.AddCookie(&http.Cookie{Name: "session", Value: "token"})
+			token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{byte(userID)}, sessionCookieTokenBytes))
+			request.AddCookie(&http.Cookie{Name: "session", Value: token})
 			handler.ServeHTTP(httptest.NewRecorder(), request)
 		})
+	}
+}
+
+func TestSessionAuthenticationHandlerRejectsAuthenticatedMalformedCredential(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	handler, err := newSessionAuthenticationHandler(
+		http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }),
+		func(context.Context, string) (auth.SessionAuthentication, error) {
+			return auth.SessionAuthentication{Access: auth.AccessContext{
+				Authenticated: true, UserID: 42, Role: auth.RoleMember, ValidatedAt: time.Now(),
+			}}, nil
+		},
+		"session", callbackTestURLBuilder(t), true,
+	)
+	if err != nil {
+		t.Fatalf("newSessionAuthenticationHandler() returned error: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request.AddCookie(&http.Cookie{Name: "session", Value: "malformed"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError || called || len(response.Result().Cookies()) != 1 ||
+		response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response = (status %d, called %v, headers %v)", response.Code, called, response.Header())
 	}
 }
 

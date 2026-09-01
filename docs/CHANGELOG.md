@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:00 CDT — Bind CSRF authority to authenticated requests
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/session_authentication_handler.go`
+- `internal/httpui/session_authentication_handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Extended session loading to derive and attach a private CSRF synchronizer token
+only after the opaque credential authenticates. Anonymous requests receive no
+token. An impossible authenticated result paired with a malformed credential
+fails closed, expires the browser cookie, and never reaches the application.
+
+Verification:
+
+- Exact authenticated snapshots receive the independently verified derived
+  token
+- Anonymous requests receive an empty CSRF context
+- Parallel requests keep both identity and CSRF state isolated
+- Authenticated malformed credentials fail 500 and expire browser state
+- `newSessionAuthenticationHandler` remains at 100% statement coverage
+
+Risks / non-goals:
+
+- The next unit validates submitted header/form tokens in constant time.
+
 ### 2026-09-01 16:45 CDT — Derive session-bound CSRF tokens
 
 Commit: current commit; hash assigned by Git after commit

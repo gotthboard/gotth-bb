@@ -528,6 +528,10 @@ the first grant.
   domain `gotth-bb/csrf/v1`, then exposes only the 43-character unpadded
   base64url digest to forms. The derived value cannot authenticate a session,
   requires no second durable secret, and rotates whenever the session rotates.
+- The session-loading boundary places the derived value in private request
+  context only after the opaque credential authenticates. Anonymous requests
+  receive no CSRF authority. An internally inconsistent authenticated result
+  paired with a malformed credential fails 500 and expires that browser state.
 - Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/bb`.
 - Session rotation occurs after login and any future privilege elevation.
 - Once `AUTH_REVALIDATE_INTERVAL` elapses, protected routes require a fresh OIDC
