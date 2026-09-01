@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 18:20 CDT — Construct authentication without exposing secrets
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/authentication_service.go`
+- `internal/config/authentication_service_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the narrow configuration-owned authentication-service constructor. It
+revalidates the immutable environment, public URL, issuer, client identity,
+and production secret requirement; computes the exact `/auth/callback`; and
+passes the retained client secret only into the concrete authentication
+service. No general secret getter was added.
+
+Verification:
+
+- Controlled confidential-client discovery succeeds exactly once and performs
+  no PostgreSQL operation during construction
+- Invalid configuration and runtime dependencies fail before discovery
+- Service and configuration formatting expose neither retained secret
+- `Config.NewAuthenticationService` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- Construction performs bounded OIDC discovery and can therefore fail startup
+  when Authentik metadata is unavailable or invalid, as specified.
+- The executable adopts this constructor in the next isolated wiring unit.
+
 ### 2026-09-01 18:00 CDT — Activate browser authentication routes
 
 Commit: current commit; hash assigned by Git after commit

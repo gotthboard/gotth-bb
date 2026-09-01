@@ -160,8 +160,11 @@ Rules:
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.
 - Database and OIDC client secrets use an unexported redacting value type with
-  no general-purpose reveal method. Later PostgreSQL and OIDC constructors
-  will receive them through narrow boundary-specific wiring. The secrets are
+  no general-purpose reveal method. PostgreSQL pool parsing and OIDC service
+  construction receive them through narrow boundary-specific methods. The
+  OIDC method revalidates the immutable public/issuer configuration, computes
+  the exact callback, and passes the client secret only into the concrete
+  authentication service. The secrets are
   not available to templates, ordinary formatting, logs, diagnostics, or
   health output.
 
