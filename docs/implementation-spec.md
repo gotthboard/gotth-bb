@@ -91,7 +91,7 @@ Unknown or malformed security-sensitive settings fail startup.
 | Setting | Required | Purpose |
 | --- | --- | --- |
 | `APP_ENV` | Yes | `development`, `test`, or `production` |
-| `LISTEN_ADDR` | Yes | Internal bind address, normally loopback |
+| `LISTEN_ADDR` | Yes | Numeric IP and nonzero port; loopback in production |
 | `PUBLIC_BASE_URL` | Yes | Exact external base, including `/bb` |
 | `BASE_PATH` | Yes | Browser path prefix, `/bb` in production |
 | `DATABASE_URL` | Yes | PostgreSQL connection string supplied as a secret |
@@ -110,6 +110,11 @@ Rules:
   and its path must equal normalized `BASE_PATH`.
 - `BASE_PATH` is empty or begins with one `/`, has no trailing slash, and
   contains no traversal or encoded separator.
+- `LISTEN_ADDR` must be an explicit numeric IP/port. Production accepts only
+  IPv4 or IPv6 loopback so the service cannot bypass the Caddy edge boundary.
+- `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
+  must use positive Go duration syntax such as `30m` or `24h`; zero and
+  negative durations fail startup.
 - OIDC callback is computed as `PUBLIC_BASE_URL + /auth/callback`; it is not a
   separate free-form setting.
 - OIDC claims never assign forum roles or local group membership.

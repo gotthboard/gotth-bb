@@ -5,6 +5,40 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 03:15 CDT — Add immutable runtime primitives
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/environment.go`
+- `internal/config/environment_test.go`
+- `internal/config/duration.go`
+- `internal/config/duration_test.go`
+- `internal/config/listen_addr.go`
+- `internal/config/listen_addr_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added exact environment selection, positive duration parsing, and numeric
+listen-address validation as the next immutable configuration units.
+Production binds only to IPv4/IPv6 loopback, preserving Caddy as the public
+edge. Malformed raw values are not echoed into diagnostics.
+
+Verification:
+
+- Focused red-before-green unit tests for each production unit
+- `make verify`
+- Package statement coverage report
+
+Risks / non-goals:
+
+- The aggregate environment loader and executable service lifecycle remain
+  incomplete.
+- Development/test may bind non-loopback deliberately; production may not.
+
 ### 2026-09-01 03:00 CDT — Make the governance lock structural
 
 Commit: `1401728efb30c6fa942f4bd4542f43fd45c96056`
