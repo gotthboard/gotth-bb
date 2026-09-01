@@ -5,9 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:14 CDT — Bootstrap the migration history ledger
+### 2026-09-01 07:20 CDT — Serialize migration sessions
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/lock.go`
+- `internal/migration/lock_test.go`
+- `internal/migration/lock_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added a project-specific PostgreSQL session advisory lock around migration
+actions. Acquisition and release use the same connection and fixed signed key.
+Release receives a five-second cancellation-detached context, reports false or
+failed unlocks, and joins cleanup failure with any action failure. The caller
+must close the dedicated connection on every return, eliminating leaked locks
+even when the unlock outcome is ambiguous.
+
+Verification:
+
+- Red-before-green compile failure before `withMigrationLock` existed
+- Exact acquisition/release SQL and stable key
+- Nil/canceled inputs, acquisition failure, action failure, false unlock,
+  unlock failure, joined causes, and cancellation-detached cleanup
+- PostgreSQL 17.10 proof that a second session cannot take the held key and can
+  take it immediately after release
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- PostgreSQL integration run with the `integration` build tag and 100%
+  migration-package statement coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- This unit does not own the connection. The coordinator must use a dedicated
+  connection, close it on every exit, and never return a possibly locked
+  session to a pool.
+
+### 2026-09-01 07:14 CDT — Bootstrap the migration history ledger
+
+Commit: `25f8d2655803a3f172fdb83cc42d8783a3ba4dee`
 
 Affected files:
 
