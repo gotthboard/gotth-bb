@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 03:15 CDT — Add immutable runtime primitives
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `35297caacc9facbc5b3cc58cfbd61dab0c1ab774`
 
 Affected files:
 
