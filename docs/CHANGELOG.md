@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 - Implementation commit: `8382c8f374ec22d60a90786bb0006e4a06776631`
 - Branch: `feature/alpha-1-foundation`
-- Requirements started: UX-004, SEC-005, OPS-002, OPS-005
+- Requirements partially addressed: READ-005, OPS-002, OPS-005
 - Delivery item: A1-01, incomplete
 
 Changed:
@@ -17,8 +17,8 @@ Changed:
 - Added exact base-path validation and public-base-URL validation, including
   production HTTPS enforcement and rejection of traversal, encoded separators,
   credentials, queries, fragments, malformed escaping, and empty hostnames.
-- Added a browser URL builder that preserves the configured prefix and escapes
-  each path segment.
+- Added a browser URL builder that preserves the configured prefix, escapes
+  each path segment, and rejects empty or dot-segment ambiguity.
 - Added a standard-library HTTP shell with liveness and a deliberately failing
   readiness endpoint until PostgreSQL/schema checks exist.
 

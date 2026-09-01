@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -30,9 +31,16 @@ func NewURLBuilder(basePath string) (URLBuilder, error) {
 // Callers pass path segments, never a preassembled or absolute URL.
 //
 // Complexity: for k segments containing n total bytes, construction is
-// Θ(k+n) time and O(k+n) auxiliary space. url.PathEscape is linear in each
+// O(k+n) worst-case, Ω(1) for an immediately invalid segment, and Θ(k+n)
+// for valid input. Auxiliary space is O(k+n). url.PathEscape is linear in each
 // segment and may expand every byte to a three-byte percent escape.
-func (builder URLBuilder) Path(segments ...string) string {
+func (builder URLBuilder) Path(segments ...string) (string, error) {
+	for index, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", fmt.Errorf("path segment %d is empty or ambiguous", index)
+		}
+	}
+
 	var path strings.Builder
 	path.Grow(len(builder.basePath) + 1 + escapedPathCapacity(segments))
 	path.WriteString(builder.basePath)
@@ -45,7 +53,7 @@ func (builder URLBuilder) Path(segments ...string) string {
 		path.WriteString(url.PathEscape(segment))
 	}
 
-	return path.String()
+	return path.String(), nil
 }
 
 // escapedPathCapacity returns a conservative lower-bound capacity hint; the

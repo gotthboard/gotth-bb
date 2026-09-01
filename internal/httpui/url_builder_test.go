@@ -29,8 +29,32 @@ func TestURLBuilderPath(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewURLBuilder(%q) returned error: %v", test.basePath, err)
 			}
-			if got := builder.Path(test.segments...); got != test.want {
+			got, err := builder.Path(test.segments...)
+			if err != nil {
+				t.Fatalf("Path(%q) returned error: %v", test.segments, err)
+			}
+			if got != test.want {
 				t.Fatalf("Path(%q) = %q, want %q", test.segments, got, test.want)
+			}
+		})
+	}
+}
+
+func TestURLBuilderPathRejectsAmbiguousSegments(t *testing.T) {
+	t.Parallel()
+
+	builder, err := NewURLBuilder("/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder returned error: %v", err)
+	}
+
+	for _, segment := range []string{"", ".", ".."} {
+		segment := segment
+		t.Run(segment, func(t *testing.T) {
+			t.Parallel()
+
+			if got, err := builder.Path("areas", segment); err == nil {
+				t.Fatalf("Path(%q) = %q, want error", segment, got)
 			}
 		})
 	}
