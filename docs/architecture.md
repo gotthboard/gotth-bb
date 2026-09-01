@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD 0.1 |
-| Product | ALH Studios Bulletin Board |
+| Product | GOTTH Board |
 | Applies to | Version 1.0 unless noted |
 | Governing document | [Product requirements](prd.md) |
 
@@ -140,8 +140,9 @@ idempotency key or the failure is known to occur before commit.
 
 ## 5. Public path handling
 
-External URLs begin with `https://alhstudios.com/bb`. Internally, after Caddy
-strips the prefix, routes begin at `/`.
+The initial development deployment uses `https://alhstudios.com/bb`.
+Internally, after Caddy strips the prefix, routes begin at `/`. Production
+deployments may use another origin or path without renaming the product.
 
 The service receives two immutable settings:
 

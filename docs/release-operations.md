@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft; no infrastructure changes performed |
-| Public base | `https://alhstudios.com/bb/` |
+| Initial development base | `https://alhstudios.com/bb/` |
 | Identity provider | Authentik OIDC |
 | Edge proxy | Caddy |
 | Durable store | PostgreSQL |
@@ -24,6 +24,10 @@
   health output.
 
 ## 2. Environments
+
+The ALH Studios URL is a temporary development deployment target. GOTTH Board
+is not coupled to that domain; each deployment supplies its own validated
+public base URL and path.
 
 ### 2.1 Local development
 

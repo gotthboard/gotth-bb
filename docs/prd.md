@@ -4,21 +4,21 @@
 
 | Field | Value |
 | --- | --- |
-| Product | ALH Studios Bulletin Board |
+| Product | GOTTH Board |
 | Status | Draft for owner review |
 | Document version | 0.1 |
-| Initial public URL | `https://alhstudios.com/bb/` |
+| Initial development URL | `https://alhstudios.com/bb/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
 | Identity authority | Authentik |
 
 ## 1. Problem
 
-ALH Studios needs a self-hosted bulletin board where communities can hold
-durable, searchable discussions without creating another password database.
-The board must support open areas, member-only areas, read-only areas, and
-areas restricted by Authentik group membership. Authorization must apply to
-every way content can be discovered, not merely to the final page handler.
+GOTTH Board is a self-hosted bulletin board where communities can hold durable,
+searchable discussions without creating another password database. The board
+must support open areas, member-only areas, read-only areas, and areas
+restricted by Authentik group membership. Authorization must apply to every
+way content can be discovered, not merely to the final page handler.
 
 Existing generic forum products either own identity themselves, hide access
 control behind sprawling plugin systems, or are awkward to operate beneath a
@@ -307,8 +307,9 @@ environment:
 7. Restricted content does not leak through the available lists or direct
    URLs.
 8. PostgreSQL migrations create a fresh database successfully.
-9. The interface works beneath `https://alhstudios.com/bb/` with correct links,
-   forms, HTMX requests, assets, cookies, and OIDC callback.
+9. The interface works beneath the initial development URL
+   `https://alhstudios.com/bb/` with correct links, forms, HTMX requests,
+   assets, cookies, and OIDC callback.
 10. Authentication and access-control tests pass in CI or an equivalent
     reproducible command.
 

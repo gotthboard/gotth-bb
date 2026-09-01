@@ -1,6 +1,10 @@
-# ALH Studios Bulletin Board
+# GOTTH Board
 
-Bulletin board and forum for `https://alhstudios.com/bb/`.
+A self-hosted bulletin board and forum built with the GOTTH stack and
+PostgreSQL.
+
+The initial development deployment target is
+`https://alhstudios.com/bb/`. That temporary URL is not the product identity.
 
 The planned stack is Go, Templ, HTMX, Tailwind CSS, and PostgreSQL, with
 Authentik as the identity provider.
