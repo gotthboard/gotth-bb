@@ -453,6 +453,11 @@ The callback:
 
 Failure after code exchange creates no authenticated browser state.
 
+Consumption is one conditional PostgreSQL `UPDATE ... RETURNING`: the state
+hash must exist, remain unconsumed, have `created_at <= now`, and have the
+exclusive expiry `expires_at > now`. Missing, future, expired, and replayed
+attempts all return the same no-row result. One concurrent caller can win.
+
 For revalidation, the callback additionally verifies the existing session,
 updates the identity/profile snapshot, creates a rotated replacement session,
 and revokes the old session in the transaction. A failed or abandoned

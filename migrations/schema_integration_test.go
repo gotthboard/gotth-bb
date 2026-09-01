@@ -3,10 +3,12 @@
 package migrations
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -130,6 +132,105 @@ VALUES (decode(repeat($1, 32), 'hex'), decode('01', 'hex'), decode('02', 'hex'),
 		}
 	}
 	queries := db.New(conn)
+	attemptNow := time.Now().UTC().Truncate(time.Microsecond)
+	insertAttempt := func(stateByte byte, createdAt, expiresAt time.Time) {
+		t.Helper()
+		if err := queries.InsertOIDCLoginAttempt(ctx, db.InsertOIDCLoginAttemptParams{
+			StateHash:              bytes.Repeat([]byte{stateByte}, 32),
+			NonceCiphertext:        bytes.Repeat([]byte{stateByte + 1}, 72),
+			PkceVerifierCiphertext: bytes.Repeat([]byte{stateByte + 2}, 72),
+			Purpose:                "login",
+			ReturnPath:             "/community/board/",
+			CreatedAt:              pgtype.Timestamptz{Time: createdAt, Valid: true},
+			ExpiresAt:              pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		}); err != nil {
+			t.Fatalf("InsertOIDCLoginAttempt(%x) returned error: %v", stateByte, err)
+		}
+	}
+	insertAttempt(0xcc, attemptNow, attemptNow.Add(5*time.Minute))
+	consumers := make([]*pgx.Conn, 2)
+	for index := range consumers {
+		consumers[index], err = pgx.ConnectConfig(ctx, testConfig)
+		if err != nil {
+			t.Fatalf("connect login-attempt consumer %d: %v", index, err)
+		}
+		consumer := consumers[index]
+		t.Cleanup(func() {
+			if err := consumer.Close(context.Background()); err != nil {
+				t.Errorf("close login-attempt consumer: %v", err)
+			}
+		})
+	}
+	startConsume := make(chan struct{})
+	type consumeResult struct {
+		attempt db.OidcLoginAttempt
+		err     error
+	}
+	consumeResults := make(chan consumeResult, len(consumers))
+	var consumeWait sync.WaitGroup
+	for _, consumer := range consumers {
+		consumer := consumer
+		consumeWait.Add(1)
+		go func() {
+			defer consumeWait.Done()
+			<-startConsume
+			attempt, consumeErr := db.New(consumer).ConsumeOIDCLoginAttempt(ctx, db.ConsumeOIDCLoginAttemptParams{
+				StateHash:  bytes.Repeat([]byte{0xcc}, 32),
+				ConsumedAt: pgtype.Timestamptz{Time: attemptNow.Add(time.Second), Valid: true},
+			})
+			consumeResults <- consumeResult{attempt: attempt, err: consumeErr}
+		}()
+	}
+	close(startConsume)
+	consumeWait.Wait()
+	close(consumeResults)
+	consumeSuccesses := 0
+	consumeMisses := 0
+	for result := range consumeResults {
+		switch {
+		case result.err == nil:
+			consumeSuccesses++
+			if !bytes.Equal(result.attempt.StateHash, bytes.Repeat([]byte{0xcc}, 32)) ||
+				!bytes.Equal(result.attempt.NonceCiphertext, bytes.Repeat([]byte{0xcd}, 72)) ||
+				!bytes.Equal(result.attempt.PkceVerifierCiphertext, bytes.Repeat([]byte{0xce}, 72)) ||
+				result.attempt.Purpose != "login" || result.attempt.SessionID.Valid ||
+				result.attempt.ReturnPath != "/community/board/" ||
+				!result.attempt.CreatedAt.Valid || !result.attempt.CreatedAt.Time.Equal(attemptNow) ||
+				!result.attempt.ExpiresAt.Valid || !result.attempt.ExpiresAt.Time.Equal(attemptNow.Add(5*time.Minute)) ||
+				!result.attempt.ConsumedAt.Valid || !result.attempt.ConsumedAt.Time.Equal(attemptNow.Add(time.Second)) {
+				t.Fatal("successful consume returned the wrong login-attempt row")
+			}
+		case errors.Is(result.err, pgx.ErrNoRows):
+			consumeMisses++
+		default:
+			t.Fatalf("ConsumeOIDCLoginAttempt() returned unexpected error: %v", result.err)
+		}
+	}
+	if consumeSuccesses != 1 || consumeMisses != 1 {
+		t.Fatalf("concurrent consume results = (%d success, %d miss), want (1, 1)", consumeSuccesses, consumeMisses)
+	}
+	insertAttempt(0xdd, attemptNow.Add(-10*time.Minute), attemptNow.Add(-5*time.Minute))
+	insertAttempt(0xee, attemptNow.Add(5*time.Minute), attemptNow.Add(10*time.Minute))
+	for _, stateByte := range []byte{0xcc, 0xdd, 0xee} {
+		if _, err := queries.ConsumeOIDCLoginAttempt(ctx, db.ConsumeOIDCLoginAttemptParams{
+			StateHash:  bytes.Repeat([]byte{stateByte}, 32),
+			ConsumedAt: pgtype.Timestamptz{Time: attemptNow.Add(2 * time.Second), Valid: true},
+		}); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("replayed, expired, or future consume %x error = %v, want no rows", stateByte, err)
+		}
+	}
+	var consumedAttempts int
+	var unconsumedAttempts int
+	if err := conn.QueryRow(ctx, `SELECT
+    count(*) FILTER (WHERE consumed_at IS NOT NULL),
+    count(*) FILTER (WHERE consumed_at IS NULL)
+FROM public.oidc_login_attempts
+WHERE get_byte(state_hash, 0) IN (204, 221, 238)`).Scan(&consumedAttempts, &unconsumedAttempts); err != nil {
+		t.Fatalf("inspect login-attempt consumption: %v", err)
+	}
+	if consumedAttempts != 1 || unconsumedAttempts != 2 {
+		t.Fatalf("login-attempt state = (%d consumed, %d unconsumed), want (1, 2)", consumedAttempts, unconsumedAttempts)
+	}
 	if governanceRows, err := queries.CountGovernanceRows(ctx); err != nil || governanceRows != 1 {
 		t.Fatalf("CountGovernanceRows() = (%d, %v), want (1, nil)", governanceRows, err)
 	}

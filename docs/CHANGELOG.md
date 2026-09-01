@@ -5,9 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 11:17 CDT — Authenticate and recover login-attempt secrets
+### 2026-09-01 11:31 CDT — Add atomic login-attempt persistence and consumption
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `migrations/schema_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added locally generated sqlc queries to insert protected OIDC login attempts and
+atomically consume one current unconsumed state hash with `UPDATE ...
+RETURNING`. The consume timestamp is explicit, creation is inclusive, expiry is
+exclusive, and missing, future, expired, or replayed attempts all produce the
+same no-row result.
+
+Verification:
+
+- Red-before-generation compile failure for both typed query methods
+- Deterministic local-only sqlc generation and generated-file drift gate
+- PostgreSQL 17.10 two-connection simultaneous consume yields exactly one
+  complete correct row and one no-row miss
+- Replay, expired, and future attempts all miss; only the winner is marked
+  consumed and failed attempts remain unconsumed for cleanup
+- Fresh schema integration package at 100% statement coverage and `make verify`
+
+Risks / non-goals:
+
+- These queries provide atomic storage semantics only. The auth service owns
+  return-path validation, envelope recovery, attempt lifetime, and browser/
+  session outstanding-attempt limits.
+- Consumed rows are retained temporarily as replay evidence and removed later
+  by bounded idempotent cleanup.
+
+### 2026-09-01 11:17 CDT — Authenticate and recover login-attempt secrets
+
+Commit: `2009847c095e0404f4a567266adf66b78c0c2a17`
 
 Affected files:
 
