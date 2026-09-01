@@ -301,6 +301,22 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 		!activeSession.ValidatedAt.Time.Equal(serviceTime) || !activeSession.ExpiresAt.Time.Equal(serviceExpiresAt) {
 		t.Fatalf("GetActiveSession() = (%+v, %v)", activeSession, err)
 	}
+	touchParams := db.TouchSessionParams{
+		ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true},
+		SessionID:  activeSession.SessionID,
+		TouchBefore: pgtype.Timestamptz{
+			Time: authenticatedAt.Add(-5 * time.Minute), Valid: true,
+		},
+	}
+	touched, err := service.queries.TouchSession(ctx, touchParams)
+	var storedLastSeen time.Time
+	if scanErr := connections[0].QueryRow(ctx, "SELECT last_seen_at FROM public.sessions WHERE id = $1", activeSession.SessionID).Scan(&storedLastSeen); err != nil || scanErr != nil ||
+		touched != 1 || !storedLastSeen.Equal(authenticatedAt) {
+		t.Fatalf("TouchSession() = (rows %d, stored %s, errors %v/%v)", touched, storedLastSeen, err, scanErr)
+	}
+	if touched, err := service.queries.TouchSession(ctx, touchParams); err != nil || touched != 0 {
+		t.Fatalf("repeated TouchSession() = (%d, %v), want zero/nil", touched, err)
+	}
 	idleBoundaryAt := serviceTime.Add(40 * time.Minute)
 	idleCutoff := idleBoundaryAt.Add(-30 * time.Minute)
 	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET last_seen_at = $1 WHERE id = $2", idleCutoff, activeSession.SessionID); err != nil {
@@ -337,5 +353,14 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	}
 	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
 		t.Fatalf("revoked GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
+	}
+	if touched, err := service.queries.TouchSession(ctx, db.TouchSessionParams{
+		ObservedAt: pgtype.Timestamptz{Time: authenticatedAt.Add(time.Minute), Valid: true},
+		SessionID:  activeSession.SessionID,
+		TouchBefore: pgtype.Timestamptz{
+			Time: authenticatedAt.Add(time.Minute), Valid: true,
+		},
+	}); err != nil || touched != 0 {
+		t.Fatalf("revoked TouchSession() = (%d, %v), want zero/nil", touched, err)
 	}
 }

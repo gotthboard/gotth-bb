@@ -155,3 +155,27 @@ func (q *Queries) InsertOIDCLoginAttempt(ctx context.Context, arg InsertOIDCLogi
 	)
 	return err
 }
+
+const touchSession = `-- name: TouchSession :execrows
+UPDATE public.sessions
+SET last_seen_at = $1
+WHERE id = $2
+  AND revoked_at IS NULL
+  AND expires_at > $1
+  AND last_seen_at <= $3
+  AND last_seen_at < $1
+`
+
+type TouchSessionParams struct {
+	ObservedAt  pgtype.Timestamptz
+	SessionID   int64
+	TouchBefore pgtype.Timestamptz
+}
+
+func (q *Queries) TouchSession(ctx context.Context, arg TouchSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, touchSession, arg.ObservedAt, arg.SessionID, arg.TouchBefore)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 13:50 CDT — Throttle session activity writes
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the conditional `last_seen_at` update used only after the service observes
+that its fixed activity-write threshold elapsed. The update rechecks that the
+session remains unrevoked, unexpired, older than the threshold, and strictly
+behind the observation time. Normal requests therefore perform no write.
+
+Verification:
+
+- Real PostgreSQL 17.10 updates one due active session to the exact observation
+  time
+- Repeating the same touch updates zero rows
+- A revoked session updates zero rows even when its timestamps otherwise qualify
+- The active-session read remains separate, leaving the no-touch hot path at one
+  indexed database round trip
+- Generated sqlc output is reproducible and all repository tests pass
+
+Risks / non-goals:
+
+- The service-level authentication method decides the fixed throttle and treats
+  concurrent zero-row touches as benign; that is the next unit.
+
 ### 2026-09-01 13:45 CDT — Add the active-session lookup primitive
 
 Commit: current commit; hash assigned by Git after commit
