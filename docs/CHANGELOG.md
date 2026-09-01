@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 02:40 CDT — Preserve administrator continuity
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `ffa8dfacb75a37185e02f521a587ddd24fcc818f`
 
 Affected files:
 
