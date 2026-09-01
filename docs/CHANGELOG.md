@@ -5,9 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 06:32 CDT — Prove PostgreSQL pool startup
+### 2026-09-01 06:39 CDT — Wire executable PostgreSQL ownership
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Wired the admitted pgx configuration and pool lifecycle into executable
+startup. The service now refuses to bind its HTTP listener until PostgreSQL has
+passed the bounded initial round trip. Once opened, the pool is closed exactly
+once after graceful service stop and on every later startup or listener
+failure. The single injected pool-factory seam keeps unit tests deterministic;
+its returned errors are redacted, and inconsistent pool-plus-error or nil-pool
+results fail closed without leaking ownership.
+
+Verification:
+
+- Red-before-green executable tests before the pool dependency existed
+- Pool open failure, returned-pool cleanup, nil result, cancellation during and
+  after open, listener failure, and graceful shutdown ownership tests
+- `go test -mod=readonly -race -cover ./cmd/forum` with 91.3% statement coverage
+  of the testable `run` function; the process-terminating `main` wrapper remains
+  deliberately outside in-process coverage
+- `make verify`
+
+Risks / non-goals:
+
+- The live pool is not yet passed to repositories because migrations and
+  queries do not exist.
+- Readiness remains deliberately false until exact migration-head and
+  governance singleton checks are wired.
+
+### 2026-09-01 06:32 CDT — Prove PostgreSQL pool startup
+
+Commit: `6b02472fc96dc8ec33bc389722767a0f5d5b8cd6`
 
 Affected files:
 
@@ -46,7 +84,7 @@ Risks / non-goals:
 
 ### 2026-09-01 06:18 CDT — Bound PostgreSQL pool configuration
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `7d0bbdc2caecb17ed06f7b1bdcec103d9c4a43de`
 
 Affected files:
 

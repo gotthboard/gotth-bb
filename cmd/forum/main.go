@@ -16,9 +16,17 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/app"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const shutdownTimeout = 15 * time.Second
+
+type databasePool interface {
+	Close()
+}
+
+type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 
 // main binds process signals to the tested service runner and reports only a
 // bounded top-level error before returning a nonzero process status.
@@ -43,7 +51,9 @@ func main() {
 		signal.Stop(signals)
 		cancel()
 	}()
-	if err := run(ctx, os.LookupEnv, os.Stderr, net.Listen); err != nil {
+	if err := run(ctx, os.LookupEnv, os.Stderr, func(poolContext context.Context, poolConfig *pgxpool.Config) (databasePool, error) {
+		return store.OpenPool(poolContext, poolConfig)
+	}, net.Listen); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb: %v\n", err)
 		os.Exit(1)
 	}
@@ -52,15 +62,23 @@ func main() {
 // run loads immutable configuration, constructs the HTTP boundary, binds the
 // validated numeric listener, and serves until cancellation or failure.
 //
-// Complexity: for configuration input size n, startup parsing is O(n) time and
-// auxiliary space. Remaining local wiring is tight Theta(1); listener, request,
-// logging, and shutdown costs are delegated to their documented components.
-func run(ctx context.Context, lookup config.LookupEnv, logOutput io.Writer, listen func(string, string) (net.Listener, error)) error {
+// Complexity: for n configuration bytes, configured pool capacity c, initial
+// database latency r, served request work q, and shutdown work d, delegated
+// time is O(n+N(c)+r+q+d), Omega(1), with no tighter Theta bound established
+// because database, network, request, and shutdown costs vary independently.
+// Auxiliary space is O(n+A(c)+H(q)), Omega(1), with no tighter Theta bound
+// established; N and A are pgx construction costs and H is net/http's concurrent
+// request state. Local validation, ownership transfers, and wiring are time
+// and auxiliary-space O(1), Omega(1), and tight Theta(1).
+func run(ctx context.Context, lookup config.LookupEnv, logOutput io.Writer, openPool poolFactory, listen func(string, string) (net.Listener, error)) error {
 	if ctx == nil {
 		return fmt.Errorf("service context is required")
 	}
 	if logOutput == nil {
 		return fmt.Errorf("service log output is required")
+	}
+	if openPool == nil {
+		return fmt.Errorf("PostgreSQL pool factory is required")
 	}
 	if listen == nil {
 		return fmt.Errorf("service listener factory is required")
@@ -72,6 +90,24 @@ func run(ctx context.Context, lookup config.LookupEnv, logOutput io.Writer, list
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+	poolConfig, err := configured.DatabasePoolConfig()
+	if err != nil {
+		return fmt.Errorf("configure PostgreSQL pool: %w", err)
+	}
+	pool, err := openPool(ctx, poolConfig)
+	if err != nil {
+		if pool != nil {
+			pool.Close()
+		}
+		if contextErr := ctx.Err(); contextErr != nil {
+			return fmt.Errorf("open PostgreSQL pool: %w", contextErr)
+		}
+		return fmt.Errorf("open PostgreSQL pool failed")
+	}
+	if pool == nil {
+		return fmt.Errorf("open PostgreSQL pool returned no pool")
+	}
+	defer pool.Close()
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	handler, err := app.NewHTTPHandler(httpui.NewHandler(), logger, rand.Reader, time.Now)
 	if err != nil {

@@ -608,6 +608,9 @@ operator logs.
 - Pool startup uses the pgx-parsed immutable configuration, permits at most
   five seconds for its initial round trip, closes the new pool on failure, and
   transfers close ownership only after that round trip succeeds.
+- The executable opens the pool before binding the HTTP listener, owns exactly
+  one close on every later startup, serve, cancellation, or shutdown path, and
+  redacts a pool-factory failure before it reaches the process diagnostic.
 - Authentik availability does not necessarily make existing-session reads
   unready; login failures are reported separately.
 - The internal HTTP server permits at most 5 seconds for request headers, 30
