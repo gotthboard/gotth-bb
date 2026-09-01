@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:45 CDT — Consume initial and revalidation attempts distinctly
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_consume.go`
+- `internal/auth/login_consume_test.go`
+- `internal/auth/service.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Generalized the one-time callback consumer around an explicit expected purpose.
+Initial login still requires no session metadata. Revalidation now requires and
+returns one positive stored session ID. Purpose or session mismatches occur only
+after the atomic consume and return no recovered nonce, verifier, or path.
+
+Verification:
+
+- Initial attempts preserve the exact zero session binding
+- Revalidation attempts recover the exact positive server-stored session ID
+- Unknown expected purposes fail before database work
+- Wrong purpose and missing, zero, negative, or unexpected session metadata
+  burn the row and return no usable material
+- `consumeLoginAttempt` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The initial-login service remains behaviorally unchanged and explicitly asks
+  for `purpose=login`.
+- Revalidation exchange and rotation consume the new session binding in later
+  units.
+
 ### 2026-09-01 19:30 CDT — Expose revalidation start through authentication service
 
 Commit: current commit; hash assigned by Git after commit

@@ -15,7 +15,7 @@ import (
 
 const validEncodedLoginState = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
-func TestConsumeInitialLoginAtomicallyRecoversValidatedAttempt(t *testing.T) {
+func TestConsumeLoginAttemptAtomicallyRecoversValidatedInitialAttempt(t *testing.T) {
 	t.Parallel()
 
 	material, protected := testProtectedLoginMaterial(t)
@@ -48,13 +48,34 @@ func TestConsumeInitialLoginAtomicallyRecoversValidatedAttempt(t *testing.T) {
 		return raw, nil
 	}
 
-	got, err := consumeInitialLogin(ctx, consume, func() time.Time { return now }, validate, material.state)
+	got, err := consumeLoginAttempt(ctx, consume, func() time.Time { return now }, validate, "login", material.state)
 	if err != nil || got.material != material || got.returnPath != "/bb/topics/42" || consumeCalls != 1 || validateCalls != 1 {
-		t.Fatalf("consumeInitialLogin() = (%+v, %v), consume calls = %d, validate calls = %d", got, err, consumeCalls, validateCalls)
+		t.Fatalf("consumeLoginAttempt() = (%+v, %v), consume calls = %d, validate calls = %d", got, err, consumeCalls, validateCalls)
 	}
 }
 
-func TestConsumeInitialLoginRejectsDependenciesAndStateBeforeDatabase(t *testing.T) {
+func TestConsumeLoginAttemptRecoversRevalidationSessionBinding(t *testing.T) {
+	t.Parallel()
+
+	material, protected := testProtectedLoginMaterial(t)
+	row := db.OidcLoginAttempt{
+		StateHash:              append([]byte(nil), protected.stateHash[:]...),
+		NonceCiphertext:        append([]byte(nil), protected.nonceCiphertext[:]...),
+		PkceVerifierCiphertext: append([]byte(nil), protected.pkceVerifierCiphertext[:]...),
+		Purpose:                "revalidate",
+		SessionID:              pgtype.Int8{Int64: 73, Valid: true},
+		ReturnPath:             "/bb/topics/42",
+	}
+	got, err := consumeLoginAttempt(
+		context.Background(), returningLoginAttempt(row), time.Now,
+		func(raw string) (string, error) { return raw, nil }, "revalidate", material.state,
+	)
+	if err != nil || got.material != material || got.returnPath != row.ReturnPath || got.sessionID != 73 {
+		t.Fatalf("consumeLoginAttempt() = (%+v, %v)", got, err)
+	}
+}
+
+func TestConsumeLoginAttemptRejectsDependenciesAndStateBeforeDatabase(t *testing.T) {
 	t.Parallel()
 
 	validConsume := func(context.Context, db.ConsumeOIDCLoginAttemptParams) (db.OidcLoginAttempt, error) {
@@ -85,18 +106,21 @@ func TestConsumeInitialLoginRejectsDependenciesAndStateBeforeDatabase(t *testing
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := consumeInitialLogin(test.ctx, test.consume, test.clock, test.validate, test.state)
-			if err == nil || got != (consumedInitialLogin{}) {
-				t.Fatalf("consumeInitialLogin() returned zero result = %v, error = %v", got == (consumedInitialLogin{}), err)
+			got, err := consumeLoginAttempt(test.ctx, test.consume, test.clock, test.validate, "login", test.state)
+			if err == nil || got != (consumedLoginAttempt{}) {
+				t.Fatalf("consumeLoginAttempt() returned zero result = %v, error = %v", got == (consumedLoginAttempt{}), err)
 			}
 			if test.wantCause != nil && !errors.Is(err, test.wantCause) {
 				t.Fatalf("error = %v, want cause %v", err, test.wantCause)
 			}
 		})
 	}
+	if got, err := consumeLoginAttempt(context.Background(), validConsume, validClock, validValidate, "other", validEncodedLoginState); err == nil || got != (consumedLoginAttempt{}) {
+		t.Fatalf("consumeLoginAttempt(invalid purpose) = (%+v, %v), want zero/error", got, err)
+	}
 }
 
-func TestConsumeInitialLoginConsumesFailuresWithoutReturningMaterial(t *testing.T) {
+func TestConsumeLoginAttemptConsumesFailuresWithoutReturningMaterial(t *testing.T) {
 	t.Parallel()
 
 	material, protected := testProtectedLoginMaterial(t)
@@ -131,14 +155,25 @@ func TestConsumeInitialLoginConsumesFailuresWithoutReturningMaterial(t *testing.
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := consumeInitialLogin(context.Background(), test.consume, func() time.Time { return now }, test.validate, material.state)
-			if err == nil || got != (consumedInitialLogin{}) {
-				t.Fatalf("consumeInitialLogin() returned zero result = %v, error = %v", got == (consumedInitialLogin{}), err)
+			got, err := consumeLoginAttempt(context.Background(), test.consume, func() time.Time { return now }, test.validate, "login", material.state)
+			if err == nil || got != (consumedLoginAttempt{}) {
+				t.Fatalf("consumeLoginAttempt() returned zero result = %v, error = %v", got == (consumedLoginAttempt{}), err)
 			}
 			if test.wantCause != nil && !errors.Is(err, test.wantCause) {
 				t.Fatalf("error = %v, want cause %v", err, test.wantCause)
 			}
 		})
+	}
+	for _, session := range []pgtype.Int8{{}, {Valid: true}, {Int64: -1, Valid: true}} {
+		row := withAttemptPurpose(baseRow, "revalidate")
+		row.SessionID = session
+		got, err := consumeLoginAttempt(
+			context.Background(), returningLoginAttempt(row), func() time.Time { return now },
+			panicReturnPathValidator, "revalidate", material.state,
+		)
+		if err == nil || got != (consumedLoginAttempt{}) {
+			t.Fatalf("consumeLoginAttempt(revalidation session %#v) = (%+v, %v), want zero/error", session, got, err)
+		}
 	}
 }
 

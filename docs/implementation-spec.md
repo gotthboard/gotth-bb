@@ -510,7 +510,11 @@ accepted type and cannot mutate forum-local authorization.
 Consumption is one conditional PostgreSQL `UPDATE ... RETURNING`: the state
 hash must exist, remain unconsumed, have `created_at <= now`, and have the
 exclusive expiry `expires_at > now`. Missing, future, expired, and replayed
-attempts all return the same no-row result. One concurrent caller can win.
+attempts all return the same no-row result. One concurrent caller can win. The
+consumer requires an exact expected purpose before the query. After consuming,
+initial login rejects any session binding, while revalidation requires one
+positive stored session ID; either mismatch burns the attempt and returns no
+recovered nonce or verifier.
 
 For revalidation, the callback additionally verifies the existing session,
 updates the identity/profile snapshot, creates a rotated replacement session,

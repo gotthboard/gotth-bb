@@ -216,10 +216,14 @@ func (service *Service) CompleteInitialLogin(ctx context.Context, state, code st
 	completed, err := completeInitialLogin(
 		ctx,
 		func(stageContext context.Context, stateValue string) (consumedInitialLogin, error) {
-			return consumeInitialLogin(
+			consumed, consumeErr := consumeLoginAttempt(
 				stageContext, service.queries.ConsumeOIDCLoginAttempt, service.clock,
-				service.validateReturnPath, stateValue,
+				service.validateReturnPath, "login", stateValue,
 			)
+			if consumeErr != nil {
+				return consumedInitialLogin{}, consumeErr
+			}
+			return consumedInitialLogin{material: consumed.material, returnPath: consumed.returnPath}, nil
 		},
 		service.provider.exchangeInitialLogin,
 		func(stageContext context.Context, claims verifiedIdentityClaims) (createdInitialSession, error) {
