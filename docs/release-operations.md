@@ -1,0 +1,384 @@
+# Release and operations plan
+
+## Document control
+
+| Field | Value |
+| --- | --- |
+| Status | Draft; no infrastructure changes performed |
+| Public base | `https://alhstudios.com/bb/` |
+| Identity provider | Authentik OIDC |
+| Edge proxy | Caddy |
+| Durable store | PostgreSQL |
+| Verification contract | [Traceability and verification](verification.md) |
+
+## 1. Operational principles
+
+- Release artifacts are immutable and traceable to one commit.
+- Configuration and secrets are external to the artifact and repository.
+- Database migration is a separate, visible release step.
+- Readiness is enabled only after configuration and schema compatibility pass.
+- Rollback is planned before deployment.
+- Unknown commit outcomes are investigated, not blindly retried.
+- Backups are not considered valid until restoration succeeds.
+- Restricted content and credentials do not enter logs, metrics, or public
+  health output.
+
+## 2. Environments
+
+### 2.1 Local development
+
+- Local PostgreSQL with disposable data.
+- Controlled test OIDC issuer or dedicated Authentik development application.
+- `BASE_PATH` exercised as both empty and `/bb`.
+- No production secrets or copied production database.
+
+### 2.2 Automated test
+
+- Ephemeral PostgreSQL at a supported version.
+- Deterministic fixtures for the complete access matrix.
+- Controlled OIDC endpoints and signing keys.
+- Fresh and upgrade migration jobs.
+
+### 2.3 Alpha/beta
+
+- Real Caddy route and `/bb` prefix.
+- Dedicated Authentik application/client.
+- Dedicated PostgreSQL database and credentials.
+- Access restricted to designated test users/groups until the owner approves
+  public testing.
+- Production-like logging, backup, migration, and rollback mechanisms.
+
+### 2.4 Production
+
+Production is established only after `1.0.0-rc.N` passes the stable release
+gates. Reusing the beta host is allowed only after its data, secrets, backups,
+monitoring, and recovery posture are explicitly accepted.
+
+## 3. Release identity
+
+Releases follow semantic versioning:
+
+- `1.0.0-alpha.N`: integrated but incomplete version 1.0.
+- `1.0.0-beta.N`: version 1.0 feature-complete user testing.
+- `1.0.0-rc.N`: release candidate with no known scope gaps.
+- `1.0.0`: stable.
+- `1.0.N`: compatible bug/security corrections.
+- `1.N.0`: compatible feature releases in the 1.x line.
+- `N.0.0`: major capability or intentionally incompatible contract.
+
+Build metadata may include date and abbreviated commit, but precedence and
+deployment decisions use the base semantic version and artifact digest.
+
+Each deployed release record contains:
+
+- Version and Git commit.
+- Artifact digest.
+- Build toolchain and dependency lock state.
+- Migration head before and after deploy.
+- Configuration schema version.
+- Deployment timestamp and operator.
+- Verification result and evidence links.
+- Rollback target.
+
+## 4. Build artifact
+
+The release pipeline produces:
+
+- Go service binary.
+- Migration command or verified migration subcommand.
+- Compiled Templ output as part of the binary/build.
+- Pinned HTMX and compiled/versioned Tailwind/static assets.
+- Software bill of materials or dependency manifest.
+- Checksums/digests.
+- Version information exposed through an operator-only command and structured
+  startup log, not a public sensitive endpoint.
+
+Builds run from a clean checkout. A dirty worktree, generated-code drift, test
+failure, or secret finding blocks artifact publication.
+
+## 5. Caddy contract
+
+The intended route shape is:
+
+```caddyfile
+alhstudios.com {
+    redir /bb /bb/
+
+    handle_path /bb/* {
+        reverse_proxy 127.0.0.1:8080
+    }
+}
+```
+
+The final Caddy configuration must be merged with the existing site rather than
+blindly replacing the site block. Before reload:
+
+1. Resolve the current canonical Caddyfile and active configuration.
+2. Confirm that `/bb` does not collide with another handler.
+3. Confirm the application listen address and firewall boundary.
+4. Format and validate the complete configuration.
+5. Capture the prior configuration for rollback.
+6. Reload rather than terminate active traffic.
+7. Verify `/bb`, `/bb/`, assets, health routing policy, and an unknown path.
+
+The application uses configured `PUBLIC_BASE_URL` and `BASE_PATH`; it does not
+trust incoming host or prefix headers to generate callbacks or links.
+
+## 6. Authentik contract
+
+The alpha environment requires a dedicated OIDC provider/application with:
+
+- Exact redirect URI `https://alhstudios.com/bb/auth/callback`.
+- Exact post-logout return URI if RP-initiated logout is enabled.
+- Authorization Code flow.
+- Confidential client credentials stored outside Git.
+- Required identity claims and one bounded groups claim.
+- Owner-approved groups for members, moderators, administrators, and restricted
+  areas.
+- Test identities for each role and at least one nonmember.
+
+Before deployment, record without secrets:
+
+- Issuer URL.
+- Client/application identifier.
+- Claim names and expected types.
+- Group mapping.
+- Session and token lifetimes relevant to revocation behavior.
+
+Client secrets and tokens are never placed in issue bodies, CI logs, release
+notes, screenshots, or repository files.
+
+## 7. PostgreSQL contract
+
+- The forum uses a dedicated database role with only required privileges.
+- Migration privileges are separated from runtime privileges where practical.
+- Connections require the deployment's approved transport protection.
+- Pool sizes and timeouts are bounded and fit the server connection budget.
+- PostgreSQL version support is documented and tested.
+- Database access is not public.
+
+Migration state is checked before readiness. An application that expects a
+different schema head fails closed with an operator-visible error.
+
+## 8. Secrets and configuration
+
+Required secrets include at minimum:
+
+- PostgreSQL credential or connection secret.
+- Authentik OIDC client secret.
+- Any session-token hashing/pepper secret if the final implementation requires
+  one beyond strong random opaque tokens and stored hashes.
+
+Secret handling requirements:
+
+- Runtime injection through the approved host secret mechanism.
+- File permissions or service credentials restricted to the application user.
+- Rotation procedure and owner.
+- No secret values in process arguments when the platform exposes them.
+- No secret values in environment dumps, diagnostics, or support bundles.
+- A committed `.env.example` may name variables but contains no working values.
+
+## 9. Deployment procedure
+
+The concrete service-manager commands are added after the target runtime is
+selected. The required sequence is independent of that choice:
+
+1. Confirm authorization, target environment, release version, and maintenance
+   expectations.
+2. Capture current application version, artifact digest, migration head,
+   configuration version, Caddy config, and health state.
+3. Confirm a recent successful backup and known restore procedure.
+4. Download or stage the immutable artifact and verify its digest.
+5. Validate new configuration without exposing secrets.
+6. Put the new artifact beside the current artifact; do not overwrite the only
+   rollback copy.
+7. Run preflight checks and inspect pending migrations.
+8. Run migrations once with an explicit result.
+9. Start or switch to the new application artifact.
+10. Wait for readiness.
+11. Run deployed smoke tests through Caddy at `/bb/`.
+12. Record result, version, migration head, and evidence.
+13. If any gate fails, stop and execute the documented rollback/repair decision.
+
+Deploy commands must be safe to rerun or must detect completed state. A retry
+must not duplicate migrations, seed users, or moderation data.
+
+## 10. Smoke test
+
+Every deployed prerelease verifies:
+
+- `/bb` redirects to `/bb/`.
+- Public index behavior matches site policy.
+- Authentik login begins with the correct callback and returns successfully.
+- Eligible member local provisioning succeeds.
+- Public, authenticated, and group-restricted areas show only to expected
+  actors.
+- Read-only and archived publishing are rejected correctly.
+- Topic/reply creation and readback work.
+- Restricted direct URL and list leakage checks pass.
+- Logout revokes the local session.
+- Liveness/readiness and structured request IDs are observable to operators.
+
+Alpha may use disposable test content. Production smoke tests use designated
+non-destructive fixtures and do not pollute normal discussions.
+
+## 11. Rollback
+
+Application rollback is allowed only when the previous artifact is compatible
+with the current database schema. The release record identifies that boundary.
+
+Decision order after failure:
+
+1. If the new process failed before migration, restore the previous artifact
+   and configuration.
+2. If migrations ran and are backward-compatible, restore the previous
+   artifact and keep the expanded schema.
+3. If migration outcome is unknown, inspect migration and database state before
+   any retry.
+4. If migration is incompatible but reversible without data loss, execute the
+   reviewed down/repair procedure.
+5. If rollback would destroy data, stop writes and choose forward repair or
+   restore from backup with explicit owner approval.
+
+Never advertise `down` as a rollback merely because the migration tool supports
+the command.
+
+## 12. Backup and restore
+
+Backups cover:
+
+- PostgreSQL data and schema.
+- Required runtime configuration, excluding secrets from broad archives.
+- Secret-recovery mechanism or separately protected secret backup.
+- Caddy and service-manager configuration.
+- Release records and artifact references.
+
+Requirements before stable 1.0:
+
+- Automated scheduled PostgreSQL backups.
+- Copies stored outside the application host failure domain.
+- Retention policy and encryption appropriate to forum content.
+- Backup job failure alerting.
+- Restoration into a clean PostgreSQL instance.
+- Application smoke test against restored data.
+- Measured recovery time and recovery point.
+
+A backup file's existence proves nothing until restoration is tested.
+
+## 13. Observability
+
+### Logs
+
+- Structured service startup/shutdown, request, authentication result,
+  moderation transition, migration, and background-cleanup events.
+- Request IDs propagated through error pages and HTMX errors.
+- No tokens, cookies, secrets, or unrestricted content bodies.
+
+### Metrics
+
+- Request rate, status, and latency by route name.
+- Active/idle PostgreSQL pool state and query-error count.
+- Login success/failure class without token or identity leakage.
+- Session creation/revocation/expiry counts.
+- Publishing and moderation error counts.
+- Rate-limit rejection counts.
+- Backup age and last restore rehearsal.
+
+Metrics labels are bounded. User IDs, topic IDs, paths containing identifiers,
+and group names do not become unbounded labels.
+
+### Alerts
+
+Initial actionable alerts cover:
+
+- Service not ready or repeated restart.
+- Sustained server-error rate.
+- PostgreSQL unavailable or pool exhausted.
+- Migration mismatch.
+- Backup failure or excessive backup age.
+- Disk/capacity threshold.
+- Authentik login failures above an owner-approved threshold.
+
+## 14. Routine operation
+
+- Remove expired OIDC login attempts and sessions in bounded batches.
+- Review rate-limit and moderation signals without collecting unnecessary
+  personal data.
+- Test supported upgrade paths before deploying dependencies or PostgreSQL
+  changes.
+- Review Authentik group mappings after identity-policy changes.
+- Rehearse restore on a schedule.
+- Keep release artifacts and known-good commit references long enough to meet
+  rollback policy.
+- Apply security fixes through a documented patch release, not an untracked
+  production edit.
+
+## 15. Incident handling
+
+### Suspected authorization leak
+
+1. Preserve logs and release identity without copying restricted content more
+   broadly.
+2. Disable or restrict the affected route at the narrowest safe boundary.
+3. Determine all surfaces sharing the defective query/policy.
+4. Fix and test the complete leakage inventory, not only the reported URL.
+5. Review access logs and notify the owner of confirmed exposure.
+
+### Compromised OIDC client secret
+
+1. Rotate/revoke in Authentik.
+2. Update the runtime secret through the approved mechanism.
+3. Restart/reload safely.
+4. Review login events and session policy.
+5. Do not commit the replacement or paste it into issue evidence.
+
+### Database failure
+
+1. Stop unsafe writes or remove readiness.
+2. Establish whether commit outcomes are known.
+3. Recover service or restore to a clean database according to the tested plan.
+4. Verify migration head and smoke tests before readiness.
+
+### Bad release
+
+Use the rollback decision in section 11 and preserve the failed release's logs,
+artifact digest, and migration result for review.
+
+## 16. Alpha.1 operational readiness checklist
+
+- [ ] Target host and service manager selected.
+- [ ] Inbound reachability, firewall, and TLS verified.
+- [ ] Existing Caddy configuration captured and validated with `/bb` route.
+- [ ] PostgreSQL database, runtime role, migration role, and backup location
+      created.
+- [ ] Authentik client, callback, claims, groups, and test users configured.
+- [ ] Runtime secrets installed outside the repository.
+- [ ] Immutable artifact built and digest recorded.
+- [ ] Fresh migrations and preflight pass.
+- [ ] Service starts and readiness passes.
+- [ ] Complete alpha smoke test passes.
+- [ ] Rollback artifact/configuration available.
+- [ ] Deployment record and known limitations published.
+
+This checklist is a plan, not evidence that any item has already occurred.
+
+## 17. Known-good reference
+
+After deploying a candidate fix or release, the owner is asked whether it works
+in the real user workflow. Only after owner confirmation is the exact commit,
+artifact digest, migration head, and configuration schema recorded as a known-
+good reference. Passing automation alone does not claim that user confirmation.
+
+## 18. Open operational decisions
+
+Before alpha deployment, the owner must select or confirm:
+
+1. Target host and whether the service runs under systemd or a container
+   runtime.
+2. Inbound routing/port-forwarding path to the Caddy host.
+3. PostgreSQL host/version and backup destination.
+4. Authentik issuer, client, groups claim, and group names.
+5. Alpha access policy and test users.
+6. Session/revalidation lifetimes.
+7. Soft-deletion and audit retention.
+8. Monitoring and alert destination.
