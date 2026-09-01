@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 05:20 CDT — Wire the bounded HTTP executable lifecycle
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `b4e0a7ae9b48b4fbf4c175bfa127a18cea5731c3`
 
 Affected files:
 
