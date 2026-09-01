@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 10:57 CDT — Harden Authentik provider discovery
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `go.mod`
+- `go.sum`
+- `internal/auth/provider.go`
+- `internal/auth/provider_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Pinned `go-oidc` v3.20.0 and `x/oauth2` v0.36.0 after reading their discovery,
+verification, remote-key, PKCE, and token-authentication contracts. Added exact
+issuer discovery through a ten-second, redirect-refusing HTTP client with a
+1 MiB response cap and a transport-level issuer-origin restriction retained by
+later JWKS/token requests. Discovered authorization, token, and JWKS endpoints
+must be canonical and same-origin. Supported signature algorithms and an
+explicit confidential/public token-authentication style are required before
+constructing the verifier and OAuth2 client.
+
+Verification:
+
+- Controlled confidential and public provider discovery with exact request,
+  endpoints, scopes, callback, client fields, and redacted formatting
+- Nil/canceled contexts, empty client ID, invalid callback/issuer encodings,
+  issuer mismatch, unsafe/off-origin endpoints, unsupported signing algorithms,
+  absent token-authentication methods, non-OK/malformed/oversized bodies,
+  redirect refusal, transport failures, and mid-request cancellation
+- Provider formatter and transport adapter at 100% statement coverage;
+  `discoverOIDCProvider` at 97.2%; auth package 96.5%
+
+Risks / non-goals:
+
+- Two defensive branches are invariant behind the standard HTTP client and a
+  successfully decoded `go-oidc` provider: a synthesized off-origin request and
+  a later failure to decode the already retained discovery claims. They are not
+  made injectable merely to manufacture coverage.
+- Discovery constructs the provider boundary only. Authorization redirects,
+  code exchange, claims, persistence, and cookies remain separate units.
+
 ### 2026-09-01 10:45 CDT — Consume and recover initial login attempts
 
 Commit: current commit; hash assigned by Git after commit

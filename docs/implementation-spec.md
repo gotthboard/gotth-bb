@@ -426,6 +426,13 @@ accept request-provided issuers. Cache keys
 according to the chosen library's documented behavior and expose discovery
 failure through readiness only when it prevents safe operation.
 
+Discovery, token, and JWKS requests use one ten-second HTTP client, refuse
+redirects, reject endpoints outside the configured issuer origin, and cap each
+response body at 1 MiB. Discovery must advertise at least one signing algorithm
+supported by `go-oidc`. Confidential clients pin `client_secret_basic`; local
+public-client development pins the explicitly advertised `none` method rather
+than relying on OAuth2 authentication-style probing.
+
 ### 8.2 Login attempt
 
 - Generate at least 256 bits of random state and nonce material.
