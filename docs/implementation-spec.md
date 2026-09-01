@@ -431,7 +431,8 @@ failure through readiness only when it prevents safe operation.
 - Generate at least 256 bits of random state and nonce material.
 - Generate a PKCE verifier using a cryptographic random source and S256
   challenge.
-- Expire attempts quickly and limit outstanding attempts per browser/session.
+- Expire attempts after a fixed five minutes and limit outstanding attempts per
+  browser/session.
 - Validate return paths against the configured base path; never redirect to an
   arbitrary absolute URL.
 - Record whether the attempt is initial login or session revalidation.

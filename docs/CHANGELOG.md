@@ -5,9 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 10:34 CDT — Correct unreleased change chronology
+### 2026-09-01 10:38 CDT — Bind validated login creation to persistence
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_begin.go`
+- `internal/auth/login_begin_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the initial-login creation boundary. It rejects invalid dependencies or
+canceled context, validates the raw return target before reading entropy,
+normalizes the explicit clock to UTC PostgreSQL microsecond precision,
+generates and protects one attempt, and synchronously inserts exact typed sqlc
+parameters with a fixed five-minute lifetime. Browser material is returned only
+after insertion succeeds.
+
+Verification:
+
+- Exact context, validated return path, purpose, nullable session, state hash,
+  ciphertext, creation, and exclusive-expiry parameters
+- Nil dependencies, canceled context, validation failure/empty result, zero
+  clock, material/protection entropy failures, and insert failure
+- Validators run before entropy; failed creation never calls insert or returns
+  partial browser material
+- `beginInitialLogin` at 100% statement coverage; auth package 95.2%
+
+Risks / non-goals:
+
+- The validator is an explicit authority dependency; this function does not
+  independently know the configured base path.
+- Go strings containing generated browser material remain live until garbage
+  collection even when insertion fails; they are never formatted or logged.
+
+### 2026-09-01 10:34 CDT — Correct unreleased change chronology
+
+Commit: `6862d5ead4807644e9ec81229239eb3d8c78de7d`
 
 Affected files:
 
