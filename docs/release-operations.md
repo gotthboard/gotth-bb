@@ -166,6 +166,26 @@ notes, screenshots, or repository files.
 Migration state is checked before readiness. An application that expects a
 different schema head fails closed with an operator-visible error.
 
+### 7.1 First-administrator operator command
+
+The selected administrator must first complete Authentik login so the exact
+issuer/subject identity already exists locally. With `DATABASE_URL` supplied by
+the approved secret mechanism, an authorized operator runs exactly once:
+
+```sh
+go run -mod=readonly ./cmd/operator bootstrap-administrator \
+  --issuer 'exact-validated-issuer' \
+  --subject 'exact-provider-subject' \
+  --operator 'operator-audit-identifier'
+```
+
+The arguments are identity/audit data, not forum-role claims from Authentik.
+The command prints only committed user and audit IDs. A missing identity,
+suspended target, existing active administrator, transaction failure, or later
+concurrent attempt fails without an admitted result. If command output fails
+after commit or the result is otherwise uncertain, inspect the administrator
+and immutable audit rows before any retry.
+
 ## 8. Secrets and configuration
 
 Required secrets include at minimum:

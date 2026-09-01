@@ -41,6 +41,23 @@ The migration command reads no HTTP or OIDC configuration, does not create a
 connection pool, and does not provide a fake down-migration path. Do not place
 database credentials directly in shell history or log the process environment.
 
+After the intended administrator has completed one successful Authentik login
+and therefore has an existing local `(issuer, subject)` identity, grant the
+first local administrator role with the separate one-shot operator command:
+
+```sh
+go run -mod=readonly ./cmd/operator bootstrap-administrator \
+  --issuer 'https://auth.example/application/o/gotth-bb/' \
+  --subject 'exact-provider-subject' \
+  --operator 'operator-audit-identifier'
+```
+
+The command reads only `DATABASE_URL`, prints only committed user/audit IDs,
+and rejects missing, duplicate, unknown, or extra arguments. It serializes the
+zero-administrator decision and commits the role plus immutable operator audit
+event together. Do not retry an unknown result blindly; inspect the user and
+audit state first. Later attempts fail once an active administrator exists.
+
 The current HTTP shell renders the base-path-safe public area placeholder,
 serves versioned embedded assets, exposes liveness, and intentionally reports
 not-ready until migration-head and administrator invariants are wired into the

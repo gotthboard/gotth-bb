@@ -5,6 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 18:40 CDT — Add the first-administrator operator command
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/operator/main.go`
+- `cmd/operator/main_test.go`
+- `cmd/operator/main_integration_test.go`
+- `README.md`
+- `docs/release-operations.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the separate `gotth-bb-operator bootstrap-administrator` executable. It
+accepts exactly one issuer, subject, and operator audit identifier; reads only
+the redacted database configuration; creates an RFC 4122 version 4 request ID;
+opens one direct PostgreSQL connection; and invokes the governed bootstrap once
+without retry. It prints only committed user/audit IDs. Connection failures are
+redacted, while output failures after a successful transaction explicitly say
+that the grant committed so an operator does not mistake reporting failure for
+transaction rollback.
+
+Verification:
+
+- The command runner reaches 100% statement coverage; 20 race-detector runs
+  cover success, malformed and duplicate arguments, cancellation at each
+  boundary, redacted configuration/connection failures, entropy failure,
+  invalid results, exact close ownership, and committed-output failure
+- Ten PostgreSQL 17 integration repetitions prove the command provisions the
+  selected existing identity, writes one operator audit, reports committed IDs,
+  and rejects a second attempt without another audit
+- The pgx v5.10.0 source contract was checked after integration caught that
+  `ConnConfig.ConnString()` returns the originally parsed string rather than a
+  serialization of mutated fields; the fixture now constructs its target URL
+  explicitly
+
+Risks / non-goals:
+
+- No command was run against a real deployment or non-test identity. Normal
+  administrator role and suspension management remain later alpha work.
+
 ### 2026-09-01 17:58 CDT — Enforce first-administrator governance transaction
 
 Commit: current commit; hash assigned by Git after commit
