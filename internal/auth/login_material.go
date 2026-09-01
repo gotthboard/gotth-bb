@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -29,9 +30,15 @@ func generateLoginMaterial(entropy io.Reader) (loginMaterial, error) {
 	if _, err := io.ReadFull(entropy, raw[:]); err != nil {
 		return loginMaterial{}, fmt.Errorf("read login material entropy: %w", err)
 	}
+	state := raw[:loginSecretBytes]
+	nonce := raw[loginSecretBytes : 2*loginSecretBytes]
+	verifier := raw[2*loginSecretBytes:]
+	if bytes.Equal(state, nonce) || bytes.Equal(state, verifier) || bytes.Equal(nonce, verifier) {
+		return loginMaterial{}, fmt.Errorf("login material entropy repeated a value")
+	}
 	return loginMaterial{
-		state:        base64.RawURLEncoding.EncodeToString(raw[:loginSecretBytes]),
-		nonce:        base64.RawURLEncoding.EncodeToString(raw[loginSecretBytes : 2*loginSecretBytes]),
-		pkceVerifier: base64.RawURLEncoding.EncodeToString(raw[2*loginSecretBytes:]),
+		state:        base64.RawURLEncoding.EncodeToString(state),
+		nonce:        base64.RawURLEncoding.EncodeToString(nonce),
+		pkceVerifier: base64.RawURLEncoding.EncodeToString(verifier),
 	}, nil
 }

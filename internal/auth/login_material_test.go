@@ -47,6 +47,7 @@ func TestGenerateLoginMaterialRejectsMissingOrFailedEntropy(t *testing.T) {
 		{name: "nil reader"},
 		{name: "short reader", reader: strings.NewReader(strings.Repeat("x", 95)), wantErr: io.ErrUnexpectedEOF},
 		{name: "reader failure", reader: errReader{cause: cause}, wantErr: cause},
+		{name: "repeated values", reader: strings.NewReader(strings.Repeat("x", 96))},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {

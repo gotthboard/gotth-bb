@@ -5,9 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 10:37 CDT — Generate fail-closed OIDC login material
+### 2026-09-01 10:46 CDT — Reject repeated OIDC secret blocks
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_material.go`
+- `internal/auth/login_material_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Fail closed when the entropy source repeats any 256-bit state, nonce, or PKCE
+verifier block. In particular, state must never equal the verifier exposed only
+to the token endpoint, or the authorization request would disclose the PKCE
+proof.
+
+Verification:
+
+- A 96-byte repeated source returns zero login material and an error
+- Generator and auth package remain at 100% statement coverage
+- 20 repeated race-enabled auth runs and `make verify`
+
+Risks / non-goals:
+
+- Exact-repeat detection does not attempt to estimate entropy quality. The
+  production caller still must use `crypto/rand.Reader`.
+
+### 2026-09-01 10:37 CDT — Generate fail-closed OIDC login material
+
+Commit: `5c11449dda4abf259c672ba7d03724745739070c`
 
 Affected files:
 
@@ -39,7 +67,7 @@ Risks / non-goals:
 
 ### 2026-09-01 10:23 CDT — Validate configured internal return paths
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `d214516c473f414e26f5f055c416b0f6b6903575`
 
 Affected files:
 
@@ -75,7 +103,7 @@ Risks / non-goals:
 
 ### 2026-09-01 10:06 CDT — Remove the base-path literal from login-attempt storage
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `09f9b612ff0eaea0fceaa5739cbb08a1f92f38ec`
 
 Affected files:
 
@@ -110,7 +138,7 @@ Risks / non-goals:
 
 ### 2026-09-01 09:29 CDT — Render the responsive base-path-safe public shell
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `f07eb57612aac7995901b3d3e38207ccdaf0c6a4`
 
 Affected files:
 
