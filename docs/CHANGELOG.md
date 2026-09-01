@@ -5,9 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:38 CDT — Add the one-shot migration command
+### 2026-09-01 08:52 CDT — Bind relative and canonical URLs to one authority
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/url_builder.go`
+- `internal/httpui/url_builder_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Extended the browser URL builder to require a validated, path-consistent
+`PUBLIC_BASE_URL` and `BASE_PATH` pair. It now produces prefix-safe relative
+paths, canonical absolute URLs that preserve encoded path-segment boundaries,
+and deterministically escaped query strings without consulting request headers.
+
+Verification:
+
+- Red-before-green constructor, absolute-URL, and query-path compile failures
+- Root, `/bb`, alternate nested, Unicode, and hostile path-segment cases
+- Missing, mismatched, credential-bearing, and query-bearing public authority
+  rejection
+- Uninitialized public builder fails closed instead of fabricating root URLs
+- Deterministically sorted, repeated, and escaped query values
+- Corrupted internal builder and ambiguous segment failures
+- `go test -mod=readonly -race -cover ./internal/httpui` at 100% statement
+  coverage
+- 20 repeated race-enabled HTTP UI package runs
+- `make verify`
+
+Risks / non-goals:
+
+- Route handlers remain responsible for query-length and pagination bounds.
+- The builder creates URLs; it does not authorize whether a caller may disclose
+  the resource named by a URL.
+
+### 2026-09-01 08:38 CDT — Add the one-shot migration command
+
+Commit: `beb42175c42f42c4b829eb3c1f0ee9fdc9b2e142`
 
 Affected files:
 

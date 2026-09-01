@@ -1,6 +1,9 @@
 package httpui
 
-import "testing"
+import (
+	"net/url"
+	"testing"
+)
 
 func TestURLBuilderPath(t *testing.T) {
 	t.Parallel()
@@ -25,7 +28,11 @@ func TestURLBuilderPath(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			builder, err := NewURLBuilder(test.basePath)
+			publicBase, parseErr := url.Parse("https://forum.example.test" + test.basePath)
+			if parseErr != nil {
+				t.Fatalf("url.Parse() returned error: %v", parseErr)
+			}
+			builder, err := NewURLBuilder(*publicBase, test.basePath)
 			if err != nil {
 				t.Fatalf("NewURLBuilder(%q) returned error: %v", test.basePath, err)
 			}
@@ -43,7 +50,7 @@ func TestURLBuilderPath(t *testing.T) {
 func TestURLBuilderPathRejectsAmbiguousSegments(t *testing.T) {
 	t.Parallel()
 
-	builder, err := NewURLBuilder("/bb")
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
 	if err != nil {
 		t.Fatalf("NewURLBuilder returned error: %v", err)
 	}
@@ -58,12 +65,122 @@ func TestURLBuilderPathRejectsAmbiguousSegments(t *testing.T) {
 			}
 		})
 	}
+	if got, err := (URLBuilder{}).Path(); err == nil {
+		t.Fatalf("zero-value Path() = %q, want error", got)
+	}
+}
+
+func TestURLBuilderAbsolute(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		publicBase url.URL
+		basePath   string
+		segments   []string
+		want       string
+	}{
+		{name: "root", publicBase: url.URL{Scheme: "https", Host: "forum.example.test"}, want: "https://forum.example.test/"},
+		{name: "prefixed topic", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, basePath: "/bb", segments: []string{"topics", "01JTEST"}, want: "https://forum.example.test/bb/topics/01JTEST"},
+		{name: "escaped segment", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, basePath: "/bb", segments: []string{"areas", "staff/ops?q=1#x"}, want: "https://forum.example.test/bb/areas/staff%2Fops%3Fq=1%23x"},
+		{name: "unicode", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", Path: "/café"}, basePath: "/café", segments: []string{"areas", "déjà vu"}, want: "https://forum.example.test/caf%C3%A9/areas/d%C3%A9j%C3%A0%20vu"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			builder, err := NewURLBuilder(test.publicBase, test.basePath)
+			if err != nil {
+				t.Fatalf("NewURLBuilder() returned error: %v", err)
+			}
+			got, err := builder.Absolute(test.segments...)
+			if err != nil {
+				t.Fatalf("Absolute() returned error: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("Absolute() = %q, want %q", got, test.want)
+			}
+		})
+	}
+
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder() returned error: %v", err)
+	}
+	if got, err := builder.Absolute("topics", ".."); err == nil {
+		t.Fatalf("Absolute() = %q, want error", got)
+	}
+	if got, err := (URLBuilder{basePath: "/\x00", initialized: true}).Absolute(); err == nil {
+		t.Fatalf("Absolute() from corrupted builder = %q, want error", got)
+	}
+	if got, err := (URLBuilder{}).Absolute(); err == nil {
+		t.Fatalf("zero-value Absolute() = %q, want error", got)
+	}
+}
+
+func TestURLBuilderPathWithQuery(t *testing.T) {
+	t.Parallel()
+
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder() returned error: %v", err)
+	}
+	tests := []struct {
+		name     string
+		segments []string
+		query    url.Values
+		want     string
+	}{
+		{name: "empty", segments: []string{"search"}, want: "/bb/search"},
+		{name: "sorted and escaped", segments: []string{"search"}, query: url.Values{"q": {"staff & ops"}, "area": {"announcements/general"}}, want: "/bb/search?area=announcements%2Fgeneral&q=staff+%26+ops"},
+		{name: "repeated values", segments: []string{"search"}, query: url.Values{"area": {"news", "staff"}}, want: "/bb/search?area=news&area=staff"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := builder.PathWithQuery(test.segments, test.query)
+			if err != nil {
+				t.Fatalf("PathWithQuery() returned error: %v", err)
+			}
+			if got != test.want {
+				t.Fatalf("PathWithQuery() = %q, want %q", got, test.want)
+			}
+		})
+	}
+	if got, err := builder.PathWithQuery([]string{"search", ".."}, url.Values{"q": {"test"}}); err == nil {
+		t.Fatalf("PathWithQuery() = %q, want error", got)
+	}
 }
 
 func TestNewURLBuilderRejectsInvalidBasePath(t *testing.T) {
 	t.Parallel()
 
-	if _, err := NewURLBuilder("/bb/.."); err == nil {
+	if _, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb/.."}, "/bb/.."); err == nil {
 		t.Fatal("NewURLBuilder accepted an unsafe base path")
+	}
+}
+
+func TestNewURLBuilderRejectsInconsistentOrUnsafePublicBase(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		publicBase url.URL
+		basePath   string
+	}{
+		{name: "zero URL", basePath: "/bb"},
+		{name: "mismatched path", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", Path: "/other"}, basePath: "/bb"},
+		{name: "credentials", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", User: url.UserPassword("user", "secret"), Path: "/bb"}, basePath: "/bb"},
+		{name: "query", publicBase: url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb", RawQuery: "debug=true"}, basePath: "/bb"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := NewURLBuilder(test.publicBase, test.basePath); err == nil {
+				t.Fatal("NewURLBuilder accepted an unsafe or inconsistent public base")
+			}
+		})
 	}
 }
