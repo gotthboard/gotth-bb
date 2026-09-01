@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:16 CDT — Complete initial login exactly once
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/complete_login.go`
+- `internal/auth/complete_login_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the initial callback coordinator. It consumes the one-time attempt before
+performing exactly one OIDC exchange, then creates the identity and session
+exactly once. Browser credential, validated return path, and expiry are returned
+only after all three stages succeed with complete results.
+
+Every non-context lower-layer failure is collapsed to its stage name at this
+trust boundary. Database causes, provider response details, state, code, claims,
+and tokens therefore cannot escape through the returned error; cancellation is
+preserved for lifecycle handling.
+
+Verification:
+
+- Exact consume → exchange → create ordering and argument/result transfer
+- Failure at each stage stops later work, returns no browser result, and
+  redacts an injected secret cause
+- Nil dependencies, empty state/code, pre-canceled context, cancellation raised
+  by every stage, and incomplete successful-stage results fail closed
+- `completeInitialLogin` at 100% statement coverage; race-enabled auth package
+  tests pass
+
+Risks / non-goals:
+
+- This coordinator deliberately does not retry any stage. A consumed attempt
+  remains consumed after exchange or persistence failure.
+- HTTP query parsing, cookie writing, redirect status, and browser error pages
+  remain in the next handler unit.
+
 ### 2026-09-01 12:05 CDT — Build exact session cookies
 
 Commit: current commit; hash assigned by Git after commit
