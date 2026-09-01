@@ -529,7 +529,10 @@ or mismatched state is the same no-row failure before profile or session writes.
 After the replacement insert succeeds in that transaction, revocation targets
 the same positive session ID and old-token hash, requires it still unrevoked and
 unexpired at the transaction timestamp, and must affect exactly one row before
-commit.
+commit. The replacement is issued and validated at that single transaction
+timestamp and receives a fresh absolute expiry of that timestamp plus the
+configured session maximum age; it does not inherit the old session's remaining
+lifetime after successful fresh OIDC verification.
 
 The first administrator is granted only through an explicit operator command
 against an already provisioned `(issuer, subject)` identity. The command

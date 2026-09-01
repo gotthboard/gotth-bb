@@ -176,6 +176,74 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("post-concurrency counts = (%d users, %d identities, %d sessions, %v)", users, identities, sessions, err)
 	}
 
+	rotationAt := refreshTime.Add(90 * time.Second).UTC().Truncate(time.Microsecond)
+	rotationEmail := "revalidated@example.test"
+	rotationClaims := claims
+	rotationClaims.email = &rotationEmail
+	rotationRaw := bytes.Repeat([]byte{0x44}, sessionTokenBytes)
+	rotated, err := rotateRevalidatedSession(
+		ctx, connections[0], bytes.NewReader(rotationRaw), func() time.Time { return rotationAt },
+		24*time.Hour, 30*time.Minute, second.sessionID, second.token, rotationClaims,
+	)
+	if err != nil || rotated.userID != first.userID || rotated.sessionID <= 0 || rotated.sessionID == second.sessionID ||
+		rotated.token != base64.RawURLEncoding.EncodeToString(rotationRaw) || !rotated.expiresAt.Equal(rotationAt.Add(24*time.Hour)) {
+		t.Fatalf("rotateRevalidatedSession() = (%+v, %v)", rotated, err)
+	}
+	rotationTokenHash := sha256.Sum256([]byte(rotated.token))
+	var oldRevokedAt *time.Time
+	var rotatedIssuedAt, rotatedLastSeenAt, rotatedValidatedAt, rotatedExpiresAt time.Time
+	var rotatedRole, rotatedEmail string
+	if err := connections[0].QueryRow(ctx, `SELECT old_session.revoked_at,
+		new_session.issued_at, new_session.last_seen_at, new_session.validated_at, new_session.expires_at,
+		forum_user.role, forum_user.email
+		FROM public.sessions AS old_session
+		JOIN public.sessions AS new_session ON new_session.user_id = old_session.user_id
+		JOIN public.users AS forum_user ON forum_user.id = new_session.user_id
+		WHERE old_session.id = $1 AND new_session.id = $2 AND new_session.token_hash = $3`,
+		second.sessionID, rotated.sessionID, rotationTokenHash[:],
+	).Scan(&oldRevokedAt, &rotatedIssuedAt, &rotatedLastSeenAt, &rotatedValidatedAt, &rotatedExpiresAt, &rotatedRole, &rotatedEmail); err != nil ||
+		oldRevokedAt == nil || !oldRevokedAt.Equal(rotationAt) || !rotatedIssuedAt.Equal(rotationAt) ||
+		!rotatedLastSeenAt.Equal(rotationAt) || !rotatedValidatedAt.Equal(rotationAt) ||
+		!rotatedExpiresAt.Equal(rotated.expiresAt) || rotatedRole != "moderator" || rotatedEmail != rotationEmail {
+		t.Fatalf("stored rotation = (revoked %v, issued %s, seen %s, validated %s, expires %s, role %q, email %q, error %v)",
+			oldRevokedAt, rotatedIssuedAt, rotatedLastSeenAt, rotatedValidatedAt, rotatedExpiresAt, rotatedRole, rotatedEmail, err)
+	}
+	rotationQueries := db.New(connections[0])
+	rotationObservedAt := pgtype.Timestamptz{Time: rotationAt, Valid: true}
+	rotationIdleCutoff := pgtype.Timestamptz{Time: rotationAt.Add(-30 * time.Minute), Valid: true}
+	secondTokenHash := sha256.Sum256([]byte(second.token))
+	if got, err := rotationQueries.GetActiveSession(ctx, db.GetActiveSessionParams{
+		TokenHash: secondTokenHash[:], ObservedAt: rotationObservedAt, IdleCutoff: rotationIdleCutoff,
+	}); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+		t.Fatalf("old rotated GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
+	}
+	if got, err := rotationQueries.GetActiveSession(ctx, db.GetActiveSessionParams{
+		TokenHash: rotationTokenHash[:], ObservedAt: rotationObservedAt, IdleCutoff: rotationIdleCutoff,
+	}); err != nil || got.SessionID != rotated.sessionID || got.UserID != first.userID {
+		t.Fatalf("replacement GetActiveSession() = (%+v, %v)", got, err)
+	}
+
+	mismatchClaims := claims
+	mismatchClaims.subject = "different-subject"
+	mismatchRaw := bytes.Repeat([]byte{0x45}, sessionTokenBytes)
+	mismatch, err := rotateRevalidatedSession(
+		ctx, connections[0], bytes.NewReader(mismatchRaw), func() time.Time { return rotationAt.Add(time.Minute) },
+		24*time.Hour, 30*time.Minute, first.sessionID, first.token, mismatchClaims,
+	)
+	if err == nil || mismatch != (createdRevalidatedSession{}) {
+		t.Fatalf("identity-mismatch rotation = (%+v, %v), want zero/error", mismatch, err)
+	}
+	mismatchTokenHash := sha256.Sum256([]byte(base64.RawURLEncoding.EncodeToString(mismatchRaw)))
+	var firstStillActive bool
+	var mismatchSessions int
+	if err := connections[0].QueryRow(ctx, `SELECT
+		(SELECT revoked_at IS NULL FROM public.sessions WHERE id = $1),
+		(SELECT count(*) FROM public.sessions WHERE token_hash = $2)`,
+		first.sessionID, mismatchTokenHash[:],
+	).Scan(&firstStillActive, &mismatchSessions); err != nil || !firstStillActive || mismatchSessions != 0 {
+		t.Fatalf("mismatch rollback = (old active %t, replacement count %d, %v)", firstStillActive, mismatchSessions, err)
+	}
+
 	claims.displayName = "Must Roll Back"
 	failed, err := createInitialSession(ctx, connections[0], bytes.NewReader(firstRaw), func() time.Time { return refreshTime.Add(2 * time.Minute) }, 24*time.Hour, claims)
 	if err == nil || failed != (createdInitialSession{}) {

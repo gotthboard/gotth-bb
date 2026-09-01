@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 16:59 CDT — Rotate revalidated sessions atomically
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_rotation.go`
+- `internal/auth/session_rotation_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the revalidated-session rotation transaction. It strictly validates and
+hashes the exact old opaque token, locks the bound active session/user/identity,
+requires immutable issuer/subject continuity, refreshes only approved OIDC
+profile fields, creates a fresh replacement session, and revokes exactly the
+old ID/hash before one commit. The replacement credential never escapes a
+failed or unknown transaction outcome.
+
+Verification:
+
+- Every input and transaction-stage failure returns no replacement credential
+  and rolls back
+- PostgreSQL 17 proves profile refresh and local-role preservation, exact old-
+  token revocation, replacement authentication, fresh absolute lifetime, and
+  identity-mismatch rollback
+- Focused unit tests pass 20 times under the race detector
+- The production function reaches 100% statement coverage with unit and
+  PostgreSQL integration tests combined
+
+Risks / non-goals:
+
+- This unit does not consume the OIDC attempt or exchange the authorization
+  code; the completion coordinator remains the next boundary.
+- Automatic retries remain forbidden, including unknown commit outcomes.
+
 ### 2026-09-01 20:15 CDT — Revoke exact old session during rotation
 
 Commit: current commit; hash assigned by Git after commit
