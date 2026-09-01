@@ -461,6 +461,14 @@ The callback:
 
 Failure after code exchange creates no authenticated browser state.
 
+The accepted identity snapshot contains only verified `iss`, `sub`, `name`,
+`email` when `email_verified=true`, and `picture`. Bounds match the database:
+issuer 2,048 characters, subject 512, display name 80, email 320, and avatar URL
+2,048. Profile claim types are strict; controls are rejected. The avatar must be
+a canonical absolute HTTP(S) URL without credentials or a fragment. OIDC role,
+group, permission, entitlement, and similar claims are not decoded into the
+accepted type and cannot mutate forum-local authorization.
+
 Consumption is one conditional PostgreSQL `UPDATE ... RETURNING`: the state
 hash must exist, remain unconsumed, have `created_at <= now`, and have the
 exclusive expiry `expires_at > now`. Missing, future, expired, and replayed

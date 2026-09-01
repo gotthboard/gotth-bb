@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:08 CDT — Admit only approved verified identity claims
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/identity_claims.go`
+- `internal/auth/identity_claims_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the pure verified-claims admission boundary. It bounds immutable issuer
+and subject coordinates, requires a bounded display name, accepts email only
+when a strict `email_verified` boolean is true, and accepts only a bounded safe
+canonical HTTP(S) avatar URL. Role, group, permission, and entitlement-shaped
+claims are never decoded into the accepted result, so OIDC data has no path to
+forum-local authorization state.
+
+Verification:
+
+- Exact accepted issuer, subject, display name, verified email, and avatar
+- Absent optional fields and explicitly unverified email
+- Empty, oversized, invalid UTF-8/control, null, malformed, and wrong-type
+  coordinate/profile values; missing email-verification evidence
+- Relative, oversized, credentialed, fragmented, empty-query, unsupported-
+  scheme, and decoded-control avatar URLs
+- Attempted administrator role and privileged groups are ignored structurally
+- `validateIdentityClaims` at 100% statement coverage; auth package 97.3%
+
+Risks / non-goals:
+
+- Email is a nullable display/contact snapshot, never an identity key.
+- This boundary accepts already verified token coordinates and claims. Signature,
+  issuer, audience, expiry, nonce, and PKCE validation belong to the exchange
+  boundary that calls it.
+
 ### 2026-09-01 11:02 CDT — Build exact initial OIDC authorization URLs
 
 Commit: current commit; hash assigned by Git after commit
