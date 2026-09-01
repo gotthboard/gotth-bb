@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-01 03:20 CDT — Validate the exact Authentik issuer
 
-Commit: current commit; hash assigned by Git after commit
+Commit: `4d6fedd85768271a7acc91cc5529d5676cea0f0c`
 
 Affected files:
 
