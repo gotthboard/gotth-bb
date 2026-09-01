@@ -42,7 +42,6 @@ func (builder URLBuilder) Path(segments ...string) (string, error) {
 	}
 
 	var path strings.Builder
-	path.Grow(len(builder.basePath) + 1 + escapedPathCapacity(segments))
 	path.WriteString(builder.basePath)
 	path.WriteByte('/')
 
@@ -54,20 +53,4 @@ func (builder URLBuilder) Path(segments ...string) (string, error) {
 	}
 
 	return path.String(), nil
-}
-
-// escapedPathCapacity returns a conservative lower-bound capacity hint; the
-// builder grows normally when percent escaping expands the output.
-//
-// Complexity: for k segments, this is Θ(k) time because Go string length is
-// constant-time; auxiliary space is Θ(1).
-func escapedPathCapacity(segments []string) int {
-	capacity := 0
-	for _, segment := range segments {
-		capacity += len(segment)
-	}
-	if len(segments) > 1 {
-		capacity += len(segments) - 1
-	}
-	return capacity
 }
