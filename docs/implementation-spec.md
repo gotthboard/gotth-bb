@@ -39,10 +39,15 @@ The initial implementation shall use:
 - PostgreSQL 17 for alpha, with PostgreSQL 17.10 as the pinned integration
   reference. Other major versions are unsupported until the same migration,
   constraint, concurrency, and readiness evidence is run against them.
-- `sqlc` for typed query generation from reviewed SQL.
-- A migration tool that records ordered migrations in PostgreSQL and fails on
-  drift; the exact tool is selected after its up/down and transaction behavior
-  is verified.
+- `sqlc` version `v1.31.1`, pinned as a Go tool, for typed query generation
+  from reviewed SQL. Generation uses the local PostgreSQL analyzer and
+  `pgx/v5`; managed databases and remote analysis are disabled.
+- A project-owned forward migration runner. Migration files use contiguous
+  six-digit versions, lowercase names, a one-MiB per-file limit, and immutable
+  SHA-256 records in PostgreSQL. The runner takes a PostgreSQL advisory lock,
+  verifies every applied name and digest before executing pending SQL, and
+  applies each migration and its record in one transaction. There is no fake
+  `down` path for destructive schema changes.
 - `go-oidc/v3` and `x/oauth2` or an equivalent documented OIDC implementation.
 - Goldmark for Markdown parsing and Bluemonday or an equivalent explicit HTML
   allowlist sanitizer.
@@ -561,7 +566,10 @@ event only when the action contract explicitly defines it as idempotent.
 
 ## 15. Migrations
 
-- Migration filenames are ordered and immutable after a release consumes them.
+- Migration filenames are ordered, contiguous, and immutable after a database
+  consumes them. Startup and the migration command reject missing versions,
+  renamed files, changed applied bytes, unknown applied versions, and files
+  larger than one MiB.
 - Each migration documents lock and data-rewrite risk.
 - Transactional DDL is used when PostgreSQL permits it.
 - Destructive schema removal uses expand/migrate/contract across compatible

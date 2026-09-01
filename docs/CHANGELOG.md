@@ -5,9 +5,52 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 06:39 CDT — Wire executable PostgreSQL ownership
+### 2026-09-01 06:52 CDT — Pin SQL generation and migration identity
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `go.mod`
+- `go.sum`
+- `internal/migration/loader.go`
+- `internal/migration/loader_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Pinned sqlc v1.31.1 as a build-only Go tool after reviewing its version-2
+configuration, pgx/v5 generation, migration-directory parsing, local analyzer,
+and transaction contracts. Rejected tern v2.4.3 because its single version row
+cannot detect edited applied SQL. Added the first project-owned migration unit:
+a strict flat loader for contiguous six-digit lowercase filenames, exact
+SHA-256 content identities, nonempty SQL, and a one-MiB file ceiling.
+
+Verification:
+
+- Red-before-green loader tests before `loadMigrations` existed
+- Boundary tests at one MiB minus one, exactly one MiB, one MiB plus one, and
+  four MiB
+- Missing, duplicate, malformed, empty, nested, read-failure, metadata-failure,
+  and dishonest-filesystem cases
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- `go tool sqlc version` reports `v1.31.1`
+- Production dependency traversal contains no sqlc compiler packages
+- `make verify`
+
+Risks / non-goals:
+
+- The sqlc compiler has a large build-only dependency graph and an expensive
+  first compilation. It is not linked into the forum binary.
+- This unit loads and identifies migrations only. PostgreSQL locking, drift
+  comparison, transactional execution, schema SQL, and the migration command
+  remain the next A1-02 units.
+
+### 2026-09-01 06:39 CDT — Wire executable PostgreSQL ownership
+
+Commit: `30dc5a96c190ec0b859b64cca160bfd193f252f8`
 
 Affected files:
 
