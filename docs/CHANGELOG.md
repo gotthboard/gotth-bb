@@ -3,6 +3,43 @@
 This file records admitted implementation changes. Release notes remain a
 separate artifact governed by the release and operations plan.
 
+## Unreleased
+
+### 2026-09-01 02:25 CDT — Make Authentik authentication-only
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/prd.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/feature-plan.md`
+- `docs/verification.md`
+- `docs/release-operations.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Authentik now proves identity only. GOTTH Board owns roles, local groups,
+restricted-area membership, suspensions, and moderation. OIDC claims cannot
+grant local authority. The first administrator is created through an explicit
+audited operator command against an existing issuer/subject identity. This
+upstream correction prevents the implementation from building the rejected
+Authentik-group authorization model.
+
+Verification:
+
+- Canonical-document terminology scan for removed Authentik-group authority
+- Requirement and acceptance-boundary consistency review
+- Markdown link and whitespace checks
+
+Risks / non-goals:
+
+- This change does not implement the OIDC or local authorization mechanisms.
+- Exact Authentik issuer/client, first administrator subject, and deployment
+  values remain runtime owner inputs.
+
 ## 2026-09-01 — Alpha foundation begins
 
 - Implementation commit: `8382c8f374ec22d60a90786bb0006e4a06776631`

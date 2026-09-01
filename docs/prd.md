@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.1 |
+| Document version | 0.2 |
 | Initial development URL | `https://alhstudios.com/bb/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -17,7 +17,7 @@
 GOTTH Board is a self-hosted bulletin board where communities can hold durable,
 searchable discussions without creating another password database. The board
 must support open areas, member-only areas, read-only areas, and areas
-restricted by Authentik group membership. Authorization must apply to every
+restricted by forum-local group membership. Authorization must apply to every
 way content can be discovered, not merely to the final page handler.
 
 Existing generic forum products either own identity themselves, hide access
@@ -31,8 +31,8 @@ for identity.
 
 - Provide a useful discussion board in `1.0.0`, not a disposable prototype.
 - Delegate authentication and primary identity lifecycle to Authentik.
-- Keep forum-specific profiles, content, suspensions, and moderation history
-  inside the forum.
+- Keep forum-specific roles, groups, profiles, content, suspensions, and
+  moderation history inside the forum.
 - Make access rules explicit, auditable, and impossible to bypass through
   search, feeds, counts, direct URLs, or partial HTMX requests.
 - Preserve simple page navigation and stable links beneath `/bb`.
@@ -59,27 +59,29 @@ visibility is public. A visitor cannot create content or submit reports.
 
 ### 4.2 Member
 
-An Authentik user accepted by the configured forum-membership policy. A member
-can read authenticated areas and create content where the area's posting mode
-and group rules permit it.
+An Authentik user with a successfully verified OIDC identity and a local forum
+account. A member can read authenticated areas and create content where the
+area's posting mode, local group rules, and local account state permit it.
 
 ### 4.3 Moderator
 
-A member mapped from a configured Authentik moderator group. A version 1.0
-moderator has global content-moderation access, including restricted areas.
-Every access-changing or content-changing moderator action is audited.
+A member granted the forum-local moderator role by an administrator. A version
+1.0 moderator has global content-moderation access, including restricted
+areas. Every role grant and content-changing moderator action is audited.
 
 ### 4.4 Administrator
 
-A member mapped from a configured Authentik administrator group. An
-administrator manages areas, access rules, role mappings, local account state,
-and site settings. Administrative changes are audited.
+A member granted the forum-local administrator role through the explicit
+bootstrap/operator procedure or by an existing administrator. An administrator
+manages areas, access rules, local roles and groups, local account state, and
+site settings. Administrative changes are audited.
 
 ### 4.5 Identity authority
 
 Authentik determines whether authentication succeeds and supplies the stable
-OIDC subject, display claims, and group claims. The forum determines whether an
-authenticated identity may participate and whether it is locally suspended.
+OIDC subject and approved display claims. The forum owns participation, roles,
+groups, restricted-area membership, and local suspension state. Authentik
+claims never grant moderator, administrator, or area-access privileges.
 
 ## 5. Product rules
 
@@ -91,11 +93,12 @@ authenticated identity may participate and whether it is locally suspended.
   issuer and subject. Email shall never be an identity key.
 - **ID-003:** The first successful login shall create the local forum account
   just in time.
-- **ID-004:** Later logins shall refresh only explicitly approved profile and
-  group fields from verified claims.
-- **ID-005:** Authentik groups shall map through configuration to member,
-  moderator, administrator, and area-access rules; group names shall not be
-  scattered through application code.
+- **ID-004:** Later logins shall refresh only explicitly approved profile
+  fields from verified claims and shall not overwrite forum-local roles or
+  groups.
+- **ID-005:** The forum shall own roles, groups, group membership, and
+  area-access rules. Every role or group-membership mutation shall be explicit,
+  authorized, and audited.
 - **ID-006:** The forum shall maintain server-side sessions with rotation,
   expiration, revocation, and a cookie scoped to `/bb`.
 - **ID-007:** A local suspension shall deny participation even while Authentik
@@ -116,7 +119,7 @@ Visibility values:
 - `public`: visible to everyone.
 - `authenticated`: private/member-only visibility; visible only to accepted
   forum members.
-- `groups`: visible only to accepted members whose current Authentik group set
+- `groups`: visible only to members whose current forum-local group set
   intersects the area's configured groups.
 
 Posting modes:
@@ -207,8 +210,8 @@ Requirements:
   and configure areas.
 - **ADMIN-002:** Administrators shall view local forum accounts and manage
   forum-local suspension state.
-- **ADMIN-003:** Administrators shall configure Authentik group mappings and
-  area group restrictions without code changes.
+- **ADMIN-003:** Administrators shall manage forum-local roles, groups, group
+  membership, and area group restrictions without code changes.
 - **ADMIN-004:** Administrators shall configure site name, description, basic
   branding, and community rules.
 - **ADMIN-005:** Version 1.0 shall provide basic membership, activity, and
@@ -336,7 +339,7 @@ until beta.
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
 - Caddy terminates TLS and routes the external `/bb/` path to the service.
-- Authentik exposes a reachable OIDC issuer and the required group claim.
+- Authentik exposes a reachable OIDC issuer and the required identity claims.
 - SMTP, object storage, WebSockets, SCIM, and external search are not required
   for version 1.0.
 - Production secrets are supplied at runtime and are never committed.
@@ -347,10 +350,9 @@ until beta.
 These do not block document creation but must be resolved before the affected
 implementation begins:
 
-1. Exact Authentik issuer URL and claim name containing groups.
-2. Exact Authentik groups for membership, moderators, and administrators.
-3. Maximum delay between an Authentik disable/group removal and forum access
-   revocation.
+1. Exact Authentik issuer URL and client/application identifier.
+2. Exact issuer/subject pair for the first audited local administrator grant.
+3. Maximum delay between an Authentik disable and forum access revocation.
 4. Whether public areas are enabled at first deployment or merely supported.
 5. Content retention duration for soft-deleted posts and audit events.
 6. Initial rate-limit values and new-account period.

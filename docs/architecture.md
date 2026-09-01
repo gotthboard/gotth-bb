@@ -170,8 +170,9 @@ coded paths.
 3. Authentik redirects to the exact configured callback URL beneath `/bb`.
 4. The callback consumes the state once, exchanges the code, validates issuer,
    audience, signature, expiry, nonce, and PKCE, then extracts approved claims.
-5. One transaction upserts the external identity, replaces current Authentik
-   groups, derives the forum role, and creates a new server-side session.
+5. One transaction creates a new verified identity as a local member or updates
+   an existing approved profile snapshot, preserves every existing forum-local
+   role/group assignment, and creates a new server-side session.
 6. The old anonymous/login cookie state is rotated away.
 
 ### 6.2 Local account state
@@ -181,26 +182,29 @@ operation. Authentik-sourced fields are distinguished from forum-owned fields.
 A forum suspension never modifies Authentik. An Authentik disable does not
 delete authored content.
 
-### 6.3 Group and role freshness
+### 6.3 Identity and local-authorization freshness
 
 Version 1.0 does not store Authentik administrative credentials or user refresh
-tokens. OIDC group claims are refreshed at successful authentication. The
-maximum authenticated session lifetime and revalidation interval are explicit
-settings.
+tokens. Approved profile claims are refreshed at successful authentication.
+Forum roles and groups are local database state and are not derived from OIDC
+claims. The maximum authenticated session lifetime and revalidation interval
+are explicit settings.
 
 When a protected request arrives after the revalidation interval, the existing
 session does not authorize that request. The browser enters a short-lived OIDC
 reauthorization flow. It may request noninteractive authorization where
 Authentik's documented behavior permits it, but failure or required interaction
-is shown honestly. Successful reauthorization refreshes identity and groups,
-creates a rotated session, and revokes the old session. Failure denies the
-protected request; it never falls back to stale privileges.
+is shown honestly. Successful reauthorization refreshes identity/profile
+state, creates a rotated session, and revokes the old session. Failure denies
+the protected request; it never falls back to stale identity validation.
 
-The configured interval therefore bounds stale group or disable authorization
-for active protected use without storing long-lived Authentik tokens. The exact
-window is an owner decision in the PRD and must be selected before beta. No code
-may claim immediate propagation unless the deployed Authentik integration
-actually provides and verifies it.
+The configured interval therefore bounds stale Authentik disable state for
+active protected use without storing long-lived Authentik tokens. Local role,
+group, suspension, and mute state is loaded from PostgreSQL for protected
+requests, so an audited local change takes effect without waiting for OIDC
+reauthorization. The exact Authentik revalidation window is an owner decision
+and no code may claim immediate disable propagation unless the deployed
+integration actually provides and verifies it.
 
 ### 6.4 Logout
 
@@ -218,7 +222,7 @@ request:
 - Authentication status.
 - Local user ID.
 - Effective role.
-- Current Authentik group identifiers or normalized names.
+- Current forum-local group IDs.
 - Local suspension/mute state.
 - Session validation timestamp.
 
@@ -263,12 +267,13 @@ identity access, or content history.
 
 - `users`: local identity, profile snapshot, role, suspension state, timestamps.
 - `external_identities`: OIDC issuer and subject, unique as a pair.
-- `user_groups`: current normalized Authentik group membership.
+- `forum_groups`: locally administered groups and stable local identifiers.
+- `forum_group_members`: audited local user-to-group membership.
 - `sessions`: hashed opaque token, user, issued/expiry/validation timestamps,
   revocation state, and minimal client audit fields.
 - `oidc_login_attempts`: short-lived, one-time state/nonce/PKCE records.
 - `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order.
-- `area_groups`: groups allowed to view a group-restricted area.
+- `area_groups`: local groups allowed to view a group-restricted area.
 - `topics`: area, author, title, state, activity pointers, counters.
 - `posts`: topic, author, stable number, Markdown source, sanitized rendering,
   revision, and soft-deletion state.

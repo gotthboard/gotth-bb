@@ -98,14 +98,10 @@ Unknown or malformed security-sensitive settings fail startup.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
-| `OIDC_GROUPS_CLAIM` | Yes | Claim containing Authentik groups |
-| `MEMBER_GROUPS` | Yes | Groups eligible to participate |
-| `MODERATOR_GROUPS` | Yes | Groups mapped to moderator |
-| `ADMIN_GROUPS` | Yes | Groups mapped to administrator |
 | `SESSION_COOKIE_NAME` | No | Defaults to a host-specific opaque name |
 | `SESSION_MAX_AGE` | Yes | Absolute authenticated-session lifetime |
 | `SESSION_IDLE_TIMEOUT` | Yes | Idle session expiry |
-| `AUTH_REVALIDATE_INTERVAL` | Yes | Maximum accepted identity/group staleness |
+| `AUTH_REVALIDATE_INTERVAL` | Yes | Maximum accepted Authentik identity staleness |
 | `LOG_LEVEL` | No | Structured log severity threshold |
 
 Rules:
@@ -116,7 +112,7 @@ Rules:
   contains no traversal or encoded separator.
 - OIDC callback is computed as `PUBLIC_BASE_URL + /auth/callback`; it is not a
   separate free-form setting.
-- Group lists are normalized once and compared exactly, never by substring.
+- OIDC claims never assign forum roles or local group membership.
 - Secrets are not available to templates, logs, diagnostics, or health output.
 
 ## 5. Core types
@@ -136,7 +132,7 @@ type AccessContext struct {
     Authenticated bool
     UserID        int64
     Role          Role
-    Groups        []string
+    GroupIDs      []int64
     Suspended     bool
     MutedUntil    *time.Time
     ValidatedAt   time.Time
@@ -219,15 +215,13 @@ limits. Suspensions do not delete the row.
 
 Issuer and subject are not user-editable.
 
-### 6.3 `user_groups`
+### 6.3 `forum_groups` and `forum_group_members`
 
-- `user_id`
-- `group_name`
-- `observed_at`
-- primary key `(user_id, group_name)`
-- index on `(group_name, user_id)`
-
-The login transaction replaces the user's set using a bounded claim size.
+`forum_groups` contains a stable generated ID, unique bounded name, creator,
+and timestamps. `forum_group_members` contains `group_id`, `user_id`, the
+administrator that granted membership, and timestamps, with primary key
+`(group_id, user_id)` and an index on `(user_id, group_id)`. Role and membership
+changes append audit events in the same transaction.
 
 ### 6.4 `sessions`
 
@@ -261,7 +255,8 @@ State is single use. Cleanup is bounded and safe to repeat.
 - `visibility`, `posting_mode`
 - `created_by`, `updated_by`, timestamps
 
-`area_groups` uses primary key `(area_id, group_name)`.
+`area_groups` uses primary key `(area_id, group_id)` and foreign keys to the
+local group relation.
 
 Constraints:
 
@@ -310,7 +305,9 @@ bounded reason, workflow status, assignment, and resolution.
 
 `moderation_actions` includes:
 
-- actor and target identifiers
+- closed `actor_kind` (`forum_user` or `operator`) with a check constraint that
+  requires exactly one matching actor identifier
+- target identifiers
 - closed action type
 - required bounded reason where applicable
 - previous and resulting state as bounded structured data
@@ -342,7 +339,7 @@ WHERE
             SELECT 1
             FROM area_groups ag
             WHERE ag.area_id = a.id
-              AND ag.group_name = ANY(sqlc.arg(groups)::text[])
+              AND ag.group_id = ANY(sqlc.arg(group_ids)::bigint[])
         )
     )
 ```
@@ -385,17 +382,25 @@ The callback:
 3. Validates the ID token and nonce.
 4. Validates claim types and configured bounds.
 5. Requires a non-empty subject and issuer.
-6. Normalizes group strings and rejects an oversized claim.
-7. Upserts identity, replaces groups, derives role, checks membership policy,
+6. Validates approved profile claim types and bounds.
+7. Creates a newly verified identity with `RoleMember`, or updates an existing
+   identity/profile without modifying its forum-local role/group membership,
    and creates the session in one transaction.
 8. Rotates cookies and redirects only to the validated internal return path.
 
 Failure after code exchange creates no authenticated browser state.
 
 For revalidation, the callback additionally verifies the existing session,
-updates the identity and group snapshot, creates a rotated replacement session,
+updates the identity/profile snapshot, creates a rotated replacement session,
 and revokes the old session in the transaction. A failed or abandoned
 reauthorization leaves the stale session unable to authorize protected routes.
+
+The first administrator is granted only through an explicit operator command
+against an already provisioned `(issuer, subject)` identity. The command
+requires database/operator authority, rejects a missing or ambiguous identity,
+and commits the local role change with an immutable `actor_kind=operator` audit
+event. OIDC claims do not bootstrap or restore local privileges, and the
+command never invents a forum-user actor for the first grant.
 
 ## 9. Session implementation
 

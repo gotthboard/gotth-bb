@@ -136,17 +136,16 @@ The alpha environment requires a dedicated OIDC provider/application with:
 - Exact post-logout return URI if RP-initiated logout is enabled.
 - Authorization Code flow.
 - Confidential client credentials stored outside Git.
-- Required identity claims and one bounded groups claim.
-- Owner-approved groups for members, moderators, administrators, and restricted
-  areas.
-- Test identities for each role and at least one nonmember.
+- Required stable identity and approved profile claims only.
+- Test identities whose forum roles and local groups are assigned in GOTTH
+  Board, not by Authentik claims.
 
 Before deployment, record without secrets:
 
 - Issuer URL.
 - Client/application identifier.
-- Claim names and expected types.
-- Group mapping.
+- Approved claim names and expected types.
+- Issuer/subject pair selected for the explicit first-administrator grant.
 - Session and token lifetimes relevant to revocation behavior.
 
 Client secrets and tokens are never placed in issue bodies, CI logs, release
@@ -310,7 +309,8 @@ Initial actionable alerts cover:
   personal data.
 - Test supported upgrade paths before deploying dependencies or PostgreSQL
   changes.
-- Review Authentik group mappings after identity-policy changes.
+- Review audited forum-local role and group assignments after access-policy
+  changes.
 - Rehearse restore on a schedule.
 - Keep release artifacts and known-good commit references long enough to meet
   rollback policy.
@@ -355,7 +355,8 @@ artifact digest, and migration result for review.
 - [ ] Existing Caddy configuration captured and validated with `/bb` route.
 - [ ] PostgreSQL database, runtime role, migration role, and backup location
       created.
-- [ ] Authentik client, callback, claims, groups, and test users configured.
+- [ ] Authentik client, callback, approved claims, and test identities configured.
+- [ ] First local administrator granted by the audited operator command.
 - [ ] Runtime secrets installed outside the repository.
 - [ ] Immutable artifact built and digest recorded.
 - [ ] Fresh migrations and preflight pass.
@@ -381,8 +382,8 @@ Before alpha deployment, the owner must select or confirm:
    runtime.
 2. Inbound routing/port-forwarding path to the Caddy host.
 3. PostgreSQL host/version and backup destination.
-4. Authentik issuer, client, groups claim, and group names.
-5. Alpha access policy and test users.
+4. Authentik issuer, client, and approved profile claims.
+5. Initial administrator issuer/subject, alpha access policy, and test users.
 6. Session/revalidation lifetimes.
 7. Soft-deletion and audit retention.
 8. Monitoring and alert destination.

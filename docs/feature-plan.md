@@ -136,15 +136,15 @@ Deliverables:
 
 - OIDC discovery and provider validation.
 - State, nonce, PKCE, callback, and one-time login-attempt storage.
-- Just-in-time local account and group upsert.
-- Role mapping and membership policy.
+- Just-in-time local account/profile upsert without OIDC authorization claims.
+- Explicit audited first-administrator operator grant.
 - Opaque server-side session, rotation, expiration, revocation, logout.
 
 Exit evidence:
 
 - Controlled issuer tests cover success, state mismatch, nonce mismatch,
   invalid signature, wrong issuer/audience, expired attempt, replay, and
-  ineligible group.
+  attempted privilege injection through unapproved claims.
 - Logs and browser state contain no token leaks.
 
 ### A1-05: area access model
@@ -295,7 +295,8 @@ Beta work emphasizes:
 - Real user feedback and usability corrections.
 - Accessibility audit of all core flows.
 - Query plans and pagination under representative data.
-- Authentik group-change and session-revocation behavior.
+- Authentik disable/session-revalidation behavior and immediate local
+  role/group revocation.
 - Backup/restore implementation and initial rehearsal.
 - Operator dashboards, logs, and actionable error behavior.
 

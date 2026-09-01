@@ -40,7 +40,7 @@ exists.
 
 | Requirements | Primary implementation surface | Required evidence | First gate |
 | --- | --- | --- | --- |
-| ID-001–ID-005 | `auth`, identity/group stores, role mapping | UT, DB, HTTP, E2E, SEC | Alpha.1 |
+| ID-001–ID-005 | `auth`, identity store, local role/group stores | UT, DB, HTTP, E2E, SEC | Alpha.1 |
 | ID-006–ID-009 | session store/middleware, suspension policy | UT, DB, HTTP, SEC | Alpha.1 |
 | ACL-001–ACL-003 | area schema and policy types | UT, DB, REV | Alpha.1 |
 | ACL-004–ACL-006 | every area-owned query and route | DB, HTTP, E2E, SEC | Alpha.1 |
@@ -73,7 +73,6 @@ all publishing until restored.
 | Actor | Public normal | Public read-only | Auth normal | Auth read-only | Group normal, match | Group normal, no match |
 | --- | --- | --- | --- | --- | --- | --- |
 | Visitor | V | V | - | - | - | - |
-| Authenticated nonmember | V | V | - | - | - | - |
 | Member | VTR | V | VTR | V | - unless matched | - |
 | Matching-group member | VTR | V | VTR | V | VTR | - for other groups |
 | Moderator | VTRS | VTRS | VTRS | VTRS | VTRS | VTRS |
@@ -86,8 +85,10 @@ Additional states tested for each relevant actor:
 - User active, muted, suspended, and suspension expired.
 - Post author versus other member.
 - Existing object versus unauthorized object versus nonexistent object.
-- Current Authentik group snapshot versus removed group after the configured
-  revalidation boundary.
+- Current forum-local group membership versus audited removal, which takes
+  effect on the next protected request.
+- Current Authentik identity versus disable after the configured revalidation
+  boundary.
 
 ## 5. Leakage test inventory
 
@@ -121,19 +122,22 @@ Automated tests cover:
 
 - Correct issuer, audience, signature, expiry, nonce, state, and PKCE.
 - Wrong issuer, wrong audience, invalid signature, expired token, missing
-  subject, malformed group claim, oversized claim, and callback replay.
+  subject, malformed/oversized approved profile claims, and callback replay.
 - Identity collision and mutable-email change.
-- Member/moderator/administrator precedence when claims contain multiple groups.
-- Ineligible Authentik user.
+- OIDC claims cannot grant moderator, administrator, or local-group access.
+- Audited local member/moderator/administrator role transitions.
+- Audited local group grant and removal with immediate access change.
+- First-administrator operator grant rejects missing and ambiguous identities.
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.
 - Logout when Authentik logout succeeds, fails, or is unavailable.
-- Group removal at the documented revalidation boundary.
+- Authentik disable at the documented revalidation boundary.
 - Token, code, cookie, verifier, and secret redaction in logs.
 
-Deployed E2E verification uses a dedicated Authentik application and test users
-for each role. Production identities are not fixtures.
+Deployed E2E verification uses a dedicated Authentik application and test
+identities. Forum roles and groups are assigned locally for the access matrix;
+production identities are not fixtures.
 
 ## 7. Content and concurrency tests
 
