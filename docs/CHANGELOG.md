@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 18:00 CDT — Activate browser authentication routes
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added one browser-router constructor that activates initial login, the exact
+OIDC callback, authenticated root session loading, and local CSRF-protected
+logout through the authentication service. Infrastructure and unknown paths
+bypass session lookup so database failure cannot break liveness, static assets,
+or deterministic not-found responses.
+
+Verification:
+
+- Login, callback, authenticated root, and logout reach exactly their intended
+  service methods and retain bounded route attribution
+- Health, static, and unknown routes never invoke session authentication even
+  when a session cookie is present
+- Logout uses the concrete 4 KiB bounded CSRF validator and revokes once
+- Constructor dependency failures return no partial handler
+
+Risks / non-goals:
+
+- `NewAuthenticatedHandler` reaches 87.9% statement coverage. The uncovered
+  lines are defensive error returns from later constructors after the same
+  builder and cookie inputs have already passed stricter earlier constructors;
+  injecting impossible failures solely for a percentage would add fake
+  production seams.
+- The executable does not construct this router until the next startup-wiring
+  unit. Revalidation and first-administrator operation remain separate work.
+
 ### 2026-09-01 17:30 CDT — Preserve authenticated route attribution
 
 Commit: current commit; hash assigned by Git after commit

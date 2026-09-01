@@ -586,6 +586,13 @@ Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
 bounded.
 
+The browser router activates `/login`, `/auth/callback`, and `/logout` as exact
+paths. Session lookup wraps only exact routes that can consume identity; in the
+current shell those are `/` and `/logout`. Health, static, and unknown paths go
+directly to the public router and cannot become unavailable merely because the
+session store is unavailable. Each later forum route must opt into session
+lookup explicitly when it is admitted.
+
 ## 11. Full-page and HTMX responses
 
 - Every browser-facing service response, including request-ID failure, panic
