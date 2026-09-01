@@ -5,6 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 18:40 CDT — Wire authentication into service startup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+The executable now opens its validated PostgreSQL pool, constructs the real
+OIDC/session service, activates the authenticated browser router, and only then
+binds the HTTP listener. Authentication construction failures are redacted,
+preserve cancellation, and close the pool exactly once. Cookie transport is
+derived from the immutable public URL scheme.
+
+Verification:
+
+- Startup passes the owned session-capable pool and `/bb/` URL authority to the
+  authentication boundary exactly once
+- A live internal `GET /login` reaches the activated route and emits the
+  expected provider redirect plus `/bb/` state-cookie scope
+- Authentication failure, empty service, and cancellation never bind and close
+  the pool once without leaking the cause
+- Existing pool, listener, cancellation, HTTP lifecycle, and redaction tests
+  remain race-clean
+
+Risks / non-goals:
+
+- `run` reaches 92.2% statement coverage, including listener-close and HTTP
+  serve failures. Its remaining lines are defensive constructor failures made
+  unreachable by earlier validated configuration and fixed nonnil dependencies;
+  fake production seams are not added to manufacture those failures. The
+  process entrypoint remains separately uninstrumented because it owns signals
+  and `os.Exit`.
+- Readiness remains deliberately unavailable until its database/migration
+  check replaces the current fail-closed response.
+
 ### 2026-09-01 18:20 CDT — Construct authentication without exposing secrets
 
 Commit: current commit; hash assigned by Git after commit

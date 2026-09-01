@@ -5,11 +5,17 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,6 +23,11 @@ type notifyingListener struct {
 	net.Listener
 	once      sync.Once
 	accepting chan struct{}
+}
+
+type closeFailingListener struct {
+	net.Listener
+	err error
 }
 
 type fakeDatabasePool struct {
@@ -36,15 +47,60 @@ func (pool *fakeDatabasePool) closeCount() int {
 	return pool.closes
 }
 
+func (*fakeDatabasePool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	panic("database execution is not expected")
+}
+
+func (*fakeDatabasePool) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	panic("database query is not expected")
+}
+
+func (*fakeDatabasePool) QueryRow(context.Context, string, ...any) pgx.Row {
+	panic("database query is not expected")
+}
+
+func (*fakeDatabasePool) Begin(context.Context) (pgx.Tx, error) {
+	panic("database transaction is not expected")
+}
+
 func returnPool(pool databasePool) poolFactory {
 	return func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return pool, nil
 	}
 }
 
+func validAuthenticationFactory() authenticationFactory {
+	return func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error) {
+		return fakeAuthenticationService{}, nil
+	}
+}
+
+type fakeAuthenticationService struct{}
+
+func (fakeAuthenticationService) BeginInitialLogin(context.Context, string) (string, string, error) {
+	const state = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	return "https://auth.example/authorize?state=" + state, state, nil
+}
+
+func (fakeAuthenticationService) CompleteInitialLogin(context.Context, string, string) (string, string, time.Time, error) {
+	return "", "", time.Time{}, errors.New("callback is not expected")
+}
+
+func (fakeAuthenticationService) AuthenticateSession(context.Context, string) (auth.SessionAuthentication, error) {
+	return auth.SessionAuthentication{}, nil
+}
+
+func (fakeAuthenticationService) RevokeSession(context.Context, string) (bool, error) {
+	return false, nil
+}
+
 func (listener *notifyingListener) Accept() (net.Conn, error) {
 	listener.once.Do(func() { close(listener.accepting) })
 	return listener.Listener.Accept()
+}
+
+func (listener *closeFailingListener) Close() error {
+	return listener.err
 }
 
 func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
@@ -58,9 +114,18 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var logs bytes.Buffer
 	pool := &fakeDatabasePool{}
+	authenticationCalls := 0
+	authenticationReceivedPool := false
+	authenticationCookiePath := ""
+	authentication := func(_ context.Context, _ config.Config, database auth.SessionDatabase, builder httpui.URLBuilder) (httpui.AuthenticationService, error) {
+		authenticationCalls++
+		authenticationReceivedPool = database == pool
+		authenticationCookiePath, _ = builder.CookiePath()
+		return fakeAuthenticationService{}, nil
+	}
 	result := make(chan error, 1)
 	go func() {
-		result <- run(ctx, mapLookup(values), &logs, returnPool(pool), func(string, string) (net.Listener, error) {
+		result <- run(ctx, mapLookup(values), &logs, returnPool(pool), authentication, func(string, string) (net.Listener, error) {
 			return wrapped, nil
 		})
 	}()
@@ -68,6 +133,20 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	case <-accepting:
 	case <-time.After(time.Second):
 		t.Fatal("server did not begin accepting")
+	}
+	if authenticationCalls != 1 || !authenticationReceivedPool || authenticationCookiePath != "/bb/" {
+		t.Fatalf("authentication wiring = (calls %d, pool %t, cookie path %q)", authenticationCalls, authenticationReceivedPool, authenticationCookiePath)
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	response, err := client.Get("http://" + listener.Addr().String() + "/login")
+	if err != nil {
+		t.Fatalf("GET /login returned error: %v", err)
+	}
+	_ = response.Body.Close()
+	cookies := response.Cookies()
+	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "https://auth.example/authorize?state=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" ||
+		len(cookies) != 1 || cookies[0].Name != "gotth_bb_session_oidc_state" || cookies[0].Path != "/bb/" || cookies[0].Secure {
+		t.Fatalf("GET /login = (status %d, location %q)", response.StatusCode, response.Header.Get("Location"))
 	}
 	cancel()
 	if err := <-result; err != nil {
@@ -84,27 +163,31 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 func TestRunRejectsInvalidDependenciesAndRedactsConfigFailure(t *testing.T) {
 	const secret = "do-not-expose-service-secret"
 	validPool := returnPool(&fakeDatabasePool{})
-	if err := run(nil, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, net.Listen); err == nil {
+	validAuthentication := validAuthenticationFactory()
+	if err := run(nil, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, net.Listen); err == nil {
 		t.Fatal("run(nil, lookup, output) accepted nil context")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), nil, validPool, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), nil, validPool, validAuthentication, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, nil) accepted nil output")
 	}
 	values := validEnvironment("127.0.0.1:8080")
 	values["OIDC_ISSUER_URL"] = "https://" + secret + "%zz.example.com/application/o/gotth-bb/"
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, nil); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, nil); err == nil {
 		t.Fatal("run(context, lookup, output, nil) accepted nil listener factory")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, nil, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, nil, validAuthentication, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, output, nil, listener) accepted nil pool factory")
 	}
-	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, net.Listen)
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, nil, net.Listen); err == nil {
+		t.Fatal("run(context, lookup, output, pool, nil, listener) accepted nil authentication factory")
+	}
+	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, net.Listen)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() error = %v", err)
 	}
 	values = validEnvironment("127.0.0.1:8080")
 	values["DATABASE_URL"] = "postgres://" + secret + "%zz"
-	err = run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, net.Listen)
+	err = run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, net.Listen)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() database configuration error = %v", err)
 	}
@@ -113,7 +196,7 @@ func TestRunRejectsInvalidDependenciesAndRedactsConfigFailure(t *testing.T) {
 func TestRunReportsListenFailure(t *testing.T) {
 	values := validEnvironment("127.0.0.1:8080")
 	pool := &fakeDatabasePool{}
-	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnPool(pool), func(string, string) (net.Listener, error) {
+	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), func(string, string) (net.Listener, error) {
 		return nil, errors.New("bind failed")
 	})
 	if err == nil || !strings.Contains(err.Error(), "listen for HTTP") {
@@ -130,20 +213,20 @@ func TestRunRejectsInvalidPoolResultsWithoutLeakingCause(t *testing.T) {
 	failed := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return nil, errors.New(secret)
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, failed, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, failed, validAuthenticationFactory(), net.Listen); err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() pool-open error = %v", err)
 	}
 	empty := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return nil, nil
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, empty, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, empty, validAuthenticationFactory(), net.Listen); err == nil {
 		t.Fatal("run() accepted a nil database pool")
 	}
 	returned := &fakeDatabasePool{}
 	returnedWithError := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return returned, errors.New(secret)
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnedWithError, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnedWithError, validAuthenticationFactory(), net.Listen); err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() pool-and-error result = %v", err)
 	}
 	if returned.closeCount() != 1 {
@@ -154,8 +237,50 @@ func TestRunRejectsInvalidPoolResultsWithoutLeakingCause(t *testing.T) {
 		cancel()
 		return nil, errors.New(secret)
 	}
-	if err := run(ctx, mapLookup(values), &bytes.Buffer{}, canceled, net.Listen); !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), secret) {
+	if err := run(ctx, mapLookup(values), &bytes.Buffer{}, canceled, validAuthenticationFactory(), net.Listen); !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() canceled pool-open error = %v", err)
+	}
+}
+
+func TestRunClosesPoolAndRedactsAuthenticationConstructionFailures(t *testing.T) {
+	const secret = "do-not-expose-authentication-construction-cause"
+	for _, test := range []struct {
+		name    string
+		factory authenticationFactory
+		cancel  bool
+	}{
+		{name: "failure", factory: func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error) {
+			return nil, errors.New(secret)
+		}},
+		{name: "empty service", factory: func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error) {
+			return nil, nil
+		}},
+		{name: "cancellation", cancel: true},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			factory := test.factory
+			if test.cancel {
+				factory = func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error) {
+					cancel()
+					return nil, errors.New(secret)
+				}
+			}
+			pool := &fakeDatabasePool{}
+			listened := false
+			err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), factory, func(string, string) (net.Listener, error) {
+				listened = true
+				return nil, errors.New("must not listen")
+			})
+			if err == nil || strings.Contains(err.Error(), secret) || listened || pool.closeCount() != 1 {
+				t.Fatalf("run() = (error %v, listened %t, pool closes %d)", err, listened, pool.closeCount())
+			}
+			if test.cancel && !errors.Is(err, context.Canceled) {
+				t.Fatalf("canceled run error = %v", err)
+			}
+		})
 	}
 }
 
@@ -167,7 +292,7 @@ func TestRunClosesPoolWhenStartupIsCanceledAfterOpen(t *testing.T) {
 		return pool, nil
 	}
 	listened := false
-	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, openAndCancel, func(string, string) (net.Listener, error) {
+	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, openAndCancel, validAuthenticationFactory(), func(string, string) (net.Listener, error) {
 		listened = true
 		return nil, errors.New("must not listen")
 	})
@@ -183,7 +308,7 @@ func TestRunDoesNotBindAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	called := false
-	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), func(string, string) (net.Listener, error) {
+	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), func(string, string) (net.Listener, error) {
 		called = true
 		return nil, errors.New("must not bind")
 	})
@@ -198,7 +323,7 @@ func TestRunClosesListenerWhenCanceledDuringBind(t *testing.T) {
 		t.Fatalf("net.Listen() returned error: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), func(string, string) (net.Listener, error) {
+	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), func(string, string) (net.Listener, error) {
 		cancel()
 		return listener, nil
 	})
@@ -207,6 +332,39 @@ func TestRunClosesListenerWhenCanceledDuringBind(t *testing.T) {
 	}
 	if closeErr := listener.Close(); !errors.Is(closeErr, net.ErrClosed) {
 		t.Fatalf("listener remained open after cancellation: %v", closeErr)
+	}
+}
+
+func TestRunReportsListenerCloseFailureAfterCancellationDuringBind(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen() returned error: %v", err)
+	}
+	defer func() { _ = listener.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), func(string, string) (net.Listener, error) {
+		cancel()
+		return &closeFailingListener{Listener: listener, err: errors.New("close failed")}, nil
+	})
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "close canceled listener") {
+		t.Fatalf("run() error = %v", err)
+	}
+}
+
+func TestRunReturnsHTTPServeFailureAndClosesPool(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen() returned error: %v", err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatalf("listener.Close() returned error: %v", err)
+	}
+	pool := &fakeDatabasePool{}
+	err = run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), func(string, string) (net.Listener, error) {
+		return listener, nil
+	})
+	if err == nil || pool.closeCount() != 1 {
+		t.Fatalf("run() = (error %v, pool closes %d)", err, pool.closeCount())
 	}
 }
 

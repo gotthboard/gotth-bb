@@ -732,6 +732,11 @@ operator logs.
 - Pool startup uses the pgx-parsed immutable configuration, permits at most
   five seconds for its initial round trip, closes the new pool on failure, and
   transfers close ownership only after that round trip succeeds.
+- After pool ownership transfers, the executable performs bounded OIDC
+  discovery through the narrow configuration constructor and builds the
+  authenticated browser router before binding the listener. Authentication
+  construction failure is redacted, preserves cancellation, closes the pool
+  exactly once, and leaves no listening socket.
 - The executable opens the pool before binding the HTTP listener, owns exactly
   one close on every later startup, serve, cancellation, or shutdown path, and
   redacts a pool-factory failure before it reaches the process diagnostic.
