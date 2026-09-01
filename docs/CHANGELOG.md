@@ -5,9 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 10:46 CDT — Reject repeated OIDC secret blocks
+### 2026-09-01 11:01 CDT — Protect login-attempt database secrets
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_protection.go`
+- `internal/auth/login_protection_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added fixed versioned AES-256-GCM envelopes for the OIDC nonce and PKCE
+verifier. Separate HMAC-SHA-256 keys are derived from the 256-bit browser state
+for each field, random 96-bit nonces are stored in each envelope, and the state
+hash is authenticated as additional data. The database lookup stores only
+SHA-256 of the canonical browser state.
+
+Verification:
+
+- Exact state lookup hash and two deterministic envelope SHA-256 fixtures
+- Fixed version/72-byte envelope shape and absence of plaintext substrings
+- Invalid, malformed, short, noncanonical, or repeated login material fails
+  before reading protection entropy
+- Nil, short, and failing nonce readers return zero protected material and
+  preserve the entropy failure cause
+- Auth package coverage 93.0%; `protectLoginMaterial` 91.5%
+
+Risks / non-goals:
+
+- Database protection is keyed by the short-lived 256-bit state. Disclosure of
+  the live browser state compromises that attempt and already defeats its CSRF
+  role; no long-lived encryption key or OIDC token is stored.
+- Five branches are structurally unreachable under the fixed standard-library
+  contracts: AES-256 key rejection, standard AES-GCM construction/overhead
+  failure, and their two closure error propagations. Fake cipher injection
+  merely to color those lines would weaken the mechanism.
+
+### 2026-09-01 10:46 CDT — Reject repeated OIDC secret blocks
+
+Commit: `c6283bf0a43e56ce55de9ddf9a80f7f76005db71`
 
 Affected files:
 
