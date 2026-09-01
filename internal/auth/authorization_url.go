@@ -19,7 +19,7 @@ import (
 // decodes, three fixed comparisons, one SHA-256 challenge, and bounded URL
 // construction from immutable provider fields.
 func (provider discoveredOIDCProvider) initialAuthorizationURL(material loginMaterial) (string, error) {
-	if provider.provider == nil || provider.verifier == nil || provider.oauth2Config.ClientID == "" ||
+	if provider.provider == nil || provider.verifier == nil || provider.httpClient == nil || provider.oauth2Config.ClientID == "" ||
 		provider.oauth2Config.Endpoint.AuthURL == "" || provider.oauth2Config.RedirectURL == "" ||
 		!slices.Equal(provider.oauth2Config.Scopes, []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail}) {
 		return "", fmt.Errorf("OIDC provider is not initialized for initial authorization")

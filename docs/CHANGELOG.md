@@ -5,6 +5,59 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:18 CDT — Exchange and verify OIDC codes exactly once
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `go.mod`
+- `internal/auth/provider.go`
+- `internal/auth/provider_test.go`
+- `internal/auth/authorization_url.go`
+- `internal/auth/authorization_url_test.go`
+- `internal/auth/exchange.go`
+- `internal/auth/exchange_test.go`
+- `internal/auth/identity_claims.go`
+- `internal/auth/identity_claims_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the one-shot code-exchange boundary and retained the hardened HTTP client
+inside the redacted discovered-provider value so token requests cannot silently
+fall back to the default client. The exchange sends the recovered PKCE verifier
+once, bounds the authorization code and raw ID token, verifies signature,
+issuer, audience, expiry, nonce, and any advertised access-token hash, then
+admits only the approved identity snapshot. Access, refresh, and ID tokens are
+never returned or persisted. HTTPS issuers now also reject HTTP avatar claims.
+
+Verification:
+
+- Controlled ES256 discovery, Basic-auth token request, exact code/verifier/
+  redirect/grant fields, cached JWKS verification, nonce, access-token hash,
+  approved profile result, and exactly one exchange
+- Non-OK response-body redaction; missing/wrong/oversized ID tokens; invalid
+  signature, issuer, audience, expiry, nonce, subject, approved claims, access
+  token, and access-token hash
+- Nil/canceled contexts, cancellation during the token request, incomplete
+  provider, empty/oversized/control/invalid-UTF-8 code, and malformed recovered
+  nonce or verifier without a network request
+- Controlled provider and authorization tests prove the retained HTTP-client
+  invariant; exchange function 93.1%, auth package 96.7%
+
+Risks / non-goals:
+
+- Four branches remain invariant behind successful `x/oauth2`/`go-oidc`
+  contracts: a nil token without error, a post-success raw-claims decode/nil
+  map, and request-context cancellation appearing only after verifier failure.
+  No fake token/verifier interfaces were introduced to manufacture them.
+- Token strings are immutable Go strings and cannot be explicitly cleared;
+  they remain function-local and are never formatted, logged, returned, or
+  stored.
+- Identity/session persistence and browser cookies remain later boundaries.
+
 ### 2026-09-01 11:08 CDT — Admit only approved verified identity claims
 
 Commit: current commit; hash assigned by Git after commit
@@ -95,7 +148,7 @@ Explanation:
 Pinned `go-oidc` v3.20.0 and `x/oauth2` v0.36.0 after reading their discovery,
 verification, remote-key, PKCE, and token-authentication contracts. Added exact
 issuer discovery through a ten-second, redirect-refusing HTTP client with a
-1 MiB response cap and a transport-level issuer-origin restriction retained by
+512 KiB response cap and a transport-level issuer-origin restriction retained by
 later JWKS/token requests. Discovered authorization, token, and JWKS endpoints
 must be canonical and same-origin. Supported signature algorithms and an
 explicit confidential/public token-authentication style are required before

@@ -15,7 +15,7 @@ import (
 
 const (
 	oidcHTTPTimeout          = 10 * time.Second
-	oidcHTTPResponseMaxBytes = 1 << 20
+	oidcHTTPResponseMaxBytes = 512 << 10
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
@@ -27,6 +27,7 @@ func (roundTrip roundTripperFunc) RoundTrip(request *http.Request) (*http.Respon
 type discoveredOIDCProvider struct {
 	provider     *oidc.Provider
 	verifier     *oidc.IDTokenVerifier
+	httpClient   *http.Client
 	oauth2Config oauth2.Config
 }
 
@@ -41,7 +42,7 @@ func (discoveredOIDCProvider) Format(state fmt.State, _ rune) {
 // configured Authentik origin, pins supported signature algorithms and a token
 // authentication style, and constructs the OAuth2 client and ID-token verifier.
 //
-// Complexity: for a discovery document of n bytes (n <= 1 MiB), time and
+// Complexity: for a discovery document of n bytes (n <= 512 KiB), time and
 // auxiliary space are O(n), Omega(1). Network work is one bounded discovery
 // request with a ten-second client timeout; later token/JWKS requests retain the
 // same response bound, timeout, redirect refusal, and origin restriction.
@@ -167,5 +168,5 @@ func discoverOIDCProvider(
 		Scopes:       []string{oidc.ScopeOpenID, oidc.ScopeProfile, oidc.ScopeEmail},
 	}
 	verifier := provider.Verifier(&oidc.Config{ClientID: clientID})
-	return discoveredOIDCProvider{provider: provider, verifier: verifier, oauth2Config: oauthConfig}, nil
+	return discoveredOIDCProvider{provider: provider, verifier: verifier, httpClient: client, oauth2Config: oauthConfig}, nil
 }

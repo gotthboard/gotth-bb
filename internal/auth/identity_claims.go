@@ -97,6 +97,9 @@ func validateIdentityClaims(issuer, subject string, claims map[string]json.RawMe
 			strings.IndexFunc(parsed.Path, unicode.IsControl) >= 0 || strings.IndexFunc(parsed.RawQuery, unicode.IsControl) >= 0 || parsed.String() != picture {
 			return verifiedIdentityClaims{}, fmt.Errorf("verified OIDC picture claim is not a safe canonical URL")
 		}
+		if strings.HasPrefix(issuer, "https://") && parsed.Scheme != "https" {
+			return verifiedIdentityClaims{}, fmt.Errorf("verified OIDC picture claim must use HTTPS for an HTTPS issuer")
+		}
 		acceptedPicture = &picture
 	}
 	return verifiedIdentityClaims{

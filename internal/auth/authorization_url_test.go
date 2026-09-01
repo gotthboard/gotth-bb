@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"encoding/base64"
+	"net/http"
 	"net/url"
 	"strings"
 	"testing"
@@ -19,8 +20,9 @@ func TestInitialAuthorizationURLContainsExactOIDCAndPKCEParameters(t *testing.T)
 		t.Fatalf("generateLoginMaterial() returned error: %v", err)
 	}
 	provider := discoveredOIDCProvider{
-		provider: new(oidc.Provider),
-		verifier: new(oidc.IDTokenVerifier),
+		provider:   new(oidc.Provider),
+		verifier:   new(oidc.IDTokenVerifier),
+		httpClient: new(http.Client),
 		oauth2Config: oauth2.Config{
 			ClientID:    "gotth-bb",
 			Endpoint:    oauth2.Endpoint{AuthURL: "https://auth.example/application/o/authorize/"},
@@ -64,8 +66,9 @@ func TestInitialAuthorizationURLRejectsInvalidProviderOrMaterial(t *testing.T) {
 		t.Fatalf("generateLoginMaterial() returned error: %v", err)
 	}
 	validProvider := discoveredOIDCProvider{
-		provider: new(oidc.Provider),
-		verifier: new(oidc.IDTokenVerifier),
+		provider:   new(oidc.Provider),
+		verifier:   new(oidc.IDTokenVerifier),
+		httpClient: new(http.Client),
 		oauth2Config: oauth2.Config{
 			ClientID:    "gotth-bb",
 			Endpoint:    oauth2.Endpoint{AuthURL: "https://auth.example/authorize"},

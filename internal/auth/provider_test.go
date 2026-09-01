@@ -43,7 +43,7 @@ func TestDiscoverOIDCProviderBuildsPinnedConfidentialClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("discoverOIDCProvider() returned error: %v", err)
 	}
-	if got.provider == nil || got.verifier == nil || requests.Load() != 1 {
+	if got.provider == nil || got.verifier == nil || got.httpClient == nil || requests.Load() != 1 {
 		t.Fatalf("provider/verifier nil or discovery requests = %d", requests.Load())
 	}
 	if got.oauth2Config.ClientID != "gotth-bb" || got.oauth2Config.ClientSecret != "client-secret" ||
@@ -178,7 +178,7 @@ func TestDiscoverOIDCProviderRejectsUnsafeDiscovery(t *testing.T) {
 			}))
 			defer server.Close()
 			got, err := discoverOIDCProvider(context.Background(), server.Client().Transport, mustProviderURL(t, server.URL+"/application/o/gotth-bb/"), test.clientID, test.secret, test.redirect)
-			if err == nil || got.provider != nil || got.verifier != nil || got.oauth2Config.ClientID != "" {
+			if err == nil || got.provider != nil || got.verifier != nil || got.httpClient != nil || got.oauth2Config.ClientID != "" {
 				t.Fatalf("discoverOIDCProvider() returned a nonzero result or no error: %v", err)
 			}
 			if strings.Contains(err.Error(), secretMarker) || follows.Load() != test.wantFollow {
@@ -230,7 +230,7 @@ func TestDiscoverOIDCProviderRejectsInvalidMetadataAndInputs(t *testing.T) {
 			})
 			defer server.Close()
 			got, err := discoverOIDCProvider(test.ctx, server.Client().Transport, mustProviderURL(t, server.URL+"/application/o/gotth-bb/"), test.clientID, test.secret, test.redirect)
-			if err == nil || got.provider != nil || got.verifier != nil || got.oauth2Config.ClientID != "" {
+			if err == nil || got.provider != nil || got.verifier != nil || got.httpClient != nil || got.oauth2Config.ClientID != "" {
 				t.Fatalf("discoverOIDCProvider() returned a nonzero result or no error: %v", err)
 			}
 		})

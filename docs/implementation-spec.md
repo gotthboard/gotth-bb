@@ -428,7 +428,7 @@ failure through readiness only when it prevents safe operation.
 
 Discovery, token, and JWKS requests use one ten-second HTTP client, refuse
 redirects, reject endpoints outside the configured issuer origin, and cap each
-response body at 1 MiB. Discovery must advertise at least one signing algorithm
+response body at 512 KiB. Discovery must advertise at least one signing algorithm
 supported by `go-oidc`. Confidential clients pin `client_secret_basic`; local
 public-client development pins the explicitly advertised `none` method rather
 than relying on OAuth2 authentication-style probing.
@@ -465,7 +465,8 @@ The accepted identity snapshot contains only verified `iss`, `sub`, `name`,
 `email` when `email_verified=true`, and `picture`. Bounds match the database:
 issuer 2,048 characters, subject 512, display name 80, email 320, and avatar URL
 2,048. Profile claim types are strict; controls are rejected. The avatar must be
-a canonical absolute HTTP(S) URL without credentials or a fragment. OIDC role,
+a canonical absolute HTTP(S) URL without credentials or a fragment, and an
+HTTPS issuer cannot supply an HTTP avatar. OIDC role,
 group, permission, entitlement, and similar claims are not decoded into the
 accepted type and cannot mutate forum-local authorization.
 
