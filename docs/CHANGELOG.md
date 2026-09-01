@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 03:20 CDT — Validate the exact Authentik issuer
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/oidc_issuer.go`
+- `internal/config/oidc_issuer_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added exact OIDC issuer validation using Authentik's recommended per-provider
+issuer form. Production requires HTTPS; Authentik global issuer mode,
+credentials, queries, fragments, relative URLs, and inputs that would be
+normalized are rejected. Diagnostics do not echo malformed issuer values.
+
+Verification:
+
+- Authentik issuer-mode and discovery endpoint documentation checked
+- Focused red-before-green unit tests
+- `make verify`
+- Package statement coverage report
+
+Risks / non-goals:
+
+- Discovery retrieval and metadata comparison are not implemented in this
+  unit.
+- Authentik global issuer mode remains unsupported until a separate trusted
+  provider-specific discovery location is modeled.
+- Authentik remains login-only; issuer claims do not grant local authority.
+
 ### 2026-09-01 03:15 CDT — Add immutable runtime primitives
 
 Commit: `35297caacc9facbc5b3cc58cfbd61dab0c1ab774`

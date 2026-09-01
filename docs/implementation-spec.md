@@ -115,6 +115,15 @@ Rules:
 - `SESSION_MAX_AGE`, `SESSION_IDLE_TIMEOUT`, and `AUTH_REVALIDATE_INTERVAL`
   must use positive Go duration syntax such as `30m` or `24h`; zero and
   negative durations fail startup.
+- `OIDC_ISSUER_URL` must be the exact Authentik per-provider issuer in
+  `/application/o/<application_slug>/` form: an absolute HTTP(S) URL with no
+  credentials, query, or fragment. Production requires HTTPS. Encoding and
+  the required trailing slash are identity-significant and are not normalized
+  by the application. The slug uses Authentik's ASCII letters, digits, hyphen,
+  and underscore grammar without percent encoding, and may not be one of
+  Authentik's documented reserved OAuth endpoint slugs. Authentik global
+  issuer mode is unsupported because its discovery document remains at a
+  separate provider-specific path.
 - OIDC callback is computed as `PUBLIC_BASE_URL + /auth/callback`; it is not a
   separate free-form setting.
 - OIDC claims never assign forum roles or local group membership.
@@ -376,8 +385,9 @@ Requirements:
 
 ### 8.1 Discovery and validation
 
-At startup, load discovery only from `OIDC_ISSUER_URL`. Validate that returned
-issuer matches exactly. Do not accept request-provided issuers. Cache keys
+At startup, load discovery only from the supported per-provider
+`OIDC_ISSUER_URL`. Validate that the returned issuer matches exactly. Do not
+accept request-provided issuers. Cache keys
 according to the chosen library's documented behavior and expose discovery
 failure through readiness only when it prevents safe operation.
 
