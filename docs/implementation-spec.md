@@ -205,7 +205,16 @@ Required columns:
 Role has a check constraint. Display/profile fields have explicit length
 limits. Suspensions do not delete the row.
 
-### 6.2 `external_identities`
+### 6.2 `governance_state`
+
+One seeded singleton row exists solely as a transaction lock for
+administrator-continuity decisions. Bootstrap and every role or suspension
+transition that can change the active-administrator set lock this row with
+`SELECT ... FOR UPDATE` before evaluating state. An active administrator has
+`role = administrator` and no suspension effective at the transaction time.
+The row contains no cached administrator count that could drift.
+
+### 6.3 `external_identities`
 
 - `user_id` foreign key and unique for version 1.0 single-issuer operation
 - `issuer`
@@ -215,7 +224,7 @@ limits. Suspensions do not delete the row.
 
 Issuer and subject are not user-editable.
 
-### 6.3 `forum_groups` and `forum_group_members`
+### 6.4 `forum_groups` and `forum_group_members`
 
 `forum_groups` contains a stable generated ID, unique bounded name, creator,
 and timestamps. `forum_group_members` contains `group_id`, `user_id`, the
@@ -223,7 +232,7 @@ administrator that granted membership, and timestamps, with primary key
 `(group_id, user_id)` and an index on `(user_id, group_id)`. Role and membership
 changes append audit events in the same transaction.
 
-### 6.4 `sessions`
+### 6.5 `sessions`
 
 - `id`
 - `token_hash` unique
@@ -236,7 +245,7 @@ Only a cryptographic hash of the opaque token is stored. Session lookup uses a
 constant-time comparison where application comparison is required. Expired and
 revoked sessions never authenticate.
 
-### 6.5 `oidc_login_attempts`
+### 6.6 `oidc_login_attempts`
 
 - hashed/state lookup key
 - protected nonce and PKCE verifier material
@@ -246,7 +255,7 @@ revoked sessions never authenticate.
 
 State is single use. Cleanup is bounded and safe to repeat.
 
-### 6.6 `areas` and `area_groups`
+### 6.7 `areas` and `area_groups`
 
 `areas` includes:
 
@@ -265,7 +274,7 @@ Constraints:
 - Slugs are normalized, bounded, and immutable after publication unless a
   redirect record is added. Version 1.0 may therefore prohibit slug changes.
 
-### 6.7 `topics`
+### 6.8 `topics`
 
 - `id`, `area_id`, `author_id`, `title`, normalized optional slug
 - `state` such as `open`, `locked`, `hidden`, `archived`
@@ -277,7 +286,7 @@ Constraints:
 Indexes support area lists ordered by pinned/activity and recent activity
 ordered globally after access filtering.
 
-### 6.8 `posts`
+### 6.9 `posts`
 
 - `id`, `topic_id`, `author_id`, `post_number`
 - `markdown_source`
@@ -290,7 +299,7 @@ ordered globally after access filtering.
 Source and rendered sizes have limits. A post edit increments `revision` and
 uses `WHERE revision = $expected` to detect lost updates.
 
-### 6.9 `topic_reads`
+### 6.10 `topic_reads`
 
 - `user_id`, `topic_id`, `last_read_post_number`, `read_at`
 - primary key `(user_id, topic_id)`
@@ -298,7 +307,7 @@ uses `WHERE revision = $expected` to detect lost updates.
 Updates use `GREATEST` so an out-of-order request does not mark a topic less
 read.
 
-### 6.10 Reports and audit
+### 6.11 Reports and audit
 
 `reports` identifies exactly one supported target type and target ID, records a
 bounded reason, workflow status, assignment, and resolution.
@@ -398,12 +407,13 @@ reauthorization leaves the stale session unable to authorize protected routes.
 The first administrator is granted only through an explicit operator command
 against an already provisioned `(issuer, subject)` identity. The command
 requires database/operator authority, rejects a missing or ambiguous identity,
-serializes against role changes, requires that zero active administrators
+locks the singleton governance row, requires that zero active administrators
 exist, and commits the local role change with an immutable
 `actor_kind=operator` audit event. Concurrent or later bootstrap attempts fail.
-Normal role/suspension transitions reject any result with zero active
-administrators. OIDC claims do not bootstrap or restore local privileges, and
-the command never invents a forum-user actor for the first grant.
+Normal administrator-role/suspension transitions lock the same row and reject
+any result with zero active administrators. OIDC claims do not bootstrap or
+restore local privileges, and the command never invents a forum-user actor for
+the first grant.
 
 ## 9. Session implementation
 

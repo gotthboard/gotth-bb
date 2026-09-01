@@ -132,6 +132,9 @@ Automated tests cover:
   administrator exists.
 - Demotion or suspension rejects transitions that would remove the last active
   administrator, including concurrent attempts.
+- Governance singleton locking is exercised with concurrent bootstrap,
+  demotion, and suspension transactions; the completeness oracle is at least
+  one unsuspended administrator-role row after every committed transition.
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.

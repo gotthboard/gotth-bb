@@ -267,6 +267,8 @@ identity access, or content history.
 
 - `users`: local identity, profile snapshot, role, suspension state, timestamps.
 - `external_identities`: OIDC issuer and subject, unique as a pair.
+- `governance_state`: one singleton row used only to serialize bootstrap and
+  administrator-continuity checks.
 - `forum_groups`: locally administered groups and stable local identifiers.
 - `forum_group_members`: audited local user-to-group membership.
 - `sessions`: hashed opaque token, user, issued/expiry/validation timestamps,
@@ -314,7 +316,8 @@ silently break referential or audit integrity.
   activity in one transaction.
 - Post edit: use a revision number to detect stale concurrent edits.
 - Area access change: update policy and append audit event in one transaction.
-- Role/suspension change: lock the target and administrator-governance state,
+- Role/suspension change: lock the singleton governance row and target, define
+  active administrator as administrator role without an effective suspension,
   reject a transition leaving zero active administrators, and append audit in
   one transaction.
 - Moderation mutation: lock target, transition state, append audit event in one

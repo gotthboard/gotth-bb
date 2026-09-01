@@ -5,6 +5,35 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 02:50 CDT — Serialize administrator invariants
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/verification.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Administrator continuity now has a concrete PostgreSQL mechanism: bootstrap
+and administrator role/suspension transitions lock one seeded governance row
+before checking the active-administrator invariant. “Active” means an
+administrator role with no effective suspension. No cached count can drift.
+
+Verification:
+
+- Transaction and concurrency contract consistency review
+- Completeness oracle added to the verification plan
+- Markdown link and whitespace checks
+
+Risks / non-goals:
+
+- This is coordination state, not a generic distributed lock framework.
+- The schema and transaction code remain implementation work in A1-02/A1-08.
+
 ### 2026-09-01 02:40 CDT — Preserve administrator continuity
 
 Commit: `ffa8dfacb75a37185e02f521a587ddd24fcc818f`
