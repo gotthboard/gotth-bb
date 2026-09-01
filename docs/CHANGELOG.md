@@ -5,9 +5,59 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:57 CDT — Expose the migration runner
+### 2026-09-01 08:08 CDT — Create the alpha database schema
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `migrations/000001_identity_and_sessions.sql`
+- `migrations/000002_groups_and_areas.sql`
+- `migrations/000003_topics_posts_and_reads.sql`
+- `migrations/000004_reports_and_audit.sql`
+- `migrations/files.go`
+- `migrations/files_test.go`
+- `migrations/schema_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added four contiguous forward-only migrations compiled into the release:
+identity/session state; groups/areas; topics/posts/read state; and
+reports/moderation audit. Closed values, lengths, timestamps, identities,
+singletons, target cardinality, post numbering, and audit structure are
+database constraints. Row-locking triggers serialize area/group visibility;
+deferred triggers prove topic/post pointers and counters at commit; published
+area slugs and post topic/number identities are immutable.
+
+Verification:
+
+- Red-before-green embed API test before `migrations.Files` existed
+- Embedded filesystem contains only the four exact ordered SQL files
+- Fresh public `migration.Apply` into a disposable PostgreSQL 17.10 database
+- Exact four-row migration head and one governance singleton
+- Invalid roles, visibility, posting modes, duplicate external identities,
+  malformed session hashes, duplicate post numbers, invalid report targets,
+  invalid audit actors, and inconsistent topic counters rejected
+- Area group mappings require group visibility under row locks; visibility and
+  slug drift are rejected
+- Topic plus first post and a reply commit with deferred circular integrity;
+  partial counter corruption rolls back
+- `go test -mod=readonly -race -cover ./migrations` with 100% statement coverage
+- PostgreSQL integration coverage for the migrations package at 100%
+- `make verify`
+
+Risks / non-goals:
+
+- Runtime/migration roles and grants remain deployment-owned configuration;
+  application repositories must still append audit rows in the same mutation
+  transaction. These migrations do not create cluster roles.
+- Search indexes and later feature schema are added only with reviewed forward
+  migrations; no fake down path exists.
+
+### 2026-09-01 07:57 CDT — Expose the migration runner
+
+Commit: `6b7d562d0d94413f3398ebbe6dafb2f9575a4aea`
 
 Affected files:
 
