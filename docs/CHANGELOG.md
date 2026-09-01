@@ -5,9 +5,51 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:25 CDT — Isolate migration database configuration
+### 2026-09-01 08:38 CDT — Add the one-shot migration command
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/migrate/main.go`
+- `cmd/migrate/main_test.go`
+- `internal/config/database_connection_test.go`
+- `README.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `cmd/migrate` as the visible one-shot schema-maintenance entry point. It
+loads only the migration database URL, applies the exact SQL files embedded in
+the same source release, owns process-signal cancellation, opens one direct
+connection through the project runner, and never starts HTTP, constructs a
+pool, or retries an unknown database outcome.
+
+Verification:
+
+- Red-before-green compile failure before the command runner existed
+- Exact context, parsed direct connection configuration, and release
+  filesystem forwarding
+- Nil dependency and cancellation-before-side-effect failures
+- Malformed credential-bearing configuration failure without secret exposure
+- Failure diagnostics never format a potentially credential-bearing pgx
+  configuration
+- Migration-runner cause preservation
+- Tested `run` function at 100% statement coverage
+- 20 repeated race-enabled command-package runs
+- Real command execution against a fresh PostgreSQL 17.10 database, exact
+  four-migration head, idempotent second execution, and disposable cleanup
+- `make verify`
+
+Risks / non-goals:
+
+- Forward migrations are privileged release code. The command intentionally
+  has no automatic rollback, fake down migration, pool, or retry path.
+- Deployment role grants and secret injection remain deployment-owned.
+
+### 2026-09-01 08:25 CDT — Isolate migration database configuration
+
+Commit: `cd30ce6e92013ad6b133aa57c5cc152ed316c0ea`
 
 Affected files:
 

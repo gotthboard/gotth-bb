@@ -1,0 +1,65 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"io/fs"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
+	"git.dannyhunn.com/agents/gotth-bb/migrations"
+	"github.com/jackc/pgx/v5"
+)
+
+type migrationRunner func(context.Context, *pgx.ConnConfig, fs.FS) error
+
+// main binds process termination signals to the one-shot migration runner and
+// emits one bounded top-level failure before returning a nonzero status.
+//
+// Complexity: local time and auxiliary space are tight Theta(1); database and
+// release work are delegated to run.
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, os.LookupEnv, migrations.Files(), migration.Apply); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb-migrate: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// run loads only migration database configuration and applies the exact SQL
+// release supplied by the caller once. It does not start HTTP, create a pool,
+// or retry an unknown database outcome.
+//
+// Complexity: for n connection-string bytes and delegated release work r,
+// total time is O(n+r), Omega(1), with no tight Theta bound because pgx parsing,
+// filesystem, network, and PostgreSQL costs are external. Local auxiliary space
+// is O(n), Omega(1); the parsed pgx configuration retains connection data.
+func run(ctx context.Context, lookup config.LookupEnv, filesystem fs.FS, apply migrationRunner) error {
+	if ctx == nil {
+		return fmt.Errorf("migration command context is required")
+	}
+	if filesystem == nil {
+		return fmt.Errorf("migration command filesystem is required")
+	}
+	if apply == nil {
+		return fmt.Errorf("migration command runner is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("migration command canceled: %w", err)
+	}
+	configured, err := config.LoadDatabaseConnectionConfig(lookup)
+	if err != nil {
+		return fmt.Errorf("load migration database configuration: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("migration command canceled: %w", err)
+	}
+	if err := apply(ctx, configured, filesystem); err != nil {
+		return fmt.Errorf("apply database migrations: %w", err)
+	}
+	return nil
+}

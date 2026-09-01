@@ -43,7 +43,7 @@ func TestLoadDatabaseConnectionConfigRejectsMissingAndRedactsInvalidURL(t *testi
 			t.Parallel()
 			configured, err := LoadDatabaseConnectionConfig(test.lookup)
 			if err == nil || configured != nil || strings.Contains(err.Error(), secret) {
-				t.Fatalf("LoadDatabaseConnectionConfig() = (%+v, %v), want (nil, redacted error)", configured, err)
+				t.Fatalf("LoadDatabaseConnectionConfig() returned configuration = %t, error = %v; want no configuration and a redacted error", configured != nil, err)
 			}
 		})
 	}
