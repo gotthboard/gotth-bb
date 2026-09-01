@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 16:15 CDT — Enforce local logout ordering
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/logout_handler.go`
+- `internal/httpui/logout_handler_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the exact authenticated POST logout boundary. Construction requires a
+CSRF validator. Requests revoke local server state before expiring the cookie
+and redirecting to the application root; an idempotent no-row result is still a
+successful logout. Stale Authentik validation never prevents local logout.
+
+Verification:
+
+- CSRF runs before revocation and both true/false revocation outcomes clear the
+  exact path-scoped cookie then return an empty-body 303
+- Wrong method, anonymous state, CSRF failure, and invalid cookie cardinality
+  stop before revocation
+- Revocation failure is a generic 503 that preserves the browser cookie
+- Constructor rejects every missing or invalid dependency
+- `newLogoutHandler` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The handler cannot be wired without the subsequent concrete CSRF validator.
+
 ### 2026-09-01 16:00 CDT — Expose idempotent session revocation
 
 Commit: current commit; hash assigned by Git after commit
