@@ -5,6 +5,55 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 04:00 CDT — Add bounded HTTP observability
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/observability/context.go`
+- `internal/observability/context_test.go`
+- `internal/observability/request_id.go`
+- `internal/observability/request_id_test.go`
+- `internal/observability/request_id_middleware.go`
+- `internal/observability/request_id_middleware_test.go`
+- `internal/observability/response_observer.go`
+- `internal/observability/response_observer_test.go`
+- `internal/observability/recovery_middleware.go`
+- `internal/observability/recovery_middleware_test.go`
+- `internal/observability/access_log_middleware.go`
+- `internal/observability/access_log_middleware_test.go`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added server-generated 128-bit request IDs, request context propagation,
+bounded structured completion logs, response-state observation, and sanitized
+panic handling. Inbound identifiers and recovered panic values are never
+trusted or logged. A panic after response commitment closes through net/http's
+documented quiet-abort boundary rather than appending a false error response.
+An uncommitted panic discards application-added headers before returning its
+bounded error response. A downstream quiet-abort sentinel is propagated
+unchanged and logged once as an aborted request without inventing a status.
+
+Verification:
+
+- Focused red-before-green tests for every production function and method
+- Attacker-controlled ID, invalid generator, query secrecy, panic secrecy,
+  informational-then-final status handling, stale-header removal,
+  invalid-status recovery, committed-response, quiet-abort propagation, and
+  missing-dependency cases
+- `make verify`
+- Package statement coverage report
+
+Risks / non-goals:
+
+- Middleware composition into the executable is the next unit.
+- Streaming, connection hijacking, authenticated-user attribution, and general
+  error classification are outside this foundation slice.
+
 ### 2026-09-01 03:45 CDT — Assemble immutable startup configuration
 
 Commit: `9ac37c6928bf095f122dc97b69bdf17e04c9dafa`

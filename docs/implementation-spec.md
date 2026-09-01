@@ -570,6 +570,25 @@ method, status, duration, authenticated user ID when permitted, and error class.
 They do not contain cookies, authorization codes, tokens, client secrets,
 Markdown bodies, or unrestricted query strings.
 
+Request IDs contain 128 random bits encoded as 32 lowercase hexadecimal bytes.
+The edge ignores inbound `X-Request-ID`; entropy failure returns 503 before the
+application runs. Completion logs record only the matched route pattern,
+method, status, response-byte count, whole-millisecond duration, and request
+ID. A downstream `http.ErrAbortHandler` is propagated unchanged and produces
+one bounded `request aborted` event with error class `abort`, route, method,
+byte count, duration, and request ID but no fabricated HTTP status. These logs
+never include the raw request target or query.
+
+Panic logs contain a fixed error class, request ID, and stack, but never format
+the recovered value. An uncommitted panic returns a bounded 500 containing its
+request ID after discarding application-added response headers and restoring
+only the pre-application header snapshot. After response commitment, recovery
+re-panics with `http.ErrAbortHandler` so `net/http` quietly closes the
+connection instead of appending a corrupt second response, leaking the original
+value, or writing a duplicate server stack log. Middleware response observation
+is for ordinary HTTP responses; streaming and connection hijacking are outside
+1.0.0-alpha.1.
+
 Public errors expose a request ID and useful next action without internal SQL,
 filesystem, issuer, or stack details. Internal errors retain wrapped causes for
 operator logs.

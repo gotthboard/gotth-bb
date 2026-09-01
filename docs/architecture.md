@@ -112,8 +112,11 @@ component as explicitly typed trusted markup.
 ### 4.1 Read request
 
 1. Caddy strips `/bb` and proxies the request on loopback.
-2. Middleware assigns a request ID, recovers panics, sets defensive headers,
-   and loads the opaque session cookie.
+2. Middleware assigns a request ID, records bounded access evidence, recovers
+   panics, sets defensive headers, and loads the opaque session cookie. The
+   executable order is request ID → access log → recovery → application so a
+   recovered panic is observed as a completed 500 without trusting an inbound
+   request-ID header.
 3. Session loading returns an anonymous or authenticated `AccessContext`.
 4. The handler validates route parameters and calls a read repository.
 5. The repository applies the area-access predicate in SQL.
