@@ -501,7 +501,9 @@ the first grant.
 
 ## 9. Session implementation
 
-- Cookie value contains only a random opaque token.
+- Cookie value contains only a 256-bit random opaque token encoded as 43
+  unpadded base64url characters. PostgreSQL stores only SHA-256 of those exact
+  encoded cookie bytes.
 - Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/bb`.
 - Session rotation occurs after login and any future privilege elevation.
 - Once `AUTH_REVALIDATE_INTERVAL` elapses, protected routes require a fresh OIDC

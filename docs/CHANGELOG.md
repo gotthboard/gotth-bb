@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:34 CDT — Generate opaque session material
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_material.go`
+- `internal/auth/session_material_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added fixed session material generation. It reads 256 bits from the explicit
+entropy source, encodes the browser cookie as 43 unpadded base64url characters,
+and hashes those exact encoded bytes with SHA-256 for PostgreSQL lookup. Mutable
+source and hashing copies are cleared before return.
+
+Verification:
+
+- Exact deterministic cookie encoding and database hash
+- Nil entropy, immediate failure, and short-read failure return no partial
+  material
+- `generateSessionMaterial` at 100% statement coverage; auth package 96.8%
+
+Risks / non-goals:
+
+- The returned Go string is immutable and cannot be explicitly cleared. It is
+  deliberately the browser credential and must remain confined to cookie
+  construction.
+- User-agent and IP risk metadata remain nullable in alpha; this unit does not
+  invent weak unsalted fingerprint hashes.
+
 ### 2026-09-01 11:30 CDT — Add atomic identity and session query primitives
 
 Commit: current commit; hash assigned by Git after commit
