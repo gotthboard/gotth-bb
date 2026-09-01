@@ -56,15 +56,7 @@ func TestProtectLoginMaterialRejectsInvalidMaterialBeforeEntropy(t *testing.T) {
 
 	valid := testLoginMaterial(t)
 	short := base64.RawURLEncoding.EncodeToString(make([]byte, 31))
-	noncanonicalState := valid.state[:len(valid.state)-1] + "9"
-	canonicalBytes, canonicalErr := base64.RawURLEncoding.DecodeString(valid.state)
-	noncanonicalBytes, noncanonicalErr := base64.RawURLEncoding.DecodeString(noncanonicalState)
-	if canonicalErr != nil || noncanonicalErr != nil || !bytes.Equal(canonicalBytes, noncanonicalBytes) {
-		t.Fatal("test fixture does not exercise alternate base64url trailing bits")
-	}
-	if _, err := base64.RawURLEncoding.Strict().DecodeString(noncanonicalState); err == nil {
-		t.Fatal("strict base64url decoder accepted the noncanonical test fixture")
-	}
+	noncanonicalState := noncanonicalRawURL(t, valid.state)
 	for _, material := range []loginMaterial{
 		{},
 		{state: "%%%", nonce: valid.nonce, pkceVerifier: valid.pkceVerifier},
@@ -127,4 +119,23 @@ func testLoginMaterial(t *testing.T) loginMaterial {
 		t.Fatalf("generateLoginMaterial() returned error: %v", err)
 	}
 	return material
+}
+
+func noncanonicalRawURL(t *testing.T, canonical string) string {
+	t.Helper()
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	index := strings.IndexByte(alphabet, canonical[len(canonical)-1])
+	if index < 0 || index%4 != 0 {
+		t.Fatal("canonical test fixture has an unexpected trailing base64url symbol")
+	}
+	noncanonical := canonical[:len(canonical)-1] + string(alphabet[index+1])
+	canonicalBytes, canonicalErr := base64.RawURLEncoding.DecodeString(canonical)
+	noncanonicalBytes, noncanonicalErr := base64.RawURLEncoding.DecodeString(noncanonical)
+	if canonicalErr != nil || noncanonicalErr != nil || !bytes.Equal(canonicalBytes, noncanonicalBytes) {
+		t.Fatal("test fixture does not exercise alternate base64url trailing bits")
+	}
+	if _, err := base64.RawURLEncoding.Strict().DecodeString(noncanonical); err == nil {
+		t.Fatal("strict base64url decoder accepted the noncanonical test fixture")
+	}
+	return noncanonical
 }

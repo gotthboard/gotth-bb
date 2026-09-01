@@ -5,9 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 11:01 CDT — Protect login-attempt database secrets
+### 2026-09-01 11:17 CDT — Authenticate and recover login-attempt secrets
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_protection.go`
+- `internal/auth/login_protection_test.go`
+- `internal/auth/login_recovery.go`
+- `internal/auth/login_recovery_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the inverse login-attempt protection boundary. Recovery strictly decodes
+the canonical browser state, compares its lookup hash in constant time,
+validates both fixed envelope formats, derives field-specific keys, authenticates
+the state-hash binding, and returns the nonce and PKCE verifier only after both
+open successfully and remain distinct.
+
+Verification:
+
+- Exact protection-to-recovery round trip without formatting live material
+- Empty, malformed, short, noncanonical, wrong, and hash-mismatched state
+- Short, long, wrong-version, modified, and field-swapped envelopes
+- Authenticated noncanonical plaintext and repeated recovered values
+- Auth package coverage 94.1%; `recoverLoginMaterial` 95.8%
+
+Risks / non-goals:
+
+- The only uncovered recovery branches are rejection by `aes.NewCipher` for a
+  fixed valid 32-byte key and by `cipher.NewGCM` for the standard AES block.
+  Both are structurally unreachable under their standard-library contracts.
+- Recovery authenticates transient material only. Database one-time
+  consumption, expiry, and callback transaction policy remain separate.
+
+### 2026-09-01 11:01 CDT — Protect login-attempt database secrets
+
+Commit: `ca15f844876000c6294c076a1dc1b688dc616f1e`
 
 Affected files:
 

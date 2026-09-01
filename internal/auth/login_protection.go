@@ -16,6 +16,8 @@ const (
 	loginGCMNonceBytes     = 12
 	loginGCMTagBytes       = 16
 	protectedSecretBytes   = 1 + loginGCMNonceBytes + 43 + loginGCMTagBytes
+	loginNonceKeyLabel     = "gotth-bb/oidc-login-attempt/nonce/aes-256-gcm/v1"
+	loginVerifierKeyLabel  = "gotth-bb/oidc-login-attempt/pkce-verifier/aes-256-gcm/v1"
 )
 
 type protectedLoginMaterial struct {
@@ -98,11 +100,11 @@ func protectLoginMaterial(material loginMaterial, entropy io.Reader) (protectedL
 		}
 		return envelope, nil
 	}
-	nonceCiphertext, err := seal("gotth-bb/oidc-login-attempt/nonce/aes-256-gcm/v1", material.nonce, randomNonces[:loginGCMNonceBytes])
+	nonceCiphertext, err := seal(loginNonceKeyLabel, material.nonce, randomNonces[:loginGCMNonceBytes])
 	if err != nil {
 		return protectedLoginMaterial{}, err
 	}
-	verifierCiphertext, err := seal("gotth-bb/oidc-login-attempt/pkce-verifier/aes-256-gcm/v1", material.pkceVerifier, randomNonces[loginGCMNonceBytes:])
+	verifierCiphertext, err := seal(loginVerifierKeyLabel, material.pkceVerifier, randomNonces[loginGCMNonceBytes:])
 	if err != nil {
 		return protectedLoginMaterial{}, err
 	}
