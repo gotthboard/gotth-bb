@@ -5,9 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:20 CDT — Bound repository transactions
+### 2026-09-01 08:25 CDT — Isolate migration database configuration
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/config/database_connection.go`
+- `internal/config/database_connection_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added a migration-specific configuration boundary that reads only
+`DATABASE_URL`, accepts the same pool-compatible URL grammar as the service,
+returns a copied pgx direct-connection configuration, and pins connection
+establishment to five seconds. It does not require HTTP or OIDC settings to run
+schema maintenance.
+
+Verification:
+
+- Red-before-green compile failure before `LoadDatabaseConnectionConfig`
+  existed
+- Valid host, port, database, user, pool-parameter compatibility, and timeout
+- Nil lookup, missing/empty value, and malformed secret-bearing URL failures
+- Secret absent from every failure string
+- `go test -mod=readonly -race -cover ./internal/config` at 100% statement
+  coverage
+- 20 repeated race-enabled config-package runs
+- `make verify`
+
+Risks / non-goals:
+
+- The returned pgx structure necessarily contains credentials and must never be
+  formatted or logged. Its sole consumer is the migration command boundary.
+
+### 2026-09-01 08:20 CDT — Bound repository transactions
+
+Commit: `53328c37c56c30874a395738ba905eb9f93ee53f`
 
 Affected files:
 
