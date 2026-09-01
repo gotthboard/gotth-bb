@@ -5,6 +5,51 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 05:20 CDT — Wire the bounded HTTP executable lifecycle
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `internal/app/http_handler.go`
+- `internal/app/http_handler_test.go`
+- `internal/app/http_server.go`
+- `internal/app/http_server_test.go`
+- `internal/app/http_lifecycle.go`
+- `internal/app/http_lifecycle_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the forum executable, immutable configuration wiring, JSON logging,
+cryptographic request-ID middleware composition, explicit HTTP transport
+limits, numeric listener binding, signal cancellation, bounded graceful drain,
+and forced-close failure reporting. Readiness remains deliberately fail-closed
+until A1-02 installs the PostgreSQL compatibility check. Cancellation observed
+before listener ownership transfer aborts startup; cancellation after transfer
+uses bounded shutdown. The first termination signal is unregistered before it
+cancels the service context, restoring default handling for a second signal.
+
+Verification:
+
+- Red-before-green tests for handler composition, server controls, and every
+  lifecycle failure branch
+- `internal/app` race tests with 100% statement coverage
+- Configuration-error secrecy and executable start/stop/listen-failure tests
+- `make verify`
+
+Risks / non-goals:
+
+- The unavoidably process-terminating `main` wrapper is not invoked in-process
+  by unit tests; tested service behavior lives in `run` and `internal/app`.
+- Startup truth is established by readiness and deployment probes; the process
+  does not emit a potentially blocking pre-serve "started" event.
+- PostgreSQL, migrations, assets, sessions, OIDC, and forum routes remain later
+  alpha units.
+
 ### 2026-09-01 04:00 CDT — Add bounded HTTP observability
 
 Commit: `bf1131eab34cc0dacb2a0f769b63114baedb3f89`

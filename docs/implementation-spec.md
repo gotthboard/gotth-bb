@@ -600,8 +600,22 @@ operator logs.
   bounded PostgreSQL round trip.
 - Authentik availability does not necessarily make existing-session reads
   unready; login failures are reported separately.
+- The internal HTTP server permits at most 5 seconds for request headers, 30
+  seconds for complete request reads, 30 seconds for response writes, and 60
+  seconds for an idle keep-alive connection. Parsed request headers are capped
+  at 1 MiB. The default `OPTIONS *` shortcut is disabled so the application
+  router owns method behavior.
 - Shutdown stops accepting new requests, drains bounded in-flight work, closes
-  the database pool, and exits nonzero when shutdown fails.
+  the database pool, and exits nonzero when shutdown fails. HTTP drain has a
+  15-second deadline followed by forced connection closure; either shutdown or
+  forced-close failure is returned to the process boundary. Startup
+  cancellation observed before the listener-to-server ownership transfer
+  closes the listener and aborts startup. That ownership transfer is the
+  startup linearization point; cancellation racing after it is handled as
+  ordinary bounded shutdown and may race with the first `Serve` call. The first
+  process termination signal is explicitly unregistered before it cancels the
+  service context, so default handling is restored before graceful drain and a
+  second signal terminates immediately.
 
 ## 18. Test contract
 
