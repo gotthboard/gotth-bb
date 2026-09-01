@@ -11,6 +11,8 @@ but it may not silently change one.
 5. [Traceability and verification](verification.md)
 6. [Release and operations](release-operations.md)
 
+Implementation history is recorded in the [change log](CHANGELOG.md).
+
 The current target is `1.0.0-alpha.1`, followed by beta and release-candidate
 builds before `1.0.0`.
 
