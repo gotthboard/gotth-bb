@@ -445,6 +445,15 @@ than relying on OAuth2 authentication-style probing.
 - Validate return paths against the configured base path; never redirect to an
   arbitrary absolute URL.
 - Record whether the attempt is initial login or session revalidation.
+- Initial `GET /login` accepts either no query or exactly one canonical
+  `return` value inside the application subtree. No query defaults to the
+  application root. The raw query is capped at 8,192 bytes and is rejected
+  before entropy or database work when malformed, duplicated, or unsafe.
+- Initial login state is bound to one host-only, `HttpOnly`, `SameSite=Lax`
+  cookie derived from the configured session-cookie name, scoped to the
+  application cookie path, and limited to five minutes. Production sets
+  `Secure`; loopback HTTP development does not. A new start overwrites that
+  browser's prior usable state.
 
 ### 8.3 Callback transaction
 

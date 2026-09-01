@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 13:15 CDT — Enforce the login-start HTTP boundary
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/login_start_handler.go`
+- `internal/httpui/login_start_handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the exact `GET /login` boundary. It accepts no query or exactly one
+canonical `return` value, validates that path inside the application subtree
+before authentication work, invokes login start once, then validates the
+service result before committing one transient state cookie and one `303`
+provider redirect. All failures are generic and non-cacheable.
+
+Verification:
+
+- Default application-root and explicit canonical return paths
+- Wrong method, malformed, duplicate, extra, external, noncanonical, and
+  oversized query rejection before the service can run
+- Service failure returns `503` without reflecting its URL, state, or cause
+- Relative, non-HTTP(S), credential-bearing, fragmented, oversized,
+  noncanonical, missing-state, mismatched-state, and invalid-state provider
+  results cannot set a cookie or redirect
+- Parallel race testing exposed and removed one captured constructor error
+  variable; every request now owns its validation state
+- `newInitialLoginStartHandler` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The route is not registered until process-level authentication dependencies
+  are wired. The callback's matching-cookie requirement is the next unit.
+
 ### 2026-09-01 13:05 CDT — Bind login state to one browser cookie
 
 Commit: current commit; hash assigned by Git after commit
