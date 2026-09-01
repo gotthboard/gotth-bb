@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 10:45 CDT — Consume and recover initial login attempts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/login_consume.go`
+- `internal/auth/login_consume_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the initial-login callback consumption boundary. It strictly validates
+and hashes the fixed callback state, supplies an explicit microsecond-precision
+consumption time to the atomic sqlc query, rejects non-login/session-bound rows,
+revalidates the stored internal return path, and authenticates the protected
+nonce and PKCE verifier. Any failure after the database update leaves the
+attempt consumed and returns no partial material.
+
+Verification:
+
+- Exact original context, state hash, consumption time, initial-login metadata,
+  protected material, and validated return path
+- Nil dependencies, canceled context, malformed/noncanonical state, zero clock,
+  missing/replayed attempt, database failure, wrong purpose, unexpected session,
+  rejected/empty return path, and corrupt protection envelope
+- `consumeInitialLogin` at 100% statement coverage; auth package 96.2%
+
+Risks / non-goals:
+
+- Browser-facing handlers must deliberately collapse these diagnostic errors;
+  this internal function preserves causes for controlled logging and tests.
+- This unit consumes and recovers an attempt only. Code exchange, ID-token
+  verification, identity/session transaction, and cookie rotation remain later
+  callback boundaries.
+
 ### 2026-09-01 10:38 CDT — Bind validated login creation to persistence
 
 Commit: current commit; hash assigned by Git after commit
