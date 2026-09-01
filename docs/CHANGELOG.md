@@ -5,9 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 06:57 CDT — Reject applied migration drift
+### 2026-09-01 07:04 CDT — Read applied migration identities
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/rows.go`
+- `internal/migration/rows_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the result-set boundary for applied migration identities. It owns and
+closes the supplied `pgx.Rows`, copies each driver-owned SHA-256 buffer into an
+immutable fixed-size value, rejects malformed digest lengths, and preserves
+iteration and scan failures. Query construction and ordering remain outside
+this single-function unit.
+
+Verification:
+
+- Red-before-green compile failure before `scanAppliedMigrations` existed
+- Exact two-row decode and proof that driver-buffer mutation cannot alter the
+  returned digest
+- Nil rows, scan failure, iteration failure, and short/long digest failures
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- 20 repeated race-enabled package runs
+- `make verify`
+
+Risks / non-goals:
+
+- The caller must issue the history query ordered by version. The query,
+  advisory lock, and transaction execution remain subsequent units.
+
+### 2026-09-01 06:57 CDT — Reject applied migration drift
+
+Commit: `fc23d6d4151a2c303ebcaae74751d940b70a8565`
 
 Affected files:
 
