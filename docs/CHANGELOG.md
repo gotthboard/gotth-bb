@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 12:25 CDT — Enforce the browser callback boundary
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/callback_handler.go`
+- `internal/httpui/callback_handler_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the exact OIDC success-callback HTTP boundary. It accepts only `GET` with
+one nonempty `state` and one nonempty `code` inside an 8 KiB raw-query limit,
+calls login completion once, revalidates the returned navigation target against
+the immutable `/bb` authority, validates the live session cookie, then sets the
+cookie and internal `Location` before committing one `303 See Other` response.
+
+All callback responses disable caching. Malformed callbacks and completion
+failures return one generic authentication error without reflecting query
+values or lower-layer causes; unsafe successful results fail as server
+invariants before any cookie or redirect header is written.
+
+Verification:
+
+- Exact completion arguments, one call, cookie attributes, internal redirect,
+  empty success body, and no-store headers
+- Wrong method, empty/missing/duplicate/extra/malformed parameters, and the
+  8 KiB boundary reject before completion
+- Injected provider/database-style cause, state, and code do not appear in the
+  failure body or browser state
+- External redirect, invalid token, and missing expiry produce no cookie or
+  `Location`
+- `newInitialLoginCallbackHandler` at 100% statement coverage; race-enabled
+  HTTP UI package tests pass
+
+Risks / non-goals:
+
+- This unit handles the successful authorization-code response shape documented
+  by Authentik. Provider-denial callbacks do not consume an attempt here; the
+  bounded attempt expires after five minutes.
+- Route registration and binding the concrete authentication service are the
+  next wiring units.
+
 ### 2026-09-01 12:16 CDT — Complete initial login exactly once
 
 Commit: current commit; hash assigned by Git after commit
