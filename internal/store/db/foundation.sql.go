@@ -76,8 +76,11 @@ func (q *Queries) GetUserByExternalIdentity(ctx context.Context, arg GetUserByEx
 }
 
 const insertExternalIdentity = `-- name: InsertExternalIdentity :exec
-INSERT INTO public.external_identities (user_id, issuer, subject, last_verified_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO public.external_identities (user_id, issuer, subject, created_at, last_verified_at)
+VALUES (
+    $1, $2, $3,
+    $4, $4
+)
 `
 
 type InsertExternalIdentityParams struct {
@@ -98,8 +101,11 @@ func (q *Queries) InsertExternalIdentity(ctx context.Context, arg InsertExternal
 }
 
 const insertUser = `-- name: InsertUser :one
-INSERT INTO public.users (display_name, email, avatar_url, last_login_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO public.users (display_name, email, avatar_url, created_at, updated_at, last_login_at)
+VALUES (
+    $1, $2, $3,
+    $4, $4, $4
+)
 RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at
 `
 

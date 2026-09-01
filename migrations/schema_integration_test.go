@@ -4,11 +4,13 @@ package migrations
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -121,6 +123,49 @@ VALUES (decode('00', 'hex'), $1, clock_timestamp() + interval '1 hour')`, member
 	})
 	if err != nil || identityUser.ID != administratorID {
 		t.Fatalf("GetUserByExternalIdentity() = (id %d, %v), want (%d, nil)", identityUser.ID, err, administratorID)
+	}
+	transactionTime := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	var transactionUserID int64
+	if err := store.WithinTx(ctx, conn, func(transactionQueries *db.Queries) error {
+		created, err := transactionQueries.InsertUser(ctx, db.InsertUserParams{
+			DisplayName: "Transaction User",
+			LoginAt:     transactionTime,
+		})
+		if err != nil {
+			return err
+		}
+		transactionUserID = created.ID
+		return transactionQueries.InsertExternalIdentity(ctx, db.InsertExternalIdentityParams{
+			UserID:     created.ID,
+			Issuer:     "https://auth.example.test/application/o/forum/",
+			Subject:    "transaction-subject",
+			VerifiedAt: transactionTime,
+		})
+	}); err != nil {
+		t.Fatalf("WithinTx() successful identity creation: %v", err)
+	}
+	transactionUser, err := queries.GetUserByExternalIdentity(ctx, db.GetUserByExternalIdentityParams{
+		Issuer:  "https://auth.example.test/application/o/forum/",
+		Subject: "transaction-subject",
+	})
+	if err != nil || transactionUser.ID != transactionUserID {
+		t.Fatalf("transaction identity = (id %d, %v), want (%d, nil)", transactionUser.ID, err, transactionUserID)
+	}
+	rollbackMarker := errors.New("rollback marker")
+	if err := store.WithinTx(ctx, conn, func(transactionQueries *db.Queries) error {
+		if _, err := transactionQueries.InsertUser(ctx, db.InsertUserParams{
+			DisplayName: "Rolled Back User",
+			LoginAt:     transactionTime,
+		}); err != nil {
+			return err
+		}
+		return rollbackMarker
+	}); err == nil || !errors.Is(err, rollbackMarker) {
+		t.Fatalf("WithinTx() rollback error = %v, want rollback marker", err)
+	}
+	var rolledBackCount int
+	if err := conn.QueryRow(ctx, "SELECT count(*) FROM public.users WHERE display_name = 'Rolled Back User'").Scan(&rolledBackCount); err != nil || rolledBackCount != 0 {
+		t.Fatalf("rolled-back user count = (%d, %v), want (0, nil)", rolledBackCount, err)
 	}
 
 	var groupID int64

@@ -5,9 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 08:14 CDT — Generate typed foundation queries
+### 2026-09-01 08:20 CDT — Bound repository transactions
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/transaction.go`
+- `internal/store/transaction_test.go`
+- `internal/store/queries/foundation.sql`
+- `internal/store/db/foundation.sql.go`
+- `migrations/schema_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `store.WithinTx`, which binds generated queries to one pgx transaction,
+commits once, performs bounded cancellation-detached rollback on every earlier
+failure, joins cleanup failures, and never retries an unknown commit outcome.
+Foundation inserts now use the validated identity timestamp for both creation
+and verification columns, avoiding impossible client-time/default-time races.
+
+Verification:
+
+- Red-before-green compile failure before `WithinTx` existed
+- Successful action, invalid inputs, begin/nil transaction, callback, commit,
+  rollback, joined-failure, and canceled-caller paths
+- `WithinTx` itself at 100% statement coverage; store package at 95.6% because
+  the pre-existing real pool constructor retains its documented integration
+  branches
+- PostgreSQL 17.10 transaction creates a user plus external identity atomically
+  through generated queries
+- PostgreSQL 17.10 callback failure leaves no user row
+- Generated query drift regenerated and checked by `make verify`
+- 20 repeated race-enabled store-package runs
+
+Risks / non-goals:
+
+- The callback may execute external side effects only if its caller explicitly
+  owns that non-transactional failure problem. This wrapper governs PostgreSQL
+  work and does not pretend to make networks transactional.
+
+### 2026-09-01 08:14 CDT — Generate typed foundation queries
+
+Commit: `0b1e34fe74dbd0f6ebd30964b44a62a733f606ad`
 
 Affected files:
 
