@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+
+bin/
+dist/
+tmp/
+node_modules/
+*.log
+
+.worker-locks/
+.worker-notes/
+.worker-evidence/
+.agents/notes/
+.artifacts/worker-notes/
