@@ -5,9 +5,52 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 07:35 CDT — Attest the migration ledger schema
+### 2026-09-01 07:45 CDT — Coordinate a migration release
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/coordinator.go`
+- `internal/migration/coordinator_test.go`
+- `internal/migration/coordinator_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Composed the migration primitives around one already-open dedicated
+connection. Release files load before lock acquisition; the locked section
+bootstraps and attests the ledger, validates the applied prefix, executes the
+pending suffix in order, and re-reads exact head before unlock. An already
+current release avoids the second attestation, history query, and all
+transactions. A changed release re-attests the ledger after privileged SQL and
+before trusting final history.
+
+Verification:
+
+- Red-before-green compile failure before `applyRelease` existed
+- Fresh/current paths and every validation, lock, bootstrap, attestation,
+  history, drift, execution, final-attestation, final-head, and unlock failure
+  path
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage and 20 repeated race-enabled runs
+- PostgreSQL 17.10 fresh apply, idempotent reapply, changed applied bytes, and
+  unknown database-version rejection
+- PostgreSQL 17.10 concurrent runner proof: two dedicated sessions both return
+  success while exactly two migrations are recorded once
+- PostgreSQL integration run with the `integration` build tag and 100%
+  migration-package statement coverage
+- `make verify`
+
+Risks / non-goals:
+
+- This private coordinator does not open or close the connection. The public
+  owner wrapper is the next unit and must close its dedicated connection on
+  every exit, including unlock or commit uncertainty.
+
+### 2026-09-01 07:35 CDT — Attest the migration ledger schema
+
+Commit: `76d463df47238edc378a74202fcb96d91f427022`
 
 Affected files:
 
