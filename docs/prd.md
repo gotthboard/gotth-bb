@@ -98,7 +98,8 @@ claims never grant moderator, administrator, or area-access privileges.
   groups.
 - **ID-005:** The forum shall own roles, groups, group membership, and
   area-access rules. Every role or group-membership mutation shall be explicit,
-  authorized, and audited.
+  authorized, and audited. No transition may leave the forum without an active
+  administrator.
 - **ID-006:** The forum shall maintain server-side sessions with rotation,
   expiration, revocation, and a cookie scoped to `/bb`.
 - **ID-007:** A local suspension shall deny participation even while Authentik
@@ -211,7 +212,8 @@ Requirements:
 - **ADMIN-002:** Administrators shall view local forum accounts and manage
   forum-local suspension state.
 - **ADMIN-003:** Administrators shall manage forum-local roles, groups, group
-  membership, and area group restrictions without code changes.
+  membership, and area group restrictions without code changes. The bootstrap
+  operator grant shall be unavailable once an active administrator exists.
 - **ADMIN-004:** Administrators shall configure site name, description, basic
   branding, and community rules.
 - **ADMIN-005:** Version 1.0 shall provide basic membership, activity, and

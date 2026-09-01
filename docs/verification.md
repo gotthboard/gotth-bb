@@ -128,6 +128,10 @@ Automated tests cover:
 - Audited local member/moderator/administrator role transitions.
 - Audited local group grant and removal with immediate access change.
 - First-administrator operator grant rejects missing and ambiguous identities.
+- First-administrator grant rejects later/concurrent attempts once one active
+  administrator exists.
+- Demotion or suspension rejects transitions that would remove the last active
+  administrator, including concurrent attempts.
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.

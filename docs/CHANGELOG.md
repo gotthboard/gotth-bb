@@ -5,9 +5,40 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 02:25 CDT — Make Authentik authentication-only
+### 2026-09-01 02:40 CDT — Preserve administrator continuity
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/prd.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/verification.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+The operator bootstrap grant is admitted only while no active administrator
+exists and is serialized against role changes. Local demotion and suspension
+transitions must reject any result that leaves zero active administrators.
+This closes both persistent operator bypass and accidental governance lockout.
+
+Verification:
+
+- Cross-document role/bootstrap consistency review
+- Concurrency and failure-path requirements added to the verification contract
+- Markdown link and whitespace checks
+
+Risks / non-goals:
+
+- The mechanism remains unimplemented in this documentation-only correction.
+- Emergency recovery after external database damage is an operator incident
+  procedure, not a hidden bypass in the normal bootstrap command.
+
+### 2026-09-01 02:25 CDT — Make Authentik authentication-only
+
+Commit: `1de1ac2cfbd99241780ad086023f4d6d032b55b1`
 
 Affected files:
 

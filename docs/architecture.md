@@ -314,6 +314,9 @@ silently break referential or audit integrity.
   activity in one transaction.
 - Post edit: use a revision number to detect stale concurrent edits.
 - Area access change: update policy and append audit event in one transaction.
+- Role/suspension change: lock the target and administrator-governance state,
+  reject a transition leaving zero active administrators, and append audit in
+  one transaction.
 - Moderation mutation: lock target, transition state, append audit event in one
   transaction.
 

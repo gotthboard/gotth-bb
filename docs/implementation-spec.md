@@ -398,9 +398,12 @@ reauthorization leaves the stale session unable to authorize protected routes.
 The first administrator is granted only through an explicit operator command
 against an already provisioned `(issuer, subject)` identity. The command
 requires database/operator authority, rejects a missing or ambiguous identity,
-and commits the local role change with an immutable `actor_kind=operator` audit
-event. OIDC claims do not bootstrap or restore local privileges, and the
-command never invents a forum-user actor for the first grant.
+serializes against role changes, requires that zero active administrators
+exist, and commits the local role change with an immutable
+`actor_kind=operator` audit event. Concurrent or later bootstrap attempts fail.
+Normal role/suspension transitions reject any result with zero active
+administrators. OIDC claims do not bootstrap or restore local privileges, and
+the command never invents a forum-user actor for the first grant.
 
 ## 9. Session implementation
 
