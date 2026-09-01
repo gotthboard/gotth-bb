@@ -19,6 +19,7 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 	t.Parallel()
 
 	want := auth.SessionAuthentication{
+		SessionID: 7,
 		Access: auth.AccessContext{
 			Authenticated: true,
 			UserID:        42,

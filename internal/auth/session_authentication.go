@@ -42,6 +42,7 @@ type AccessContext struct {
 // SessionAuthentication carries the local access facts plus the freshness
 // decision that protected HTTP routes must enforce.
 type SessionAuthentication struct {
+	SessionID            int64
 	Access               AccessContext
 	RequiresRevalidation bool
 }
@@ -165,6 +166,7 @@ func authenticateSession(
 		mutedUntil = &muted
 	}
 	return SessionAuthentication{
+		SessionID: row.SessionID,
 		Access: AccessContext{
 			Authenticated: true,
 			UserID:        row.UserID,

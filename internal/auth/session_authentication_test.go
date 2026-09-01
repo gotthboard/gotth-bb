@@ -40,7 +40,7 @@ func TestAuthenticateSessionReturnsCurrentLocalAccessWithoutTouch(t *testing.T) 
 		},
 		func() time.Time { return now }, 30*time.Minute, 30*time.Minute, token,
 	)
-	if err != nil || queryCalls != 1 || touchCalls != 0 || result.RequiresRevalidation ||
+	if err != nil || queryCalls != 1 || touchCalls != 0 || result.SessionID != 7 || result.RequiresRevalidation ||
 		!result.Access.Authenticated || result.Access.UserID != 42 || result.Access.Role != RoleModerator ||
 		result.Access.Suspended || len(result.Access.GroupIDs) != 0 || result.Access.MutedUntil == nil ||
 		!result.Access.MutedUntil.Equal(mutedUntil) || !result.Access.ValidatedAt.Equal(now.Add(-10*time.Minute)) {
@@ -73,7 +73,7 @@ func TestAuthenticateSessionTouchesAndRequiresRevalidationAtExactBoundaries(t *t
 				},
 				func() time.Time { return now }, 2*time.Hour, time.Hour, token,
 			)
-			if err != nil || touchCalls != 1 || !result.Access.Authenticated || result.Access.Role != RoleAdministrator ||
+			if err != nil || touchCalls != 1 || result.SessionID != 7 || !result.Access.Authenticated || result.Access.Role != RoleAdministrator ||
 				result.Access.MutedUntil != nil || !result.RequiresRevalidation {
 				t.Fatalf("authenticateSession() = (%+v, touch %d, %v)", result, touchCalls, err)
 			}

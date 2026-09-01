@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:00 CDT — Retain authenticated session identity
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_authentication.go`
+- `internal/auth/session_authentication_test.go`
+- `internal/httpui/session_authentication_handler_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Authenticated snapshots now retain the positive local session ID returned by
+the existing indexed session lookup. The ID remains server-internal and travels
+with the immutable request context; anonymous results preserve the exact zero
+value. This supplies the correlation authority needed to bind a revalidation
+attempt without accepting a browser-supplied database identifier.
+
+Verification:
+
+- Current and stale authenticated results expose the exact loaded session ID
+- HTTP session context preserves the same ID with identity and CSRF state
+- Missing, invalid, inactive, and failed lookups still return no session ID
+- `authenticateSession` remains at 100% statement coverage
+
+Risks / non-goals:
+
+- No route consumes the ID until the subsequent revalidation-start unit.
+- The ID is not rendered, logged, placed in a cookie, or accepted as input.
+
 ### 2026-09-01 18:40 CDT — Wire authentication into service startup
 
 Commit: current commit; hash assigned by Git after commit

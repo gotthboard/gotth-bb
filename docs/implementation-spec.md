@@ -535,6 +535,10 @@ the first grant.
   context only after the opaque credential authenticates. Anonymous requests
   receive no CSRF authority. An internally inconsistent authenticated result
   paired with a malformed credential fails 500 and expires that browser state.
+- The same authenticated snapshot carries the positive local session ID already
+  returned by the indexed lookup. It is server-internal correlation authority
+  for revalidation-attempt binding; it is never rendered or accepted from a
+  browser.
 - Unsafe browser requests validate either exactly one `X-CSRF-Token` header
   (HTMX) without touching the body, or exactly one `_csrf` field in an
   `application/x-www-form-urlencoded` ordinary-form body after a route-specific
