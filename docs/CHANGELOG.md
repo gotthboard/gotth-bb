@@ -5,9 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-01 06:52 CDT — Pin SQL generation and migration identity
+### 2026-09-01 06:57 CDT — Reject applied migration drift
 
 Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/migration/drift.go`
+- `internal/migration/drift_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the pure migration-history oracle. Applied PostgreSQL rows must be an
+exact contiguous prefix of loaded files by version, filename, and SHA-256. A
+gap, rename, changed byte sequence, or database version unknown to the release
+fails closed. The pending result is a slice of the already loaded file set, so
+the check performs no SQL-content copies or per-row allocations.
+
+Verification:
+
+- Red-before-green tests before `pendingMigrations` existed
+- Fresh, partially applied, and fully applied histories
+- Version gap, rename, changed digest, unknown database version, and empty
+  release set failures
+- `go test -mod=readonly -race -cover ./internal/migration` with 100% statement
+  coverage
+- `make verify`
+
+Risks / non-goals:
+
+- This unit compares already loaded state only. Reading applied rows, locking,
+  and transaction execution remain the next migration units.
+
+### 2026-09-01 06:52 CDT — Pin SQL generation and migration identity
+
+Commit: `aa342147f525e260c6b5f1616979a9f5d76693bd`
 
 Affected files:
 
