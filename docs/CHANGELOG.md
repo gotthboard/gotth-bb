@@ -5,6 +5,36 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 15:20 CDT — Revoke sessions by opaque credential hash
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated one-row session revocation query. It targets only the
+SHA-256 hash of the exact opaque browser credential, refuses observations before
+session issuance, and is idempotent once `revoked_at` is set.
+
+Verification:
+
+- PostgreSQL 17.10 proves wrong-token and pre-issuance observations update zero
+- The exact active token updates one row and a repeat updates zero
+- Revoked state immediately disappears from active-session lookup and cannot be
+  touched
+- sqlc regeneration is reproducible
+
+Risks / non-goals:
+
+- Credential validation/service binding and the POST logout boundary follow in
+  subsequent units.
+
 ### 2026-09-01 15:00 CDT — Load sessions at the HTTP boundary
 
 Commit: current commit; hash assigned by Git after commit

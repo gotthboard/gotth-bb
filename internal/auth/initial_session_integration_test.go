@@ -353,8 +353,21 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); err != nil || got.SessionID != activeSession.SessionID {
 		t.Fatalf("ended-suspension GetActiveSession() = (%+v, %v)", got, err)
 	}
-	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET revoked_at = $1 WHERE id = $2", authenticatedAt, activeSession.SessionID); err != nil {
-		t.Fatalf("revoke active session: %v", err)
+	wrongTokenHash := sha256.Sum256([]byte("wrong-token"))
+	for _, test := range []struct {
+		name        string
+		params      db.RevokeSessionParams
+		wantRevoked int64
+	}{
+		{name: "wrong token", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true}, TokenHash: wrongTokenHash[:]}},
+		{name: "before issue", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: serviceTime.Add(-time.Microsecond), Valid: true}, TokenHash: serviceTokenHash[:]}},
+		{name: "active", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true}, TokenHash: serviceTokenHash[:]}, wantRevoked: 1},
+		{name: "repeat", params: db.RevokeSessionParams{ObservedAt: pgtype.Timestamptz{Time: authenticatedAt.Add(time.Minute), Valid: true}, TokenHash: serviceTokenHash[:]}},
+	} {
+		revoked, err := service.queries.RevokeSession(ctx, test.params)
+		if err != nil || revoked != test.wantRevoked {
+			t.Fatalf("%s RevokeSession() = (%d, %v), want (%d, nil)", test.name, revoked, err, test.wantRevoked)
+		}
 	}
 	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
 		t.Fatalf("revoked GetActiveSession() = (%+v, %v), want zero/no rows", got, err)

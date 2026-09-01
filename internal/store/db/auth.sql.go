@@ -147,6 +147,27 @@ func (q *Queries) InsertOIDCLoginAttempt(ctx context.Context, arg InsertOIDCLogi
 	return err
 }
 
+const revokeSession = `-- name: RevokeSession :execrows
+UPDATE public.sessions
+SET revoked_at = $1
+WHERE token_hash = $2
+  AND revoked_at IS NULL
+  AND issued_at <= $1
+`
+
+type RevokeSessionParams struct {
+	ObservedAt pgtype.Timestamptz
+	TokenHash  []byte
+}
+
+func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSession, arg.ObservedAt, arg.TokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchSession = `-- name: TouchSession :execrows
 UPDATE public.sessions
 SET last_seen_at = $1

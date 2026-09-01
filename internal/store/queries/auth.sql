@@ -59,3 +59,10 @@ WHERE id = sqlc.arg(session_id)
   AND expires_at > sqlc.arg(observed_at)
   AND last_seen_at <= sqlc.arg(touch_before)
   AND last_seen_at < sqlc.arg(observed_at);
+
+-- name: RevokeSession :execrows
+UPDATE public.sessions
+SET revoked_at = sqlc.arg(observed_at)
+WHERE token_hash = sqlc.arg(token_hash)
+  AND revoked_at IS NULL
+  AND issued_at <= sqlc.arg(observed_at);
