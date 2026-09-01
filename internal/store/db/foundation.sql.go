@@ -12,6 +12,81 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bootstrapAdministratorAndAudit = `-- name: BootstrapAdministratorAndAudit :one
+WITH target AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.role AS previous_role
+    FROM public.users AS forum_user
+    WHERE forum_user.id = $1
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > $2::timestamptz
+          OR forum_user.suspended_until <= $2::timestamptz
+      )
+    FOR UPDATE OF forum_user
+),
+updated AS (
+    UPDATE public.users AS forum_user
+    SET role = 'administrator',
+        updated_at = $2::timestamptz
+    FROM target
+    WHERE forum_user.id = target.id
+    RETURNING forum_user.id
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        operator_identifier,
+        target_type,
+        target_user_id,
+        action_type,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'operator',
+        $3,
+        'user',
+        updated.id,
+        'bootstrap_administrator',
+        jsonb_build_object('role', target.previous_role),
+        jsonb_build_object('role', 'administrator'),
+        $4,
+        $2::timestamptz
+    FROM updated
+    JOIN target ON target.id = updated.id
+    RETURNING id, target_user_id
+)
+SELECT updated.id AS user_id, audit.id AS audit_id
+FROM updated
+JOIN audit ON audit.target_user_id = updated.id
+`
+
+type BootstrapAdministratorAndAuditParams struct {
+	UserID             int64
+	AtTime             pgtype.Timestamptz
+	OperatorIdentifier pgtype.Text
+	RequestID          pgtype.UUID
+}
+
+type BootstrapAdministratorAndAuditRow struct {
+	UserID  int64
+	AuditID int64
+}
+
+func (q *Queries) BootstrapAdministratorAndAudit(ctx context.Context, arg BootstrapAdministratorAndAuditParams) (BootstrapAdministratorAndAuditRow, error) {
+	row := q.db.QueryRow(ctx, bootstrapAdministratorAndAudit,
+		arg.UserID,
+		arg.AtTime,
+		arg.OperatorIdentifier,
+		arg.RequestID,
+	)
+	var i BootstrapAdministratorAndAuditRow
+	err := row.Scan(&i.UserID, &i.AuditID)
+	return i, err
+}
+
 const countActiveAdministrators = `-- name: CountActiveAdministrators :one
 SELECT count(*)::bigint
 FROM public.users

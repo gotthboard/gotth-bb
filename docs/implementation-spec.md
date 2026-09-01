@@ -553,6 +553,10 @@ requires database/operator authority, rejects a missing or ambiguous identity,
 locks the singleton governance row, requires that zero active administrators
 exist, and commits the local role change with an immutable
 `actor_kind=operator` audit event. Concurrent or later bootstrap attempts fail.
+After the governance lock and zero-count check, one generated statement row-
+locks the exact active target user, changes only its role/update timestamp, and
+inserts the operator audit event from the previous/resulting role values. A
+missing or currently suspended target returns no row and the transaction fails.
 Normal administrator-role/suspension transitions lock the same row and reject
 any result with zero active administrators. OIDC claims do not bootstrap or
 restore local privileges, and the command never invents a forum-user actor for

@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:49 CDT — Couple administrator bootstrap role and audit writes
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/foundation.sql`
+- `internal/store/db/foundation.sql.go`
+- `internal/store/db/foundation_governance_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added generated `BootstrapAdministratorAndAudit`. Inside its caller-owned
+governance transaction it row-locks the exact active target user, changes only
+the local role and update timestamp, and inserts the required immutable
+`actor_kind=operator` / `bootstrap_administrator` audit event from explicit
+previous and resulting role JSON. The statement returns both user and audit IDs
+or no row; role and audit cannot split.
+
+Verification:
+
+- Generated arguments preserve exact user, timestamp, operator identifier, and
+  request UUID order
+- Query text retains the active-user predicate, user lock, fixed role/action/
+  actor values, and previous/resulting role objects
+- Scan failure returns the zero result with its internal cause
+- The generated method reaches 100% statement coverage and passes 50 race-
+  detector repetitions
+
+Risks / non-goals:
+
+- Governance locking and zero-active-administrator enforcement belong to the
+  transaction coordinator in the next unit; this statement cannot be called as
+  a stand-alone policy decision.
+
 ### 2026-09-01 17:42 CDT — Complete both OIDC purposes at one callback
 
 Commit: current commit; hash assigned by Git after commit

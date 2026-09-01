@@ -111,3 +111,53 @@ WHERE role = 'administrator'
       OR suspended_at > sqlc.arg(at_time)::timestamptz
       OR suspended_until <= sqlc.arg(at_time)::timestamptz
   );
+
+-- name: BootstrapAdministratorAndAudit :one
+WITH target AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.role AS previous_role
+    FROM public.users AS forum_user
+    WHERE forum_user.id = sqlc.arg(user_id)
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > sqlc.arg(at_time)::timestamptz
+          OR forum_user.suspended_until <= sqlc.arg(at_time)::timestamptz
+      )
+    FOR UPDATE OF forum_user
+),
+updated AS (
+    UPDATE public.users AS forum_user
+    SET role = 'administrator',
+        updated_at = sqlc.arg(at_time)::timestamptz
+    FROM target
+    WHERE forum_user.id = target.id
+    RETURNING forum_user.id
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        operator_identifier,
+        target_type,
+        target_user_id,
+        action_type,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'operator',
+        sqlc.arg(operator_identifier),
+        'user',
+        updated.id,
+        'bootstrap_administrator',
+        jsonb_build_object('role', target.previous_role),
+        jsonb_build_object('role', 'administrator'),
+        sqlc.arg(request_id),
+        sqlc.arg(at_time)::timestamptz
+    FROM updated
+    JOIN target ON target.id = updated.id
+    RETURNING id, target_user_id
+)
+SELECT updated.id AS user_id, audit.id AS audit_id
+FROM updated
+JOIN audit ON audit.target_user_id = updated.id;
