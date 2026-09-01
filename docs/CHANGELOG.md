@@ -5,6 +5,40 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 11:02 CDT — Build exact initial OIDC authorization URLs
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/authorization_url.go`
+- `internal/auth/authorization_url_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the initial authorization URL boundary. It accepts only a complete
+discovered provider with the exact `openid profile email` scope set and a
+strict, independent 256-bit state/nonce/PKCE material set. It delegates the
+documented S256 challenge construction and query encoding to `x/oauth2`, places
+state and nonce in the authorization request, and keeps the verifier and client
+secret out of browser-visible state.
+
+Verification:
+
+- Exact authorization origin/path, response type, client ID, redirect URI,
+  scopes, state, nonce, S256 challenge, and challenge method
+- Explicit absence of the PKCE verifier and client secret
+- Zero/incomplete providers; malformed, short, or repeated material values
+- `initialAuthorizationURL` at 100% statement coverage; auth package 96.8%
+
+Risks / non-goals:
+
+- The provider discovery boundary owns endpoint validation. This function
+  accepts only its fully initialized internal result rather than reopening URL
+  policy.
+- Browser redirect handling and persistence orchestration remain separate.
+
 ### 2026-09-01 10:57 CDT — Harden Authentik provider discovery
 
 Commit: current commit; hash assigned by Git after commit
