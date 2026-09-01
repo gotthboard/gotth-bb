@@ -25,7 +25,7 @@ func ParsePublicBaseURL(raw, basePath string, production bool) (url.URL, error) 
 
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return url.URL{}, fmt.Errorf("PUBLIC_BASE_URL is invalid: %w", err)
+		return url.URL{}, fmt.Errorf("PUBLIC_BASE_URL is invalid")
 	}
 	if parsed.Opaque != "" || parsed.Host == "" || parsed.Hostname() == "" {
 		return url.URL{}, fmt.Errorf("PUBLIC_BASE_URL must be an absolute hierarchical URL")

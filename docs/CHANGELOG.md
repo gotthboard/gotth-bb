@@ -20,6 +20,7 @@ Changed:
 - Added exact base-path validation and public-base-URL validation, including
   production HTTPS enforcement and rejection of traversal, encoded separators,
   credentials, queries, fragments, malformed escaping, and empty hostnames.
+  Malformed URL diagnostics redact the raw configured value.
 - Added a browser URL builder that preserves the configured prefix, escapes
   each path segment, and rejects empty or dot-segment ambiguity.
 - Added a standard-library HTTP shell with liveness and a deliberately failing

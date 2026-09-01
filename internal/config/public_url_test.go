@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParsePublicBaseURL(t *testing.T) {
 	t.Parallel()
@@ -48,6 +51,19 @@ func TestParsePublicBaseURL(t *testing.T) {
 				t.Fatalf("ParsePublicBaseURL(%q, %q) = %q, want %q", test.raw, test.basePath, got.String(), test.want)
 			}
 		})
+	}
+}
+
+func TestParsePublicBaseURLRedactsMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	const secret = "do-not-log-this"
+	_, err := ParsePublicBaseURL("https://user:"+secret+"%zz@example.com/bb", "/bb", true)
+	if err == nil {
+		t.Fatal("ParsePublicBaseURL accepted malformed credentials")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("ParsePublicBaseURL error exposed configured credential: %q", err)
 	}
 }
 
