@@ -3,6 +3,7 @@ package httpui
 import (
 	"context"
 	"crypto/subtle"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,44 +12,39 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 )
 
-const maxOIDCCallbackQueryBytes = 8192
-
-type completedBrowserLogin struct {
-	token      string
-	returnPath string
-	expiresAt  time.Time
-}
-
-// newInitialLoginCallbackHandler constructs the exact GET callback boundary.
-// It admits only one state and code plus one exact browser state cookie,
-// expires that transient binding before invoking completion once, revalidates
-// the internal redirect, validates the session cookie, then commits one 303
-// response. Every failure response is non-cacheable and generic.
+// newAuthenticationCallbackHandler constructs the exact GET callback boundary
+// shared by initial login and revalidation. Exactly one matching fixed state-
+// cookie namespace selects the completion path; the selected service boundary
+// still verifies the durable attempt purpose. Revalidation additionally
+// requires one canonical old session credential.
 //
-// Complexity: construction scans n cookie-name and p base-path bytes in
-// O(n+p), Omega(1), and tight Theta(n+p) for valid input, retaining Theta(p)
-// path state in the builder copy. For q raw-query bytes, c Cookie-header bytes,
-// and delegated completion cost D, successful request time is O(q+c+D+n+p),
-// Omega(q+c), with no tighter Theta bound because D includes network/database
-// I/O; auxiliary space is O(q+c+p), Omega(q+c) on a valid callback. q is capped
-// at 8,192 bytes; net/http owns its bounded request-header and cookie parsing.
-func newInitialLoginCallbackHandler(
-	complete func(context.Context, string, string) (completedBrowserLogin, error),
+// Complexity: construction scans n cookie-name and p base-path bytes in tight
+// Theta(n+p) time and retains Theta(p) path state. For q raw-query and c cookie-
+// header bytes plus delegated completion cost D, successful request time is
+// O(q+c+D+n+p), Omega(q+c), and auxiliary space O(q+c+p), Omega(q+c). q is
+// capped at 8,192 bytes; no operation retries or detaches.
+func newAuthenticationCallbackHandler(
+	completeInitial func(context.Context, string, string) (completedBrowserLogin, error),
+	completeRevalidation func(context.Context, string, string, string) (completedBrowserLogin, error),
 	cookieName string,
 	builder URLBuilder,
 	secure bool,
 ) (http.Handler, error) {
-	if complete == nil {
+	if completeInitial == nil {
 		return nil, fmt.Errorf("initial login completion is required")
+	}
+	if completeRevalidation == nil {
+		return nil, fmt.Errorf("revalidation completion is required")
 	}
 	validatedCookieName, err := config.ParseSessionCookieName(cookieName)
 	if err != nil || validatedCookieName != cookieName {
-		return nil, fmt.Errorf("initial login session cookie name is invalid")
+		return nil, fmt.Errorf("authentication callback session cookie name is invalid")
 	}
 	if _, err := builder.CookiePath(); err != nil {
-		return nil, fmt.Errorf("initial login URL builder is invalid: %w", err)
+		return nil, fmt.Errorf("authentication callback URL builder is invalid: %w", err)
 	}
-	stateCookieName := cookieName + initialLoginStateCookieSuffix
+	initialStateCookieName := cookieName + initialLoginStateCookieSuffix
+	revalidationStateCookieName := cookieName + revalidationStateCookieSuffix
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		response.Header().Set("Pragma", "no-cache")
@@ -69,27 +65,58 @@ func newInitialLoginCallbackHandler(
 			http.Error(response, "authentication failed", http.StatusBadRequest)
 			return
 		}
-		stateCookies := request.CookiesNamed(stateCookieName)
-		if len(stateCookies) != 1 || stateCookies[0].Quoted || len(states[0]) != sessionCookieEncodedBytes ||
-			len(stateCookies[0].Value) != sessionCookieEncodedBytes ||
-			subtle.ConstantTimeCompare([]byte(stateCookies[0].Value), []byte(states[0])) != 1 {
+		initialStateCookies := request.CookiesNamed(initialStateCookieName)
+		revalidationStateCookies := request.CookiesNamed(revalidationStateCookieName)
+		if len(initialStateCookies) > 1 || len(revalidationStateCookies) > 1 {
 			http.Error(response, "authentication failed", http.StatusBadRequest)
 			return
+		}
+		matchesState := func(cookies []*http.Cookie) bool {
+			return len(cookies) == 1 && !cookies[0].Quoted &&
+				len(states[0]) == sessionCookieEncodedBytes && len(cookies[0].Value) == sessionCookieEncodedBytes &&
+				subtle.ConstantTimeCompare([]byte(cookies[0].Value), []byte(states[0])) == 1
+		}
+		initial := matchesState(initialStateCookies)
+		revalidation := matchesState(revalidationStateCookies)
+		if initial == revalidation {
+			http.Error(response, "authentication failed", http.StatusBadRequest)
+			return
+		}
+		selectedStateCookieName := initialStateCookieName
+		if revalidation {
+			selectedStateCookieName = revalidationStateCookieName
 		}
 		expiredStateCookie, err := newInitialLoginStateCookie(cookieName, builder, secure, states[0])
 		if err != nil {
 			http.Error(response, "authentication failed", http.StatusBadRequest)
 			return
 		}
+		expiredStateCookie.Name = selectedStateCookieName
 		expiredStateCookie.Value = ""
 		expiredStateCookie.Expires = time.Unix(1, 0).UTC()
 		expiredStateCookie.MaxAge = -1
-		if err := expiredStateCookie.Valid(); err != nil {
-			http.Error(response, "authentication failed", http.StatusInternalServerError)
-			return
-		}
 		http.SetCookie(response, &expiredStateCookie)
-		completed, err := complete(request.Context(), states[0], codes[0])
+		var completed completedBrowserLogin
+		if initial {
+			completed, err = completeInitial(request.Context(), states[0], codes[0])
+		} else {
+			sessionCookies := request.CookiesNamed(cookieName)
+			if len(sessionCookies) != 1 || sessionCookies[0].Quoted || len(sessionCookies[0].Value) != sessionCookieEncodedBytes {
+				http.Error(response, "authentication failed", http.StatusBadRequest)
+				return
+			}
+			var encoded [sessionCookieEncodedBytes]byte
+			copy(encoded[:], sessionCookies[0].Value)
+			defer clear(encoded[:])
+			var decoded [sessionCookieTokenBytes]byte
+			decodedLength, decodeErr := base64.RawURLEncoding.Strict().Decode(decoded[:], encoded[:])
+			clear(decoded[:])
+			if decodeErr != nil || decodedLength != sessionCookieTokenBytes {
+				http.Error(response, "authentication failed", http.StatusBadRequest)
+				return
+			}
+			completed, err = completeRevalidation(request.Context(), states[0], codes[0], sessionCookies[0].Value)
+		}
 		if err != nil {
 			http.Error(response, "authentication failed", http.StatusBadRequest)
 			return
@@ -108,4 +135,12 @@ func newInitialLoginCallbackHandler(
 		response.Header().Set("Location", returnPath)
 		response.WriteHeader(http.StatusSeeOther)
 	}), nil
+}
+
+const maxOIDCCallbackQueryBytes = 8192
+
+type completedBrowserLogin struct {
+	token      string
+	returnPath string
+	expiresAt  time.Time
 }

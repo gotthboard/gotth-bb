@@ -17,6 +17,7 @@ type AuthenticationService interface {
 	BeginInitialLogin(context.Context, string) (string, string, error)
 	BeginRevalidation(context.Context, int64, string) (string, string, error)
 	CompleteInitialLogin(context.Context, string, string) (string, string, time.Time, error)
+	CompleteRevalidation(context.Context, string, string, string) (string, string, time.Time, error)
 	AuthenticateSession(context.Context, string) (auth.SessionAuthentication, error)
 	RevokeSession(context.Context, string) (bool, error)
 }
@@ -69,9 +70,13 @@ func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, 
 		}
 		revalidationHandler.ServeHTTP(response, request)
 	})
-	callbackHandler, err := newInitialLoginCallbackHandler(
+	callbackHandler, err := newAuthenticationCallbackHandler(
 		func(ctx context.Context, state, code string) (completedBrowserLogin, error) {
 			token, returnPath, expiresAt, completionErr := service.CompleteInitialLogin(ctx, state, code)
+			return completedBrowserLogin{token: token, returnPath: returnPath, expiresAt: expiresAt}, completionErr
+		},
+		func(ctx context.Context, state, code, oldToken string) (completedBrowserLogin, error) {
+			token, returnPath, expiresAt, completionErr := service.CompleteRevalidation(ctx, state, code, oldToken)
 			return completedBrowserLogin{token: token, returnPath: returnPath, expiresAt: expiresAt}, completionErr
 		},
 		sessionCookieName,

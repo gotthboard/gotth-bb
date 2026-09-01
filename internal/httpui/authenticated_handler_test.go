@@ -19,6 +19,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 
 	builder := callbackTestURLBuilder(t)
 	sessionToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x51}, 32))
+	revalidatedToken := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x52}, 32))
 	state := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x62}, 32))
 	revalidationState := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x63}, 32))
 	service := &authenticatedHandlerTestService{}
@@ -42,6 +43,13 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 			t.Fatalf("revalidation start = (%d, %q)", sessionID, returnPath)
 		}
 		return "https://auth.example/authorize?state=" + revalidationState, revalidationState, nil
+	}
+	service.completeRevalidation = func(_ context.Context, gotState, code, oldToken string) (string, string, time.Time, error) {
+		service.completeRevalidationCalls++
+		if gotState != revalidationState || code != "revalidation-code" || oldToken != sessionToken {
+			t.Fatalf("revalidation callback input = (%q, %q, %q)", gotState, code, oldToken)
+		}
+		return revalidatedToken, "/bb/", time.Date(2026, time.September, 3, 12, 0, 0, 0, time.UTC), nil
 	}
 	service.authenticate = func(_ context.Context, token string) (auth.SessionAuthentication, error) {
 		service.authenticateCalls++
@@ -114,6 +122,22 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 			revalidationResponse.Code, service.authenticateCalls, service.beginRevalidationCalls,
 			revalidationRequest.Pattern, revalidationCookies)
 	}
+	revalidationCallbackRequest := httptest.NewRequest(
+		http.MethodGet, "/auth/callback?code=revalidation-code&state="+revalidationState, nil,
+	)
+	revalidationCallbackRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session_oidc_revalidate_state", Value: revalidationState})
+	revalidationCallbackRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	revalidationCallbackResponse := httptest.NewRecorder()
+	handler.ServeHTTP(revalidationCallbackResponse, revalidationCallbackRequest)
+	revalidationCallbackCookies := revalidationCallbackResponse.Result().Cookies()
+	if revalidationCallbackResponse.Code != http.StatusSeeOther || service.completeRevalidationCalls != 1 ||
+		revalidationCallbackRequest.Pattern != "GET /auth/callback" || len(revalidationCallbackCookies) != 2 ||
+		revalidationCallbackCookies[0].Name != "gotth_bb_session_oidc_revalidate_state" ||
+		revalidationCallbackCookies[1].Name != "gotth_bb_session" || revalidationCallbackCookies[1].Value != revalidatedToken {
+		t.Fatalf("revalidation callback = (status %d, calls %d, pattern %q, cookies %+v)",
+			revalidationCallbackResponse.Code, service.completeRevalidationCalls,
+			revalidationCallbackRequest.Pattern, revalidationCallbackCookies)
+	}
 
 	rootRequest := httptest.NewRequest(http.MethodGet, "/", nil)
 	rootRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
@@ -147,6 +171,9 @@ func TestNewAuthenticatedHandlerRejectsInvalidDependencies(t *testing.T) {
 			return "", "", nil
 		},
 		complete: func(context.Context, string, string) (string, string, time.Time, error) {
+			return "", "", time.Time{}, nil
+		},
+		completeRevalidation: func(context.Context, string, string, string) (string, string, time.Time, error) {
 			return "", "", time.Time{}, nil
 		},
 		authenticate: func(context.Context, string) (auth.SessionAuthentication, error) {
@@ -207,6 +234,9 @@ func TestNewAuthenticatedHandlerFailsRevalidationWithoutServerSessionAuthority(t
 				complete: func(context.Context, string, string) (string, string, time.Time, error) {
 					return "", "", time.Time{}, nil
 				},
+				completeRevalidation: func(context.Context, string, string, string) (string, string, time.Time, error) {
+					return "", "", time.Time{}, nil
+				},
 				authenticate: func(context.Context, string) (auth.SessionAuthentication, error) {
 					return test.authentication, nil
 				},
@@ -244,16 +274,18 @@ func TestNewAuthenticatedHandlerFailsRevalidationWithoutServerSessionAuthority(t
 }
 
 type authenticatedHandlerTestService struct {
-	begin                  func(context.Context, string) (string, string, error)
-	beginRevalidation      func(context.Context, int64, string) (string, string, error)
-	complete               func(context.Context, string, string) (string, string, time.Time, error)
-	authenticate           func(context.Context, string) (auth.SessionAuthentication, error)
-	revoke                 func(context.Context, string) (bool, error)
-	beginCalls             int
-	beginRevalidationCalls int
-	completeCalls          int
-	authenticateCalls      int
-	revokeCalls            int
+	begin                     func(context.Context, string) (string, string, error)
+	beginRevalidation         func(context.Context, int64, string) (string, string, error)
+	complete                  func(context.Context, string, string) (string, string, time.Time, error)
+	completeRevalidation      func(context.Context, string, string, string) (string, string, time.Time, error)
+	authenticate              func(context.Context, string) (auth.SessionAuthentication, error)
+	revoke                    func(context.Context, string) (bool, error)
+	beginCalls                int
+	beginRevalidationCalls    int
+	completeCalls             int
+	completeRevalidationCalls int
+	authenticateCalls         int
+	revokeCalls               int
 }
 
 func (service *authenticatedHandlerTestService) BeginInitialLogin(ctx context.Context, returnPath string) (string, string, error) {
@@ -266,6 +298,10 @@ func (service *authenticatedHandlerTestService) CompleteInitialLogin(ctx context
 
 func (service *authenticatedHandlerTestService) BeginRevalidation(ctx context.Context, sessionID int64, returnPath string) (string, string, error) {
 	return service.beginRevalidation(ctx, sessionID, returnPath)
+}
+
+func (service *authenticatedHandlerTestService) CompleteRevalidation(ctx context.Context, state, code, oldToken string) (string, string, time.Time, error) {
+	return service.completeRevalidation(ctx, state, code, oldToken)
 }
 
 func (service *authenticatedHandlerTestService) AuthenticateSession(ctx context.Context, token string) (auth.SessionAuthentication, error) {

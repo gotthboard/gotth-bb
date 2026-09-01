@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:42 CDT — Complete both OIDC purposes at one callback
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/callback_handler.go`
+- `internal/httpui/callback_handler_test.go`
+- `internal/httpui/revalidation_callback_handler_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Generalized `/auth/callback` over initial login and revalidation. Exactly one
+matching fixed state-cookie namespace selects the expected service operation;
+the consumed PostgreSQL attempt still enforces durable purpose. Revalidation
+requires one strict old session cookie, calls `CompleteRevalidation`, expires
+only its transient state cookie, installs the rotated session credential, and
+redirects only to the revalidated internal path.
+
+Verification:
+
+- Initial-login callback behavior and failure contracts remain unchanged
+- Revalidation propagates exact state, code, and old opaque token, then emits
+  only the selected state-cookie expiration plus replacement session cookie
+- Missing, duplicate, quoted, short, or malformed old session cookies fail
+  before completion
+- Missing, duplicate, or ambiguous state namespaces fail before either service
+  boundary
+- The shared callback function reaches 100% statement coverage; focused callback
+  and router suites pass 20 times under the race detector
+
+Risks / non-goals:
+
+- The cookie namespace is only an expected-path selector; PostgreSQL purpose
+  validation remains mandatory and fail-closed.
+- Protected-route freshness enforcement remains subsequent work.
+
 ### 2026-09-01 17:30 CDT — Start revalidation from authenticated browser state
 
 Commit: current commit; hash assigned by Git after commit

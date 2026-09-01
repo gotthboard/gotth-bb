@@ -470,12 +470,17 @@ than relying on OAuth2 authentication-style probing.
 
 ### 8.3 Callback transaction
 
-The initial callback admits exactly one `state` and `code` query value and
-exactly one unquoted derived state cookie whose value equals the query state.
-Missing, duplicate, quoted, malformed, or mismatched cookie state fails before
-database or provider work. Once the pair matches and its encoding is valid, the
-handler emits expiration of the transient cookie before invoking completion;
-success and every later failure therefore rotate that browser state away.
+The shared callback admits exactly one `state` and `code` query value and
+requires exactly one matching unquoted state cookie across the fixed initial-
+login and revalidation namespaces. Duplicate cookies within either namespace,
+two matching namespaces, or no matching namespace fail before database or
+provider work. The selected service operation still requires the same purpose
+from the consumed PostgreSQL row, so the cookie selects an expected path but
+cannot rewrite durable purpose. Revalidation additionally requires exactly one
+unquoted canonical old session cookie before completion. Once state and its
+encoding are valid, the handler emits expiration of only the selected transient
+cookie before invoking completion; success and every later failure therefore
+rotate that browser state away.
 
 The callback:
 

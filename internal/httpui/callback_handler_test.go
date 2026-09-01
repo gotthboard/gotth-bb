@@ -286,3 +286,20 @@ func callbackTestURLBuilder(t *testing.T) URLBuilder {
 	}
 	return builder
 }
+
+func newInitialLoginCallbackHandler(
+	complete func(context.Context, string, string) (completedBrowserLogin, error),
+	cookieName string,
+	builder URLBuilder,
+	secure bool,
+) (http.Handler, error) {
+	return newAuthenticationCallbackHandler(
+		complete,
+		func(context.Context, string, string, string) (completedBrowserLogin, error) {
+			panic("revalidation completion must not run in an initial-login test")
+		},
+		cookieName,
+		builder,
+		secure,
+	)
+}

@@ -90,6 +90,10 @@ func (fakeAuthenticationService) CompleteInitialLogin(context.Context, string, s
 	return "", "", time.Time{}, errors.New("callback is not expected")
 }
 
+func (fakeAuthenticationService) CompleteRevalidation(context.Context, string, string, string) (string, string, time.Time, error) {
+	return "", "", time.Time{}, errors.New("revalidation callback is not expected")
+}
+
 func (fakeAuthenticationService) AuthenticateSession(context.Context, string) (auth.SessionAuthentication, error) {
 	return auth.SessionAuthentication{}, nil
 }
