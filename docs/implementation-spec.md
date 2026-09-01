@@ -523,6 +523,11 @@ the first grant.
 - Cookie value contains only a 256-bit random opaque token encoded as 43
   unpadded base64url characters. PostgreSQL stores only SHA-256 of those exact
   encoded cookie bytes.
+- Each authenticated request derives its CSRF synchronizer token as
+  HMAC-SHA-256 keyed by the decoded 256-bit session secret over the fixed ASCII
+  domain `gotth-bb/csrf/v1`, then exposes only the 43-character unpadded
+  base64url digest to forms. The derived value cannot authenticate a session,
+  requires no second durable secret, and rotates whenever the session rotates.
 - Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/bb`.
 - Session rotation occurs after login and any future privilege elevation.
 - Once `AUTH_REVALIDATE_INTERVAL` elapses, protected routes require a fresh OIDC

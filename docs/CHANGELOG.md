@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 16:45 CDT — Derive session-bound CSRF tokens
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/csrf_token.go`
+- `internal/httpui/csrf_token_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added deterministic CSRF synchronizer-token derivation. The exact decoded
+256-bit opaque session secret keys HMAC-SHA-256 over the fixed
+`gotth-bb/csrf/v1` domain; only the 43-character base64url digest is exposed to
+forms. It rotates with the session, cannot authenticate, and requires no new
+durable secret or database field.
+
+Verification:
+
+- Output matches an independently calculated OpenSSL HMAC vector
+- Derived output is distinct from the session credential and strictly decodes
+  to 32 bytes
+- Missing, short, and invalid-encoding session values fail closed
+- `deriveCSRFToken` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The session middleware writer and constant-time request validator follow.
+
 ### 2026-09-01 16:30 CDT — Define request CSRF-token lookup
 
 Commit: current commit; hash assigned by Git after commit
