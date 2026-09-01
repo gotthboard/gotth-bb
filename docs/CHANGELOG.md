@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 10:23 CDT — Validate configured internal return paths
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/url_builder.go`
+- `internal/httpui/url_builder_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the application half of the login return-path boundary. One validated URL
+builder now accepts only canonical request URIs within its exact configured
+application subtree, including root deployments and alternate nested prefixes.
+The validator returns the original bytes only after rejecting external or
+network authorities, fragments, traversal/empty segments, encoded separators,
+backslashes, decoded controls, noncanonical path/query encoding, and values
+outside the database byte bound.
+
+Verification:
+
+- Root, `/bb`, alternate nested, Unicode, route, trailing-slash, and sorted
+  query success cases
+- External, sibling-prefix, traversal, repeated-separator, encoded separator/
+  control/backslash, raw Unicode, noncanonical query, fragment, empty-query,
+  malformed escape, zero-builder, and overlong rejection cases
+- `ValidateReturnPath` at 100% statement coverage
+- 20 repeated race-enabled HTTP UI runs and `make verify`
+
+Risks / non-goals:
+
+- A valid return path conveys navigation only. It grants no identity,
+  authorization, or CSRF authority.
+- Individual destination handlers still validate their own query values.
+
 ### 2026-09-01 10:06 CDT — Remove the base-path literal from login-attempt storage
 
 Commit: current commit; hash assigned by Git after commit

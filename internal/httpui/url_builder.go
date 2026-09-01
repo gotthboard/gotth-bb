@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 )
@@ -111,4 +113,65 @@ func (builder URLBuilder) PathWithQuery(segments []string, query url.Values) (st
 // with no variable route segments.
 func (builder URLBuilder) CookiePath() (string, error) {
 	return builder.Path()
+}
+
+// ValidateReturnPath proves that one untrusted browser return target is a
+// canonical path inside this builder's configured application subtree. It
+// returns the original bytes only after rejecting absolute/network URLs,
+// fragments, traversal or empty segments, encoded separators, noncanonical
+// path/query encoding, and values outside the database byte bound.
+//
+// Complexity: for n input bytes and q query keys, time is O(n+q*log(q)),
+// Omega(1), and auxiliary space is O(n+q). Both are bounded by the 2,048-byte
+// input limit; url.ParseQuery owns query allocation and deterministic sorting.
+func (builder URLBuilder) ValidateReturnPath(raw string) (string, error) {
+	if !builder.initialized {
+		return "", fmt.Errorf("URL builder is not initialized")
+	}
+	if len(raw) == 0 || len(raw) > 2048 || !utf8.ValidString(raw) {
+		return "", fmt.Errorf("return path has an invalid size or encoding")
+	}
+	parsed, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return "", fmt.Errorf("return path is not a valid request URI")
+	}
+	if parsed.Scheme != "" || parsed.Host != "" || parsed.User != nil || parsed.Opaque != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("return path must not contain an external authority or fragment")
+	}
+	if parsed.Path == "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") || strings.Contains(parsed.Path, `\`) || strings.IndexFunc(parsed.Path, unicode.IsControl) >= 0 {
+		return "", fmt.Errorf("return path must be an internal absolute path")
+	}
+	segments := strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")
+	for index, segment := range segments {
+		lastTrailingSegment := index == len(segments)-1 && segment == ""
+		if (segment == "" && !lastTrailingSegment) || segment == "." || segment == ".." {
+			return "", fmt.Errorf("return path contains an ambiguous segment")
+		}
+	}
+	canonicalPath := (&url.URL{Path: parsed.Path}).EscapedPath()
+	rawPath, rawQuery, hasQuery := strings.Cut(raw, "?")
+	if rawPath != canonicalPath {
+		return "", fmt.Errorf("return path encoding is not canonical")
+	}
+	if hasQuery != (parsed.RawQuery != "" || parsed.ForceQuery) || parsed.ForceQuery {
+		return "", fmt.Errorf("return path query is not canonical")
+	}
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil || query.Encode() != rawQuery {
+		return "", fmt.Errorf("return path query is not canonical")
+	}
+	for key, values := range query {
+		if strings.IndexFunc(key, unicode.IsControl) >= 0 {
+			return "", fmt.Errorf("return path query contains a control character")
+		}
+		for _, value := range values {
+			if strings.IndexFunc(value, unicode.IsControl) >= 0 {
+				return "", fmt.Errorf("return path query contains a control character")
+			}
+		}
+	}
+	if builder.basePath != "" && parsed.Path != builder.basePath && !strings.HasPrefix(parsed.Path, builder.basePath+"/") {
+		return "", fmt.Errorf("return path escapes the configured base path")
+	}
+	return raw, nil
 }

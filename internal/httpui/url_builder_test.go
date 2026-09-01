@@ -2,6 +2,7 @@ package httpui
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -180,6 +181,86 @@ func TestURLBuilderCookiePathUsesNarrowApplicationRoot(t *testing.T) {
 	}
 	if got, err := (URLBuilder{}).CookiePath(); err == nil {
 		t.Fatalf("zero-value CookiePath() = %q, want error", got)
+	}
+}
+
+func TestURLBuilderValidateReturnPath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		basePath   string
+		returnPath string
+	}{
+		{name: "root deployment root", returnPath: "/"},
+		{name: "root deployment route", returnPath: "/login?return=%2F"},
+		{name: "prefix without slash", basePath: "/bb", returnPath: "/bb"},
+		{name: "prefix root", basePath: "/bb", returnPath: "/bb/"},
+		{name: "prefixed route", basePath: "/bb", returnPath: "/bb/topics/42"},
+		{name: "canonical query", basePath: "/bb", returnPath: "/bb/search?area=news&q=hello+world"},
+		{name: "unicode prefix and route", basePath: "/café", returnPath: "/caf%C3%A9/areas/d%C3%A9j%C3%A0"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			publicBase, err := url.Parse("https://forum.example.test" + test.basePath)
+			if err != nil {
+				t.Fatalf("url.Parse() returned error: %v", err)
+			}
+			builder, err := NewURLBuilder(*publicBase, test.basePath)
+			if err != nil {
+				t.Fatalf("NewURLBuilder() returned error: %v", err)
+			}
+			got, err := builder.ValidateReturnPath(test.returnPath)
+			if err != nil || got != test.returnPath {
+				t.Fatalf("ValidateReturnPath(%q) = (%q, %v)", test.returnPath, got, err)
+			}
+		})
+	}
+}
+
+func TestURLBuilderValidateReturnPathRejectsUnsafeOrNoncanonicalValues(t *testing.T) {
+	t.Parallel()
+
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder() returned error: %v", err)
+	}
+	for _, returnPath := range []string{
+		"",
+		"/" + strings.Repeat("a", 2048),
+		"relative",
+		"//evil.example/path",
+		"https://evil.example/path",
+		`/bb\\escape`,
+		"/bb/path#fragment",
+		"/bbish",
+		"/other",
+		"/bb//topics",
+		"/bb/./topics",
+		"/bb/%2e%2e/admin",
+		"/bb/%2Fadmin",
+		"/bb/%5cadmin",
+		"/bb/%00admin",
+		"/bb/%61reas",
+		"/bb/café",
+		"/bb/search?q=hello%20world",
+		"/bb/search?%0A=value",
+		"/bb/search?q=%0A",
+		"/bb?",
+		"/bb/%zz",
+	} {
+		returnPath := returnPath
+		t.Run(returnPath, func(t *testing.T) {
+			t.Parallel()
+			if got, err := builder.ValidateReturnPath(returnPath); err == nil {
+				t.Fatalf("ValidateReturnPath(%q) = %q, want error", returnPath, got)
+			}
+		})
+	}
+	if got, err := (URLBuilder{}).ValidateReturnPath("/"); err == nil {
+		t.Fatalf("zero-value ValidateReturnPath() = %q, want error", got)
 	}
 }
 
