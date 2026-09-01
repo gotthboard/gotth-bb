@@ -168,6 +168,30 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (i
 	return result.RowsAffected(), nil
 }
 
+const revokeSessionForRotation = `-- name: RevokeSessionForRotation :execrows
+UPDATE public.sessions
+SET revoked_at = $1
+WHERE id = $2
+  AND token_hash = $3
+  AND revoked_at IS NULL
+  AND issued_at <= $1
+  AND expires_at > $1
+`
+
+type RevokeSessionForRotationParams struct {
+	ObservedAt pgtype.Timestamptz
+	SessionID  int64
+	TokenHash  []byte
+}
+
+func (q *Queries) RevokeSessionForRotation(ctx context.Context, arg RevokeSessionForRotationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeSessionForRotation, arg.ObservedAt, arg.SessionID, arg.TokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const touchSession = `-- name: TouchSession :execrows
 UPDATE public.sessions
 SET last_seen_at = $1

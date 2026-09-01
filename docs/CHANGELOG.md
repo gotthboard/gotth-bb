@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:15 CDT — Revoke exact old session during rotation
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/store/db/auth_rotation_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated `RevokeSessionForRotation` query. It updates only the exact
+positive session ID plus old-token hash while requiring the row to remain
+unrevoked, issued, and unexpired at the transaction timestamp. The later
+rotation coordinator will require exactly one affected row before commit.
+
+Verification:
+
+- Generated method forwards exact context, observed time, ID, and hash order
+- Query text retains ID/hash/revocation/issue/expiry predicates
+- Zero and one affected rows round-trip exactly for coordinator validation
+- Execution failures return zero rows with the original internal cause
+- Generated method reaches 100% statement coverage
+
+Risks / non-goals:
+
+- This query is transaction-bound by its future caller; alone it intentionally
+  performs no retry and invents no idempotent success.
+
 ### 2026-09-01 20:00 CDT — Lock exact active session for rotation
 
 Commit: current commit; hash assigned by Git after commit

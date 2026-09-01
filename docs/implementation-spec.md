@@ -526,6 +526,10 @@ local nonsuspension, rejects issue/activity/validation timestamps in the future,
 joins the sole stored issuer/subject, and row-locks the
 session, user, and identity together. Missing, revoked, expired, idle, suspended,
 or mismatched state is the same no-row failure before profile or session writes.
+After the replacement insert succeeds in that transaction, revocation targets
+the same positive session ID and old-token hash, requires it still unrevoked and
+unexpired at the transaction timestamp, and must affect exactly one row before
+commit.
 
 The first administrator is granted only through an explicit operator command
 against an already provisioned `(issuer, subject)` identity. The command

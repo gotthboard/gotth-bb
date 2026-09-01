@@ -66,3 +66,12 @@ SET revoked_at = sqlc.arg(observed_at)
 WHERE token_hash = sqlc.arg(token_hash)
   AND revoked_at IS NULL
   AND issued_at <= sqlc.arg(observed_at);
+
+-- name: RevokeSessionForRotation :execrows
+UPDATE public.sessions
+SET revoked_at = sqlc.arg(observed_at)
+WHERE id = sqlc.arg(session_id)
+  AND token_hash = sqlc.arg(token_hash)
+  AND revoked_at IS NULL
+  AND issued_at <= sqlc.arg(observed_at)
+  AND expires_at > sqlc.arg(observed_at);
