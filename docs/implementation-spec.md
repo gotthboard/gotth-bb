@@ -458,6 +458,10 @@ than relying on OAuth2 authentication-style probing.
   application cookie path, and limited to five minutes. Production sets
   `Secure`; loopback HTTP development does not. A new start overwrites that
   browser's prior usable state.
+- Revalidation attempt creation receives the positive session ID only from the
+  authenticated server request snapshot, rewrites the protected attempt
+  metadata to `purpose=revalidate`, and stores that ID as the required foreign
+  key. Browser input can select only a validated internal return path.
 
 ### 8.3 Callback transaction
 

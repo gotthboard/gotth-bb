@@ -5,6 +5,36 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:15 CDT — Bind revalidation attempts to server sessions
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/revalidation_begin.go`
+- `internal/auth/revalidation_begin_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the protected revalidation-attempt constructor. It accepts only a
+positive server-owned session ID, delegates the existing fixed-size state,
+nonce, PKCE, protection, return-path, clock, and persistence mechanism, then
+rewrites the durable purpose/session metadata before the single insert.
+
+Verification:
+
+- Exact state material and five-minute lifetime match initial-login behavior
+- Persisted purpose is `revalidate` with the exact positive session foreign key
+- Missing inserter and nonpositive session IDs fail before path or entropy work
+- `beginRevalidation` reaches 100% statement coverage
+
+Risks / non-goals:
+
+- The public service and HTTP start boundary are subsequent isolated units.
+- Callback consumption and atomic session rotation remain separate work.
+
 ### 2026-09-01 19:00 CDT — Retain authenticated session identity
 
 Commit: current commit; hash assigned by Git after commit
