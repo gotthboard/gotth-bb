@@ -557,6 +557,9 @@ After the governance lock and zero-count check, one generated statement row-
 locks the exact active target user, changes only its role/update timestamp, and
 inserts the operator audit event from the previous/resulting role values. A
 missing or currently suspended target returns no row and the transaction fails.
+The exported governance operation returns user and audit IDs only after commit,
+never retries an unknown outcome, and is callable only by the separate operator
+executable rather than any browser or OIDC path.
 Normal administrator-role/suspension transitions lock the same row and reject
 any result with zero active administrators. OIDC claims do not bootstrap or
 restore local privileges, and the command never invents a forum-user actor for

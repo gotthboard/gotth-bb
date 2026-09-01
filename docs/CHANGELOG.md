@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 17:58 CDT — Enforce first-administrator governance transaction
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/governance/bootstrap.go`
+- `internal/governance/bootstrap_test.go`
+- `internal/governance/bootstrap_integration_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `governance.BootstrapAdministrator`. It validates bounded operator and
+identity inputs, locks the seeded governance singleton, requires exactly zero
+active administrators, resolves one pre-provisioned external identity, and
+executes the coupled role/audit statement before one commit. Missing, suspended,
+already-closed, malformed, failed, and unknown-commit cases return no admitted
+result and are never retried.
+
+Verification:
+
+- Every invalid input and transaction-stage failure fails before later work and
+  returns no user/audit IDs
+- PostgreSQL 17 proves missing-identity rollback and concurrent bootstrap
+  serialization: exactly one winner, one administrator, and one operator audit
+- The audit records the winning operator, target, fixed action, previous member
+  role, and resulting administrator role
+- The production function reaches 100% statement coverage; 100 repeated unit
+  race runs and ten repeated PostgreSQL race runs pass
+
+Risks / non-goals:
+
+- The executable operator command remains the next unit; normal later role and
+  suspension transitions must use the same governance lock.
+
 ### 2026-09-01 17:49 CDT — Couple administrator bootstrap role and audit writes
 
 Commit: current commit; hash assigned by Git after commit
