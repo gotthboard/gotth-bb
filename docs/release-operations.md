@@ -4,13 +4,13 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft; no infrastructure changes performed |
+| Status | Active alpha deployment; container runtime selected |
 | Initial development base | `https://bb.alhstudios.com/` |
 | Target host | `development` (`10.0.0.97`) |
-| Service manager | systemd |
+| Service manager | Docker Engine 29.7.1 / Docker Compose 5.4.0; Docker daemon supervised by systemd |
 | Identity provider | Authentik OIDC |
 | Edge proxy | Caddy |
-| Durable store | PostgreSQL |
+| Durable store | PostgreSQL 17.10 in a separate container with host-bound durable data |
 | Verification contract | [Traceability and verification](verification.md) |
 
 ## 1. Operational principles
@@ -146,12 +146,26 @@ environment values. It runs `make verify` first. The packaging command then:
 
 Archive contents are rooted at
 `gotth-bb-VERSION-GOOS-GOARCH/` and include the three binaries,
-`DEPENDENCIES.txt`, and `RELEASE.txt`. The release metadata contains no build
-timestamp or host path. The same clean commit built twice with the same pinned
-toolchain and platform must produce byte-identical archive and checksum files.
+`DEPENDENCIES.txt`, `RELEASE.txt`, the runtime PostgreSQL grant, and the exact
+container build/entrypoint/Compose contracts. The release metadata contains no
+build timestamp or host path. The same clean commit built twice with the same
+pinned toolchain and platform must produce byte-identical archive and checksum
+files.
 
 Builds run from a clean checkout. A dirty worktree, generated-code drift, test
 failure, or secret finding blocks artifact publication.
+
+### 4.1 Application container image
+
+The application image is built only from an extracted, checksum-verified
+release archive. Its runtime base is
+`alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659`
+(Alpine 3.23.3). The build supplies the validated version and full commit as
+OCI labels and does not compile source. The exact image ID and RepoDigest, when
+published, join the deployment record; a mutable tag alone is not identity.
+
+The image contains no deployment environment or secret. The forum runs as
+UID/GID 65532. Docker health executes the image's loopback liveness probe.
 
 ## 5. Caddy contract
 
@@ -215,6 +229,10 @@ notes, screenshots, or repository files.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
 - Database access is not public.
+- The alpha Compose service preserves the pinned PostgreSQL container image,
+  loopback-only maintenance port, and
+  `/tank/gotth-bb/postgres17:/var/lib/postgresql/data` bind mount. Application
+  container replacement does not recreate or migrate that data directory.
 
 Migration state is checked before readiness. An application that expects a
 different schema head fails closed with an operator-visible error.
@@ -256,11 +274,15 @@ Secret handling requirements:
 - No secret values in process arguments when the platform exposes them.
 - No secret values in environment dumps, diagnostics, or support bundles.
 - A committed `.env.example` may name variables but contains no working values.
+- Compose receives non-secret settings through a root-owned environment file.
+  The database URL and OIDC client secret are separate host files mounted
+  read-only as Compose secrets; neither appears in the Compose file, image
+  configuration, or Docker `Config.Env`.
 
 ## 9. Deployment procedure
 
-The concrete service-manager commands are added after the target runtime is
-selected. The required sequence is independent of that choice:
+The alpha runtime uses the exact Compose file from the extracted release. The
+required sequence is:
 
 1. Confirm authorization, target environment, release version, and maintenance
    expectations.
@@ -273,11 +295,15 @@ selected. The required sequence is independent of that choice:
    rollback copy.
 7. Run preflight checks and inspect pending migrations.
 8. Run migrations once with an explicit result.
-9. Start or switch to the new application artifact.
-10. Wait for readiness.
-11. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
-12. Record result, version, migration head, and evidence.
-13. If any gate fails, stop and execute the documented rollback/repair decision.
+9. Build the application image from the verified archive and verify labels and
+   database-free binary identities.
+10. Validate the resolved Compose model without printing its environment.
+11. Preserve the running PostgreSQL container and durable bind mount, stop the
+   native application unit, and start only the application container.
+12. Wait for container health and application readiness.
+13. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
+14. Record result, version, image ID, migration head, and evidence.
+15. If any gate fails, stop and execute the documented rollback/repair decision.
 
 Deploy commands must be safe to rerun or must detect completed state. A retry
 must not duplicate migrations, seed users, or moderation data.
@@ -324,6 +350,13 @@ Decision order after failure:
 Never advertise `down` as a rollback merely because the migration tool supports
 the command.
 
+For the alpha container transition, application rollback stops and removes only
+the application container, restores the previous host environment if it was
+changed, and starts the preserved native `gotth-bb.service`. The PostgreSQL
+container and `/tank/gotth-bb/postgres17` are not removed. `docker compose
+down -v`, manual volume deletion, and database-container recreation are not
+application rollback commands.
+
 ## 12. Backup and restore
 
 Backups cover:
@@ -352,6 +385,8 @@ A backup file's existence proves nothing until restoration is tested.
 
 - Structured service startup/shutdown, request, authentication result,
   moderation transition, migration, and background-cleanup events.
+- The application container uses Docker's journald logging driver with a stable
+  tag; operators can also use bounded `docker compose logs` output.
 - Request IDs propagated through error pages and HTMX errors.
 - No tokens, cookies, secrets, or unrestricted content bodies.
 

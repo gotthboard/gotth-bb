@@ -1096,6 +1096,36 @@ operator logs.
   service context, so default handling is restored before graceful drain and a
   second signal terminates immediately.
 
+### 17.1 Container runtime
+
+- The release archive carries `deploy/container/Containerfile`,
+  `deploy/container/entrypoint.sh`, and `deploy/container/compose.yml` from the
+  exact release commit. The container build uses only those files and the
+  release binaries already admitted into that archive; it does not rebuild
+  source with an ambient toolchain.
+- The application runtime base is Alpine 3.23.3 pinned by manifest digest. The
+  image carries the forum, migration, and operator binaries, exact version and
+  commit labels, and no secret or deployment-specific configuration.
+- The entrypoint reads the database URL and OIDC client secret only from
+  Compose secret files named by non-secret environment variables, exports them
+  to the child process, and replaces itself with the selected release binary.
+- The application service runs as numeric UID/GID 65532, exposes port 8080 only
+  through host loopback port 18082, uses a read-only root filesystem and
+  bounded temporary filesystem, drops every Linux capability, forbids
+  privilege escalation, and reports container health through the public
+  process-liveness endpoint.
+- PostgreSQL remains a separate Compose service at the pinned PostgreSQL 17.10
+  digest. Its existing `/tank/gotth-bb/postgres17` bind mount and loopback-only
+  maintenance port remain unchanged during the transition, so application
+  rollback does not require moving or rewriting database data.
+- Caddy remains host-managed and continues to proxy the unchanged loopback
+  address. Application logs use Docker's journald driver so structured output
+  stays in the host journal. Docker daemon startup remains systemd-managed.
+- A failed image build, Compose validation, migration check, service health
+  check, or Caddy smoke test leaves the native systemd service available as
+  rollback. The native unit is stopped only for the port handoff and is not
+  deleted during alpha validation.
+
 ## 18. Test contract
 
 ### 18.1 Unit tests

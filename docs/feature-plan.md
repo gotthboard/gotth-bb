@@ -230,8 +230,9 @@ Requirements: OPS-002 through OPS-005 and alpha acceptance boundary.
 Deliverables:
 
 - Immutable release artifact tagged `1.0.0-alpha.1`.
-- Caddy `bb.alhstudios.com` site, runtime service, PostgreSQL, and Authentik
-  client/enrollment flow configured in the alpha environment.
+- Caddy `bb.alhstudios.com` site, a two-service Docker Compose project for the
+  application and PostgreSQL, and the Authentik client/enrollment flow
+  configured in the alpha environment.
 - Migration, smoke-test, and rollback commands.
 - Deployment record containing release commit and migration state.
 
@@ -240,6 +241,9 @@ Exit evidence:
 - Every PRD alpha.1 acceptance item passes against the deployed environment.
 - Rollback to the previous application artifact is rehearsed when a previous
   artifact exists; database rollback limitations are explicit.
+- Container inspection proves nonroot execution, read-only application root,
+  dropped capabilities, no privilege escalation, loopback-only publication,
+  external secrets, pinned images, and preserved PostgreSQL storage.
 
 ## 4. Milestone `1.0.0-alpha.N`
 

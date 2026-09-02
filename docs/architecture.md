@@ -23,6 +23,8 @@
 - Apply access predicates inside data-access queries and explicit write-policy
   checks.
 - Deploy behind Caddy at `https://bb.alhstudios.com/` with no path prefix.
+- Run the Go service and PostgreSQL as separate containers in one Docker
+  Compose project; never combine process and database lifecycles in one image.
 - Prefer direct SQL, explicit transactions, and small interfaces over an ORM or
   generic policy framework.
 
@@ -409,14 +411,20 @@ hashed or release-versioned and referenced through the URL builder.
 Version 1.0 runs as:
 
 - One Caddy instance serving `bb.alhstudios.com` and proxying it on loopback.
-- One or more identical Go service processes; alpha may use one.
-- One PostgreSQL database.
+- One or more identical immutable Go service containers; alpha uses one.
+- One PostgreSQL container with its durable data on an external host bind
+  mount. Application replacement never replaces or copies the database data.
 - A migration command using the same release artifact as the service.
-- A process supervisor or container runtime with explicit restart policy.
+- One Docker Compose project defining the two services, their health checks,
+  restart policies, private service-name database route, host-loopback edge
+  port, external configuration, and read-only secret mounts.
 
-The application binary is immutable for a release. Configuration and secrets
-are external. Database migrations run once before the new service becomes
-ready.
+The application image and binaries are immutable for a release. The application
+container runs nonroot with a read-only root filesystem, no Linux capabilities,
+and `no-new-privileges`. Caddy remains outside the project so certificate
+renewal and unrelated sites do not share the board's container lifecycle.
+Configuration and secrets are external. Database migrations run once before
+the new service becomes ready.
 
 ## 14. Failure behavior
 

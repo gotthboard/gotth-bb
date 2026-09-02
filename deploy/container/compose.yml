@@ -1,0 +1,75 @@
+name: gotth-bb
+
+services:
+  app:
+    image: ${GOTTH_BB_IMAGE:?GOTTH_BB_IMAGE is required}
+    pull_policy: never
+    container_name: gotth-bb-app
+    restart: unless-stopped
+    user: "65532:65532"
+    env_file:
+      - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
+    environment:
+      LISTEN_ADDR: 0.0.0.0:8080
+      DATABASE_URL_FILE: /run/secrets/database_runtime_url
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+    ports:
+      - "127.0.0.1:18082:8080"
+    secrets:
+      - source: database_runtime_url
+        target: database_runtime_url
+        mode: 0440
+      - source: oidc_client_secret
+        target: oidc_client_secret
+        mode: 0440
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-app
+    stop_grace_period: 20s
+
+  postgresql:
+    image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+    container_name: gotth-bb-postgresql-17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gotth_bb
+      POSTGRES_USER: gotth_bb_migrate
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_migrate_password
+    ports:
+      - "127.0.0.1:55435:5432"
+    volumes:
+      - /tank/gotth-bb/postgres17:/var/lib/postgresql/data
+    secrets:
+      - postgres_migrate_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gotth_bb_migrate -d gotth_bb"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 60s
+
+secrets:
+  postgres_migrate_password:
+    file: ${POSTGRES_MIGRATE_PASSWORD_FILE:?POSTGRES_MIGRATE_PASSWORD_FILE is required}
+  database_runtime_url:
+    file: ${GOTTH_BB_DATABASE_URL_FILE:?GOTTH_BB_DATABASE_URL_FILE is required}
+  oidc_client_secret:
+    file: ${GOTTH_BB_OIDC_CLIENT_SECRET_FILE:?GOTTH_BB_OIDC_CLIENT_SECRET_FILE is required}

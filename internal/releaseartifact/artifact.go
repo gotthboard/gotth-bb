@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	linkerPackage         = "git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
-	maxRuntimeGrantsBytes = 16 << 10
+	linkerPackage          = "git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
+	maxRuntimeGrantsBytes  = 16 << 10
+	maxDeploymentFileBytes = 64 << 10
 )
 
 // Runner executes one bounded repository command and returns its standard
@@ -62,9 +63,10 @@ type archiveEntry struct {
 // check, and atomically admits a normalized tar.gz plus SHA256SUMS directory.
 //
 // Complexity: for source/build work b, dependency-manifest bytes d, runtime
-// grant bytes g, executable bytes n, and compressed output bytes z, time is
-// O(b+d+g+n+z), Omega(n), and auxiliary memory is O(d+g), Omega(1); executable
-// contents are streamed once rather than retained in memory.
+// grant bytes g, deployment-file bytes p, executable bytes n, and compressed
+// output bytes z, time is O(b+d+g+p+n+z), Omega(n), and auxiliary memory is
+// O(d+g+p), Omega(1); executable contents are streamed once rather than
+// retained in memory.
 func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 	if ctx == nil {
 		return Result{}, fmt.Errorf("release context is required")
@@ -133,6 +135,26 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	deploymentFiles := []struct {
+		path string
+		mode int64
+		data []byte
+	}{
+		{path: "deploy/container/Containerfile", mode: 0o644},
+		{path: "deploy/container/compose.yml", mode: 0o644},
+		{path: "deploy/container/entrypoint.sh", mode: 0o755},
+	}
+	for index := range deploymentFiles {
+		path := deploymentFiles[index].path
+		data, err := run(ctx, configured.RepositoryDirectory, nil, "git", "show", configured.Commit+":"+path)
+		if err != nil {
+			return Result{}, fmt.Errorf("load release deployment file %s: %w", path, err)
+		}
+		if len(data) == 0 || len(data) > maxDeploymentFileBytes || data[len(data)-1] != '\n' || bytes.IndexByte(data, 0) >= 0 || bytes.IndexByte(data, '\r') >= 0 {
+			return Result{}, fmt.Errorf("release deployment file %s is invalid", path)
+		}
+		deploymentFiles[index].data = data
+	}
 
 	parent := filepath.Dir(configured.OutputDirectory)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -158,7 +180,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{name: "gotth-bb-migrate", command: "./cmd/migrate"},
 		{name: "gotth-bb-operator", command: "./cmd/operator"},
 	}
-	entries := make([]archiveEntry, 0, len(binaries)+3)
+	entries := make([]archiveEntry, 0, len(binaries)+3+len(deploymentFiles))
 	root := fmt.Sprintf("gotth-bb-%s-%s-%s", release.Version, configured.GOOS, configured.GOARCH)
 	for _, binary := range binaries {
 		if err := ctx.Err(); err != nil {
@@ -189,6 +211,9 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		archiveEntry{name: root + "/RELEASE.txt", mode: 0o644, data: []byte(metadata)},
 		archiveEntry{name: root + "/deploy/postgresql/runtime-grants.sql", mode: 0o644, data: runtimeGrants},
 	)
+	for _, deploymentFile := range deploymentFiles {
+		entries = append(entries, archiveEntry{name: root + "/" + deploymentFile.path, mode: deploymentFile.mode, data: deploymentFile.data})
+	}
 	sort.Slice(entries, func(left, right int) bool { return entries[left].name < entries[right].name })
 	archiveName := root + ".tar.gz"
 	archivePath := filepath.Join(stageDirectory, archiveName)

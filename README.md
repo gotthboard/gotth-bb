@@ -46,10 +46,30 @@ make release
 forum, migration, and operator executables with the same linker identity. It
 executes the migration and operator binaries' database-free `version` checks
 and emits one normalized `.tar.gz` plus `SHA256SUMS`. The archive also contains
-exact release metadata, the read-only Go module dependency manifest, and the
-runtime PostgreSQL grant contract from that exact commit. Release packaging is
+exact release metadata, the read-only Go module dependency manifest, the
+runtime PostgreSQL grant contract, and the application container
+build/entrypoint/Compose files from that exact commit. Release packaging is
 native only so both executable identity checks run before the artifact is
 admitted.
+
+## Container runtime
+
+Production-shaped deployments use the release's `deploy/container/compose.yml`
+with two separate services: one immutable GOTTH Board application container and
+one PostgreSQL 17 container. They are deliberately not combined. This keeps
+database storage, backup, health, and rollback independent from application
+replacement.
+
+The application publishes only `127.0.0.1:18082`, runs as UID/GID 65532 with a
+read-only root filesystem, drops every Linux capability, and sends logs to
+journald. Caddy remains the public TLS boundary. PostgreSQL retains its durable
+host bind at `/tank/gotth-bb/postgres17` and its loopback maintenance port.
+
+Compose interpolation supplies the image name and host file paths. Database and
+OIDC secret values live in separate root-managed files mounted under
+`/run/secrets`; they do not belong in the image, Compose file, or Docker image
+configuration. See [`docs/release-operations.md`](docs/release-operations.md)
+for the deployment and rollback contract.
 
 Apply the release's embedded forward migrations with `DATABASE_URL` already
 present in the process environment:

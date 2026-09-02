@@ -23,6 +23,12 @@ const testCommit = "0123456789abcdef0123456789abcdef01234567"
 
 const testRuntimeGrants = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n"
 
+const (
+	testContainerfile = "FROM alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659\n"
+	testCompose       = "name: gotth-bb\nservices:\n  app: {}\n  postgresql: {}\n"
+	testEntrypoint    = "#!/bin/sh\nexec \"$@\"\n"
+)
+
 type boundedFailWriter struct {
 	remaining int
 }
@@ -87,6 +93,9 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/",
 		root + "/DEPENDENCIES.txt",
 		root + "/RELEASE.txt",
+		root + "/deploy/container/Containerfile",
+		root + "/deploy/container/compose.yml",
+		root + "/deploy/container/entrypoint.sh",
 		root + "/deploy/postgresql/runtime-grants.sql",
 		root + "/gotth-bb",
 		root + "/gotth-bb-migrate",
@@ -103,6 +112,9 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"go list -mod=readonly -m -f {{.GoVersion}}",
 		"go list -mod=readonly -m all",
 		"git show " + testCommit + ":deploy/postgresql/runtime-grants.sql",
+		"git show " + testCommit + ":deploy/container/Containerfile",
+		"git show " + testCommit + ":deploy/container/compose.yml",
+		"git show " + testCommit + ":deploy/container/entrypoint.sh",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb ./cmd/forum",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-migrate ./cmd/migrate",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-operator ./cmd/operator",
@@ -187,6 +199,8 @@ func TestBuildRejectsRepositoryAndToolFailures(t *testing.T) {
 		{name: "malformed dependencies", run: replaceDependencies([]byte("module\r\n")), want: "dependency manifest is invalid"},
 		{name: "runtime grants command", run: failCommand("git", "show"), want: "load runtime grants"},
 		{name: "malformed runtime grants", run: replaceCommand("git", "show", []byte("GRANT UPDATE;\x00\n")), want: "runtime grants are invalid"},
+		{name: "container file command", run: failGitShowPath("deploy/container/Containerfile"), want: "load release deployment file deploy/container/Containerfile"},
+		{name: "malformed container file", run: replaceGitShowPath("deploy/container/compose.yml", []byte("services: {}\r\n")), want: "release deployment file deploy/container/compose.yml is invalid"},
 		{name: "forum build", run: failBuild("./cmd/forum"), want: "build gotth-bb"},
 		{name: "migration build", run: failBuild("./cmd/migrate"), want: "build gotth-bb-migrate"},
 		{name: "operator build", run: failBuild("./cmd/operator"), want: "build gotth-bb-operator"},
@@ -470,6 +484,12 @@ func successfulRunner(t *testing.T, calls *[]string) Runner {
 			return []byte("git.dannyhunn.com/agents/gotth-bb\nexample.invalid/dependency v1.2.3\n"), nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
 			return []byte(testRuntimeGrants), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/Containerfile"}):
+			return []byte(testContainerfile), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/compose.yml"}):
+			return []byte(testCompose), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/entrypoint.sh"}):
+			return []byte(testEntrypoint), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			return nil, nil
 		case (filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator") && reflect.DeepEqual(args, []string{"version"}):
@@ -492,7 +512,7 @@ func readArchive(t *testing.T, compressed []byte) []string {
 		t.Fatalf("gzip header = %+v", gzipReader.Header)
 	}
 	tarReader := tar.NewReader(gzipReader)
-	names := make([]string, 0, 7)
+	names := make([]string, 0, 10)
 	for {
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
@@ -513,6 +533,21 @@ func readArchive(t *testing.T, compressed []byte) []string {
 		}
 		if strings.HasSuffix(header.Name, "runtime-grants.sql") && string(content) != testRuntimeGrants {
 			t.Fatalf("runtime grants = %q, want %q", content, testRuntimeGrants)
+		}
+		if strings.HasSuffix(header.Name, "Containerfile") && string(content) != testContainerfile {
+			t.Fatalf("Containerfile = %q, want %q", content, testContainerfile)
+		}
+		if strings.HasSuffix(header.Name, "compose.yml") && string(content) != testCompose {
+			t.Fatalf("compose.yml = %q, want %q", content, testCompose)
+		}
+		if strings.HasSuffix(header.Name, "entrypoint.sh") && string(content) != testEntrypoint {
+			t.Fatalf("entrypoint.sh = %q, want %q", content, testEntrypoint)
+		}
+		if strings.HasSuffix(header.Name, "entrypoint.sh") && header.Mode != 0o755 {
+			t.Fatalf("entrypoint.sh mode = %#o, want %#o", header.Mode, int64(0o755))
+		}
+		if (strings.HasSuffix(header.Name, "Containerfile") || strings.HasSuffix(header.Name, "compose.yml")) && header.Mode != 0o644 {
+			t.Fatalf("deployment file mode = %#o, want %#o", header.Mode, int64(0o644))
 		}
 		names = append(names, header.Name)
 	}
@@ -546,6 +581,26 @@ func failCommand(command, firstArg string) Runner {
 	return func(ctx context.Context, directory string, environment []string, name string, args ...string) ([]byte, error) {
 		if name == command && len(args) > 0 && args[0] == firstArg {
 			return nil, errors.New("command failed")
+		}
+		return base(ctx, directory, environment, name, args...)
+	}
+}
+
+func failGitShowPath(path string) Runner {
+	base := successfulRunnerForOverride()
+	return func(ctx context.Context, directory string, environment []string, name string, args ...string) ([]byte, error) {
+		if name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":" + path}) {
+			return nil, errors.New("git show failed")
+		}
+		return base(ctx, directory, environment, name, args...)
+	}
+}
+
+func replaceGitShowPath(path string, output []byte) Runner {
+	base := successfulRunnerForOverride()
+	return func(ctx context.Context, directory string, environment []string, name string, args ...string) ([]byte, error) {
+		if name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":" + path}) {
+			return output, nil
 		}
 		return base(ctx, directory, environment, name, args...)
 	}
@@ -633,6 +688,12 @@ func successfulRunnerForOverride() Runner {
 			return nil, nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
 			return []byte(testRuntimeGrants), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/Containerfile"}):
+			return []byte(testContainerfile), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/compose.yml"}):
+			return []byte(testCompose), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/entrypoint.sh"}):
+			return []byte(testEntrypoint), nil
 		case name == "go" && len(args) > 0 && args[0] == "env":
 			return []byte("go1.26.6-test\n"), nil
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "-f", "{{.GoVersion}}"}):

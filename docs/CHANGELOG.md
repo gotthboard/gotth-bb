@@ -5,6 +5,67 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 11:50 CDT — Containerize the alpha application runtime
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/package/main_test.go`
+- `deploy/container/Containerfile`
+- `deploy/container/compose.yml`
+- `deploy/container/container_test.go`
+- `deploy/container/entrypoint.sh`
+- `docs/CHANGELOG.md`
+- `docs/architecture.md`
+- `docs/feature-plan.md`
+- `docs/implementation-spec.md`
+- `docs/release-operations.md`
+- `docs/verification.md`
+- `internal/releaseartifact/artifact.go`
+- `internal/releaseartifact/artifact_test.go`
+- `README.md`
+
+Explanation:
+
+The deployment now defines one immutable GOTTH Board application container and
+one separate PostgreSQL container in the existing `gotth-bb` Compose project.
+The application image is built only from the checksum-verified native release
+archive on a digest-pinned Alpine base. It runs as UID/GID 65532 with a
+read-only root filesystem, bounded temporary storage, all Linux capabilities
+dropped, `no-new-privileges`, a loopback-only published port, an executable
+liveness probe, and journald logging.
+
+Database and OIDC secrets enter through read-only secret files and are loaded
+only by the entrypoint immediately before `exec`; they are not stored in the
+image or Compose model. Release packaging now carries the exact Containerfile,
+entrypoint, and Compose contract from the packaged commit. PostgreSQL preserves
+its pinned image, container name, loopback maintenance port, and durable
+`/tank/gotth-bb/postgres17` bind mount.
+
+Verification:
+
+- Expected-red container tests failed while the image, entrypoint, and Compose
+  files were absent.
+- Expected-red release tests proved the deterministic archive omitted the
+  container deployment contract.
+- Focused container, packaging-command, and release-artifact tests pass.
+- `make verify` passes after the complete implementation.
+- The changed container and packaging packages pass 50 race-detector
+  repetitions.
+- Docker Compose 5.4.0 on the target accepts the model, and normalized output
+  proves its PostgreSQL service is unchanged from the running definition.
+- Image, live service, and preserved-data evidence follows before deployment
+  admission.
+
+Risks / non-goals:
+
+- Caddy, public TLS, Authentik policy, registration, area management, and forum
+  behavior are unchanged.
+- The native systemd application release remains the immediate rollback path.
+- The application-to-database path gains one Docker bridge hop. No performance
+  improvement is claimed.
+
 ### 2026-09-02 11:22 CDT — Repair restricted-role administrator claim
 
 Commit: current commit; hash assigned by Git after commit

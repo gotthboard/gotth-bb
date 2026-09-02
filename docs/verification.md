@@ -257,6 +257,16 @@ regardless of the current small dataset.
 - Backup creation, off-host retention, and restoration into a clean instance.
 - Caddy site, TLS, root route, asset, cookie, and callback behavior.
 - Log and request-ID usefulness during a simulated failure.
+- Parse and normalize the exact Compose file with the pinned target Compose
+  implementation; reject missing interpolation inputs and secret files.
+- Build the application image from the exact release archive, verify its
+  labels and binary identity, and prove no secret values appear in image or
+  container configuration.
+- Inspect the live application container for nonroot execution, read-only root,
+  dropped capabilities, `no-new-privileges`, healthy status, journald logging,
+  and loopback-only port publication.
+- Recreate only the application service while preserving the PostgreSQL
+  container identity, image digest, data-mount source, and database state.
 
 ## 14. Coverage policy
 
