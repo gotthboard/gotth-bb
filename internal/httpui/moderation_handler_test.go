@@ -286,17 +286,26 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	}
 	handler = withModerationTestRequestID(t, handler)
 	for _, test := range []struct {
+		method                            string
 		target                            string
 		wantStatus, wantAuth, wantChanges int
 	}{
+		{method: http.MethodGet, target: "/topics/41/hide", wantStatus: http.StatusNotFound},
 		{target: "/topics/041/lock", wantStatus: http.StatusNotFound},
+		{target: "/topics/041/hide", wantStatus: http.StatusNotFound},
+		{target: "/topics/41/hides", wantStatus: http.StatusNotFound},
+		{target: "/topics/41/restore/", wantStatus: http.StatusNotFound},
 		{target: "/topics/41/lock", wantStatus: http.StatusSeeOther, wantAuth: 1, wantChanges: 1},
 		{target: "/topics/41/unlock", wantStatus: http.StatusSeeOther, wantAuth: 2, wantChanges: 2},
 		{target: "/topics/41/hide", wantStatus: http.StatusSeeOther, wantAuth: 3, wantChanges: 3},
 		{target: "/topics/41/restore", wantStatus: http.StatusSeeOther, wantAuth: 4, wantChanges: 4},
 	} {
 		form := url.Values{"_csrf": {csrf}, "reason": {"Clear reason"}}
-		request := httptest.NewRequest(http.MethodPost, test.target, strings.NewReader(form.Encode()))
+		method := test.method
+		if method == "" {
+			method = http.MethodPost
+		}
+		request := httptest.NewRequest(method, test.target, strings.NewReader(form.Encode()))
 		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
 		response := httptest.NewRecorder()
