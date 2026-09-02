@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:22 CDT — Enforce visibility on direct area lookup
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/areas.sql`
+- `internal/store/db/areas.sql.go`
+- `internal/store/db/area_by_slug_test.go`
+- `internal/store/db/areas_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated PostgreSQL lookup required by the future area topic-list
+route. The query selects an area by slug only when the caller's server-owned
+staff, membership, and local-group facts satisfy the same visibility predicate
+as the area index. Missing and unauthorized slugs therefore share the database
+no-row result instead of relying on a later application-layer check.
+
+Verification:
+
+- The generated binding passes the exact slug and access facts, scans every
+  area field, preserves context, and has 100% statement coverage
+- PostgreSQL 17 exercised visitor, forged nonmember group authority,
+  empty-group member, matching-group member, nonmatching-group member, and
+  staff authority against every seeded area and a missing slug for ten
+  race-detector repetitions
+- Every unauthorized and missing direct lookup returned the same
+  `pgx.ErrNoRows` result
+
+Risks / non-goals:
+
+- This unit does not yet expose `/areas/{slug}` or load topics. It establishes
+  the access-controlled repository primitive that route will require.
+
 ### 2026-09-01 20:10 CDT — Wire the visible-area index
 
 Commit: current commit; hash assigned by Git after commit

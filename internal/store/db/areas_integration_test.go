@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -15,7 +16,7 @@ import (
 
 const areaAccessTestDatabase = "gotth_bb_alpha1_area_access_test"
 
-func TestListVisibleAreasOnPostgreSQL17(t *testing.T) {
+func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
@@ -91,25 +92,48 @@ func TestListVisibleAreasOnPostgreSQL17(t *testing.T) {
 	}
 	queries := New(connection)
 	for _, test := range []struct {
-		name       string
-		parameters ListVisibleAreasParams
-		wantSlugs  []string
+		name      string
+		isStaff   bool
+		isMember  bool
+		groupIDs  []int64
+		wantSlugs []string
 	}{
-		{name: "visitor", parameters: ListVisibleAreasParams{}, wantSlugs: []string{"public"}},
-		{name: "member empty groups", parameters: ListVisibleAreasParams{IsMember: true, GroupIds: []int64{}}, wantSlugs: []string{"public", "members"}},
-		{name: "matching member", parameters: ListVisibleAreasParams{IsMember: true, GroupIds: []int64{matchingGroupID}}, wantSlugs: []string{"public", "members", "matching"}},
-		{name: "other member", parameters: ListVisibleAreasParams{IsMember: true, GroupIds: []int64{otherGroupID}}, wantSlugs: []string{"public", "members", "other"}},
-		{name: "staff", parameters: ListVisibleAreasParams{IsStaff: true}, wantSlugs: []string{"public", "members", "matching", "other", "staff-only"}},
+		{name: "visitor", wantSlugs: []string{"public"}},
+		{name: "visitor cannot inject group authority", groupIDs: []int64{matchingGroupID}, wantSlugs: []string{"public"}},
+		{name: "member empty groups", isMember: true, groupIDs: []int64{}, wantSlugs: []string{"public", "members"}},
+		{name: "matching member", isMember: true, groupIDs: []int64{matchingGroupID}, wantSlugs: []string{"public", "members", "matching"}},
+		{name: "other member", isMember: true, groupIDs: []int64{otherGroupID}, wantSlugs: []string{"public", "members", "other"}},
+		{name: "staff", isStaff: true, wantSlugs: []string{"public", "members", "matching", "other", "staff-only"}},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
-			areas, err := queries.ListVisibleAreas(ctx, test.parameters)
+			areas, err := queries.ListVisibleAreas(ctx, ListVisibleAreasParams{
+				IsStaff: test.isStaff, IsMember: test.isMember, GroupIds: test.groupIDs,
+			})
 			if err != nil || len(areas) != len(test.wantSlugs) {
 				t.Fatalf("ListVisibleAreas() = (%+v, %v), want %v", areas, err, test.wantSlugs)
 			}
 			for index := range areas {
 				if areas[index].Slug != test.wantSlugs[index] {
 					t.Fatalf("area %d slug = %q, want %q", index, areas[index].Slug, test.wantSlugs[index])
+				}
+			}
+			visible := make(map[string]bool, len(test.wantSlugs))
+			for _, slug := range test.wantSlugs {
+				visible[slug] = true
+			}
+			for _, slug := range []string{"public", "members", "matching", "other", "staff-only", "missing"} {
+				area, lookupErr := queries.GetVisibleAreaBySlug(ctx, GetVisibleAreaBySlugParams{
+					Slug: slug, IsStaff: test.isStaff, IsMember: test.isMember, GroupIds: test.groupIDs,
+				})
+				if visible[slug] {
+					if lookupErr != nil || area.Slug != slug {
+						t.Fatalf("GetVisibleAreaBySlug(%q) = (%+v, %v), want visible area", slug, area, lookupErr)
+					}
+					continue
+				}
+				if !errors.Is(lookupErr, pgx.ErrNoRows) || area != (Area{}) {
+					t.Fatalf("GetVisibleAreaBySlug(%q) = (%+v, %v), want zero/pgx.ErrNoRows", slug, area, lookupErr)
 				}
 			}
 		})

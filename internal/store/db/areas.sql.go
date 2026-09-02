@@ -9,6 +9,73 @@ import (
 	"context"
 )
 
+const getVisibleAreaBySlug = `-- name: GetVisibleAreaBySlug :one
+SELECT
+    a.id,
+    a.slug,
+    a.name,
+    a.description,
+    a.display_order,
+    a.visibility,
+    a.posting_mode,
+    a.created_by,
+    a.updated_by,
+    a.created_at,
+    a.updated_at
+FROM public.areas AS a
+WHERE a.slug = $1
+  AND (
+    $2::boolean
+    OR a.visibility = 'public'
+    OR (
+        $3::boolean
+        AND a.visibility = 'authenticated'
+    )
+    OR (
+        $3::boolean
+        AND a.visibility = 'groups'
+        AND COALESCE(cardinality($4::bigint[]), 0) > 0
+        AND EXISTS (
+            SELECT 1
+            FROM public.area_groups AS ag
+            WHERE ag.area_id = a.id
+              AND ag.group_id = ANY($4::bigint[])
+        )
+    )
+  )
+`
+
+type GetVisibleAreaBySlugParams struct {
+	Slug     string
+	IsStaff  bool
+	IsMember bool
+	GroupIds []int64
+}
+
+func (q *Queries) GetVisibleAreaBySlug(ctx context.Context, arg GetVisibleAreaBySlugParams) (Area, error) {
+	row := q.db.QueryRow(ctx, getVisibleAreaBySlug,
+		arg.Slug,
+		arg.IsStaff,
+		arg.IsMember,
+		arg.GroupIds,
+	)
+	var i Area
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DisplayOrder,
+		&i.Visibility,
+		&i.PostingMode,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listVisibleAreas = `-- name: ListVisibleAreas :many
 SELECT
     a.id,
