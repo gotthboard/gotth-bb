@@ -14,6 +14,8 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
 	"git.dannyhunn.com/agents/gotth-bb/internal/render"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -81,6 +83,15 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	topic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Concurrent replies", "First **post**")
 	if err != nil || topic.TopicID <= 0 || topic.PostID <= 0 || topic.PostNumber != 1 {
 		t.Fatalf("CreateTopic() = (%+v, %v)", topic, err)
+	}
+	editable, err := store.GetEditablePost(ctx, db.New(connections[0]), topic.PostID, actor)
+	if err != nil || editable != (store.EditablePost{PostID: topic.PostID, TopicID: topic.TopicID, PostNumber: 1, MarkdownSource: "First **post**", Revision: 1}) {
+		t.Fatalf("GetEditablePost() = (%+v, %v)", editable, err)
+	}
+	foreignEditable, foreignEditableErr := store.GetEditablePost(ctx, db.New(connections[0]), topic.PostID,
+		policy.AccessContext{Authenticated: true, UserID: ownerID, Role: policy.RoleAdministrator})
+	if foreignEditable != (store.EditablePost{}) || !errors.Is(foreignEditableErr, pgx.ErrNoRows) {
+		t.Fatalf("foreign GetEditablePost() = (%+v, %v), want missing", foreignEditable, foreignEditableErr)
 	}
 	denied, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "staff-only", "Denied", "must not persist")
 	if !errors.Is(err, ErrPublishingDenied) || denied != (PublishResult{}) {

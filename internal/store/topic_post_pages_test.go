@@ -227,6 +227,10 @@ func TestGetVisibleTopicPostPageRejectsMalformedRows(t *testing.T) {
 			return rows
 		},
 		func(rows []db.GetVisibleTopicPostPageRow) []db.GetVisibleTopicPostPageRow {
+			rows[0].PostAuthorID = pgtype.Int8{}
+			return rows
+		},
+		func(rows []db.GetVisibleTopicPostPageRow) []db.GetVisibleTopicPostPageRow {
 			rows[0].PostAuthorDisplayName = pgtype.Text{}
 			return rows
 		},
@@ -287,8 +291,9 @@ func validVisibleTopicPostRows(firstPost, lastPost int64) []db.GetVisibleTopicPo
 			PostID: pgtype.Int8{Int64: 100 + postNumber, Valid: true}, PostNumber: pgtype.Int4{Int32: int32(postNumber), Valid: true},
 			RenderedHtml: pgtype.Text{String: "<p>Post</p>", Valid: true}, RendererVersion: pgtype.Text{String: "test-v1", Valid: true},
 			Revision: pgtype.Int4{Int32: 1, Valid: true}, PostCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
-			PostUpdatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, PostAuthorDisplayName: pgtype.Text{String: "Author", Valid: true},
-			TotalVisiblePosts: total,
+			PostUpdatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, PostAuthorID: pgtype.Int8{Int64: 11, Valid: true},
+			PostAuthorDisplayName: pgtype.Text{String: "Author", Valid: true},
+			TotalVisiblePosts:     total,
 		})
 	}
 	return rows
@@ -303,6 +308,7 @@ func clearVisiblePost(row *db.GetVisibleTopicPostPageRow) {
 	row.PostCreatedAt = pgtype.Timestamptz{}
 	row.PostUpdatedAt = pgtype.Timestamptz{}
 	row.PostEditedAt = pgtype.Timestamptz{}
+	row.PostAuthorID = pgtype.Int8{}
 	row.PostAuthorDisplayName = pgtype.Text{}
 }
 

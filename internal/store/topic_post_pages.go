@@ -151,7 +151,8 @@ func validVisiblePost(row db.GetVisibleTopicPostPageRow, previousPostNumber int3
 		!row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" ||
 		!row.Revision.Valid || row.Revision.Int32 <= 0 || !row.PostCreatedAt.Valid || row.PostCreatedAt.InfinityModifier != pgtype.Finite ||
 		!row.PostUpdatedAt.Valid || row.PostUpdatedAt.InfinityModifier != pgtype.Finite ||
-		row.PostUpdatedAt.Time.Before(row.PostCreatedAt.Time) || !row.PostAuthorDisplayName.Valid || row.PostAuthorDisplayName.String == "" {
+		row.PostUpdatedAt.Time.Before(row.PostCreatedAt.Time) || !row.PostAuthorID.Valid || row.PostAuthorID.Int64 <= 0 ||
+		!row.PostAuthorDisplayName.Valid || row.PostAuthorDisplayName.String == "" {
 		return false
 	}
 	if row.Revision.Int32 == 1 {
@@ -167,5 +168,5 @@ func validVisiblePost(row db.GetVisibleTopicPostPageRow, previousPostNumber int3
 func validEmptyVisiblePost(row db.GetVisibleTopicPostPageRow) bool {
 	return !row.PostID.Valid && !row.PostNumber.Valid && !row.RenderedHtml.Valid && !row.RendererVersion.Valid &&
 		!row.Revision.Valid && !row.PostCreatedAt.Valid && !row.PostUpdatedAt.Valid && !row.PostEditedAt.Valid &&
-		!row.PostAuthorDisplayName.Valid
+		!row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid
 }

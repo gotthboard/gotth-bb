@@ -47,7 +47,7 @@ func TestTopicPostListHandlerRendersSanitizedPageAndFragment(t *testing.T) {
 			for _, required := range []string{
 				"Members &amp; Friends", "Welcome &lt;everyone&gt;", "Locked", "Pinned", "Started by Alice &amp; Bob",
 				`id="post-126"`, `href="/bb/topics/42?page=2#post-126"`, `href="/bb/topics/42"`,
-				`href="/bb/areas/members"`, `<strong>safe</strong>`, "Edited Sep 2, 2026 02:30 UTC",
+				`href="/bb/areas/members"`, `href="/bb/posts/126/edit"`, `<strong>safe</strong>`, "Edited Sep 2, 2026 02:30 UTC",
 			} {
 				if !strings.Contains(body, required) {
 					t.Fatalf("topic response lacks %q: %s", required, body)
@@ -376,10 +376,10 @@ func topicPostTestPage(number int32) store.VisibleTopicPostPage {
 		PostID: pgtype.Int8{Int64: 126, Valid: true}, PostNumber: pgtype.Int4{Int32: 26, Valid: true},
 		RenderedHtml:    pgtype.Text{String: `<p onclick="alert(1)">Hello <strong>safe</strong><script>alert(1)</script></p>`, Valid: true},
 		RendererVersion: pgtype.Text{String: "renderer-v1", Valid: true}, Revision: pgtype.Int4{Int32: 2, Valid: true},
-		PostCreatedAt:         pgtype.Timestamptz{Time: postCreated, Valid: true},
-		PostUpdatedAt:         pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
-		PostEditedAt:          pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
-		PostAuthorDisplayName: pgtype.Text{String: "Carol <Admin>", Valid: true}, TotalVisiblePosts: 27,
+		PostCreatedAt: pgtype.Timestamptz{Time: postCreated, Valid: true},
+		PostUpdatedAt: pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
+		PostEditedAt:  pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
+		PostAuthorID:  pgtype.Int8{Int64: 42, Valid: true}, PostAuthorDisplayName: pgtype.Text{String: "Carol <Admin>", Valid: true}, TotalVisiblePosts: 27,
 	}
 	second := base
 	second.PostID = pgtype.Int8{Int64: 127, Valid: true}
@@ -399,6 +399,7 @@ func clearTopicPostTestRow(row *db.GetVisibleTopicPostPageRow) {
 	row.PostCreatedAt = pgtype.Timestamptz{}
 	row.PostUpdatedAt = pgtype.Timestamptz{}
 	row.PostEditedAt = pgtype.Timestamptz{}
+	row.PostAuthorID = pgtype.Int8{}
 	row.PostAuthorDisplayName = pgtype.Text{}
 	row.TotalVisiblePosts = 0
 }

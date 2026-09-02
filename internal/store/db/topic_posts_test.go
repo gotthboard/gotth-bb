@@ -22,7 +22,7 @@ func TestGetVisibleTopicPostPageBindsAccessAndPaginationAndScansRows(t *testing.
 		RenderedHtml: pgtype.Text{String: "<p>Reply</p>", Valid: true}, RendererVersion: pgtype.Text{String: "v1", Valid: true},
 		Revision: pgtype.Int4{Int32: 3, Valid: true}, PostCreatedAt: pgtype.Timestamptz{Valid: true},
 		PostUpdatedAt: pgtype.Timestamptz{Valid: true}, PostEditedAt: pgtype.Timestamptz{Valid: true},
-		PostAuthorDisplayName: pgtype.Text{String: "Replier", Valid: true}, TotalVisiblePosts: 12,
+		PostAuthorID: pgtype.Int8{Int64: 13, Valid: true}, PostAuthorDisplayName: pgtype.Text{String: "Replier", Valid: true}, TotalVisiblePosts: 12,
 	}}
 	ctx := context.WithValue(context.Background(), topicPostContextKey{}, "preserved")
 	database := &topicPostDBTX{rows: &topicPostRows{items: want}}
@@ -141,8 +141,9 @@ func (rows *topicPostRows) Scan(destinations ...any) error {
 	*(destinations[16].(*pgtype.Timestamptz)) = item.PostCreatedAt
 	*(destinations[17].(*pgtype.Timestamptz)) = item.PostUpdatedAt
 	*(destinations[18].(*pgtype.Timestamptz)) = item.PostEditedAt
-	*(destinations[19].(*pgtype.Text)) = item.PostAuthorDisplayName
-	*(destinations[20].(*int64)) = item.TotalVisiblePosts
+	*(destinations[19].(*pgtype.Int8)) = item.PostAuthorID
+	*(destinations[20].(*pgtype.Text)) = item.PostAuthorDisplayName
+	*(destinations[21].(*int64)) = item.TotalVisiblePosts
 	return nil
 }
 

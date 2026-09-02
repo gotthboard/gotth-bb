@@ -396,6 +396,17 @@ actor, and foreign-owned posts share the generic denial/not-found boundary.
 Edits do not change topic reply/activity counters and do not let preview state
 cross the transaction boundary.
 
+The browser exposes Edit only for an active authenticated post owner. The edit
+loader returns current source/revision only through the same area/group and
+hidden-topic visibility predicates as reads; it is presentation authority and
+the apply transaction always reauthorizes. Edit GET, preview, and apply require
+a fresh local session and no-store responses. Preview verifies CSRF before any
+target lookup, preserves the submitted revision, sanitizes through the exact
+post renderer, and mutates nothing. Apply returns `409 Conflict` for an
+authorized stale revision while preserving the escaped draft; HTMX explicitly
+swaps that conflict form. Successful ordinary/HTMX submissions navigate to the
+exact canonical topic page and post fragment.
+
 Reply creation renders and validates before opening a transaction, then locks
 the undeleted topic row for update, the owning area row for share, and the
 area's current group mappings for share. `CanReply` evaluates that locked
@@ -682,6 +693,7 @@ Internal routes are shown without the external `/bb` prefix.
 | `POST` | `/topics/{id}/replies/preview` | Preview reply draft | Member session |
 | `POST` | `/topics/{id}/replies` | Create reply | Eligible member |
 | `GET` | `/posts/{id}/edit` | Edit form | Author |
+| `POST` | `/posts/{id}/edit/preview` | Preview edit draft | Author |
 | `POST` | `/posts/{id}/edit` | Apply edit | Author |
 | `POST` | `/posts/{id}/delete` | Soft delete | Author/staff |
 | `POST` | `/reports` | Create report | Member |

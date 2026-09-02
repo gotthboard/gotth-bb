@@ -143,6 +143,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 					row.PostID.Valid && row.PostID.Int64 > 0 && row.PostNumber.Valid && row.PostNumber.Int32 > 0 &&
 					row.RenderedHtml.Valid && row.RendererVersion.Valid && row.RendererVersion.String != "" &&
 					row.Revision.Valid && row.Revision.Int32 > 0 && row.PostCreatedAt.Valid && row.PostUpdatedAt.Valid &&
+					row.PostAuthorID.Valid && row.PostAuthorID.Int64 > 0 &&
 					row.PostAuthorDisplayName.Valid && row.PostAuthorDisplayName.String != ""
 				if !validRow {
 					invalid = true
@@ -164,6 +165,15 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 					Created: row.PostCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"), Edited: edited,
 					Body: contentrender.SanitizeHTML(row.RenderedHtml.String),
 				})
+				if authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
+					row.PostAuthorID.Int64 == authentication.Access.UserID {
+					editURL, editErr := builder.Path("posts", strconv.FormatInt(row.PostID.Int64, 10), "edit")
+					if editErr != nil {
+						viewErr = editErr
+						break
+					}
+					posts[len(posts)-1].EditURL = editURL
+				}
 			}
 		}
 		if invalid || viewErr != nil {

@@ -6,7 +6,7 @@ import (
 	contentrender "git.dannyhunn.com/agents/gotth-bb/internal/render"
 )
 
-const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`
+const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"409","swap":true,"error":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`
 
 type pageView struct {
 	SiteName      string
@@ -68,6 +68,7 @@ type topicPostItem struct {
 	Author    string
 	Created   string
 	Edited    string
+	EditURL   string
 	Body      contentrender.TrustedHTML
 }
 
@@ -84,6 +85,8 @@ type publishingFormView struct {
 	MarkdownError string
 	FormError     string
 	Reply         bool
+	Edit          bool
+	Revision      string
 	PreviewBody   contentrender.TrustedHTML
 	ShowPreview   bool
 }

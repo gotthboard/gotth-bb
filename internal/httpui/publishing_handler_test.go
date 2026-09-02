@@ -230,7 +230,8 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	staffRequest = staffRequest.WithContext(context.WithValue(staffRequest.Context(), csrfTokenContextKey{}, validCSRFTokenForTest(0x52)))
 	staffResponse := httptest.NewRecorder()
 	staffHandler.ServeHTTP(staffResponse, staffRequest)
-	if staffResponse.Code != http.StatusOK || !strings.Contains(staffResponse.Body.String(), `action="/bb/topics/42/replies"`) {
+	if staffResponse.Code != http.StatusOK || !strings.Contains(staffResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
+		strings.Contains(staffResponse.Body.String(), `href="/bb/posts/126/edit"`) {
 		t.Fatalf("eligible staff topic page = (%d, %q)", staffResponse.Code, staffResponse.Body.String())
 	}
 }
@@ -272,7 +273,9 @@ func TestReadablePagesHideIneligiblePublishingActions(t *testing.T) {
 			request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, validCSRFTokenForTest(0x51)))
 			response := httptest.NewRecorder()
 			topicHandler.ServeHTTP(response, request)
-			if response.Code != http.StatusOK || strings.Contains(response.Body.String(), `action="/bb/topics/42/replies"`) {
+			body := response.Body.String()
+			if response.Code != http.StatusOK || strings.Contains(body, `action="/bb/topics/42/replies"`) ||
+				(test.name == "anonymous" || test.name == "suspended" || test.name == "muted") && strings.Contains(body, `href="/bb/posts/126/edit"`) {
 				t.Fatalf("ineligible topic page = (%d, %q)", response.Code, response.Body.String())
 			}
 		})

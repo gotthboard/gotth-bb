@@ -58,6 +58,7 @@ SELECT
     post.created_at AS post_created_at,
     post.updated_at AS post_updated_at,
     post.edited_at AS post_edited_at,
+    post.author_id AS post_author_id,
     author.display_name AS post_author_display_name,
     count(post.id) OVER ()::bigint AS total_visible_posts
 FROM visible_topic

@@ -5,6 +5,72 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 01:19 CDT — Wire author edit forms and preview
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `internal/forum/publish_integration_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/editing_handler.go`
+- `internal/httpui/editing_handler_test.go`
+- `internal/httpui/post_id.go`
+- `internal/httpui/publishing_handler_test.go`
+- `internal/httpui/render_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/view.go`
+- `internal/store/db/editing.sql.go`
+- `internal/store/db/editing_test.go`
+- `internal/store/db/topic_posts.sql.go`
+- `internal/store/db/topic_posts_test.go`
+- `internal/store/editable_post.go`
+- `internal/store/editable_post_test.go`
+- `internal/store/queries/editing.sql`
+- `internal/store/queries/topic_posts.sql`
+- `internal/store/topic_post_pages.go`
+- `internal/store/topic_post_pages_test.go`
+
+Explanation:
+
+Added the complete browser author-edit boundary. Topic pages expose Edit only
+on posts owned by the active nonsuspended, nonmuted member. The canonical edit
+GET loads current source/revision through owner and read-visibility predicates;
+that loader is explicitly presentation-only because final apply reauthorizes
+the locked current state in `forum.EditPost`.
+
+Edit preview and apply use a fresh Authentik-backed local session, no-store
+responses, canonical positive identifiers/revisions, the existing 262,144-byte
+form bound, and CSRF verification before parsing or target lookup. Preview
+sanitizes with the exact publication renderer and mutates nothing. Validation
+and authorized `409 Conflict` responses preserve only escaped submitted source
+and the stale revision. Successful ordinary and HTMX applies navigate to the
+exact topic page and post fragment.
+
+Verification:
+
+- Owner-only edit-link presentation and foreign-staff omission
+- Escaped source preload, sanitized full-page/fragment preview, and zero edit
+  calls during preview
+- Exact service arguments, revision increment validation, ordinary `303`, and
+  explicit HTMX redirect
+- CSRF-first failure, strict form grammar, missing/denied/storage mappings,
+  field validation, and HTMX-swappable conflict form
+- PostgreSQL 17 owner-load and foreign-administrator denial against the migrated
+  schema in addition to the transactional edit regression
+
+Risks / non-goals:
+
+- The edit loader is not mutation authority; a stale or newly unauthorized form
+  still fails at the locked transaction
+- Author soft delete and revision history remain separate work
+
 ### 2026-09-02 00:47 CDT — Serialize authorized author edits
 
 Commit: current commit; hash assigned by Git after commit

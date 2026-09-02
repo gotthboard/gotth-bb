@@ -23,6 +23,15 @@ func TestEditingQueriesBindScanAndPreserveGuards(t *testing.T) {
 		wantResult any
 	}{
 		{
+			name: "editable read", rowValues: []any{int64(91), int64(41), int32(2), "source", int32(3)},
+			wantArgs: []any{int64(91), int64(11), true, []int64{7, 9}},
+			required: []string{"post.author_id = $2", "post.deleted_at IS NULL", "topic.deleted_at IS NULL", "$3::boolean OR topic.state <> 'hidden'", "area.visibility = 'groups'", "membership.group_id = ANY($4::bigint[])"},
+			invoke: func(q *Queries) (any, error) {
+				return q.GetEditablePost(context.Background(), GetEditablePostParams{PostID: 91, AuthorID: 11, IsStaff: true, GroupIds: []int64{7, 9}})
+			},
+			wantResult: GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3},
+		},
+		{
 			name: "lock", rowValues: []any{int64(91), int64(11), int32(3), int64(41), int32(2), "locked", int64(7), "groups", "normal"}, wantArgs: []any{int64(91)},
 			required:   []string{"post.deleted_at IS NULL", "topic.deleted_at IS NULL", "FOR UPDATE OF post", "FOR SHARE OF topic, area"},
 			invoke:     func(q *Queries) (any, error) { return q.LockPostForEdit(context.Background(), 91) },
@@ -60,6 +69,7 @@ func TestEditingQueriesPreserveScanFailure(t *testing.T) {
 
 	cause := errors.New("scan failed")
 	for _, invoke := range []func(*Queries) (any, error){
+		func(q *Queries) (any, error) { return q.GetEditablePost(context.Background(), GetEditablePostParams{}) },
 		func(q *Queries) (any, error) { return q.LockPostForEdit(context.Background(), 91) },
 		func(q *Queries) (any, error) {
 			return q.UpdatePostRevision(context.Background(), UpdatePostRevisionParams{})

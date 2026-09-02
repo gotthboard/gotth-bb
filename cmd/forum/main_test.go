@@ -154,8 +154,9 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 	*(destinations[16].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
 	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
 	*(destinations[18].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[19].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
-	*(destinations[20].(*int64)) = 1
+	*(destinations[19].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
+	*(destinations[20].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[21].(*int64)) = 1
 	return nil
 }
 

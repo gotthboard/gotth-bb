@@ -50,7 +50,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, sessionCookieName, secure,
+		nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -80,7 +80,37 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, sessionCookieName, secure,
+		createTopic, createReply, nil, nil, sessionCookieName, secure,
+	)
+}
+
+// NewAuthenticatedForumHandler constructs the current alpha browser boundary
+// with forum reads, publication, preview, and author editing.
+//
+// Complexity: construction and dispatch retain NewAuthenticatedHandler's
+// bounds; delegated publishing/editing services retain their own bounded
+// contracts. No operation is retried or detached.
+func NewAuthenticatedForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	sessionCookieName string,
+	secure bool,
+) (http.Handler, error) {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil {
+		return nil, fmt.Errorf("browser forum services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, sessionCookieName, secure,
 	)
 }
 
@@ -100,6 +130,8 @@ func newAuthenticatedHandler(
 	maximumPostPage int32,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
@@ -197,6 +229,22 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct publishing session boundary: %w", publishingErr)
 		}
 	}
+	var authenticatedEditingHandler http.Handler
+	if loadEditablePost != nil || editPost != nil {
+		if loadEditablePost == nil || editPost == nil {
+			return nil, fmt.Errorf("browser editing services are incomplete")
+		}
+		editingHandler, editingErr := newEditingHandler(builder, loadEditablePost, editPost)
+		if editingErr != nil {
+			return nil, fmt.Errorf("construct editing routes: %w", editingErr)
+		}
+		authenticatedEditingHandler, editingErr = newSessionAuthenticationHandler(
+			editingHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if editingErr != nil {
+			return nil, fmt.Errorf("construct editing session boundary: %w", editingErr)
+		}
+	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -220,6 +268,20 @@ func newAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedEditingHandler != nil && request.URL.RawPath == "" &&
+				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
+				identifierAndSuffix, postPath := strings.CutPrefix(request.URL.Path, "/posts/")
+				identifier, editPath := strings.CutSuffix(identifierAndSuffix, "/edit")
+				if !editPath && request.Method == http.MethodPost {
+					identifier, editPath = strings.CutSuffix(identifierAndSuffix, "/edit/preview")
+				}
+				if postPath && editPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parsePostID(identifier); identifierErr == nil {
+						authenticatedEditingHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedPublishingHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
 				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
 				identifier, replyPath := strings.CutSuffix(identifierAndSuffix, "/replies")

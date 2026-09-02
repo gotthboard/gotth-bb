@@ -140,7 +140,7 @@ func run(
 		return fmt.Errorf("construct authentication service returned no service")
 	}
 	queries := db.New(pool)
-	applicationHandler, err := httpui.NewAuthenticatedPublishingHandler(
+	applicationHandler, err := httpui.NewAuthenticatedForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
@@ -159,6 +159,12 @@ func run(
 		},
 		func(publishContext context.Context, access auth.AccessContext, topicID int64, markdown string) (forumservice.PublishResult, error) {
 			return forumservice.CreateReply(publishContext, pool, time.Now, access, topicID, markdown)
+		},
+		func(editContext context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
+			return store.GetEditablePost(editContext, queries, postID, access)
+		},
+		func(editContext context.Context, access auth.AccessContext, postID int64, revision int32, markdown string) (forumservice.EditResult, error) {
+			return forumservice.EditPost(editContext, pool, time.Now, access, postID, revision, markdown)
 		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",

@@ -11,6 +11,70 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getEditablePost = `-- name: GetEditablePost :one
+SELECT
+    post.id AS post_id,
+    post.topic_id,
+    post.post_number,
+    post.markdown_source,
+    post.revision
+FROM public.posts AS post
+JOIN public.topics AS topic ON topic.id = post.topic_id
+JOIN public.areas AS area ON area.id = topic.area_id
+WHERE post.id = $1
+  AND post.author_id = $2
+  AND post.deleted_at IS NULL
+  AND topic.deleted_at IS NULL
+  AND ($3::boolean OR topic.state <> 'hidden')
+  AND (
+    $3::boolean
+    OR area.visibility IN ('public', 'authenticated')
+    OR (
+      area.visibility = 'groups'
+      AND COALESCE(cardinality($4::bigint[]), 0) > 0
+      AND EXISTS (
+        SELECT 1
+        FROM public.area_groups AS membership
+        WHERE membership.area_id = area.id
+          AND membership.group_id = ANY($4::bigint[])
+      )
+    )
+  )
+`
+
+type GetEditablePostParams struct {
+	PostID   int64
+	AuthorID int64
+	IsStaff  bool
+	GroupIds []int64
+}
+
+type GetEditablePostRow struct {
+	PostID         int64
+	TopicID        int64
+	PostNumber     int32
+	MarkdownSource string
+	Revision       int32
+}
+
+func (q *Queries) GetEditablePost(ctx context.Context, arg GetEditablePostParams) (GetEditablePostRow, error) {
+	row := q.db.QueryRow(ctx, getEditablePost,
+		arg.PostID,
+		arg.AuthorID,
+		arg.IsStaff,
+		arg.GroupIds,
+	)
+	var i GetEditablePostRow
+	err := row.Scan(
+		&i.PostID,
+		&i.TopicID,
+		&i.PostNumber,
+		&i.MarkdownSource,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const lockPostForEdit = `-- name: LockPostForEdit :one
 SELECT
     post.id AS post_id,

@@ -142,6 +142,7 @@ func TestHTMXConfigurationDisablesUnsafeRuntimeFeaturesAndSwapsValidation(t *tes
 		`"includeIndicatorStyles":false`,
 		`"reportValidityOfForms":true`,
 		`"selfRequestsOnly":true`,
+		`{"code":"409","swap":true,"error":true}`,
 		`{"code":"422","swap":true,"error":true}`,
 		`{"code":"[45]..","swap":false,"error":true}`,
 	} {

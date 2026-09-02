@@ -170,6 +170,9 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 										if post.Edited != "" {
 											<span> · { post.Edited }</span>
 										}
+										if post.EditURL != "" {
+											<span> · <a href={ post.EditURL } hx-get={ post.EditURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200 hover:text-cyan-100">Edit</a></span>
+										}
 									</p>
 								</div>
 								<a href={ post.Permalink } class="rounded-sm text-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Post #{ post.Number }</a>
@@ -216,7 +219,10 @@ templ publishingFormSection(form publishingFormView) {
 			}
 			<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-8 grid gap-6">
 				<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
-				if !form.Reply {
+				if form.Edit {
+					<input type="hidden" name="revision" value={ form.Revision }/>
+				}
+				if !form.Reply && !form.Edit {
 					<input type="hidden" name="area" value={ form.AreaSlug }/>
 					<label class="grid gap-2 font-semibold text-slate-200">
 						Topic title
@@ -250,7 +256,13 @@ templ publishingFormSection(form publishingFormView) {
 					</section>
 				}
 				<div class="flex flex-wrap gap-4">
-					<button type="submit" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">Publish</button>
+					<button type="submit" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">
+						if form.Edit {
+							Save edit
+						} else {
+							Publish
+						}
+					</button>
 					<button type="submit" formaction={ form.PreviewURL } class="rounded-md border border-cyan-700 px-4 py-2 font-semibold text-cyan-100 hover:border-cyan-500">Preview</button>
 					<a href={ form.CancelURL } class="rounded-md border border-slate-700 px-4 py-2 font-semibold text-slate-200">Cancel</a>
 				</div>

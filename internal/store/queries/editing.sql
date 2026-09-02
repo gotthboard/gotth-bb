@@ -30,3 +30,33 @@ WHERE post.id = sqlc.arg(post_id)
   AND post.revision = sqlc.arg(expected_revision)
   AND post.deleted_at IS NULL
 RETURNING post.id AS post_id, post.topic_id, post.post_number, post.revision;
+
+-- name: GetEditablePost :one
+SELECT
+    post.id AS post_id,
+    post.topic_id,
+    post.post_number,
+    post.markdown_source,
+    post.revision
+FROM public.posts AS post
+JOIN public.topics AS topic ON topic.id = post.topic_id
+JOIN public.areas AS area ON area.id = topic.area_id
+WHERE post.id = sqlc.arg(post_id)
+  AND post.author_id = sqlc.arg(author_id)
+  AND post.deleted_at IS NULL
+  AND topic.deleted_at IS NULL
+  AND (sqlc.arg(is_staff)::boolean OR topic.state <> 'hidden')
+  AND (
+    sqlc.arg(is_staff)::boolean
+    OR area.visibility IN ('public', 'authenticated')
+    OR (
+      area.visibility = 'groups'
+      AND COALESCE(cardinality(sqlc.arg(group_ids)::bigint[]), 0) > 0
+      AND EXISTS (
+        SELECT 1
+        FROM public.area_groups AS membership
+        WHERE membership.area_id = area.id
+          AND membership.group_id = ANY(sqlc.arg(group_ids)::bigint[])
+      )
+    )
+  );
