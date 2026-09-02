@@ -5,6 +5,58 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 00:47 CDT — Serialize authorized author edits
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/forum/edit.go`
+- `internal/forum/edit_test.go`
+- `internal/forum/publish_integration_test.go`
+- `internal/policy/edit_post.go`
+- `internal/policy/edit_post_test.go`
+- `internal/policy/topic_view.go`
+- `internal/policy/topic_view_test.go`
+- `internal/store/db/editing.sql.go`
+- `internal/store/db/editing_test.go`
+- `internal/store/queries/editing.sql`
+
+Explanation:
+
+Added the transactional author-edit service boundary. Only an active author may
+edit their own undeleted post; moderator or administrator role does not grant
+authority to rewrite somebody else's words. The locked current area/group and
+topic-state policy must still make the post visible to that actor.
+
+The service validates and sanitizes the replacement Markdown before one
+transaction. It locks the post for update and its topic/area for share, locks
+current area-group mappings, authorizes visibility and ownership, and only then
+compares the submitted revision. A stale revision therefore cannot reveal an
+unauthorized post. One guarded update replaces source/rendered values,
+increments revision, and sets nondecreasing edit/update timestamps without
+changing topic activity or counters.
+
+Verification:
+
+- Owner success persists exact sanitized source/rendered/version values and
+  advances revision once
+- Foreign staff, hidden-topic members, hidden-area members, and group misses
+  deny before conflict disclosure or update
+- Authorized stale revisions return the stable conflict class without update
+- PostgreSQL 17 proves edit success, stale conflict, foreign-staff denial, and
+  nondecreasing timestamps against the migrated schema
+- Generated lock/update bindings pin exact guards, lock modes, arguments, and
+  scan failures
+
+Risks / non-goals:
+
+- This unit admits the policy, SQL, and service transaction only; browser edit
+  load/preview/apply routes remain the next bounded A1-07 unit
+- Revision history beyond the current source and revision counter is not part
+  of alpha.1
+
 ### 2026-09-02 00:22 CDT — Preview sanitized publishing drafts
 
 Commit: current commit; hash assigned by Git after commit

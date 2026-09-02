@@ -234,6 +234,7 @@ predicate inside SQL and do not authorize by filtering fetched rows in Go.
 The initial policy API remains small:
 
 - `CanViewArea(actor, areaPolicy) bool`
+- `CanViewTopic(actor, topicState) bool`
 - `CanCreateTopic(actor, areaPolicy) bool`
 - `CanReply(actor, areaPolicy, topicState) bool`
 - `CanEditPost(actor, postOwnership, postState) bool`
@@ -381,6 +382,19 @@ not a moderation transition and does not create a moderation-audit row.
 
 Source and rendered sizes have limits. A post edit increments `revision` and
 uses `WHERE revision = $expected` to detect lost updates.
+
+Author edit is deliberately not a staff content-rewrite power. The service
+validates and renders the bounded draft before opening one transaction, then
+locks the undeleted post, topic, owning area, and current area-group policy.
+It requires the actor to remain able to view the area and to own the visible
+post; suspended or actively muted authors cannot edit. Only after that
+authorization does it compare the submitted positive revision with the locked
+current revision, so a conflict response cannot reveal an unauthorized post.
+One guarded update replaces source/rendered values, increments revision, and
+sets nondecreasing `updated_at`/`edited_at`. Missing, deleted, hidden from the
+actor, and foreign-owned posts share the generic denial/not-found boundary.
+Edits do not change topic reply/activity counters and do not let preview state
+cross the transaction boundary.
 
 Reply creation renders and validates before opening a transaction, then locks
 the undeleted topic row for update, the owning area row for share, and the
@@ -667,8 +681,8 @@ Internal routes are shown without the external `/bb` prefix.
 | `POST` | `/topics` | Create topic | Eligible member |
 | `POST` | `/topics/{id}/replies/preview` | Preview reply draft | Member session |
 | `POST` | `/topics/{id}/replies` | Create reply | Eligible member |
-| `GET` | `/posts/{id}/edit` | Edit form | Author/staff |
-| `POST` | `/posts/{id}/edit` | Apply edit | Author/staff |
+| `GET` | `/posts/{id}/edit` | Edit form | Author |
+| `POST` | `/posts/{id}/edit` | Apply edit | Author |
 | `POST` | `/posts/{id}/delete` | Soft delete | Author/staff |
 | `POST` | `/reports` | Create report | Member |
 | `GET` | `/moderation/reports` | Moderation queue | Moderator |

@@ -86,6 +86,30 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	if !errors.Is(err, ErrPublishingDenied) || denied != (PublishResult{}) {
 		t.Fatalf("read-only CreateTopic() = (%+v, %v), want denied", denied, err)
 	}
+	edited, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-time.Hour) }, actor, topic.PostID, 1, "Edited **first post**")
+	if err != nil || edited != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, Revision: 2}) {
+		t.Fatalf("EditPost() = (%+v, %v)", edited, err)
+	}
+	secondEdit, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-2 * time.Hour) }, actor, topic.PostID, 2, "Edited **again**")
+	if err != nil || secondEdit != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, Revision: 3}) {
+		t.Fatalf("second EditPost() = (%+v, %v)", secondEdit, err)
+	}
+	if stale, staleErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, topic.PostID, 2, "stale overwrite"); stale != (EditResult{}) || !errors.Is(staleErr, ErrPostEditConflict) {
+		t.Fatalf("stale EditPost() = (%+v, %v), want conflict", stale, staleErr)
+	}
+	foreignActor := policy.AccessContext{Authenticated: true, UserID: ownerID, Role: policy.RoleAdministrator}
+	if foreign, foreignErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, foreignActor, topic.PostID, 3, "staff rewrite"); foreign != (EditResult{}) || !errors.Is(foreignErr, ErrPostEditDenied) {
+		t.Fatalf("foreign EditPost() = (%+v, %v), want denied", foreign, foreignErr)
+	}
+	var editedSource, editedHTML, editedRenderer string
+	var editedRevision int32
+	var postCreatedAt, postUpdatedAt, postEditedAt time.Time
+	if err := connections[0].QueryRow(ctx, `SELECT markdown_source, rendered_html, renderer_version, revision, created_at, updated_at, edited_at FROM public.posts WHERE id = $1`, topic.PostID).Scan(
+		&editedSource, &editedHTML, &editedRenderer, &editedRevision, &postCreatedAt, &postUpdatedAt, &postEditedAt,
+	); err != nil || editedSource != "Edited **again**" || editedHTML != "<p>Edited <strong>again</strong></p>\n" ||
+		editedRenderer != render.RendererVersion || editedRevision != 3 || postUpdatedAt.Before(postCreatedAt) || postEditedAt.Before(postCreatedAt) {
+		t.Fatalf("persisted edit = (%q, %q, %q, %d, %s/%s/%s, %v)", editedSource, editedHTML, editedRenderer, editedRevision, postCreatedAt, postUpdatedAt, postEditedAt, err)
+	}
 
 	start := make(chan struct{})
 	results := make(chan PublishResult, concurrentReplies)
