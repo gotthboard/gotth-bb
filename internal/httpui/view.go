@@ -55,9 +55,15 @@ type areaAdministrationGroupView struct {
 }
 
 type areaIndexItem struct {
-	Name        string
-	Description string
-	URL         string
+	Name         string
+	Description  string
+	URL          string
+	TopicCount   int64
+	PostCount    int64
+	LatestTitle  string
+	LatestURL    string
+	LatestAuthor string
+	LatestAt     string
 }
 
 type areaTopicListView struct {

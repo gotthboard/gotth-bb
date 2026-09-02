@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 )
 
@@ -23,9 +24,16 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 		Authenticated: true, UserID: 42, Role: auth.RoleMember, GroupIDs: []int64{3, 11},
 		ValidatedAt: time.Date(2026, time.September, 2, 1, 0, 0, 0, time.UTC),
 	}
-	wantAreas := []db.Area{
-		{ID: 5, Slug: "announcements", Name: "Announcements & News", Description: "Durable <updates>", DisplayOrder: 1, Visibility: "public", PostingMode: "read_only"},
-		{ID: 8, Slug: "members", Name: "Member discussion", Description: "Private conversation", DisplayOrder: 2, Visibility: "groups", PostingMode: "normal"},
+	wantAreas := []store.VisibleAreaSummary{
+		{
+			Area:       db.Area{ID: 5, Slug: "announcements", Name: "Announcements & News", Description: "Durable <updates>", DisplayOrder: 1, Visibility: "public", PostingMode: "read_only"},
+			TopicCount: 3, PostCount: 27,
+			LatestPost: &store.VisibleAreaLatestPost{
+				TopicID: 91, TopicTitle: "Release <notes>", PostID: 117, PostNumber: 26,
+				Author: "Ada & Co", CreatedAt: time.Date(2026, time.September, 2, 14, 5, 0, 0, time.FixedZone("CDT", -5*60*60)),
+			},
+		},
+		{Area: db.Area{ID: 8, Slug: "members", Name: "Member discussion", Description: "Private conversation", DisplayOrder: 2, Visibility: "groups", PostingMode: "normal"}},
 	}
 	for _, hxRequest := range []string{"", "true"} {
 		hxRequest := hxRequest
@@ -33,7 +41,7 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 			t.Parallel()
 
 			calls := 0
-			handler, err := newAreaIndexHandler(builder, view, func(ctx context.Context, access auth.AccessContext) ([]db.Area, error) {
+			handler, err := newAreaIndexHandler(builder, view, func(ctx context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
 				calls++
 				if ctx == nil || !reflect.DeepEqual(access, wantAccess) {
 					t.Fatalf("area list authority = %+v", access)
@@ -55,6 +63,10 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 				!strings.Contains(body, `href="/bb/areas/announcements"`) || !strings.Contains(body, `hx-get="/bb/areas/announcements"`) ||
 				!strings.Contains(body, `href="/bb/areas/members"`) || !strings.Contains(body, `hx-target="#main-content"`) ||
 				!strings.Contains(body, `hx-swap="outerHTML"`) || !strings.Contains(body, `hx-push-url="true"`) ||
+				!strings.Contains(body, ">3<") || !strings.Contains(body, ">27<") ||
+				!strings.Contains(body, "Release &lt;notes&gt;") || !strings.Contains(body, "Ada &amp; Co") ||
+				!strings.Contains(body, `href="/bb/topics/91?page=2#post-117"`) ||
+				!strings.Contains(body, "Sep 2, 2026 14:05 CDT") ||
 				strings.Contains(body, "read_only") || strings.Contains(body, "groups") {
 				t.Fatalf("area index response = (status %d, calls %d, body %q)", response.Code, calls, body)
 			}
@@ -76,15 +88,20 @@ func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) 
 		wantStatus int
 		wantText   string
 	}{
-		{name: "empty", list: func(context.Context, auth.AccessContext) ([]db.Area, error) { return []db.Area{}, nil }, wantStatus: http.StatusOK, wantText: "ready for its first discussion area"},
-		{name: "failure", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
-			return []db.Area{{Name: secret}}, errors.New(secret)
+		{name: "empty", list: func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{}, nil
+		}, wantStatus: http.StatusOK, wantText: "ready for its first discussion area"},
+		{name: "failure", list: func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{{Area: db.Area{Name: secret}}}, errors.New(secret)
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
-		{name: "malformed row", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
-			return []db.Area{{ID: 1, Slug: "with/slash", Name: secret}}, nil
+		{name: "malformed row", list: func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{{Area: db.Area{ID: 1, Slug: "with/slash", Name: secret}}}, nil
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
-		{name: "missing name", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
-			return []db.Area{{ID: 1, Slug: "public"}}, nil
+		{name: "missing name", list: func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{{Area: db.Area{ID: 1, Slug: "public"}}}, nil
+		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
+		{name: "malformed latest post", list: func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, PostCount: 1, LatestPost: &store.VisibleAreaLatestPost{TopicID: 4, TopicTitle: "Topic", PostID: 0, PostNumber: 1, Author: secret, CreatedAt: time.Now()}}}, nil
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
 	} {
 		test := test
@@ -107,8 +124,8 @@ func TestAreaIndexHandlerShowsLogoutVerificationFailureOnlyToAuthenticatedSessio
 	t.Parallel()
 
 	builder, view := areaIndexTestBuilderAndView(t)
-	handler, err := newAreaIndexHandler(builder, view, func(context.Context, auth.AccessContext) ([]db.Area, error) {
-		return []db.Area{}, nil
+	handler, err := newAreaIndexHandler(builder, view, func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+		return []store.VisibleAreaSummary{}, nil
 	})
 	if err != nil {
 		t.Fatalf("newAreaIndexHandler() returned error: %v", err)
@@ -149,7 +166,7 @@ func TestNewAreaIndexHandlerRejectsMissingLister(t *testing.T) {
 	if got, err := newAreaIndexHandler(builder, view, nil); err == nil || got != nil {
 		t.Fatalf("newAreaIndexHandler(nil) = (%v, %v), want nil/error", got, err)
 	}
-	if got, err := newAreaIndexHandler(URLBuilder{}, view, func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, nil }); err == nil || got != nil {
+	if got, err := newAreaIndexHandler(URLBuilder{}, view, func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) { return nil, nil }); err == nil || got != nil {
 		t.Fatalf("newAreaIndexHandler(zero builder) = (%v, %v), want nil/error", got, err)
 	}
 }
@@ -159,8 +176,12 @@ func TestAreaIndexHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 
 	builder, view := areaIndexTestBuilderAndView(t)
 	for _, list := range []AreaIndexLister{
-		func(context.Context, auth.AccessContext) ([]db.Area, error) { return []db.Area{}, nil },
-		func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, errors.New("store failed") },
+		func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return []store.VisibleAreaSummary{}, nil
+		},
+		func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return nil, errors.New("store failed")
+		},
 	} {
 		handler, err := newAreaIndexHandler(builder, view, list)
 		if err != nil {

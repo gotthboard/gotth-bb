@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 )
 
-// AreaIndexLister returns only areas visible to one canonical request authority.
-type AreaIndexLister func(context.Context, auth.AccessContext) ([]db.Area, error)
+// AreaIndexLister returns only area summaries visible to one canonical request authority.
+type AreaIndexLister func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error)
 
 // newAreaIndexHandler loads the visible areas for the exact server-owned
 // request authority, builds canonical area links from schema-valid slugs, and
@@ -48,13 +50,14 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		authentication := sessionAuthenticationFromContext(request.Context())
 		logoutVerificationFailed := authentication.Access.Authenticated && request.URL.RawQuery == logoutVerificationFailureQuery
-		areas, err := list(request.Context(), authentication.Access)
+		summaries, err := list(request.Context(), authentication.Access)
 		if err != nil {
 			serveUnavailable(response, request)
 			return
 		}
-		items := make([]areaIndexItem, len(areas))
-		for index, area := range areas {
+		items := make([]areaIndexItem, len(summaries))
+		for index, summary := range summaries {
+			area := summary.Area
 			if area.Name == "" || !policy.ValidAreaSlug(area.Slug) {
 				serveUnavailable(response, request)
 				return
@@ -64,7 +67,34 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 				serveUnavailable(response, request)
 				return
 			}
-			items[index] = areaIndexItem{Name: area.Name, Description: area.Description, URL: areaURL}
+			item := areaIndexItem{
+				Name: area.Name, Description: area.Description, URL: areaURL,
+				TopicCount: summary.TopicCount, PostCount: summary.PostCount,
+			}
+			if latest := summary.LatestPost; latest != nil {
+				if latest.TopicID <= 0 || latest.TopicTitle == "" || latest.PostID <= 0 || latest.PostNumber <= 0 || latest.Author == "" || latest.CreatedAt.IsZero() {
+					serveUnavailable(response, request)
+					return
+				}
+				query := make(url.Values)
+				if page := 1 + (latest.PostNumber-1)/store.PostPageSize; page > 1 {
+					query.Set("page", strconv.FormatInt(int64(page), 10))
+				}
+				latestURL, buildErr := builder.PathWithQueryAndFragment(
+					[]string{"topics", strconv.FormatInt(latest.TopicID, 10)},
+					query,
+					"post-"+strconv.FormatInt(latest.PostID, 10),
+				)
+				if buildErr != nil {
+					serveUnavailable(response, request)
+					return
+				}
+				item.LatestTitle = latest.TopicTitle
+				item.LatestURL = latestURL
+				item.LatestAuthor = latest.Author
+				item.LatestAt = latest.CreatedAt.Format("Jan 2, 2006 15:04 MST")
+			}
+			items[index] = item
 		}
 		if renderErr := renderResponse(
 			response,

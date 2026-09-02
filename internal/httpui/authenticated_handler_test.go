@@ -75,12 +75,12 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		return true, nil
 	}
 	areaCalls := 0
-	listAreas := func(_ context.Context, access auth.AccessContext) ([]db.Area, error) {
+	listAreas := func(_ context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
 		areaCalls++
 		if !access.Authenticated || access.UserID != 17 || access.Role != auth.RoleMember || !reflect.DeepEqual(access.GroupIDs, []int64{23, 29}) {
 			t.Fatalf("area-list access = %+v", access)
 		}
-		return []db.Area{{ID: 9, Slug: "members", Name: "Member area", Visibility: "authenticated", PostingMode: "normal"}}, nil
+		return []store.VisibleAreaSummary{{Area: db.Area{ID: 9, Slug: "members", Name: "Member area", Visibility: "authenticated", PostingMode: "normal"}}}, nil
 	}
 	topicCalls := 0
 	loadAreaTopics := func(_ context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
@@ -414,6 +414,6 @@ func (service *authenticatedHandlerTestService) RevokeSession(ctx context.Contex
 	return service.revoke(ctx, token)
 }
 
-func emptyAreaIndexLister(context.Context, auth.AccessContext) ([]db.Area, error) {
-	return []db.Area{}, nil
+func emptyAreaIndexLister(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+	return []store.VisibleAreaSummary{}, nil
 }

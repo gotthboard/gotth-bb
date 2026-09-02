@@ -196,8 +196,8 @@ func run(
 	applicationHandler, err := httpui.NewAuthenticatedModeratedForumHandler(
 		urlBuilder,
 		authenticationService,
-		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
-			return store.ListVisibleAreas(areaContext, queries, access)
+		func(areaContext context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+			return store.ListVisibleAreaSummaries(areaContext, queries, access)
 		},
 		func(topicContext context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
 			return store.GetVisibleAreaTopicPage(topicContext, queries, slug, page, access)

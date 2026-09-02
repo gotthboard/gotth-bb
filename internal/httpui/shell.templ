@@ -9,7 +9,7 @@ import (
 
 templ document(view pageView, content templ.Component) {
 	<!doctype html>
-	<html lang="en" class="h-full bg-slate-950">
+	<html lang="en" class="h-full bg-slate-100">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -20,28 +20,33 @@ templ document(view pageView, content templ.Component) {
 			}
 			<link rel="stylesheet" href={ view.StylesheetURL }/>
 		</head>
-		<body class="min-h-full bg-slate-950 text-slate-100 antialiased">
+		<body class="min-h-full bg-slate-100 text-slate-900 antialiased">
 			<a href="#main-content" class="sr-only fixed left-4 top-4 z-50 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 focus:not-sr-only focus:outline-2 focus:outline-offset-2 focus:outline-cyan-100">Skip to main content</a>
-			<header class="border-b border-slate-800 bg-slate-950/95">
-				<div class="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-					<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ view.SiteName }</a>
-					<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+			<header class="border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 text-white shadow-sm">
+				<div class="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
+					<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+						<div>
+							<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-2xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">{ view.SiteName }</a>
+							<p class="mt-1 text-sm text-blue-100">Community discussions, plainly organized.</p>
+						</div>
+						<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Board index</a>
 						if sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator {
-							<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Manage areas</a>
+							<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Manage areas</a>
 						}
 						if sessionAuthenticationFromContext(ctx).Access.Authenticated {
 							<form method="post" action={ view.LogoutURL }>
 								<input type="hidden" name="_csrf" value={ csrfTokenFromContext(ctx) }/>
-								<button type="submit" class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Log out</button>
+								<button type="submit" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Log out</button>
 							</form>
 						} else {
-							<a href={ view.LoginURL } class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Log in</a>
+							<a href={ view.LoginURL } class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Log in</a>
 							if registrationEnabledFromContext(ctx) {
-								<a href={ view.RegisterURL } class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Register</a>
+								<a href={ view.RegisterURL } class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Register</a>
 							}
 						}
-					</nav>
+						</nav>
+					</div>
 				</div>
 			</header>
 			@content
@@ -197,8 +202,8 @@ templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem, logoutVerific
 }
 
 templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerificationFailed bool) {
-	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
-		<nav aria-label="Breadcrumb" class="mb-6 text-sm text-slate-400">
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
 			<ol>
 				<li><span aria-current="page">Areas</span></li>
 			</ol>
@@ -208,25 +213,46 @@ templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVeri
 				Logout failed because the page was stale. You are still logged in. Please try again.
 			</div>
 		}
-		<section aria-labelledby="areas-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
-			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Community index</p>
-			<h1 id="areas-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">Discussion areas</h1>
+		<section aria-labelledby="areas-title" class="overflow-hidden rounded border border-slate-400 bg-white shadow-sm">
+			<div class="border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 px-4 py-2 text-white">
+				<h1 id="areas-title" class="text-base font-bold">Discussion areas</h1>
+			</div>
 			if len(areas) == 0 {
-				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">No public discussion areas are available yet.</p>
-				<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
+				<p class="px-4 pt-4 text-slate-700">No public discussion areas are available yet.</p>
+				<div role="status" aria-live="polite" class="m-4 rounded border border-dashed border-slate-400 bg-slate-50 p-5 text-slate-700">
 					This community is ready for its first discussion area.
 				</div>
 			} else {
-				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">Browse the discussion areas available to you.</p>
-				<ul class="mt-8 grid gap-4">
+				<div class="hidden grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] gap-3 border-b border-slate-300 bg-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 md:grid" aria-hidden="true">
+					<span>Forum</span><span class="text-center">Topics</span><span class="text-center">Posts</span><span>Last post</span>
+				</div>
+				<ul class="divide-y divide-slate-300">
 					for _, area := range areas {
-						<li class="rounded-lg border border-slate-700 bg-slate-950/60 p-6">
-							<h2 class="text-xl font-semibold">
-								<a href={ area.URL } hx-get={ area.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ area.Name }</a>
-							</h2>
-							if area.Description != "" {
-								<p class="mt-2 leading-7 text-slate-300">{ area.Description }</p>
-							}
+						<li class="grid gap-3 bg-slate-50 px-4 py-4 even:bg-slate-100 md:grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] md:items-center">
+							<div class="flex min-w-0 gap-3">
+								<span aria-hidden="true" class="mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-lg text-blue-800">●</span>
+								<div class="min-w-0">
+									<h2 class="font-bold">
+										<a href={ area.URL } hx-get={ area.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-blue-800 hover:text-blue-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">{ area.Name }</a>
+									</h2>
+									if area.Description != "" {
+										<p class="mt-1 text-sm leading-5 text-slate-600">{ area.Description }</p>
+									}
+								</div>
+							</div>
+							<div class="flex gap-4 text-sm text-slate-700 md:contents">
+								<p class="md:text-center"><span class="font-semibold md:sr-only">Topics: </span>{ area.TopicCount }</p>
+								<p class="md:text-center"><span class="font-semibold md:sr-only">Posts: </span>{ area.PostCount }</p>
+							</div>
+							<div class="min-w-0 text-sm text-slate-600">
+								if area.LatestURL != "" {
+									<a href={ area.LatestURL } hx-get={ area.LatestURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="block truncate font-semibold text-blue-800 hover:underline">{ area.LatestTitle }</a>
+									<p class="mt-1">by { area.LatestAuthor }</p>
+									<p>{ area.LatestAt }</p>
+								} else {
+									<span>No posts</span>
+								}
+							</div>
 						</li>
 					}
 				</ul>

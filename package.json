@@ -8,7 +8,7 @@
     "npm": "12.0.2"
   },
   "scripts": {
-    "generate:css": "tailwindcss -i assets/styles/app.css -o internal/httpui/static/app-48b7cfc575316424079ce4a4df6fffea3db5f7cfeda25761bc11dedd4528caf5.css --minify"
+    "generate:css": "tailwindcss -i assets/styles/app.css -o internal/httpui/static/app-c571435652f4607a199b5ae1ec3e1d04564bb92d7212dcb30ef64ecf384ed305.css --minify"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

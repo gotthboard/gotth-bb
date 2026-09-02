@@ -108,7 +108,7 @@ func TestNewAuthenticatedPublishingHandlerRejectsMissingPublishers(t *testing.T)
 
 	builder := callbackTestURLBuilder(t)
 	service := &authenticatedHandlerTestService{}
-	list := func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, nil }
+	list := func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) { return nil, nil }
 	topics := func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
 		return store.VisibleAreaTopicPage{}, nil
 	}
