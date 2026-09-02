@@ -18,6 +18,26 @@ type areaIndexItem struct {
 	Description string
 }
 
+type areaTopicListView struct {
+	Name        string
+	Description string
+	Topics      []areaTopicListItem
+	Number      int32
+	TotalTopics int64
+	PreviousURL string
+	NextURL     string
+}
+
+type areaTopicListItem struct {
+	Title        string
+	URL          string
+	StateLabel   string
+	Pinned       bool
+	ReplyLabel   string
+	Author       string
+	LastActivity string
+}
+
 // newPageView resolves every application-owned shell URL through one validated
 // builder and binds the page title to the fixed product identity.
 //

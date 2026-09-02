@@ -70,6 +70,60 @@ templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem) {
 	</main>
 }
 
+templ areaTopicListPage(view pageView, area areaTopicListView) {
+	@document(view, areaTopicListContent(view, area))
+}
+
+templ areaTopicListContent(view pageView, area areaTopicListView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-600">/</span>
+			<span aria-current="page" class="text-slate-400">{ area.Name }</span>
+		</nav>
+		<section aria-labelledby="area-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Discussion area</p>
+			<h1 id="area-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">{ area.Name }</h1>
+			if area.Description != "" {
+				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">{ area.Description }</p>
+			}
+			if len(area.Topics) == 0 {
+				<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
+					No topics have been published in this area yet.
+				</div>
+			} else {
+				<p class="mt-4 text-sm text-slate-400">Page { area.Number } · { area.TotalTopics } topics available to you</p>
+				<ul class="mt-8 grid gap-4">
+					for _, topic := range area.Topics {
+						<li class="rounded-lg border border-slate-700 bg-slate-950/60 p-6">
+							<div class="flex flex-wrap items-center gap-3 text-sm">
+								if topic.Pinned {
+									<span class="rounded-sm border border-slate-700 px-2 py-2 font-semibold text-cyan-300">Pinned</span>
+								}
+								<span class="text-slate-400">{ topic.StateLabel }</span>
+							</div>
+							<h2 class="mt-4 text-xl font-semibold text-white">
+								<a href={ topic.URL } hx-get={ topic.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ topic.Title }</a>
+							</h2>
+							<p class="mt-2 text-sm text-slate-400">Started by { topic.Author } · { topic.ReplyLabel } · Last activity { topic.LastActivity }</p>
+						</li>
+					}
+				</ul>
+				if area.PreviousURL != "" || area.NextURL != "" {
+					<nav aria-label="Topic pages" class="mt-8 flex flex-wrap items-center gap-4">
+						if area.PreviousURL != "" {
+							<a href={ area.PreviousURL } hx-get={ area.PreviousURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Previous</a>
+						}
+						if area.NextURL != "" {
+							<a href={ area.NextURL } hx-get={ area.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Next</a>
+						}
+					</nav>
+				}
+			}
+		</section>
+	</main>
+}
+
 templ errorPage(view pageView, status int, heading, message string) {
 	@document(view, errorContent(view, status, heading, message))
 }

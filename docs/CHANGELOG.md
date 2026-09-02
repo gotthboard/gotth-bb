@@ -5,6 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:24 CDT — Render visible area topic pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/area_topic_handler.go`
+- `internal/httpui/area_topic_handler_test.go`
+- `internal/httpui/view.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the independently testable area topic-list handler and typed complete/HTMX
+presentation. It parses only the admitted page query, passes the exact
+server-owned access context to one loader, maps persistence rows into narrow
+display fields, and builds canonical, topic, previous, and next links through
+the validated `/bb` URL authority. Missing/invisible input shares one generic
+404; store or malformed-result failures discard partial content and return one
+redacted 503.
+
+Verification:
+
+- Complete and HTMX page 2 render escaped area/topic/author text, pinned and
+  locked/archived state, reply counts, UTC activity, canonical URL, stable topic
+  ID URLs, and page 1/page 3 navigation
+- Empty page 1, open/hidden state, singular reply, later previous-page links,
+  malformed query, missing slug/area, store failure, malformed loaded rows, and
+  committed-write failures are covered
+- The handler reaches 97.2% statement coverage under the race detector. The
+  only uncovered return is a defensive failure from building
+  `/topics/<positive-decimal-id>` after construction has already validated the
+  immutable builder; no reachable input can make either segment ambiguous
+
+Risks / non-goals:
+
+- This unit does not wire `/areas/{slug}` into the public/authenticated router,
+  add links to area-index cards, or implement the topic page route.
+
 ### 2026-09-01 21:08 CDT — Build canonical absolute query URLs
 
 Commit: current commit; hash assigned by Git after commit
