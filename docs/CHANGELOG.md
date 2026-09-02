@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:00 CDT — Parse canonical topic-page queries
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/topic_page_query.go`
+- `internal/httpui/topic_page_query_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the raw-query parser required by the area topic-list route. An absent
+query selects page 1. Otherwise only the literal `page=<decimal>` spelling is
+accepted within the caller-supplied positive maximum. Parsing RawQuery directly
+prevents duplicate keys, extra parameters, percent encoding, separators, or
+`url.Values` error suppression from acquiring accidental meaning.
+
+Verification:
+
+- Canonical page 1, an ordinary page, and the exact maximum are accepted
+- Empty values, zero, leading zeros, signs, overflow/excess, case changes,
+  percent encoding, plus signs, duplicate and extra keys, semicolons, and an
+  invalid parser maximum are rejected
+- Input work is capped at the maximum 32-bit decimal spelling, uses constant
+  auxiliary space, and the production function has 100% statement coverage
+  under the race detector
+
+Risks / non-goals:
+
+- The parser does not choose HTTP status or invoke the store. Those behaviors
+  belong to the route handler.
+
 ### 2026-09-01 20:53 CDT — Bound visible area topic pages
 
 Commit: current commit; hash assigned by Git after commit
