@@ -65,9 +65,10 @@ Verification:
 Risks / non-goals:
 
 - Markdown preview, edit, and delete remain separate A1-07 units
-- The 262,144-byte wire buffer is allocated once for CSRF verification and then
-  parsed by `net/http`; decoded Markdown remains capped by the service at
-  65,536 bytes
+- The 262,144-byte wire body is read and retained once for CSRF verification,
+  then restored. CSRF extraction and strict handler parsing each scan that
+  bounded body and allocate their own decoded form values; decoded Markdown
+  remains capped by the service at 65,536 bytes
 
 ### 2026-09-01 23:48 CDT — Serialize authorized topic and reply publication
 

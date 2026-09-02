@@ -329,6 +329,11 @@ func TestPublishingValidationPreservesSubmittedFields(t *testing.T) {
 			form:       url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"kept <script>body</script>"}},
 			replyError: "markdown", want: []string{`kept &lt;script&gt;body&lt;/script&gt;`, `Check the Markdown body.`},
 		},
+		{
+			name: "topic area", target: "/topics",
+			form:       url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"bad area"}, "title": {"kept title"}, "markdown": {"kept body"}},
+			topicError: "area", want: []string{`name="area" value="bad area"`, `kept title`, `kept body`, `Check the submitted fields.`},
+		},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -379,6 +384,9 @@ func TestPublishingHandlerFailsClosedBeforeMutation(t *testing.T) {
 		{name: "unauthenticated", target: "/topics", authenticated: false, wantStatus: http.StatusSeeOther},
 		{name: "missing CSRF", target: "/topics", authenticated: true, body: "area=news&title=Title&markdown=body", wantStatus: http.StatusForbidden},
 		{name: "unknown field", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}, "extra": {"x"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "topic query", target: "/topics?extra=1", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "reply missing CSRF", target: "/topics/41/replies", authenticated: true, body: "markdown=body", wantStatus: http.StatusForbidden},
+		{name: "reply unknown field", target: "/topics/41/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}, "extra": {"x"}}.Encode(), wantStatus: http.StatusBadRequest},
 		{name: "denied", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), creatorError: forum.ErrPublishingDenied, wantStatus: http.StatusForbidden},
 		{name: "unavailable", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), creatorError: errors.New("database unavailable"), wantStatus: http.StatusServiceUnavailable},
 		{name: "noncanonical reply", target: "/topics/041/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusNotFound},
@@ -395,7 +403,7 @@ func TestPublishingHandlerFailsClosedBeforeMutation(t *testing.T) {
 				return forum.PublishResult{}, test.creatorError
 			})
 			request := publishingTestRequest(http.MethodPost, test.target, test.body, test.authenticated)
-			if test.name == "missing CSRF" {
+			if test.name == "missing CSRF" || test.name == "reply missing CSRF" {
 				request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, ""))
 			}
 			response := httptest.NewRecorder()
@@ -437,6 +445,46 @@ func TestPublishingHandlerRejectsMalformedNewTopicQueries(t *testing.T) {
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("GET %q status = %d, want 400", target, response.Code)
 		}
+	}
+}
+
+func TestPublishingHandlerFailsClosedWithoutFormCSRFOrValidResult(t *testing.T) {
+	t.Parallel()
+
+	handler := newPublishingTestHandler(t, func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
+		return forum.PublishResult{}, nil
+	}, nil)
+	form := url.Values{"area": {"news"}, "title": {"Title"}, "markdown": {"body"}}
+	request := publishingTestRequest(http.MethodPost, "/topics", form.Encode(), true)
+	request.Header.Set(csrfHeaderName, validCSRFTokenForTest(0x51))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("invalid topic result status = %d, want 503", response.Code)
+	}
+
+	missingToken := publishingTestRequest(http.MethodGet, "/topics/new?area=news", "", true)
+	missingToken = missingToken.WithContext(context.WithValue(missingToken.Context(), csrfTokenContextKey{}, ""))
+	missingResponse := httptest.NewRecorder()
+	handler.ServeHTTP(missingResponse, missingToken)
+	if missingResponse.Code != http.StatusServiceUnavailable {
+		t.Fatalf("missing form token status = %d, want 503", missingResponse.Code)
+	}
+}
+
+func TestParsePublishingFormRejectsMissingFieldsAndReadFailure(t *testing.T) {
+	t.Parallel()
+
+	missing := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("markdown=body"))
+	missing.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if form, err := parsePublishingForm(missing, false); err == nil || form != (publishingFormView{}) {
+		t.Fatalf("missing topic fields = (%+v, %v)", form, err)
+	}
+	failing := httptest.NewRequest(http.MethodPost, "/", nil)
+	failing.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	failing.Body = failingPublishingBody{}
+	if form, err := parsePublishingForm(failing, true); err == nil || form != (publishingFormView{}) {
+		t.Fatalf("failed form read = (%+v, %v)", form, err)
 	}
 }
 
@@ -500,3 +548,8 @@ func publishingTestRequest(method, target, body string, authenticated bool) *htt
 	ctx = context.WithValue(ctx, csrfTokenContextKey{}, validCSRFTokenForTest(0x51))
 	return request.WithContext(ctx)
 }
+
+type failingPublishingBody struct{}
+
+func (failingPublishingBody) Read([]byte) (int, error) { return 0, errors.New("read failed") }
+func (failingPublishingBody) Close() error             { return nil }
