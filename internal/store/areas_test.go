@@ -5,11 +5,152 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func TestListVisibleAreaSummariesDerivesAccessAndConvertsCompleteRows(t *testing.T) {
+	t.Parallel()
+
+	created := time.Date(2026, time.September, 2, 20, 0, 0, 0, time.UTC)
+	row := validVisibleAreaSummaryRow(created)
+	for _, test := range []struct {
+		name       string
+		actor      policy.AccessContext
+		wantStaff  bool
+		wantMember bool
+		wantGroups []int64
+	}{
+		{name: "visitor"},
+		{name: "member", actor: policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{3, 5}}, wantMember: true, wantGroups: []int64{3, 5}},
+		{name: "moderator", actor: policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleModerator, GroupIDs: []int64{7}}, wantStaff: true, wantMember: true, wantGroups: []int64{7}},
+		{name: "administrator", actor: policy.AccessContext{Authenticated: true, UserID: 13, Role: policy.RoleAdministrator}, wantStaff: true, wantMember: true},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			querier := &visibleAreaSummaryTestQuerier{rows: []db.ListVisibleAreaSummariesRow{row}}
+			got, err := ListVisibleAreaSummaries(context.Background(), querier, test.actor)
+			if err != nil || len(got) != 1 || querier.calls != 1 {
+				t.Fatalf("ListVisibleAreaSummaries() = (%+v, %v, calls %d)", got, err, querier.calls)
+			}
+			if got[0].Area.ID != 7 || got[0].Area.Slug != "general" || got[0].TopicCount != 2 || got[0].PostCount != 5 || got[0].LatestPost == nil ||
+				got[0].LatestPost.TopicID != 41 || got[0].LatestPost.TopicTitle != "Current topic" || got[0].LatestPost.PostID != 91 ||
+				got[0].LatestPost.PostNumber != 4 || got[0].LatestPost.Author != "Alice" || !got[0].LatestPost.CreatedAt.Equal(created.Add(time.Hour)) {
+				t.Fatalf("summary = %+v", got[0])
+			}
+			parameters := querier.parameters
+			if parameters.IsStaff != test.wantStaff || parameters.IsMember != test.wantMember || !equalGroupIDs(parameters.GroupIds, test.wantGroups) {
+				t.Fatalf("parameters = %+v, want staff=%t member=%t groups=%v", parameters, test.wantStaff, test.wantMember, test.wantGroups)
+			}
+		})
+	}
+}
+
+func TestListVisibleAreaSummariesAcceptsAnEmptyArea(t *testing.T) {
+	t.Parallel()
+
+	row := validVisibleAreaSummaryRow(time.Date(2026, time.September, 2, 20, 0, 0, 0, time.UTC))
+	row.TopicCount = 0
+	row.PostCount = 0
+	row.LatestTopicID = pgtype.Int8{}
+	row.LatestTopicTitle = pgtype.Text{}
+	row.LatestPostID = pgtype.Int8{}
+	row.LatestPostNumber = pgtype.Int4{}
+	row.LatestPostAuthor = pgtype.Text{}
+	row.LatestPostCreatedAt = pgtype.Timestamptz{}
+	querier := &visibleAreaSummaryTestQuerier{rows: []db.ListVisibleAreaSummariesRow{row}}
+	got, err := ListVisibleAreaSummaries(context.Background(), querier, policy.AccessContext{})
+	if err != nil || len(got) != 1 || got[0].LatestPost != nil || got[0].TopicCount != 0 || got[0].PostCount != 0 {
+		t.Fatalf("ListVisibleAreaSummaries(empty) = (%+v, %v)", got, err)
+	}
+}
+
+func TestListVisibleAreaSummariesRejectsMalformedRowsWithoutPartialResults(t *testing.T) {
+	t.Parallel()
+
+	valid := validVisibleAreaSummaryRow(time.Date(2026, time.September, 2, 20, 0, 0, 0, time.UTC))
+	cases := []struct {
+		name   string
+		change func(*db.ListVisibleAreaSummariesRow)
+	}{
+		{name: "area ID", change: func(row *db.ListVisibleAreaSummariesRow) { row.ID = 0 }},
+		{name: "slug", change: func(row *db.ListVisibleAreaSummariesRow) { row.Slug = "Bad" }},
+		{name: "name", change: func(row *db.ListVisibleAreaSummariesRow) { row.Name = "" }},
+		{name: "display order", change: func(row *db.ListVisibleAreaSummariesRow) { row.DisplayOrder = -1 }},
+		{name: "creator", change: func(row *db.ListVisibleAreaSummariesRow) { row.CreatedBy = 0 }},
+		{name: "updater", change: func(row *db.ListVisibleAreaSummariesRow) { row.UpdatedBy = 0 }},
+		{name: "created time", change: func(row *db.ListVisibleAreaSummariesRow) { row.CreatedAt = pgtype.Timestamptz{} }},
+		{name: "updated time", change: func(row *db.ListVisibleAreaSummariesRow) { row.UpdatedAt.Time = row.CreatedAt.Time.Add(-time.Second) }},
+		{name: "visibility", change: func(row *db.ListVisibleAreaSummariesRow) { row.Visibility = "unknown" }},
+		{name: "posting mode", change: func(row *db.ListVisibleAreaSummariesRow) { row.PostingMode = "unknown" }},
+		{name: "topic count", change: func(row *db.ListVisibleAreaSummariesRow) { row.TopicCount = -1 }},
+		{name: "post count", change: func(row *db.ListVisibleAreaSummariesRow) { row.PostCount = -1 }},
+		{name: "posts without topics", change: func(row *db.ListVisibleAreaSummariesRow) { row.TopicCount = 0 }},
+		{name: "latest post with zero count", change: func(row *db.ListVisibleAreaSummariesRow) { row.PostCount = 0 }},
+		{name: "partial latest", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostAuthor = pgtype.Text{} }},
+		{name: "latest topic ID", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestTopicID.Int64 = 0 }},
+		{name: "latest topic title", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestTopicTitle.String = "" }},
+		{name: "latest post ID", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostID.Int64 = 0 }},
+		{name: "latest post number", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostNumber.Int32 = 0 }},
+		{name: "latest author", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostAuthor.String = "" }},
+		{name: "latest time", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostCreatedAt.InfinityModifier = pgtype.Infinity }},
+	}
+	for _, test := range cases {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			malformed := valid
+			test.change(&malformed)
+			querier := &visibleAreaSummaryTestQuerier{rows: []db.ListVisibleAreaSummariesRow{valid, malformed}}
+			got, err := ListVisibleAreaSummaries(context.Background(), querier, policy.AccessContext{})
+			if err == nil || got != nil || querier.calls != 1 {
+				t.Fatalf("ListVisibleAreaSummaries(malformed) = (%+v, %v, calls %d)", got, err, querier.calls)
+			}
+		})
+	}
+}
+
+func TestListVisibleAreaSummariesRejectsDependenciesAuthorityAndQueryFailure(t *testing.T) {
+	t.Parallel()
+
+	validActor := policy.AccessContext{}
+	if got, err := ListVisibleAreaSummaries(nil, panicVisibleAreaSummaryQuerier{}, validActor); err == nil || got != nil {
+		t.Fatalf("nil context = (%+v, %v)", got, err)
+	}
+	if got, err := ListVisibleAreaSummaries(context.Background(), nil, validActor); err == nil || got != nil {
+		t.Fatalf("nil querier = (%+v, %v)", got, err)
+	}
+	if got, err := ListVisibleAreaSummaries(context.Background(), panicVisibleAreaSummaryQuerier{}, policy.AccessContext{UserID: 1}); err == nil || got != nil {
+		t.Fatalf("invalid actor = (%+v, %v)", got, err)
+	}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got, err := ListVisibleAreaSummaries(canceled, panicVisibleAreaSummaryQuerier{}, validActor); !errors.Is(err, context.Canceled) || got != nil {
+		t.Fatalf("canceled context = (%+v, %v)", got, err)
+	}
+	cause := errors.New("summary query failed")
+	querier := &visibleAreaSummaryTestQuerier{err: cause}
+	if got, err := ListVisibleAreaSummaries(context.Background(), querier, validActor); !errors.Is(err, cause) || got != nil || querier.calls != 1 {
+		t.Fatalf("query failure = (%+v, %v, calls %d)", got, err, querier.calls)
+	}
+}
+
+func validVisibleAreaSummaryRow(created time.Time) db.ListVisibleAreaSummariesRow {
+	return db.ListVisibleAreaSummariesRow{
+		ID: 7, Slug: "general", Name: "General", Description: "Discussion", DisplayOrder: 1,
+		Visibility: "public", PostingMode: "normal", CreatedBy: 11, UpdatedBy: 12,
+		CreatedAt: pgtype.Timestamptz{Time: created, Valid: true}, UpdatedAt: pgtype.Timestamptz{Time: created, Valid: true},
+		TopicCount: 2, PostCount: 5,
+		LatestTopicID: pgtype.Int8{Int64: 41, Valid: true}, LatestTopicTitle: pgtype.Text{String: "Current topic", Valid: true},
+		LatestPostID: pgtype.Int8{Int64: 91, Valid: true}, LatestPostNumber: pgtype.Int4{Int32: 4, Valid: true},
+		LatestPostAuthor: pgtype.Text{String: "Alice", Valid: true}, LatestPostCreatedAt: pgtype.Timestamptz{Time: created.Add(time.Hour), Valid: true},
+	}
+}
 
 func TestListVisibleAreasDerivesOnlyVerifiedAccessFacts(t *testing.T) {
 	t.Parallel()
@@ -197,6 +338,25 @@ type visibleAreaTestQuerier struct {
 	err        error
 	calls      int
 	parameters db.ListVisibleAreasParams
+}
+
+type visibleAreaSummaryTestQuerier struct {
+	rows       []db.ListVisibleAreaSummariesRow
+	err        error
+	calls      int
+	parameters db.ListVisibleAreaSummariesParams
+}
+
+func (querier *visibleAreaSummaryTestQuerier) ListVisibleAreaSummaries(_ context.Context, parameters db.ListVisibleAreaSummariesParams) ([]db.ListVisibleAreaSummariesRow, error) {
+	querier.calls++
+	querier.parameters = parameters
+	return querier.rows, querier.err
+}
+
+type panicVisibleAreaSummaryQuerier struct{}
+
+func (panicVisibleAreaSummaryQuerier) ListVisibleAreaSummaries(context.Context, db.ListVisibleAreaSummariesParams) ([]db.ListVisibleAreaSummariesRow, error) {
+	panic("visible-area-summary query must not run")
 }
 
 func (querier *visibleAreaTestQuerier) ListVisibleAreas(_ context.Context, parameters db.ListVisibleAreasParams) ([]db.Area, error) {

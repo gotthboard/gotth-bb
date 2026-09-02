@@ -5,6 +5,53 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 15:18 CDT — Add authorized board-index summaries
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/store/areas.go`
+- `internal/store/areas_test.go`
+- `internal/store/queries/areas.sql`
+- `internal/store/db/areas.sql.go`
+- `internal/store/db/areas_test.go`
+- `internal/store/db/areas_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+The alpha.2 board index now has one actor-filtered PostgreSQL projection for
+area metadata, exact topic/post counts, and the latest visible post. The area
+predicate is applied before aggregation. Non-staff results omit hidden topics;
+staff results include them under their existing read authority. Deleted topics
+and soft-deleted posts never contribute. The query returns no post body and
+does not issue one query per area.
+
+The store converts the generated SQL row into a bounded domain projection only
+after rejecting invalid area fields, negative or impossible counts, partially
+nullable latest-post tuples, invalid identifiers, empty required metadata, and
+non-finite timestamps. Empty areas retain exact zero counts and no fabricated
+latest-post value.
+
+Verification:
+
+- New generated-query, store, malformed-row, dependency, cancellation, and
+  failure tests pass; the changed query and store functions have 100% statement
+  coverage.
+- Fifty focused race-detector repetitions pass.
+- PostgreSQL 17.10 integration proves visitor/member/group/staff visibility,
+  empty areas, hidden-topic staff elevation, deleted-topic exclusion,
+  soft-deleted-post exclusion, exact counts, and latest-post selection.
+
+Risks / non-goals:
+
+- This unit creates the read model only. Wiring and presentation belong to
+  A2-02 so the authorization/query contract remains independently reviewable.
+- No migration, runtime configuration, dependency, or deployed alpha.1 state
+  changes.
+
 ### 2026-09-02 15:05 CDT — Define the alpha.2 forum presentation increment
 
 Commit: current commit; hash assigned by Git after commit

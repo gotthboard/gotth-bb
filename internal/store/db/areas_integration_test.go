@@ -66,6 +66,7 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 	if err := connection.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Other', $1) RETURNING id`, ownerID).Scan(&otherGroupID); err != nil {
 		t.Fatalf("insert other group: %v", err)
 	}
+	areaIDs := make(map[string]int64, 5)
 	for _, area := range []struct {
 		slug       string
 		name       string
@@ -84,11 +85,57 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 			area.slug, area.name, area.order, area.visibility, ownerID).Scan(&areaID); err != nil {
 			t.Fatalf("insert area %q: %v", area.slug, err)
 		}
+		areaIDs[area.slug] = areaID
 		if area.groupID != 0 {
 			if _, err := connection.Exec(ctx, `INSERT INTO public.area_groups (area_id, group_id, added_by) VALUES ($1, $2, $3)`, areaID, area.groupID, ownerID); err != nil {
 				t.Fatalf("map area %q: %v", area.slug, err)
 			}
 		}
+	}
+	fixture, err := connection.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin area-summary fixture: %v", err)
+	}
+	fixtureTime := time.Date(2026, time.September, 2, 20, 0, 0, 0, time.UTC)
+	statements := []struct {
+		query string
+		args  []any
+	}{
+		{query: `INSERT INTO public.topics
+            (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number, created_at, updated_at, last_activity_at)
+            VALUES (101, $1, $2, 'Visible topic', 'open', 1001, 1003, 2, 4, $3, $3, $4)`, args: []any{areaIDs["public"], ownerID, fixtureTime, fixtureTime.Add(2 * time.Minute)}},
+		{query: `INSERT INTO public.posts
+            (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
+            OVERRIDING SYSTEM VALUE VALUES
+            (1001, 101, $1, 1, 'first', '<p>first</p>', 'test', $2, $2),
+            (1002, 101, $1, 2, 'second', '<p>second</p>', 'test', $3, $3)`, args: []any{ownerID, fixtureTime, fixtureTime.Add(time.Minute)}},
+		{query: `INSERT INTO public.posts
+            (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at, deleted_at, deleted_by, deletion_reason)
+            OVERRIDING SYSTEM VALUE VALUES
+            (1003, 101, $1, 3, 'deleted', '<p>deleted</p>', 'test', $2, $2, $2, $1, 'fixture deletion')`, args: []any{ownerID, fixtureTime.Add(2 * time.Minute)}},
+		{query: `INSERT INTO public.topics
+            (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number, created_at, updated_at, last_activity_at)
+            VALUES (102, $1, $2, 'Hidden topic', 'hidden', 1004, 1004, 0, 2, $3, $3, $3)`, args: []any{areaIDs["public"], ownerID, fixtureTime.Add(3 * time.Minute)}},
+		{query: `INSERT INTO public.posts
+            (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
+            OVERRIDING SYSTEM VALUE VALUES
+            (1004, 102, $1, 1, 'hidden', '<p>hidden</p>', 'test', $2, $2)`, args: []any{ownerID, fixtureTime.Add(3 * time.Minute)}},
+		{query: `INSERT INTO public.topics
+            (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number, created_at, updated_at, last_activity_at, deleted_at)
+            VALUES (103, $1, $2, 'Deleted topic', 'open', 1005, 1005, 0, 2, $3, $3, $3, $3)`, args: []any{areaIDs["public"], ownerID, fixtureTime.Add(4 * time.Minute)}},
+		{query: `INSERT INTO public.posts
+            (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
+            OVERRIDING SYSTEM VALUE VALUES
+            (1005, 103, $1, 1, 'deleted topic', '<p>deleted topic</p>', 'test', $2, $2)`, args: []any{ownerID, fixtureTime.Add(4 * time.Minute)}},
+	}
+	for index, statement := range statements {
+		if _, err := fixture.Exec(ctx, statement.query, statement.args...); err != nil {
+			_ = fixture.Rollback(ctx)
+			t.Fatalf("insert area-summary fixture %d: %v", index, err)
+		}
+	}
+	if err := fixture.Commit(ctx); err != nil {
+		t.Fatalf("commit area-summary fixture: %v", err)
 	}
 	queries := New(connection)
 	for _, test := range []struct {
@@ -116,6 +163,31 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 			for index := range areas {
 				if areas[index].Slug != test.wantSlugs[index] {
 					t.Fatalf("area %d slug = %q, want %q", index, areas[index].Slug, test.wantSlugs[index])
+				}
+			}
+			summaries, err := queries.ListVisibleAreaSummaries(ctx, ListVisibleAreaSummariesParams{
+				IsStaff: test.isStaff, IsMember: test.isMember, GroupIds: test.groupIDs,
+			})
+			if err != nil || len(summaries) != len(test.wantSlugs) {
+				t.Fatalf("ListVisibleAreaSummaries() = (%+v, %v), want %v", summaries, err, test.wantSlugs)
+			}
+			for index, summary := range summaries {
+				if summary.Slug != test.wantSlugs[index] {
+					t.Fatalf("summary %d slug = %q, want %q", index, summary.Slug, test.wantSlugs[index])
+				}
+				if summary.Slug != "public" {
+					if summary.TopicCount != 0 || summary.PostCount != 0 || summary.LatestPostID.Valid {
+						t.Fatalf("empty area summary = %+v", summary)
+					}
+					continue
+				}
+				wantTopics, wantPosts, wantLatestID, wantLatestTitle := int64(1), int64(2), int64(1002), "Visible topic"
+				if test.isStaff {
+					wantTopics, wantPosts, wantLatestID, wantLatestTitle = 2, 3, 1004, "Hidden topic"
+				}
+				if summary.TopicCount != wantTopics || summary.PostCount != wantPosts || !summary.LatestPostID.Valid || summary.LatestPostID.Int64 != wantLatestID ||
+					!summary.LatestTopicTitle.Valid || summary.LatestTopicTitle.String != wantLatestTitle || !summary.LatestPostCreatedAt.Valid {
+					t.Fatalf("public summary = %+v, want topics=%d posts=%d latest=%d/%q", summary, wantTopics, wantPosts, wantLatestID, wantLatestTitle)
 				}
 			}
 			visible := make(map[string]bool, len(test.wantSlugs))

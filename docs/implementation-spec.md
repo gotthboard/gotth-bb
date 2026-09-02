@@ -912,7 +912,7 @@ statement returns area identity and display fields plus:
 
 - `topic_count`: actor-visible, non-deleted topics;
 - `post_count`: non-deleted posts belonging to those topics;
-- an optional latest-post tuple containing topic ID/title, post number,
+- an optional latest-post tuple containing topic ID/title, post ID/number,
   author display name, and post creation time.
 
 The complete area visibility predicate appears in the area-producing relation

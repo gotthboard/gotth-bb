@@ -336,6 +336,173 @@ func (q *Queries) ListForumGroupsForAreaAdministration(ctx context.Context) ([]L
 	return items, nil
 }
 
+const listVisibleAreaSummaries = `-- name: ListVisibleAreaSummaries :many
+WITH visible_areas AS (
+    SELECT
+        a.id,
+        a.slug,
+        a.name,
+        a.description,
+        a.display_order,
+        a.visibility,
+        a.posting_mode,
+        a.created_by,
+        a.updated_by,
+        a.created_at,
+        a.updated_at
+    FROM public.areas AS a
+    WHERE
+        $1::boolean
+        OR a.visibility = 'public'
+        OR (
+            $2::boolean
+            AND a.visibility = 'authenticated'
+        )
+        OR (
+            $2::boolean
+            AND a.visibility = 'groups'
+            AND COALESCE(cardinality($3::bigint[]), 0) > 0
+            AND EXISTS (
+                SELECT 1
+                FROM public.area_groups AS ag
+                WHERE ag.area_id = a.id
+                  AND ag.group_id = ANY($3::bigint[])
+            )
+        )
+),
+visible_topics AS (
+    SELECT topic.id, topic.area_id, topic.title
+    FROM public.topics AS topic
+    JOIN visible_areas AS area ON area.id = topic.area_id
+    WHERE topic.deleted_at IS NULL
+      AND ($1::boolean OR topic.state <> 'hidden')
+),
+topic_counts AS (
+    SELECT topic.area_id, count(*)::bigint AS topic_count
+    FROM visible_topics AS topic
+    GROUP BY topic.area_id
+),
+visible_posts AS (
+    SELECT post.id, post.topic_id, post.post_number, post.author_id, post.created_at
+    FROM public.posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    WHERE post.deleted_at IS NULL
+),
+post_counts AS (
+    SELECT topic.area_id, count(*)::bigint AS post_count
+    FROM visible_posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    GROUP BY topic.area_id
+),
+latest_posts AS (
+    SELECT DISTINCT ON (topic.area_id)
+        topic.area_id,
+        topic.id AS latest_topic_id,
+        topic.title AS latest_topic_title,
+        post.id AS latest_post_id,
+        post.post_number AS latest_post_number,
+        author.display_name AS latest_post_author,
+        post.created_at AS latest_post_created_at
+    FROM visible_posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    JOIN public.users AS author ON author.id = post.author_id
+    ORDER BY topic.area_id, post.created_at DESC, post.id DESC
+)
+SELECT
+    area.id,
+    area.slug,
+    area.name,
+    area.description,
+    area.display_order,
+    area.visibility,
+    area.posting_mode,
+    area.created_by,
+    area.updated_by,
+    area.created_at,
+    area.updated_at,
+    COALESCE(topic_counts.topic_count, 0)::bigint AS topic_count,
+    COALESCE(post_counts.post_count, 0)::bigint AS post_count,
+    latest_posts.latest_topic_id,
+    latest_posts.latest_topic_title,
+    latest_posts.latest_post_id,
+    latest_posts.latest_post_number,
+    latest_posts.latest_post_author,
+    latest_posts.latest_post_created_at
+FROM visible_areas AS area
+LEFT JOIN topic_counts ON topic_counts.area_id = area.id
+LEFT JOIN post_counts ON post_counts.area_id = area.id
+LEFT JOIN latest_posts ON latest_posts.area_id = area.id
+ORDER BY area.display_order, area.id
+`
+
+type ListVisibleAreaSummariesParams struct {
+	IsStaff  bool
+	IsMember bool
+	GroupIds []int64
+}
+
+type ListVisibleAreaSummariesRow struct {
+	ID                  int64
+	Slug                string
+	Name                string
+	Description         string
+	DisplayOrder        int32
+	Visibility          string
+	PostingMode         string
+	CreatedBy           int64
+	UpdatedBy           int64
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+	TopicCount          int64
+	PostCount           int64
+	LatestTopicID       pgtype.Int8
+	LatestTopicTitle    pgtype.Text
+	LatestPostID        pgtype.Int8
+	LatestPostNumber    pgtype.Int4
+	LatestPostAuthor    pgtype.Text
+	LatestPostCreatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListVisibleAreaSummaries(ctx context.Context, arg ListVisibleAreaSummariesParams) ([]ListVisibleAreaSummariesRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleAreaSummaries, arg.IsStaff, arg.IsMember, arg.GroupIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVisibleAreaSummariesRow{}
+	for rows.Next() {
+		var i ListVisibleAreaSummariesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.DisplayOrder,
+			&i.Visibility,
+			&i.PostingMode,
+			&i.CreatedBy,
+			&i.UpdatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TopicCount,
+			&i.PostCount,
+			&i.LatestTopicID,
+			&i.LatestTopicTitle,
+			&i.LatestPostID,
+			&i.LatestPostNumber,
+			&i.LatestPostAuthor,
+			&i.LatestPostCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVisibleAreas = `-- name: ListVisibleAreas :many
 SELECT
     a.id,
