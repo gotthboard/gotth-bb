@@ -361,6 +361,14 @@ Constraints:
 Indexes support area lists ordered by pinned/activity and recent activity
 ordered globally after access filtering.
 
+Topic creation renders and validates the first post before opening a
+transaction, then locks the current area row and its group mappings before
+calling `CanCreateTopic`. One data-modifying statement allocates the topic and
+post identities and inserts the mutually referencing open topic and post 1;
+the existing deferred constraints validate the complete pair at commit. The
+topic begins with reply count 0 and next post number 2. Ordinary publication is
+not a moderation transition and does not create a moderation-audit row.
+
 ### 6.9 `posts`
 
 - `id`, `topic_id`, `author_id`, `post_number`
@@ -373,6 +381,17 @@ ordered globally after access filtering.
 
 Source and rendered sizes have limits. A post edit increments `revision` and
 uses `WHERE revision = $expected` to detect lost updates.
+
+Reply creation renders and validates before opening a transaction, then locks
+the undeleted topic row for update, the owning area row for share, and the
+area's current group mappings for share. `CanReply` evaluates that locked
+policy. The held topic lock serializes allocation from `next_post_number`; one
+statement inserts the reply and advances `latest_post_id`, `reply_count`,
+`next_post_number`, and activity timestamps. The persisted reply/activity time
+is the greater of the caller's bounded UTC timestamp and existing topic
+activity, so a request that waited on the lock cannot move chronological post
+timestamps or area-list activity backward. There is no automatic retry after
+an unknown commit outcome.
 
 ### 6.10 `topic_reads`
 

@@ -5,6 +5,62 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 23:48 CDT — Serialize authorized topic and reply publication
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/forum/publish.go`
+- `internal/forum/publish_integration_test.go`
+- `internal/forum/publish_test.go`
+- `internal/policy/reply.go`
+- `internal/policy/reply_test.go`
+- `internal/store/db/publishing.sql.go`
+- `internal/store/db/publishing_test.go`
+- `internal/store/queries/publishing.sql`
+
+Explanation:
+
+Added the first A1-07 publishing service and PostgreSQL boundary. Topic
+creation validates a bounded control-free title, renders the first Markdown
+post, locks the current area/group policy, and commits the topic plus first
+post as one deferred-integrity transaction. Reply creation renders before its
+transaction, locks the current topic/area/group policy, applies the closed
+reply policy, then inserts the post and advances all topic counters/activity in
+one statement.
+
+Members publish only in visible normal areas and open topics. Moderator and
+administrator staff may publish in read-only areas and locked/hidden topics;
+archived areas or topics reject everyone. Suspended, muted, anonymous,
+malformed, mismatched-group, unknown-state, deleted-topic, and denied actors
+fail closed. Ordinary publication does not fabricate moderation audit rows.
+
+The topic row lock serializes `next_post_number`. Reply timestamps use the
+greater of the supplied bounded UTC time and existing topic activity so a
+request that waited behind a newer reply cannot move post chronology or topic
+activity backward.
+
+Verification:
+
+- Reply policy has 100% statement coverage across roles, visibility, posting
+  modes, topic states, suspension, mute, group membership, and malformed input
+- Every generated publishing binding has 100% statement coverage; the service
+  boundary has 98%, with only impossible opaque-render persistence failures
+  uncovered
+- PostgreSQL 17 proves one topic/first-post commit, read-only denial without a
+  row, eight concurrent unique contiguous replies, exact counters/latest post,
+  renderer persistence, and nondecreasing timestamps under a decreasing clock
+
+Risks / non-goals:
+
+- This unit does not add browser forms, preview, edit/delete, or rate limiting;
+  it establishes the transaction and authorization boundary those routes call
+- Publication performs bounded rendering plus three statements inside one
+  transaction; begin and commit add the two transaction-boundary round trips.
+  It never retries an unknown commit outcome
+
 ### 2026-09-01 23:05 CDT — Render bounded sanitized Markdown
 
 Commit: current commit; hash assigned by Git after commit
