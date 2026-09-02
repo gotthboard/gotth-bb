@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-func TestTopicModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T) {
+func TestModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T) {
 	t.Parallel()
 
 	atTime := pgtype.Timestamptz{Valid: true}
@@ -53,6 +53,28 @@ func TestTopicModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T)
 				})
 			},
 			wantResult: ChangeTopicStateAndAuditRow{TopicID: 41, State: "locked", UpdatedAt: atTime, AuditID: 71},
+		},
+		{
+			name: "moderation user status",
+			rowValues: []any{
+				int64(42), "Local member", "member", previousAt, previousUntil, previousReason,
+				pgtype.Timestamptz{}, atTime, updatedAt, updatedAt,
+			},
+			wantArgs: []any{int64(42), int64(11), true, false},
+			required: []string{
+				"FROM public.users AS target", "target.id = $1", "target.id <> $2",
+				"$3::boolean", "$4::boolean AND target.role = 'member'",
+			},
+			invoke: func(q *Queries) (any, error) {
+				return q.GetModerationUserStatus(context.Background(), GetModerationUserStatusParams{
+					TargetUserID: 42, ActorUserID: 11, IsAdministrator: true,
+				})
+			},
+			wantResult: GetModerationUserStatusRow{
+				ID: 42, DisplayName: "Local member", Role: "member", SuspendedAt: previousAt,
+				SuspendedUntil: previousUntil, SuspensionReason: previousReason,
+				CreatedAt: atTime, UpdatedAt: updatedAt, LastLoginAt: updatedAt,
+			},
 		},
 		{
 			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime},
@@ -108,7 +130,7 @@ func TestTopicModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T)
 	}
 }
 
-func TestTopicModerationQueriesPreserveScanFailure(t *testing.T) {
+func TestModerationQueriesPreserveScanFailure(t *testing.T) {
 	t.Parallel()
 
 	cause := errors.New("scan failed")
@@ -116,6 +138,9 @@ func TestTopicModerationQueriesPreserveScanFailure(t *testing.T) {
 		func(q *Queries) (any, error) { return q.LockTopicForModeration(context.Background(), 41) },
 		func(q *Queries) (any, error) {
 			return q.ChangeTopicStateAndAudit(context.Background(), ChangeTopicStateAndAuditParams{})
+		},
+		func(q *Queries) (any, error) {
+			return q.GetModerationUserStatus(context.Background(), GetModerationUserStatusParams{})
 		},
 		func(q *Queries) (any, error) { return q.LockUserForSuspension(context.Background(), 41) },
 		func(q *Queries) (any, error) {

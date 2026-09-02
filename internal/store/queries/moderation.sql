@@ -116,6 +116,26 @@ SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
 FROM changed
 JOIN audit ON audit.target_user_id = changed.id;
 
+-- name: GetModerationUserStatus :one
+SELECT
+    target.id,
+    target.display_name,
+    target.role,
+    target.suspended_at,
+    target.suspended_until,
+    target.suspension_reason,
+    target.muted_until,
+    target.created_at,
+    target.updated_at,
+    target.last_login_at
+FROM public.users AS target
+WHERE target.id = sqlc.arg(target_user_id)
+  AND target.id <> sqlc.arg(actor_user_id)
+  AND (
+      sqlc.arg(is_administrator)::boolean
+      OR (sqlc.arg(is_moderator)::boolean AND target.role = 'member')
+  );
+
 -- name: ReinstateUserAndAudit :one
 WITH changed AS (
     UPDATE public.users AS forum_user

@@ -92,6 +92,70 @@ func (q *Queries) ChangeTopicStateAndAudit(ctx context.Context, arg ChangeTopicS
 	return i, err
 }
 
+const getModerationUserStatus = `-- name: GetModerationUserStatus :one
+SELECT
+    target.id,
+    target.display_name,
+    target.role,
+    target.suspended_at,
+    target.suspended_until,
+    target.suspension_reason,
+    target.muted_until,
+    target.created_at,
+    target.updated_at,
+    target.last_login_at
+FROM public.users AS target
+WHERE target.id = $1
+  AND target.id <> $2
+  AND (
+      $3::boolean
+      OR ($4::boolean AND target.role = 'member')
+  )
+`
+
+type GetModerationUserStatusParams struct {
+	TargetUserID    int64
+	ActorUserID     int64
+	IsAdministrator bool
+	IsModerator     bool
+}
+
+type GetModerationUserStatusRow struct {
+	ID               int64
+	DisplayName      string
+	Role             string
+	SuspendedAt      pgtype.Timestamptz
+	SuspendedUntil   pgtype.Timestamptz
+	SuspensionReason pgtype.Text
+	MutedUntil       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	LastLoginAt      pgtype.Timestamptz
+}
+
+func (q *Queries) GetModerationUserStatus(ctx context.Context, arg GetModerationUserStatusParams) (GetModerationUserStatusRow, error) {
+	row := q.db.QueryRow(ctx, getModerationUserStatus,
+		arg.TargetUserID,
+		arg.ActorUserID,
+		arg.IsAdministrator,
+		arg.IsModerator,
+	)
+	var i GetModerationUserStatusRow
+	err := row.Scan(
+		&i.ID,
+		&i.DisplayName,
+		&i.Role,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.SuspensionReason,
+		&i.MutedUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastLoginAt,
+	)
+	return i, err
+}
+
 const lockTopicForModeration = `-- name: LockTopicForModeration :one
 SELECT topic.id, topic.state
 FROM public.topics AS topic

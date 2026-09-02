@@ -13,6 +13,7 @@ import (
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
@@ -82,6 +83,10 @@ VALUES ($1, $2, $3, $3, $3, $4)`, tokenHash[:], memberID, issuedAt, createdAt.Ad
 		t.Fatalf("insert member session: %v", err)
 	}
 	moderator := policy.AccessContext{Authenticated: true, UserID: moderatorID, Role: policy.RoleModerator}
+	queries := db.New(connection)
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, moderator, memberID, createdAt.Add(time.Hour)); statusErr != nil || status.UserID != memberID || status.DisplayName != "Member" || status.Role != policy.RoleMember || status.Suspended {
+		t.Fatalf("active moderation status = (%+v, %v)", status, statusErr)
+	}
 	if _, err := connection.Exec(ctx, `
 CREATE FUNCTION public.reject_user_suspension_audit()
 RETURNS trigger
@@ -161,13 +166,15 @@ WHERE forum_user.id = $1
 			storedSuspendedAt, updatedAt, actorKind, actorID, targetType, targetID, action, reason,
 			exactPrevious, exactResulting, storedRequestID, auditedAt, auditCount, err)
 	}
-	queries := db.New(connection)
 	sessionParams := db.GetActiveSessionParams{
 		TokenHash: tokenHash[:], ObservedAt: pgtype.Timestamptz{Time: suspendedAt.Add(time.Minute), Valid: true},
 		IdleCutoff: pgtype.Timestamptz{Time: createdAt, Valid: true},
 	}
 	if got, sessionErr := queries.GetActiveSession(ctx, sessionParams); !errors.Is(sessionErr, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("suspended GetActiveSession() = (%+v, %v), want zero/no rows", got, sessionErr)
+	}
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, moderator, memberID, suspendedAt.Add(time.Minute)); statusErr != nil || !status.Suspended || status.SuspensionReason.String != "Repeated abuse" {
+		t.Fatalf("suspended moderation status = (%+v, %v)", status, statusErr)
 	}
 	if repeated, repeatedErr := ChangeUserSuspension(ctx, connection, func() time.Time { return suspendedAt.Add(time.Minute) }, moderator, memberID, true, "Repeat",
 		pgtype.UUID{Bytes: [16]byte{0x83}, Valid: true}); repeated != (UserSuspensionResult{}) || !errors.Is(repeatedErr, ErrUserModerationConflict) {
@@ -217,6 +224,9 @@ WHERE forum_user.id = $1`, memberID, reinstated.AuditID, suspendedAt).Scan(
 	if got, sessionErr := queries.GetActiveSession(ctx, sessionParams); sessionErr != nil || got.UserID != memberID {
 		t.Fatalf("reinstated GetActiveSession() = (%+v, %v)", got, sessionErr)
 	}
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, moderator, memberID, reinstatedAt.Add(time.Minute)); statusErr != nil || status.Suspended {
+		t.Fatalf("reinstated moderation status = (%+v, %v)", status, statusErr)
+	}
 
 	if _, err := connection.Exec(ctx, `UPDATE public.users SET role = 'member', updated_at = $1 WHERE id = $2`, reinstatedAt.Add(time.Hour), moderatorID); err != nil {
 		t.Fatalf("change moderator role: %v", err)
@@ -246,6 +256,12 @@ RETURNING id`, createdAt).Scan(&secondAdminID); err != nil {
 		t.Fatalf("insert second administrator: %v", err)
 	}
 	administrator := policy.AccessContext{Authenticated: true, UserID: firstAdminID, Role: policy.RoleAdministrator}
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, administrator, secondAdminID, reinstatedAt.Add(2*time.Hour)); statusErr != nil || status.Role != policy.RoleAdministrator || status.Suspended {
+		t.Fatalf("administrator moderation status = (%+v, %v)", status, statusErr)
+	}
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, moderator, secondAdminID, reinstatedAt.Add(2*time.Hour)); !errors.Is(statusErr, pgx.ErrNoRows) || status != (store.ModerationUserStatus{}) {
+		t.Fatalf("moderator administrator status = (%+v, %v), want zero/no rows", status, statusErr)
+	}
 	adminSuspendedAt := reinstatedAt.Add(3 * time.Hour)
 	adminSuspended, err := ChangeUserSuspension(ctx, connection, func() time.Time { return adminSuspendedAt }, administrator,
 		secondAdminID, true, "Administrator departure", pgtype.UUID{Bytes: [16]byte{0x86}, Valid: true})
@@ -258,5 +274,8 @@ SELECT count(*) FROM public.users
 WHERE role = 'administrator'
   AND (suspended_at IS NULL OR suspended_at > $1 OR suspended_until <= $1)`, adminSuspendedAt).Scan(&activeAdministrators); err != nil || activeAdministrators != 1 {
 		t.Fatalf("active administrators after suspension = (%d, %v), want 1", activeAdministrators, err)
+	}
+	if status, statusErr := store.GetModerationUserStatus(ctx, queries, administrator, secondAdminID, adminSuspendedAt.Add(time.Minute)); statusErr != nil || !status.Suspended {
+		t.Fatalf("suspended administrator status = (%+v, %v)", status, statusErr)
 	}
 }

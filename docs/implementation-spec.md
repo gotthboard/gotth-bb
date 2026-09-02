@@ -936,6 +936,16 @@ every existing session for that user from active-session lookup without
 deleting the sessions or authored content; reinstatement makes otherwise-valid
 sessions eligible again.
 
+The alpha account-status read model returns one target by positive local user
+ID without exposing email or identity-provider attributes. Active moderators
+may read only another member; active administrators may read any other local
+account. Self, unauthorized, malformed, and missing targets share one no-row
+result. SQL applies the role/target filter before returning the fixed-width
+row, and the store boundary independently closes role, timestamps, suspension
+consistency, and effective observation-time status before presentation. The
+browser page and mutation controls consume this read model in the next bounded
+unit.
+
 ## 15. Migrations
 
 - Migration filenames are ordered, contiguous, and immutable after a database

@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 03:42 CDT — Add the local account-status read model
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/moderation/user_suspension_integration_test.go`
+- `internal/store/db/moderation.sql.go`
+- `internal/store/db/moderation_test.go`
+- `internal/store/moderation_user.go`
+- `internal/store/moderation_user_test.go`
+- `internal/store/queries/moderation.sql`
+
+Explanation:
+
+Added the fixed-width, privacy-bounded read model needed by the alpha local
+account-status page. It exposes only local display name, role, moderation
+state, and account timestamps—never email or identity-provider attributes.
+
+The SQL predicate admits an active moderator only for another member and an
+active administrator for any other account. The store boundary maps every
+unauthorized, self, malformed-ID, or missing target to the same no-row result,
+then independently validates the closed role, timestamp ordering, suspension
+invariants, and observation-time effective state.
+
+Verification:
+
+- Exact administrator/moderator SQL booleans, actor/target IDs, projection,
+  hierarchy predicate, argument order, scan order, and scan failure
+- Boundary rejection before I/O plus malformed persisted role, timestamp,
+  mute, reason, and suspension-state closure
+- PostgreSQL 17 active, suspended, reinstated, moderator/member,
+  moderator/administrator denial, and administrator/administrator reads
+- Every production function in the new store surface has 100% statement
+  coverage
+
+Risks / non-goals:
+
+- This unit admits the read model only; the authenticated browser route,
+  rendering, author links, and suspend/reinstate forms remain next
+- There is deliberately no account directory or email/identity disclosure
+- No deployment or release state is changed
+
 ### 2026-09-02 03:24 CDT — Add audited account suspension transitions
 
 Commit: current commit; hash assigned by Git after commit
