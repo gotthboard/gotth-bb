@@ -87,13 +87,14 @@ func TestContainerAndComposeContractsRemainHardened(t *testing.T) {
 	for _, required := range []string{
 		"app:",
 		"postgresql:",
-		`127.0.0.1:18082:8080`,
+		"LISTEN_ADDR: 127.0.0.1:18082",
+		"network_mode: host",
 		"read_only: true",
 		"cap_drop:",
 		"no-new-privileges:true",
 		"driver: journald",
 		"condition: service_healthy",
-		"http://127.0.0.1:8080/health/live",
+		"http://127.0.0.1:18082/health/live",
 		"/tank/gotth-bb/postgres17:/var/lib/postgresql/data",
 	} {
 		if !strings.Contains(string(compose), required) {
@@ -104,5 +105,8 @@ func TestContainerAndComposeContractsRemainHardened(t *testing.T) {
 		if strings.Contains(string(compose), forbidden) {
 			t.Errorf("compose.yml contains secret-bearing key %q", forbidden)
 		}
+	}
+	if strings.Contains(string(compose), "127.0.0.1:18082:8080") {
+		t.Error("compose.yml retains the rejected bridge-port mapping")
 	}
 }

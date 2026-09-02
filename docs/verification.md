@@ -264,7 +264,7 @@ regardless of the current small dataset.
   container configuration.
 - Inspect the live application container for nonroot execution, read-only root,
   dropped capabilities, `no-new-privileges`, healthy status, journald logging,
-  and loopback-only port publication.
+  host networking, and the production loopback-only listener.
 - Recreate only the application service while preserving the PostgreSQL
   container identity, image digest, data-mount source, and database state.
 

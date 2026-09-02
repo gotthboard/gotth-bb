@@ -165,7 +165,11 @@ OCI labels and does not compile source. The exact image ID and RepoDigest, when
 published, join the deployment record; a mutable tag alone is not identity.
 
 The image contains no deployment environment or secret. The forum runs as
-UID/GID 65532. Docker health executes the image's loopback liveness probe.
+UID/GID 65532. Docker health executes the image's loopback liveness probe. The
+application service uses host networking and still binds only
+`127.0.0.1:18082`; this preserves the production configuration rule and the
+same host-local reachability as the prior native process. It is not a claim of
+container network isolation.
 
 ## 5. Caddy contract
 
@@ -233,6 +237,9 @@ notes, screenshots, or repository files.
   loopback-only maintenance port, and
   `/tank/gotth-bb/postgres17:/var/lib/postgresql/data` bind mount. Application
   container replacement does not recreate or migrate that data directory.
+- The host-networked application connects through PostgreSQL's existing
+  `127.0.0.1:55435` maintenance publication. It does not require a database
+  container restart or network reattachment.
 
 Migration state is checked before readiness. An application that expects a
 different schema head fails closed with an operator-visible error.

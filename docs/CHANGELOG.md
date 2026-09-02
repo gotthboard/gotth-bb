@@ -33,8 +33,10 @@ one separate PostgreSQL container in the existing `gotth-bb` Compose project.
 The application image is built only from the checksum-verified native release
 archive on a digest-pinned Alpine base. It runs as UID/GID 65532 with a
 read-only root filesystem, bounded temporary storage, all Linux capabilities
-dropped, `no-new-privileges`, a loopback-only published port, an executable
-liveness probe, and journald logging.
+dropped, `no-new-privileges`, the existing production loopback-only listener,
+an executable liveness probe, and journald logging. Host networking preserves
+that listener contract and the same host-local reachability as the previous
+native process without pretending to provide container network isolation.
 
 Database and OIDC secrets enter through read-only secret files and are loaded
 only by the entrypoint immediately before `exec`; they are not stored in the
@@ -63,8 +65,8 @@ Risks / non-goals:
 - Caddy, public TLS, Authentik policy, registration, area management, and forum
   behavior are unchanged.
 - The native systemd application release remains the immediate rollback path.
-- The application-to-database path gains one Docker bridge hop. No performance
-  improvement is claimed.
+- No performance improvement is claimed; matched native/container latency is
+  recorded during live admission.
 
 ### 2026-09-02 11:22 CDT — Repair restricted-role administrator claim
 

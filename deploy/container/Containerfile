@@ -13,10 +13,10 @@ COPY --chmod=0755 gotth-bb-operator /usr/local/bin/gotth-bb-operator
 COPY --chmod=0755 deploy/container/entrypoint.sh /usr/local/bin/gotth-bb-entrypoint
 
 USER 65532:65532
-EXPOSE 8080
+EXPOSE 18082
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
-  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/live"]
+  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18082/health/live"]
 
 ENTRYPOINT ["/usr/local/bin/gotth-bb-entrypoint"]
 CMD ["/usr/local/bin/gotth-bb"]

@@ -10,18 +10,13 @@ services:
     env_file:
       - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
     environment:
-      LISTEN_ADDR: 0.0.0.0:8080
+      LISTEN_ADDR: 127.0.0.1:18082
       DATABASE_URL_FILE: /run/secrets/database_runtime_url
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
-    ports:
-      - "127.0.0.1:18082:8080"
+    network_mode: host
     secrets:
-      - source: database_runtime_url
-        target: database_runtime_url
-        mode: 0440
-      - source: oidc_client_secret
-        target: oidc_client_secret
-        mode: 0440
+      - database_runtime_url
+      - oidc_client_secret
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
@@ -33,7 +28,7 @@ services:
       postgresql:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18082/health/live"]
       interval: 10s
       timeout: 3s
       retries: 3

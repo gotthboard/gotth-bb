@@ -416,8 +416,10 @@ Version 1.0 runs as:
   mount. Application replacement never replaces or copies the database data.
 - A migration command using the same release artifact as the service.
 - One Docker Compose project defining the two services, their health checks,
-  restart policies, private service-name database route, host-loopback edge
-  port, external configuration, and read-only secret mounts.
+  restart policies, host-loopback application and database routes, external
+  configuration, and read-only secret mounts. The application uses host
+  networking so it can retain the production loopback-only listener enforced
+  by configuration; PostgreSQL remains in its own container.
 
 The application image and binaries are immutable for a release. The application
 container runs nonroot with a read-only root filesystem, no Linux capabilities,

@@ -1109,11 +1109,13 @@ operator logs.
 - The entrypoint reads the database URL and OIDC client secret only from
   Compose secret files named by non-secret environment variables, exports them
   to the child process, and replaces itself with the selected release binary.
-- The application service runs as numeric UID/GID 65532, exposes port 8080 only
-  through host loopback port 18082, uses a read-only root filesystem and
-  bounded temporary filesystem, drops every Linux capability, forbids
-  privilege escalation, and reports container health through the public
-  process-liveness endpoint.
+- The application service runs as numeric UID/GID 65532 in the host network
+  namespace while retaining the production-enforced `127.0.0.1:18082`
+  listener. It uses a read-only root filesystem and bounded temporary
+  filesystem, drops every Linux capability, forbids privilege escalation, and
+  reports container health through the public process-liveness endpoint. Host
+  networking preserves the same host-local reachability as the prior native
+  process; it is not presented as container network isolation.
 - PostgreSQL remains a separate Compose service at the pinned PostgreSQL 17.10
   digest. Its existing `/tank/gotth-bb/postgres17` bind mount and loopback-only
   maintenance port remain unchanged during the transition, so application

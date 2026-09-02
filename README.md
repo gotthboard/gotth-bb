@@ -60,10 +60,13 @@ one PostgreSQL 17 container. They are deliberately not combined. This keeps
 database storage, backup, health, and rollback independent from application
 replacement.
 
-The application publishes only `127.0.0.1:18082`, runs as UID/GID 65532 with a
-read-only root filesystem, drops every Linux capability, and sends logs to
-journald. Caddy remains the public TLS boundary. PostgreSQL retains its durable
-host bind at `/tank/gotth-bb/postgres17` and its loopback maintenance port.
+The application uses the host network namespace but still binds only
+`127.0.0.1:18082`, runs as UID/GID 65532 with a read-only root filesystem,
+drops every Linux capability, and sends logs to journald. Caddy remains the
+public TLS boundary. PostgreSQL retains its durable host bind at
+`/tank/gotth-bb/postgres17` and its loopback maintenance port. Host networking
+preserves the application's production loopback-only security contract and the
+same host-local network reachability as the previous native process.
 
 Compose interpolation supplies the image name and host file paths. Database and
 OIDC secret values live in separate root-managed files mounted under
