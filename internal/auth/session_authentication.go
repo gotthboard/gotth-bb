@@ -52,11 +52,11 @@ type SessionAuthentication struct {
 // write only at the fixed throttle boundary. Missing credentials and no-row
 // lookups are anonymous; database failures fail closed and are redacted.
 //
-// Complexity: credential validation, hashing, row validation, and result
-// projection are tight Theta(1) time and auxiliary space over fixed 43/32-byte
-// material. With one delegated indexed lookup cost L and optional conditional
-// touch cost T, total time is O(L+T), Omega(L), and auxiliary space O(1) beyond
-// driver state. No operation is retried or detached.
+// Complexity: for g current local memberships, credential work is constant and
+// authority validation/projection is tight Theta(g) time and space. With one
+// delegated indexed lookup cost L and optional conditional touch cost T, total
+// time is O(L+T+g), Omega(L+g), and auxiliary space O(g) beyond driver state.
+// No operation is retried or detached.
 func authenticateSession(
 	ctx context.Context,
 	load func(context.Context, db.GetActiveSessionParams) (db.GetActiveSessionRow, error),
@@ -144,6 +144,18 @@ func authenticateSession(
 	default:
 		return SessionAuthentication{}, fmt.Errorf("active-session loader returned an invalid role")
 	}
+	if row.GroupIds == nil {
+		return SessionAuthentication{}, fmt.Errorf("active-session loader returned invalid group authority")
+	}
+	previousGroupID := int64(0)
+	for _, groupID := range row.GroupIds {
+		if groupID <= previousGroupID {
+			return SessionAuthentication{}, fmt.Errorf("active-session loader returned invalid group authority")
+		}
+		previousGroupID = groupID
+	}
+	groupIDs := make([]int64, len(row.GroupIds))
+	copy(groupIDs, row.GroupIds)
 	if !row.LastSeenAt.Time.After(now.Add(-touchInterval)) {
 		touched, touchErr := touch(ctx, db.TouchSessionParams{
 			ObservedAt:  pgtype.Timestamptz{Time: now, Valid: true},
@@ -171,6 +183,7 @@ func authenticateSession(
 			Authenticated: true,
 			UserID:        row.UserID,
 			Role:          role,
+			GroupIDs:      groupIDs,
 			MutedUntil:    mutedUntil,
 			ValidatedAt:   row.ValidatedAt.Time.UTC().Truncate(time.Microsecond),
 		},

@@ -23,6 +23,7 @@ func TestAuthenticateSessionReturnsCurrentLocalAccessWithoutTouch(t *testing.T) 
 	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x73}, 32))
 	wantHash := sha256.Sum256([]byte(token))
 	mutedUntil := now.Add(10 * time.Minute)
+	loadedGroupIDs := []int64{3, 11}
 	queryCalls, touchCalls := 0, 0
 	result, err := authenticateSession(
 		context.Background(),
@@ -32,7 +33,9 @@ func TestAuthenticateSessionReturnsCurrentLocalAccessWithoutTouch(t *testing.T) 
 				!params.IdleCutoff.Time.Equal(now.Add(-30*time.Minute)) {
 				t.Fatalf("query params = %+v", params)
 			}
-			return activeSessionRow(now, "moderator", now.Add(-time.Minute), now.Add(-10*time.Minute), pgtype.Timestamptz{Time: mutedUntil, Valid: true}), nil
+			row := activeSessionRow(now, "moderator", now.Add(-time.Minute), now.Add(-10*time.Minute), pgtype.Timestamptz{Time: mutedUntil, Valid: true})
+			row.GroupIds = loadedGroupIDs
+			return row, nil
 		},
 		func(context.Context, db.TouchSessionParams) (int64, error) {
 			touchCalls++
@@ -40,9 +43,10 @@ func TestAuthenticateSessionReturnsCurrentLocalAccessWithoutTouch(t *testing.T) 
 		},
 		func() time.Time { return now }, 30*time.Minute, 30*time.Minute, token,
 	)
+	loadedGroupIDs[0] = 99
 	if err != nil || queryCalls != 1 || touchCalls != 0 || result.SessionID != 7 || result.RequiresRevalidation ||
 		!result.Access.Authenticated || result.Access.UserID != 42 || result.Access.Role != RoleModerator ||
-		result.Access.Suspended || len(result.Access.GroupIDs) != 0 || result.Access.MutedUntil == nil ||
+		result.Access.Suspended || !reflect.DeepEqual(result.Access.GroupIDs, []int64{3, 11}) || result.Access.MutedUntil == nil ||
 		!result.Access.MutedUntil.Equal(mutedUntil) || !result.Access.ValidatedAt.Equal(now.Add(-10*time.Minute)) {
 		t.Fatalf("authenticateSession() = (%+v, query %d, touch %d, %v)", result, queryCalls, touchCalls, err)
 	}
@@ -183,21 +187,31 @@ func TestAuthenticateSessionRejectsInvalidDependenciesAndDatabaseRows(t *testing
 		func(row *db.GetActiveSessionRow) { row.SessionID = 0 },
 		func(row *db.GetActiveSessionRow) { row.UserID = 0 },
 		func(row *db.GetActiveSessionRow) { row.Role = "owner" },
+		func(row *db.GetActiveSessionRow) { row.GroupIds = nil },
+		func(row *db.GetActiveSessionRow) { row.GroupIds = []int64{0} },
+		func(row *db.GetActiveSessionRow) { row.GroupIds = []int64{-1} },
+		func(row *db.GetActiveSessionRow) { row.GroupIds = []int64{3, 3} },
+		func(row *db.GetActiveSessionRow) { row.GroupIds = []int64{7, 3} },
 		func(row *db.GetActiveSessionRow) { row.IssuedAt.Valid = false },
 		func(row *db.GetActiveSessionRow) { row.LastSeenAt.Time = row.IssuedAt.Time.Add(-time.Nanosecond) },
 		func(row *db.GetActiveSessionRow) { row.ValidatedAt.Time = row.IssuedAt.Time.Add(-time.Nanosecond) },
 		func(row *db.GetActiveSessionRow) { row.ExpiresAt.Time = now },
 	} {
 		mutate := mutate
-		row := activeSessionRow(now, "member", now.Add(-time.Minute), now.Add(-time.Minute), pgtype.Timestamptz{})
+		row := activeSessionRow(now, "member", now.Add(-sessionLastSeenWriteInterval), now.Add(-time.Minute), pgtype.Timestamptz{})
 		mutate(&row)
+		touchCalls := 0
 		got, err := authenticateSession(
 			context.Background(),
 			func(context.Context, db.GetActiveSessionParams) (db.GetActiveSessionRow, error) { return row, nil },
-			validTouch, func() time.Time { return now }, time.Hour, time.Hour, token,
+			func(context.Context, db.TouchSessionParams) (int64, error) {
+				touchCalls++
+				return 0, nil
+			},
+			func() time.Time { return now }, time.Hour, time.Hour, token,
 		)
-		if err == nil || !reflect.DeepEqual(got, SessionAuthentication{}) {
-			t.Fatalf("invalid-row authenticateSession() = (%+v, %v), want zero/error", got, err)
+		if err == nil || !reflect.DeepEqual(got, SessionAuthentication{}) || touchCalls != 0 {
+			t.Fatalf("invalid-row authenticateSession() = (%+v, %v, touch %d), want zero/error/no touch", got, err, touchCalls)
 		}
 	}
 }
@@ -269,6 +283,6 @@ func activeSessionRow(now time.Time, role string, lastSeenAt, validatedAt time.T
 		LastSeenAt:  pgtype.Timestamptz{Time: lastSeenAt, Valid: true},
 		ValidatedAt: pgtype.Timestamptz{Time: validatedAt, Valid: true},
 		ExpiresAt:   pgtype.Timestamptz{Time: now.Add(2 * time.Hour), Valid: true},
-		Role:        role, MutedUntil: mutedUntil,
+		Role:        role, MutedUntil: mutedUntil, GroupIds: []int64{},
 	}
 }

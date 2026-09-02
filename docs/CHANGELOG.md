@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:32 CDT — Project session groups into access authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_authentication.go`
+- `internal/auth/session_authentication_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Completed the active-session authority projection by validating the database
+membership array as a non-null, strictly ascending set of positive local IDs
+and copying it into the request-scoped `AccessContext`. Malformed loader state
+fails closed before the conditional session-activity write. The copy prevents a
+database adapter or reused scan buffer from mutating authority after the
+authentication result has been returned.
+
+Verification:
+
+- Unit tests prove grouped and empty membership snapshots, ownership of the
+  returned slice, and rejection of nil, zero, negative, duplicate, and
+  descending membership arrays
+- PostgreSQL 17 passed ten complete initial-session integrations and projected
+  the exact current local membership set into the authenticated access snapshot
+- The authentication package passes the race detector
+
+Risks / non-goals:
+
+- Validation and the request-owned copy cost O(g) time and space for g current
+  memberships. Group administration and its same-transaction immutable audits
+  remain later A1-05 units.
+
 ### 2026-09-01 19:24 CDT — Load current session group authority
 
 Commit: current commit; hash assigned by Git after commit

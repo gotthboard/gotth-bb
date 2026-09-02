@@ -404,7 +404,8 @@ VALUES ($1, $3, $3), ($2, $3, $3)`, secondGroupID, firstGroupID, activeSession.U
 	var storedLastSeen time.Time
 	if scanErr := connections[0].QueryRow(ctx, "SELECT last_seen_at FROM public.sessions WHERE id = $1", activeSession.SessionID).Scan(&storedLastSeen); err != nil || scanErr != nil ||
 		!authentication.Access.Authenticated || authentication.Access.UserID != activeSession.UserID ||
-		authentication.Access.Role != RoleMember || authentication.Access.Suspended || authentication.Access.MutedUntil != nil ||
+		authentication.Access.Role != RoleMember || !reflect.DeepEqual(authentication.Access.GroupIDs, []int64{firstGroupID, secondGroupID}) ||
+		authentication.Access.Suspended || authentication.Access.MutedUntil != nil ||
 		!authentication.Access.ValidatedAt.Equal(serviceTime) || !authentication.RequiresRevalidation || !storedLastSeen.Equal(authenticatedAt) {
 		t.Fatalf("authenticateSession() = (%+v, stored %s, errors %v/%v)", authentication, storedLastSeen, err, scanErr)
 	}
