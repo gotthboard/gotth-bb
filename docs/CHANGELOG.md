@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:54 CDT — Render visible discussion areas
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/area_index_handler.go`
+- `internal/httpui/area_index_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the independently testable discussion-area index handler and real area
+list presentation. It passes the exact server-owned session authority to one
+injected visible-area lister, renders only the returned names and descriptions
+for complete-page and HTMX requests, preserves the established empty state,
+and discards partial rows on failure before returning a redacted 503 page.
+
+Verification:
+
+- Grouped authenticated authority reaches the lister unchanged; multiple
+  returned areas render with HTML escaping in complete and fragment responses
+- Empty, partial-result error, and committed-write failure paths are covered;
+  store details and partial area content never reach the failure response
+- `newAreaIndexHandler` reaches 100% statement coverage and the HTTP package
+  passes the race detector
+
+Risks / non-goals:
+
+- This unit is deliberately not wired into the process router yet. Area links,
+  topic summaries, and startup/store composition are separate reviewable units.
+
 ### 2026-09-01 19:46 CDT — Canonicalize session access authority
 
 Commit: current commit; hash assigned by Git after commit

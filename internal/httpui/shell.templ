@@ -35,10 +35,18 @@ templ document(view pageView, content templ.Component) {
 }
 
 templ areaIndexPage(view pageView) {
-	@document(view, areaIndexContent(view))
+	@areaIndexPageWithAreas(view, nil)
 }
 
 templ areaIndexContent(view pageView) {
+	@areaIndexContentWithAreas(view, nil)
+}
+
+templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem) {
+	@document(view, areaIndexContentWithAreas(view, areas))
+}
+
+templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-6 text-sm text-slate-400">
 			<ol>
@@ -48,10 +56,24 @@ templ areaIndexContent(view pageView) {
 		<section aria-labelledby="areas-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
 			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Community index</p>
 			<h1 id="areas-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">Discussion areas</h1>
-			<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">No public discussion areas are available yet.</p>
-			<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
-				This community is ready for its first discussion area.
-			</div>
+			if len(areas) == 0 {
+				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">No public discussion areas are available yet.</p>
+				<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
+					This community is ready for its first discussion area.
+				</div>
+			} else {
+				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">Browse the discussion areas available to you.</p>
+				<ul class="mt-8 grid gap-4">
+					for _, area := range areas {
+						<li class="rounded-lg border border-slate-700 bg-slate-950/60 p-6">
+							<h2 class="text-xl font-semibold text-white">{ area.Name }</h2>
+							if area.Description != "" {
+								<p class="mt-2 leading-7 text-slate-300">{ area.Description }</p>
+							}
+						</li>
+					}
+				</ul>
+			}
 		</section>
 	</main>
 }

@@ -13,6 +13,11 @@ type pageView struct {
 	HTMXURL       string
 }
 
+type areaIndexItem struct {
+	Name        string
+	Description string
+}
+
 // newPageView resolves every application-owned shell URL through one validated
 // builder and binds the page title to the fixed product identity.
 //
