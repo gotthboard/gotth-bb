@@ -5,6 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:43 CDT — Query access-filtered topic summaries
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/topics.sql`
+- `internal/store/db/topics.sql.go`
+- `internal/store/db/topics_test.go`
+- `internal/store/db/topics_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated PostgreSQL topic-list query for an area slug. The query
+repeats the area visibility predicate before returning rows or calculating its
+windowed total, excludes soft-deleted topics for every actor, exposes hidden
+topics only to staff, and orders pinned topics before unpinned activity with ID
+as the deterministic final key. Explicit offset and limit parameters provide
+the bounded repository mechanism for conventional pages.
+
+Verification:
+
+- The generated binding preserves context, binds exact access and pagination
+  facts, scans every summary field, closes rows, preserves all driver failures,
+  and has 100% statement coverage
+- PostgreSQL 17 verifies public, authenticated, matching/nonmatching group,
+  forged nonmember group, and staff access; visible-empty and missing areas
+  produce the same empty result
+- PostgreSQL 17 also verifies hidden/deleted exclusion, staff hidden access,
+  pinned/activity/ID ordering, locked and archived state, reply count, author,
+  exact access-filtered totals, and two-page offset/limit behavior for ten
+  race-detector repetitions
+
+Risks / non-goals:
+
+- The generated query trusts an application boundary to bound offsets and
+  limits. That store boundary, the HTTP page parser, and the area page itself
+  remain separate units.
+
 ### 2026-09-01 20:38 CDT — Derive direct-area lookup authority
 
 Commit: current commit; hash assigned by Git after commit
