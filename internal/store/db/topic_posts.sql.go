@@ -29,28 +29,70 @@ WITH visible_topic AS (
     FROM public.topics AS topic
     JOIN public.areas AS area ON area.id = topic.area_id
     JOIN public.users AS starter ON starter.id = topic.author_id
-    WHERE topic.id = $3
+    WHERE topic.id = $2
       AND topic.deleted_at IS NULL
-      AND ($4::boolean OR topic.state <> 'hidden')
+      AND ($3::boolean OR topic.state <> 'hidden')
       AND (
-        $4::boolean
+        $3::boolean
         OR area.visibility = 'public'
         OR (
-            $5::boolean
+            $4::boolean
             AND area.visibility = 'authenticated'
         )
         OR (
-            $5::boolean
+            $4::boolean
             AND area.visibility = 'groups'
-            AND COALESCE(cardinality($6::bigint[]), 0) > 0
+            AND COALESCE(cardinality($5::bigint[]), 0) > 0
             AND EXISTS (
                 SELECT 1
                 FROM public.area_groups AS membership
                 WHERE membership.area_id = area.id
-                  AND membership.group_id = ANY($6::bigint[])
+                  AND membership.group_id = ANY($5::bigint[])
             )
         )
       )
+),
+thread_nodes AS (
+    SELECT
+        post.id AS post_id,
+        post.topic_id,
+        post.post_number,
+        post.parent_post_id,
+        post.thread_path,
+        (post.deleted_at IS NOT NULL)::boolean AS is_tombstone,
+        CASE WHEN post.deleted_at IS NULL THEN post.rendered_html ELSE NULL::text END AS rendered_html,
+        CASE WHEN post.deleted_at IS NULL THEN post.renderer_version ELSE NULL::text END AS renderer_version,
+        CASE WHEN post.deleted_at IS NULL THEN post.revision ELSE NULL::integer END AS revision,
+        CASE WHEN post.deleted_at IS NULL THEN post.created_at ELSE NULL::timestamptz END AS post_created_at,
+        CASE WHEN post.deleted_at IS NULL THEN post.updated_at ELSE NULL::timestamptz END AS post_updated_at,
+        CASE WHEN post.deleted_at IS NULL THEN post.edited_at ELSE NULL::timestamptz END AS post_edited_at,
+        CASE WHEN post.deleted_at IS NULL THEN post.author_id ELSE NULL::bigint END AS post_author_id,
+        CASE WHEN post.deleted_at IS NULL THEN author.display_name ELSE NULL::text END AS post_author_display_name
+    FROM visible_topic
+    JOIN public.posts AS post ON post.topic_id = visible_topic.topic_id
+    LEFT JOIN public.users AS author ON author.id = post.author_id
+    WHERE post.deleted_at IS NULL
+       OR EXISTS (
+            SELECT 1
+            FROM public.posts AS descendant
+            WHERE descendant.topic_id = post.topic_id
+              AND descendant.deleted_at IS NULL
+              AND descendant.id <> post.id
+              AND descendant.thread_path[1:cardinality(post.thread_path)] = post.thread_path
+       )
+),
+numbered_nodes AS (
+    SELECT
+        thread_nodes.post_id, thread_nodes.topic_id, thread_nodes.post_number, thread_nodes.parent_post_id, thread_nodes.thread_path, thread_nodes.is_tombstone, thread_nodes.rendered_html, thread_nodes.renderer_version, thread_nodes.revision, thread_nodes.post_created_at, thread_nodes.post_updated_at, thread_nodes.post_edited_at, thread_nodes.post_author_id, thread_nodes.post_author_display_name,
+        row_number() OVER (ORDER BY thread_path)::bigint AS node_ordinal,
+        count(*) OVER ()::bigint AS total_visible_posts
+    FROM thread_nodes
+),
+page_nodes AS (
+    SELECT post_id, topic_id, post_number, parent_post_id, thread_path, is_tombstone, rendered_html, renderer_version, revision, post_created_at, post_updated_at, post_edited_at, post_author_id, post_author_display_name, node_ordinal, total_visible_posts
+    FROM numbered_nodes
+    WHERE node_ordinal > $1::integer
+      AND node_ordinal <= $1::integer + $6::integer
 )
 SELECT
     visible_topic.area_id,
@@ -65,69 +107,81 @@ SELECT
     visible_topic.topic_pinned_at,
     visible_topic.topic_created_at,
     visible_topic.topic_author_display_name,
-    post.id AS post_id,
-    post.post_number,
-    post.rendered_html,
-    post.renderer_version,
-    post.revision,
-    post.created_at AS post_created_at,
-    post.updated_at AS post_updated_at,
-    post.edited_at AS post_edited_at,
-    post.author_id AS post_author_id,
-    author.display_name AS post_author_display_name,
-    count(post.id) OVER ()::bigint AS total_visible_posts
+    page_nodes.post_id,
+    page_nodes.post_number,
+    page_nodes.parent_post_id,
+    CASE WHEN page_nodes.post_id IS NOT NULL THEN cardinality(page_nodes.thread_path) ELSE NULL::integer END AS thread_depth,
+    page_nodes.is_tombstone,
+    page_nodes.rendered_html,
+    page_nodes.renderer_version,
+    page_nodes.revision,
+    page_nodes.post_created_at,
+    page_nodes.post_updated_at,
+    page_nodes.post_edited_at,
+    page_nodes.post_author_id,
+    page_nodes.post_author_display_name,
+    parent.post_number AS parent_post_number,
+    parent.post_author_display_name AS parent_author_display_name,
+    parent.node_ordinal AS parent_node_ordinal,
+    page_nodes.node_ordinal,
+    COALESCE(page_nodes.total_visible_posts, 0)::bigint AS total_visible_posts
 FROM visible_topic
-LEFT JOIN public.posts AS post
-    ON post.topic_id = visible_topic.topic_id
-   AND post.deleted_at IS NULL
-LEFT JOIN public.users AS author ON author.id = post.author_id
-ORDER BY post.post_number ASC NULLS FIRST
-LIMIT $2::integer OFFSET $1::integer
+LEFT JOIN page_nodes ON page_nodes.topic_id = visible_topic.topic_id
+LEFT JOIN numbered_nodes AS parent ON parent.post_id = page_nodes.parent_post_id
+WHERE $1::integer = 0 OR page_nodes.post_id IS NOT NULL
+ORDER BY page_nodes.node_ordinal ASC NULLS FIRST
 `
 
 type GetVisibleTopicPostPageParams struct {
 	PageOffset int32
-	PageLimit  int32
 	TopicID    int64
 	IsStaff    bool
 	IsMember   bool
 	GroupIds   []int64
+	PageLimit  int32
 }
 
 type GetVisibleTopicPostPageRow struct {
-	AreaID                 int64
-	AreaSlug               string
-	AreaName               string
-	AreaDescription        string
-	AreaPostingMode        string
-	TopicID                int64
-	TopicFirstPostID       int64
-	TopicTitle             string
-	TopicState             string
-	TopicPinnedAt          pgtype.Timestamptz
-	TopicCreatedAt         pgtype.Timestamptz
-	TopicAuthorDisplayName string
-	PostID                 pgtype.Int8
-	PostNumber             pgtype.Int4
-	RenderedHtml           pgtype.Text
-	RendererVersion        pgtype.Text
-	Revision               pgtype.Int4
-	PostCreatedAt          pgtype.Timestamptz
-	PostUpdatedAt          pgtype.Timestamptz
-	PostEditedAt           pgtype.Timestamptz
-	PostAuthorID           pgtype.Int8
-	PostAuthorDisplayName  pgtype.Text
-	TotalVisiblePosts      int64
+	AreaID                  int64
+	AreaSlug                string
+	AreaName                string
+	AreaDescription         string
+	AreaPostingMode         string
+	TopicID                 int64
+	TopicFirstPostID        int64
+	TopicTitle              string
+	TopicState              string
+	TopicPinnedAt           pgtype.Timestamptz
+	TopicCreatedAt          pgtype.Timestamptz
+	TopicAuthorDisplayName  string
+	PostID                  pgtype.Int8
+	PostNumber              pgtype.Int4
+	ParentPostID            pgtype.Int8
+	ThreadDepth             int32
+	IsTombstone             pgtype.Bool
+	RenderedHtml            pgtype.Text
+	RendererVersion         pgtype.Text
+	Revision                pgtype.Int4
+	PostCreatedAt           pgtype.Timestamptz
+	PostUpdatedAt           pgtype.Timestamptz
+	PostEditedAt            pgtype.Timestamptz
+	PostAuthorID            pgtype.Int8
+	PostAuthorDisplayName   pgtype.Text
+	ParentPostNumber        pgtype.Int4
+	ParentAuthorDisplayName pgtype.Text
+	ParentNodeOrdinal       pgtype.Int8
+	NodeOrdinal             pgtype.Int8
+	TotalVisiblePosts       int64
 }
 
 func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTopicPostPageParams) ([]GetVisibleTopicPostPageRow, error) {
 	rows, err := q.db.Query(ctx, getVisibleTopicPostPage,
 		arg.PageOffset,
-		arg.PageLimit,
 		arg.TopicID,
 		arg.IsStaff,
 		arg.IsMember,
 		arg.GroupIds,
+		arg.PageLimit,
 	)
 	if err != nil {
 		return nil, err
@@ -151,6 +205,9 @@ func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTop
 			&i.TopicAuthorDisplayName,
 			&i.PostID,
 			&i.PostNumber,
+			&i.ParentPostID,
+			&i.ThreadDepth,
+			&i.IsTombstone,
 			&i.RenderedHtml,
 			&i.RendererVersion,
 			&i.Revision,
@@ -159,6 +216,10 @@ func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTop
 			&i.PostEditedAt,
 			&i.PostAuthorID,
 			&i.PostAuthorDisplayName,
+			&i.ParentPostNumber,
+			&i.ParentAuthorDisplayName,
+			&i.ParentNodeOrdinal,
+			&i.NodeOrdinal,
 			&i.TotalVisiblePosts,
 		); err != nil {
 			return nil, err

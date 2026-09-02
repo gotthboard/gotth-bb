@@ -63,7 +63,7 @@ inserted_post AS (
     JOIN inserted_topic ON inserted_topic.id = identifiers.topic_id
     RETURNING id, topic_id, post_number
 )
-SELECT topic_id, id AS post_id, post_number
+SELECT topic_id, id AS post_id, post_number, 1::bigint AS node_ordinal
 FROM inserted_post;
 
 -- name: LockTopicForReply :one
@@ -105,7 +105,7 @@ WITH inserted_post AS (
         GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at)
     FROM public.topics AS topic
     WHERE topic.id = sqlc.arg(topic_id)
-    RETURNING id, topic_id, post_number, created_at AS post_created_at
+    RETURNING id, topic_id, post_number, thread_path, created_at AS post_created_at
 ),
 advanced_topic AS (
     UPDATE public.topics AS topic
@@ -116,7 +116,27 @@ advanced_topic AS (
         last_activity_at = inserted_post.post_created_at
     FROM inserted_post
     WHERE topic.id = inserted_post.topic_id
-    RETURNING topic.id AS topic_id, inserted_post.id AS post_id, inserted_post.post_number
+    RETURNING topic.id AS topic_id, inserted_post.id AS post_id, inserted_post.post_number, inserted_post.thread_path
 )
-SELECT topic_id, post_id, post_number
+SELECT
+    advanced_topic.topic_id,
+    advanced_topic.post_id,
+    advanced_topic.post_number,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = advanced_topic.topic_id
+          AND node.thread_path <= advanced_topic.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
 FROM advanced_topic;

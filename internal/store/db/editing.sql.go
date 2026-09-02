@@ -17,7 +17,23 @@ SELECT
     post.topic_id,
     post.post_number,
     post.markdown_source,
-    post.revision
+    post.revision,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = post.topic_id
+          AND node.thread_path <= post.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1 FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
 FROM public.posts AS post
 JOIN public.topics AS topic ON topic.id = post.topic_id
 JOIN public.areas AS area ON area.id = topic.area_id
@@ -55,6 +71,7 @@ type GetEditablePostRow struct {
 	PostNumber     int32
 	MarkdownSource string
 	Revision       int32
+	NodeOrdinal    int64
 }
 
 func (q *Queries) GetEditablePost(ctx context.Context, arg GetEditablePostParams) (GetEditablePostRow, error) {
@@ -71,6 +88,7 @@ func (q *Queries) GetEditablePost(ctx context.Context, arg GetEditablePostParams
 		&i.PostNumber,
 		&i.MarkdownSource,
 		&i.Revision,
+		&i.NodeOrdinal,
 	)
 	return i, err
 }
@@ -174,17 +192,41 @@ func (q *Queries) SoftDeletePost(ctx context.Context, arg SoftDeletePostParams) 
 }
 
 const updatePostRevision = `-- name: UpdatePostRevision :one
-UPDATE public.posts AS post
-SET markdown_source = $1,
-    rendered_html = $2,
-    renderer_version = $3,
-    revision = post.revision + 1,
-    updated_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
-    edited_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
-WHERE post.id = $5
-  AND post.revision = $6
-  AND post.deleted_at IS NULL
-RETURNING post.id AS post_id, post.topic_id, post.post_number, post.revision
+WITH updated AS (
+    UPDATE public.posts AS post
+    SET markdown_source = $1,
+        rendered_html = $2,
+        renderer_version = $3,
+        revision = post.revision + 1,
+        updated_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
+        edited_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
+    WHERE post.id = $5
+      AND post.revision = $6
+      AND post.deleted_at IS NULL
+    RETURNING post.id AS post_id, post.topic_id, post.post_number, post.thread_path, post.revision
+)
+SELECT
+    updated.post_id,
+    updated.topic_id,
+    updated.post_number,
+    updated.revision,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = updated.topic_id
+          AND node.thread_path <= updated.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1 FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
+FROM updated
 `
 
 type UpdatePostRevisionParams struct {
@@ -197,10 +239,11 @@ type UpdatePostRevisionParams struct {
 }
 
 type UpdatePostRevisionRow struct {
-	PostID     int64
-	TopicID    int64
-	PostNumber int32
-	Revision   int32
+	PostID      int64
+	TopicID     int64
+	PostNumber  int32
+	Revision    int32
+	NodeOrdinal int64
 }
 
 func (q *Queries) UpdatePostRevision(ctx context.Context, arg UpdatePostRevisionParams) (UpdatePostRevisionRow, error) {
@@ -218,6 +261,7 @@ func (q *Queries) UpdatePostRevision(ctx context.Context, arg UpdatePostRevision
 		&i.TopicID,
 		&i.PostNumber,
 		&i.Revision,
+		&i.NodeOrdinal,
 	)
 	return i, err
 }

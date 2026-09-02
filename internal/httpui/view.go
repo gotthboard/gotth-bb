@@ -115,6 +115,10 @@ type topicPostItem struct {
 	Anchor          string
 	Permalink       string
 	Number          int32
+	IndentClass     string
+	Tombstone       bool
+	ParentLabel     string
+	ParentURL       string
 	Author          string
 	AuthorStatusURL string
 	Created         string
@@ -124,6 +128,8 @@ type topicPostItem struct {
 	CSRFToken       string
 	Revision        string
 	Body            contentrender.TrustedHTML
+	ReplyForm       publishingFormView
+	ShowReply       bool
 }
 
 type moderationUserView struct {

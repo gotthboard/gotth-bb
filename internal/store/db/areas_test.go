@@ -21,7 +21,8 @@ func TestListVisibleAreaSummariesBindsAccessAndScansCompleteRows(t *testing.T) {
 		TopicCount: 2, PostCount: 5,
 		LatestTopicID: pgtype.Int8{Int64: 41, Valid: true}, LatestTopicTitle: pgtype.Text{String: "Latest", Valid: true},
 		LatestPostID: pgtype.Int8{Int64: 91, Valid: true}, LatestPostNumber: pgtype.Int4{Int32: 4, Valid: true},
-		LatestPostAuthor: pgtype.Text{String: "Alice", Valid: true}, LatestPostCreatedAt: pgtype.Timestamptz{Time: created.Add(time.Hour), Valid: true},
+		LatestPostOrdinal: pgtype.Int8{Int64: 3, Valid: true},
+		LatestPostAuthor:  pgtype.Text{String: "Alice", Valid: true}, LatestPostCreatedAt: pgtype.Timestamptz{Time: created.Add(time.Hour), Valid: true},
 	}
 	database := &areaSummaryDBTX{rows: &areaSummaryRows{values: []ListVisibleAreaSummariesRow{want}}}
 	got, err := New(database).ListVisibleAreaSummaries(context.Background(), ListVisibleAreaSummariesParams{
@@ -174,8 +175,9 @@ func (rows *areaSummaryRows) Scan(destinations ...any) error {
 	*(destinations[14].(*pgtype.Text)) = value.LatestTopicTitle
 	*(destinations[15].(*pgtype.Int8)) = value.LatestPostID
 	*(destinations[16].(*pgtype.Int4)) = value.LatestPostNumber
-	*(destinations[17].(*pgtype.Text)) = value.LatestPostAuthor
-	*(destinations[18].(*pgtype.Timestamptz)) = value.LatestPostCreatedAt
+	*(destinations[17].(*pgtype.Int8)) = value.LatestPostOrdinal
+	*(destinations[18].(*pgtype.Text)) = value.LatestPostAuthor
+	*(destinations[19].(*pgtype.Timestamptz)) = value.LatestPostCreatedAt
 	return nil
 }
 

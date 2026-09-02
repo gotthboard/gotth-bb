@@ -19,17 +19,41 @@ FOR UPDATE OF post
 FOR SHARE OF topic, area;
 
 -- name: UpdatePostRevision :one
-UPDATE public.posts AS post
-SET markdown_source = sqlc.arg(markdown_source),
-    rendered_html = sqlc.arg(rendered_html),
-    renderer_version = sqlc.arg(renderer_version),
-    revision = post.revision + 1,
-    updated_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
-    edited_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
-WHERE post.id = sqlc.arg(post_id)
-  AND post.revision = sqlc.arg(expected_revision)
-  AND post.deleted_at IS NULL
-RETURNING post.id AS post_id, post.topic_id, post.post_number, post.revision;
+WITH updated AS (
+    UPDATE public.posts AS post
+    SET markdown_source = sqlc.arg(markdown_source),
+        rendered_html = sqlc.arg(rendered_html),
+        renderer_version = sqlc.arg(renderer_version),
+        revision = post.revision + 1,
+        updated_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
+        edited_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
+    WHERE post.id = sqlc.arg(post_id)
+      AND post.revision = sqlc.arg(expected_revision)
+      AND post.deleted_at IS NULL
+    RETURNING post.id AS post_id, post.topic_id, post.post_number, post.thread_path, post.revision
+)
+SELECT
+    updated.post_id,
+    updated.topic_id,
+    updated.post_number,
+    updated.revision,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = updated.topic_id
+          AND node.thread_path <= updated.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1 FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
+FROM updated;
 
 -- name: GetEditablePost :one
 SELECT
@@ -37,7 +61,23 @@ SELECT
     post.topic_id,
     post.post_number,
     post.markdown_source,
-    post.revision
+    post.revision,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = post.topic_id
+          AND node.thread_path <= post.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1 FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
 FROM public.posts AS post
 JOIN public.topics AS topic ON topic.id = post.topic_id
 JOIN public.areas AS area ON area.id = topic.area_id

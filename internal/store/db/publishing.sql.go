@@ -30,7 +30,7 @@ WITH inserted_post AS (
         GREATEST($6::timestamptz, topic.last_activity_at)
     FROM public.topics AS topic
     WHERE topic.id = $7
-    RETURNING id, topic_id, post_number, created_at AS post_created_at
+    RETURNING id, topic_id, post_number, thread_path, created_at AS post_created_at
 ),
 advanced_topic AS (
     UPDATE public.topics AS topic
@@ -41,9 +41,29 @@ advanced_topic AS (
         last_activity_at = inserted_post.post_created_at
     FROM inserted_post
     WHERE topic.id = inserted_post.topic_id
-    RETURNING topic.id AS topic_id, inserted_post.id AS post_id, inserted_post.post_number
+    RETURNING topic.id AS topic_id, inserted_post.id AS post_id, inserted_post.post_number, inserted_post.thread_path
 )
-SELECT topic_id, post_id, post_number
+SELECT
+    advanced_topic.topic_id,
+    advanced_topic.post_id,
+    advanced_topic.post_number,
+    (
+        SELECT count(*)::bigint
+        FROM public.posts AS node
+        WHERE node.topic_id = advanced_topic.topic_id
+          AND node.thread_path <= advanced_topic.thread_path
+          AND (
+            node.deleted_at IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM public.posts AS descendant
+                WHERE descendant.topic_id = node.topic_id
+                  AND descendant.deleted_at IS NULL
+                  AND descendant.thread_path[1:cardinality(node.thread_path)] = node.thread_path
+                  AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
+            )
+          )
+    ) AS node_ordinal
 FROM advanced_topic
 `
 
@@ -58,9 +78,10 @@ type CreateReplyAndAdvanceTopicParams struct {
 }
 
 type CreateReplyAndAdvanceTopicRow struct {
-	TopicID    int64
-	PostID     int64
-	PostNumber int32
+	TopicID     int64
+	PostID      int64
+	PostNumber  int32
+	NodeOrdinal int64
 }
 
 func (q *Queries) CreateReplyAndAdvanceTopic(ctx context.Context, arg CreateReplyAndAdvanceTopicParams) (CreateReplyAndAdvanceTopicRow, error) {
@@ -74,7 +95,12 @@ func (q *Queries) CreateReplyAndAdvanceTopic(ctx context.Context, arg CreateRepl
 		arg.TopicID,
 	)
 	var i CreateReplyAndAdvanceTopicRow
-	err := row.Scan(&i.TopicID, &i.PostID, &i.PostNumber)
+	err := row.Scan(
+		&i.TopicID,
+		&i.PostID,
+		&i.PostNumber,
+		&i.NodeOrdinal,
+	)
 	return i, err
 }
 
@@ -127,7 +153,7 @@ inserted_post AS (
     JOIN inserted_topic ON inserted_topic.id = identifiers.topic_id
     RETURNING id, topic_id, post_number
 )
-SELECT topic_id, id AS post_id, post_number
+SELECT topic_id, id AS post_id, post_number, 1::bigint AS node_ordinal
 FROM inserted_post
 `
 
@@ -142,9 +168,10 @@ type CreateTopicAndFirstPostParams struct {
 }
 
 type CreateTopicAndFirstPostRow struct {
-	TopicID    int64
-	PostID     int64
-	PostNumber int32
+	TopicID     int64
+	PostID      int64
+	PostNumber  int32
+	NodeOrdinal int64
 }
 
 func (q *Queries) CreateTopicAndFirstPost(ctx context.Context, arg CreateTopicAndFirstPostParams) (CreateTopicAndFirstPostRow, error) {
@@ -158,7 +185,12 @@ func (q *Queries) CreateTopicAndFirstPost(ctx context.Context, arg CreateTopicAn
 		arg.RendererVersion,
 	)
 	var i CreateTopicAndFirstPostRow
-	err := row.Scan(&i.TopicID, &i.PostID, &i.PostNumber)
+	err := row.Scan(
+		&i.TopicID,
+		&i.PostID,
+		&i.PostNumber,
+		&i.NodeOrdinal,
+	)
 	return i, err
 }
 

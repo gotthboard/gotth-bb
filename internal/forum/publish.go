@@ -50,9 +50,10 @@ type transactionBeginner interface {
 }
 
 type PublishResult struct {
-	TopicID    int64
-	PostID     int64
-	PostNumber int32
+	TopicID     int64
+	PostID      int64
+	PostNumber  int32
+	NodeOrdinal int64
 }
 
 // RenderTopicDraft applies the exact bounded field validation and sanitized
@@ -184,10 +185,10 @@ func CreateTopic(
 		if err != nil {
 			return fmt.Errorf("insert topic and first post: %w", err)
 		}
-		if created.TopicID <= 0 || created.PostID <= 0 || created.PostNumber != 1 {
+		if created.TopicID <= 0 || created.PostID <= 0 || created.PostNumber != 1 || created.NodeOrdinal != 1 {
 			return fmt.Errorf("topic creation returned an invalid result")
 		}
-		result = PublishResult{TopicID: created.TopicID, PostID: created.PostID, PostNumber: created.PostNumber}
+		result = PublishResult{TopicID: created.TopicID, PostID: created.PostID, PostNumber: created.PostNumber, NodeOrdinal: created.NodeOrdinal}
 		return nil
 	})
 	if err != nil {
@@ -273,10 +274,10 @@ func CreateReply(
 		if err != nil {
 			return fmt.Errorf("insert reply and advance topic: %w", err)
 		}
-		if created.TopicID != topicID || created.PostID <= 0 || created.PostNumber < 2 {
+		if created.TopicID != topicID || created.PostID <= 0 || created.PostNumber < 2 || created.NodeOrdinal < 2 {
 			return fmt.Errorf("reply creation returned an invalid result")
 		}
-		result = PublishResult{TopicID: created.TopicID, PostID: created.PostID, PostNumber: created.PostNumber}
+		result = PublishResult{TopicID: created.TopicID, PostID: created.PostID, PostNumber: created.PostNumber, NodeOrdinal: created.NodeOrdinal}
 		return nil
 	})
 	if err != nil {

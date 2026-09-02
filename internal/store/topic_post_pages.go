@@ -20,8 +20,9 @@ type visibleTopicPostPageQuerier interface {
 }
 
 // VisibleTopicPostPage is one atomically access-filtered topic metadata and
-// chronological visible-post page. Rows retain the generated nullable sentinel
-// only for an authorized topic with no visible posts on page one.
+// deterministic depth-first thread-node page. Rows retain the generated
+// nullable sentinel only for an authorized topic with no visible nodes on page
+// one. A deleted ancestor may remain as a content-free structural tombstone.
 type VisibleTopicPostPage struct {
 	Rows       []db.GetVisibleTopicPostPageRow
 	Number     int32
@@ -101,13 +102,13 @@ func GetVisibleTopicPostPage(
 	if remaining <= 0 || int64(len(rows)) != expectedRows {
 		return VisibleTopicPostPage{}, fmt.Errorf("visible topic post query returned an incomplete page")
 	}
-	previousPostNumber := int32(0)
+	previousNodeOrdinal := int64(offset)
 	for _, row := range rows {
 		if !sameVisibleTopicMetadata(first, row) || row.TotalVisiblePosts != first.TotalVisiblePosts ||
-			!validVisiblePost(row, previousPostNumber) {
+			!validVisibleThreadNode(row, previousNodeOrdinal) {
 			return VisibleTopicPostPage{}, fmt.Errorf("visible topic post query returned malformed rows")
 		}
-		previousPostNumber = row.PostNumber.Int32
+		previousNodeOrdinal = row.NodeOrdinal.Int64
 	}
 	totalPages := int64(1) + (first.TotalVisiblePosts-1)/int64(PostPageSize)
 	return VisibleTopicPostPage{
@@ -142,13 +143,30 @@ func sameVisibleTopicMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 		row.TopicAuthorDisplayName == first.TopicAuthorDisplayName
 }
 
-// validVisiblePost validates required nonnull post fields and strict
-// chronological ordering before presentation can consume persisted HTML.
+// validVisibleThreadNode validates structural ancestry, exact page order, and
+// the mutually exclusive visible-content/tombstone projections before
+// presentation can consume persisted HTML.
 //
 // Complexity: time and auxiliary space are tight Theta(1).
-func validVisiblePost(row db.GetVisibleTopicPostPageRow, previousPostNumber int32) bool {
-	if !row.PostID.Valid || row.PostID.Int64 <= 0 || !row.PostNumber.Valid || row.PostNumber.Int32 <= previousPostNumber ||
-		!row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" ||
+func validVisibleThreadNode(row db.GetVisibleTopicPostPageRow, previousNodeOrdinal int64) bool {
+	if !row.PostID.Valid || row.PostID.Int64 <= 0 || !row.PostNumber.Valid || row.PostNumber.Int32 <= 0 ||
+		row.ThreadDepth < 1 || row.ThreadDepth > 32 || !row.IsTombstone.Valid ||
+		!row.NodeOrdinal.Valid || row.NodeOrdinal.Int64 != previousNodeOrdinal+1 {
+		return false
+	}
+	if row.ThreadDepth == 1 {
+		if row.PostID.Int64 != row.TopicFirstPostID || row.ParentPostID.Valid || row.ParentPostNumber.Valid || row.ParentNodeOrdinal.Valid || row.ParentAuthorDisplayName.Valid {
+			return false
+		}
+	} else if !row.ParentPostID.Valid || row.ParentPostID.Int64 <= 0 || !row.ParentPostNumber.Valid || row.ParentPostNumber.Int32 <= 0 ||
+		!row.ParentNodeOrdinal.Valid || row.ParentNodeOrdinal.Int64 <= 0 || row.ParentNodeOrdinal.Int64 >= row.NodeOrdinal.Int64 {
+		return false
+	}
+	if row.IsTombstone.Bool {
+		return !row.RenderedHtml.Valid && !row.RendererVersion.Valid && !row.Revision.Valid && !row.PostCreatedAt.Valid &&
+			!row.PostUpdatedAt.Valid && !row.PostEditedAt.Valid && !row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid
+	}
+	if !row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" ||
 		!row.Revision.Valid || row.Revision.Int32 <= 0 || !row.PostCreatedAt.Valid || row.PostCreatedAt.InfinityModifier != pgtype.Finite ||
 		!row.PostUpdatedAt.Valid || row.PostUpdatedAt.InfinityModifier != pgtype.Finite ||
 		row.PostUpdatedAt.Time.Before(row.PostCreatedAt.Time) || !row.PostAuthorID.Valid || row.PostAuthorID.Int64 <= 0 ||
@@ -166,7 +184,9 @@ func validVisiblePost(row db.GetVisibleTopicPostPageRow, previousPostNumber int3
 //
 // Complexity: time and auxiliary space are tight Theta(1).
 func validEmptyVisiblePost(row db.GetVisibleTopicPostPageRow) bool {
-	return !row.PostID.Valid && !row.PostNumber.Valid && !row.RenderedHtml.Valid && !row.RendererVersion.Valid &&
+	return !row.PostID.Valid && !row.PostNumber.Valid && !row.ParentPostID.Valid && row.ThreadDepth == 0 && !row.IsTombstone.Valid &&
+		!row.RenderedHtml.Valid && !row.RendererVersion.Valid &&
 		!row.Revision.Valid && !row.PostCreatedAt.Valid && !row.PostUpdatedAt.Valid && !row.PostEditedAt.Valid &&
-		!row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid
+		!row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid && !row.ParentPostNumber.Valid &&
+		!row.ParentAuthorDisplayName.Valid && !row.ParentNodeOrdinal.Valid && !row.NodeOrdinal.Valid
 }

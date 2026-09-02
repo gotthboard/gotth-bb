@@ -114,10 +114,30 @@ topic_counts AS (
     GROUP BY topic.area_id
 ),
 visible_posts AS (
-    SELECT post.id, post.topic_id, post.post_number, post.author_id, post.created_at
+    SELECT post.id, post.topic_id, post.post_number, post.thread_path, post.author_id, post.created_at
     FROM public.posts AS post
     JOIN visible_topics AS topic ON topic.id = post.topic_id
     WHERE post.deleted_at IS NULL
+),
+visible_thread_nodes AS (
+    SELECT post.id, post.topic_id, post.thread_path
+    FROM public.posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    WHERE post.deleted_at IS NULL
+       OR EXISTS (
+            SELECT 1
+            FROM public.posts AS descendant
+            WHERE descendant.topic_id = post.topic_id
+              AND descendant.deleted_at IS NULL
+              AND descendant.id <> post.id
+              AND descendant.thread_path[1:cardinality(post.thread_path)] = post.thread_path
+       )
+),
+numbered_thread_nodes AS (
+    SELECT
+        node.id,
+        row_number() OVER (PARTITION BY node.topic_id ORDER BY node.thread_path)::bigint AS node_ordinal
+    FROM visible_thread_nodes AS node
 ),
 post_counts AS (
     SELECT topic.area_id, count(*)::bigint AS post_count
@@ -132,10 +152,12 @@ latest_posts AS (
         topic.title AS latest_topic_title,
         post.id AS latest_post_id,
         post.post_number AS latest_post_number,
+        numbered.node_ordinal AS latest_post_ordinal,
         author.display_name AS latest_post_author,
         post.created_at AS latest_post_created_at
     FROM visible_posts AS post
     JOIN visible_topics AS topic ON topic.id = post.topic_id
+    JOIN numbered_thread_nodes AS numbered ON numbered.id = post.id
     JOIN public.users AS author ON author.id = post.author_id
     ORDER BY topic.area_id, post.created_at DESC, post.id DESC
 )
@@ -157,6 +179,7 @@ SELECT
     latest_posts.latest_topic_title,
     latest_posts.latest_post_id,
     latest_posts.latest_post_number,
+    latest_posts.latest_post_ordinal,
     latest_posts.latest_post_author,
     latest_posts.latest_post_created_at
 FROM visible_areas AS area

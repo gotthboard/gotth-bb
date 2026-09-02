@@ -32,13 +32,13 @@ func TestEditingQueriesBindScanAndPreserveGuards(t *testing.T) {
 			wantResult: SoftDeletePostRow{PostID: 91, TopicID: 41, PostNumber: 2, Revision: 3},
 		},
 		{
-			name: "editable read", rowValues: []any{int64(91), int64(41), int32(2), "source", int32(3)},
+			name: "editable read", rowValues: []any{int64(91), int64(41), int32(2), "source", int32(3), int64(7)},
 			wantArgs: []any{int64(91), int64(11), true, []int64{7, 9}},
 			required: []string{"post.author_id = $2", "post.deleted_at IS NULL", "topic.deleted_at IS NULL", "$3::boolean OR topic.state <> 'hidden'", "area.visibility = 'groups'", "membership.group_id = ANY($4::bigint[])"},
 			invoke: func(q *Queries) (any, error) {
 				return q.GetEditablePost(context.Background(), GetEditablePostParams{PostID: 91, AuthorID: 11, IsStaff: true, GroupIds: []int64{7, 9}})
 			},
-			wantResult: GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3},
+			wantResult: GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3, NodeOrdinal: 7},
 		},
 		{
 			name: "lock", rowValues: []any{int64(91), int64(11), int32(3), int64(41), int32(2), "locked", int64(7), "groups", "normal"}, wantArgs: []any{int64(91)},
@@ -47,13 +47,13 @@ func TestEditingQueriesBindScanAndPreserveGuards(t *testing.T) {
 			wantResult: LockPostForEditRow{PostID: 91, AuthorID: 11, Revision: 3, TopicID: 41, PostNumber: 2, TopicState: "locked", AreaID: 7, Visibility: "groups", PostingMode: "normal"},
 		},
 		{
-			name: "update", rowValues: []any{int64(91), int64(41), int32(2), int32(4)},
+			name: "update", rowValues: []any{int64(91), int64(41), int32(2), int32(4), int64(7)},
 			wantArgs: []any{"edited", "<p>edited</p>", "renderer-v1", atTime, int64(91), int32(3)},
 			required: []string{"revision = post.revision + 1", "post.revision = $6", "GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))", "post.deleted_at IS NULL"},
 			invoke: func(q *Queries) (any, error) {
 				return q.UpdatePostRevision(context.Background(), UpdatePostRevisionParams{MarkdownSource: "edited", RenderedHtml: "<p>edited</p>", RendererVersion: "renderer-v1", AtTime: atTime, PostID: 91, ExpectedRevision: 3})
 			},
-			wantResult: UpdatePostRevisionRow{PostID: 91, TopicID: 41, PostNumber: 2, Revision: 4},
+			wantResult: UpdatePostRevisionRow{PostID: 91, TopicID: 41, PostNumber: 2, Revision: 4, NodeOrdinal: 7},
 		},
 	} {
 		test := test

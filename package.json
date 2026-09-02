@@ -1,6 +1,6 @@
 {
   "name": "gotth-bb",
-  "version": "1.0.0-alpha.1",
+  "version": "1.0.0-alpha.2",
   "private": true,
   "packageManager": "npm@12.0.2",
   "engines": {
@@ -8,7 +8,7 @@
     "npm": "12.0.2"
   },
   "scripts": {
-    "generate:css": "tailwindcss -i assets/styles/app.css -o internal/httpui/static/app-e71086849e8a67de8ca330847ac0c75e5bc98c47149a05b7423c8824f9f9be14.css --minify"
+    "generate:css": "tailwindcss -i assets/styles/app.css -o internal/httpui/static/app-32d245fed73a1638ed8ebc73f4d61557cc154ed582f993b5ed8c7736df841dcb.css --minify"
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",

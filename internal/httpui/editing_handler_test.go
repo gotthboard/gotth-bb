@@ -93,7 +93,7 @@ func TestEditingHandlerLoadsCanonicalAuthorForm(t *testing.T) {
 	var gotAccess auth.AccessContext
 	handler := newEditingTestHandler(t, func(_ context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
 		gotAccess = access
-		return store.EditablePost{PostID: postID, TopicID: 41, PostNumber: 27, MarkdownSource: "Original <body>", Revision: 3}, nil
+		return store.EditablePost{PostID: postID, TopicID: 41, PostNumber: 27, NodeOrdinal: 27, MarkdownSource: "Original <body>", Revision: 3}, nil
 	}, nil)
 	request := publishingTestRequest(http.MethodGet, "/posts/91/edit", "", true)
 	response := httptest.NewRecorder()
@@ -168,7 +168,7 @@ func TestEditingHandlerAppliesAndRedirectsToExactPost(t *testing.T) {
 		if access.UserID != 42 || postID != 91 || revision != 3 || markdown != "Edited body" {
 			t.Fatalf("edit arguments = (%+v, %d, %d, %q)", access, postID, revision, markdown)
 		}
-		return forum.EditResult{TopicID: 41, PostID: 91, PostNumber: 27, Revision: 4}, nil
+		return forum.EditResult{TopicID: 41, PostID: 91, PostNumber: 27, NodeOrdinal: 27, Revision: 4}, nil
 	})
 	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"3"}, "markdown": {"Edited body"}}
 	for _, fragment := range []bool{false, true} {
@@ -310,7 +310,7 @@ func TestEditingHandlerRejectsInvalidResultsAndConflictReloadFailure(t *testing.
 
 	validForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"3"}, "markdown": {"body"}}.Encode()
 	invalidResult := newEditingTestHandler(t, nil, func(context.Context, auth.AccessContext, int64, int32, string) (forum.EditResult, error) {
-		return forum.EditResult{TopicID: 41, PostID: 91, PostNumber: 2, Revision: 9}, nil
+		return forum.EditResult{TopicID: 41, PostID: 91, PostNumber: 2, NodeOrdinal: 2, Revision: 9}, nil
 	})
 	response := httptest.NewRecorder()
 	invalidResult.ServeHTTP(response, publishingTestRequest(http.MethodPost, "/posts/91/edit", validForm, true))
@@ -508,5 +508,5 @@ func newEditingTestHandler(t *testing.T, load EditablePostLoader, edit PostEdito
 }
 
 func validEditablePost() store.EditablePost {
-	return store.EditablePost{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "original", Revision: 3}
+	return store.EditablePost{PostID: 91, TopicID: 41, PostNumber: 2, NodeOrdinal: 2, MarkdownSource: "original", Revision: 3}
 }

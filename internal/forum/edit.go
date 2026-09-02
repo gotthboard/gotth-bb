@@ -19,10 +19,11 @@ var (
 const maximumPostRevision = int32(1<<31 - 1)
 
 type EditResult struct {
-	TopicID    int64
-	PostID     int64
-	PostNumber int32
-	Revision   int32
+	TopicID     int64
+	PostID      int64
+	PostNumber  int32
+	NodeOrdinal int64
+	Revision    int32
 }
 
 // EditPost validates and renders one replacement body before locking the
@@ -106,10 +107,10 @@ func EditPost(
 		if err != nil {
 			return fmt.Errorf("update post revision: %w", err)
 		}
-		if updated.PostID != postID || updated.TopicID != locked.TopicID || updated.PostNumber != locked.PostNumber || updated.Revision != expectedRevision+1 {
+		if updated.PostID != postID || updated.TopicID != locked.TopicID || updated.PostNumber != locked.PostNumber || updated.NodeOrdinal <= 0 || updated.Revision != expectedRevision+1 {
 			return fmt.Errorf("post edit returned an invalid result")
 		}
-		result = EditResult{TopicID: updated.TopicID, PostID: updated.PostID, PostNumber: updated.PostNumber, Revision: updated.Revision}
+		result = EditResult{TopicID: updated.TopicID, PostID: updated.PostID, PostNumber: updated.PostNumber, NodeOrdinal: updated.NodeOrdinal, Revision: updated.Revision}
 		return nil
 	})
 	if err != nil {

@@ -18,6 +18,7 @@ type EditablePost struct {
 	PostID         int64
 	TopicID        int64
 	PostNumber     int32
+	NodeOrdinal    int64
 	MarkdownSource string
 	Revision       int32
 }
@@ -57,12 +58,12 @@ func GetEditablePost(ctx context.Context, querier editablePostQuerier, postID in
 	if err != nil {
 		return EditablePost{}, fmt.Errorf("query editable post: %w", err)
 	}
-	if row.PostID != postID || row.TopicID <= 0 || row.PostNumber <= 0 || row.Revision <= 0 || row.Revision == maximumEditablePostRevision ||
+	if row.PostID != postID || row.TopicID <= 0 || row.PostNumber <= 0 || row.NodeOrdinal <= 0 || row.Revision <= 0 || row.Revision == maximumEditablePostRevision ||
 		row.MarkdownSource == "" || len(row.MarkdownSource) > 65_536 || !utf8.ValidString(row.MarkdownSource) {
 		return EditablePost{}, fmt.Errorf("editable post query returned an invalid row")
 	}
 	return EditablePost{
-		PostID: row.PostID, TopicID: row.TopicID, PostNumber: row.PostNumber,
+		PostID: row.PostID, TopicID: row.TopicID, PostNumber: row.PostNumber, NodeOrdinal: row.NodeOrdinal,
 		MarkdownSource: row.MarkdownSource, Revision: row.Revision,
 	}, nil
 }

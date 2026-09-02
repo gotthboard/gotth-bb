@@ -60,14 +60,37 @@ func TestGetVisibleTopicPostPageAcceptsAuthorizedEmptyFirstPage(t *testing.T) {
 	}
 }
 
-func TestGetVisibleTopicPostPagePreservesSoftDeletedPostNumberGaps(t *testing.T) {
+func TestGetVisibleTopicPostPagePreservesDepthFirstOrderIndependentOfPostNumbers(t *testing.T) {
+	t.Parallel()
+
+	rows := validVisibleTopicPostRows(1, 3)
+	rows[1].PostNumber.Int32 = 3
+	rows[2].PostNumber.Int32 = 2
+	got, err := GetVisibleTopicPostPage(context.Background(), &visibleTopicPostPageTestQuerier{rows: rows}, 9, 1, policy.AccessContext{})
+	if err != nil || len(got.Rows) != 3 || got.Rows[0].PostNumber.Int32 != 1 || got.Rows[1].PostNumber.Int32 != 3 ||
+		got.Rows[2].PostNumber.Int32 != 2 || got.Rows[2].NodeOrdinal.Int64 != 3 || got.TotalPosts != 3 {
+		t.Fatalf("GetVisibleTopicPostPage(depth first) = (%+v, %v)", got, err)
+	}
+}
+
+func TestGetVisibleTopicPostPageAcceptsContentFreeTombstone(t *testing.T) {
 	t.Parallel()
 
 	rows := validVisibleTopicPostRows(1, 2)
-	rows[1].PostNumber.Int32 = 3
+	tombstone := &rows[0]
+	tombstone.IsTombstone.Bool = true
+	tombstone.RenderedHtml = pgtype.Text{}
+	tombstone.RendererVersion = pgtype.Text{}
+	tombstone.Revision = pgtype.Int4{}
+	tombstone.PostCreatedAt = pgtype.Timestamptz{}
+	tombstone.PostUpdatedAt = pgtype.Timestamptz{}
+	tombstone.PostEditedAt = pgtype.Timestamptz{}
+	tombstone.PostAuthorID = pgtype.Int8{}
+	tombstone.PostAuthorDisplayName = pgtype.Text{}
+	rows[1].ParentAuthorDisplayName = pgtype.Text{}
 	got, err := GetVisibleTopicPostPage(context.Background(), &visibleTopicPostPageTestQuerier{rows: rows}, 9, 1, policy.AccessContext{})
-	if err != nil || len(got.Rows) != 2 || got.Rows[0].PostNumber.Int32 != 1 || got.Rows[1].PostNumber.Int32 != 3 || got.TotalPosts != 2 {
-		t.Fatalf("GetVisibleTopicPostPage(gapped) = (%+v, %v)", got, err)
+	if err != nil || len(got.Rows) != 2 || !got.Rows[0].IsTombstone.Bool || got.Rows[0].RenderedHtml.Valid {
+		t.Fatalf("GetVisibleTopicPostPage(tombstone) = (%+v, %v)", got, err)
 	}
 }
 
@@ -235,7 +258,7 @@ func TestGetVisibleTopicPostPageRejectsMalformedRows(t *testing.T) {
 			return rows
 		},
 		func(rows []db.GetVisibleTopicPostPageRow) []db.GetVisibleTopicPostPageRow {
-			rows[1].PostNumber.Int32 = 1
+			rows[1].NodeOrdinal.Int64 = 1
 			return rows
 		},
 		func(rows []db.GetVisibleTopicPostPageRow) []db.GetVisibleTopicPostPageRow { return rows[:1] },
@@ -289,12 +312,23 @@ func validVisibleTopicPostRows(firstPost, lastPost int64) []db.GetVisibleTopicPo
 			AreaID: 3, AreaSlug: "public", AreaName: "Public", AreaDescription: "Open area", AreaPostingMode: "normal",
 			TopicID: 9, TopicFirstPostID: 101, TopicTitle: "Welcome", TopicState: "open", TopicCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, TopicAuthorDisplayName: "Starter",
 			PostID: pgtype.Int8{Int64: 100 + postNumber, Valid: true}, PostNumber: pgtype.Int4{Int32: int32(postNumber), Valid: true},
+			ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true},
 			RenderedHtml: pgtype.Text{String: "<p>Post</p>", Valid: true}, RendererVersion: pgtype.Text{String: "test-v1", Valid: true},
 			Revision: pgtype.Int4{Int32: 1, Valid: true}, PostCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
 			PostUpdatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, PostAuthorID: pgtype.Int8{Int64: 11, Valid: true},
 			PostAuthorDisplayName: pgtype.Text{String: "Author", Valid: true},
-			TotalVisiblePosts:     total,
+			ParentPostID:          pgtype.Int8{Int64: 101, Valid: true}, ParentPostNumber: pgtype.Int4{Int32: 1, Valid: true},
+			ParentAuthorDisplayName: pgtype.Text{String: "Starter", Valid: true}, ParentNodeOrdinal: pgtype.Int8{Int64: 1, Valid: true},
+			NodeOrdinal:       pgtype.Int8{Int64: postNumber, Valid: true},
+			TotalVisiblePosts: total,
 		})
+		if postNumber == 1 {
+			rows[len(rows)-1].ThreadDepth = 1
+			rows[len(rows)-1].ParentPostID = pgtype.Int8{}
+			rows[len(rows)-1].ParentPostNumber = pgtype.Int4{}
+			rows[len(rows)-1].ParentAuthorDisplayName = pgtype.Text{}
+			rows[len(rows)-1].ParentNodeOrdinal = pgtype.Int8{}
+		}
 	}
 	return rows
 }
@@ -302,6 +336,9 @@ func validVisibleTopicPostRows(firstPost, lastPost int64) []db.GetVisibleTopicPo
 func clearVisiblePost(row *db.GetVisibleTopicPostPageRow) {
 	row.PostID = pgtype.Int8{}
 	row.PostNumber = pgtype.Int4{}
+	row.ParentPostID = pgtype.Int8{}
+	row.ThreadDepth = 0
+	row.IsTombstone = pgtype.Bool{}
 	row.RenderedHtml = pgtype.Text{}
 	row.RendererVersion = pgtype.Text{}
 	row.Revision = pgtype.Int4{}
@@ -310,6 +347,10 @@ func clearVisiblePost(row *db.GetVisibleTopicPostPageRow) {
 	row.PostEditedAt = pgtype.Timestamptz{}
 	row.PostAuthorID = pgtype.Int8{}
 	row.PostAuthorDisplayName = pgtype.Text{}
+	row.ParentPostNumber = pgtype.Int4{}
+	row.ParentAuthorDisplayName = pgtype.Text{}
+	row.ParentNodeOrdinal = pgtype.Int8{}
+	row.NodeOrdinal = pgtype.Int8{}
 }
 
 func visibleTopicPostPageIsZero(page VisibleTopicPostPage) bool {

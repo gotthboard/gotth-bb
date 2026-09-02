@@ -219,15 +219,22 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 	*(destinations[11].(*string)) = "Starter"
 	*(destinations[12].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
 	*(destinations[13].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[14].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
-	*(destinations[15].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
-	*(destinations[16].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[18].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[19].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[20].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
-	*(destinations[21].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
-	*(destinations[22].(*int64)) = 1
+	*(destinations[14].(*pgtype.Int8)) = pgtype.Int8{}
+	*(destinations[15].(*int32)) = 1
+	*(destinations[16].(*pgtype.Bool)) = pgtype.Bool{Bool: false, Valid: true}
+	*(destinations[17].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
+	*(destinations[18].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
+	*(destinations[19].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
+	*(destinations[20].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[21].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[22].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[23].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
+	*(destinations[24].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[25].(*pgtype.Int4)) = pgtype.Int4{}
+	*(destinations[26].(*pgtype.Text)) = pgtype.Text{}
+	*(destinations[27].(*pgtype.Int8)) = pgtype.Int8{}
+	*(destinations[28].(*pgtype.Int8)) = pgtype.Int8{Int64: 1, Valid: true}
+	*(destinations[29].(*int64)) = 1
 	return nil
 }
 
@@ -432,11 +439,11 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	var topicGroupIDs []int64
 	topicGroupsOK := false
 	if len(topicArgs) == 6 {
-		topicGroupIDs, topicGroupsOK = topicArgs[5].([]int64)
+		topicGroupIDs, topicGroupsOK = topicArgs[4].([]int64)
 	}
 	if topicReadErr != nil || topicResponse.StatusCode != http.StatusOK || !strings.Contains(topicBody.String(), "<strong>forum</strong>") ||
-		topicCalls != 1 || len(topicArgs) != 6 || topicArgs[0] != int32(0) || topicArgs[1] != store.PostPageSize ||
-		topicArgs[2] != int64(42) || topicArgs[3] != false || topicArgs[4] != false || !topicGroupsOK || len(topicGroupIDs) != 0 {
+		topicCalls != 1 || len(topicArgs) != 6 || topicArgs[0] != int32(0) || topicArgs[1] != int64(42) ||
+		topicArgs[2] != false || topicArgs[3] != false || !topicGroupsOK || len(topicGroupIDs) != 0 || topicArgs[5] != store.PostPageSize {
 		t.Fatalf("GET /topics/42 = (status %d, body %q, query calls %d, args %#v, read %v)",
 			topicResponse.StatusCode, topicBody.String(), topicCalls, topicArgs, topicReadErr)
 	}

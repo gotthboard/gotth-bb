@@ -31,7 +31,7 @@ func TestCreateTopicCommitsAuthorizedRenderedFirstPost(t *testing.T) {
 	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, func() time.Time { return at },
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{9}},
 		"member-news", "A careful title", "Hello **world**")
-	if err != nil || result != (PublishResult{TopicID: 101, PostID: 201, PostNumber: 1}) {
+	if err != nil || result != (PublishResult{TopicID: 101, PostID: 201, PostNumber: 1, NodeOrdinal: 1}) {
 		t.Fatalf("CreateTopic() = (%+v, %v)", result, err)
 	}
 	if !tx.committed || tx.rolledBack || tx.createdTopic != 1 || tx.createdReply != 0 {
@@ -51,7 +51,7 @@ func TestCreateReplyCommitsAuthorizedOrderedPost(t *testing.T) {
 	tx := &publishTestTx{areaID: 7, visibility: "public", postingMode: "read_only", topicID: 101, topicState: "locked", postID: 202, postNumber: 2}
 	result, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, func() time.Time { return at },
 		policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleModerator}, 101, 201, "A `reply`")
-	if err != nil || result != (PublishResult{TopicID: 101, PostID: 202, PostNumber: 2}) {
+	if err != nil || result != (PublishResult{TopicID: 101, PostID: 202, PostNumber: 2, NodeOrdinal: 2}) {
 		t.Fatalf("CreateReply() = (%+v, %v)", result, err)
 	}
 	if !tx.committed || tx.rolledBack || tx.createdTopic != 0 || tx.createdReply != 1 || tx.topicIDArgument != 101 || tx.authorID != 12 ||
@@ -345,9 +345,9 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		tx.areaIDArgument, tx.authorID, tx.title = arguments[0].(int64), arguments[1].(int64), arguments[2].(string)
 		tx.captureBody(arguments[3:])
 		if tx.failure == "invalid-topic" {
-			return publishTestRow{values: []any{int64(0), tx.postID, tx.postNumber}}
+			return publishTestRow{values: []any{int64(0), tx.postID, tx.postNumber, int64(1)}}
 		}
-		return publishTestRow{values: []any{tx.topicID, tx.postID, tx.postNumber}}
+		return publishTestRow{values: []any{tx.topicID, tx.postID, tx.postNumber, int64(1)}}
 	case strings.Contains(query, "CreateReplyAndAdvanceTopic"):
 		if tx.failure == "create-reply" {
 			return publishTestRow{err: errPublishTest}
@@ -358,9 +358,9 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		tx.captureBody([]any{arguments[5], arguments[1], arguments[2], arguments[3]})
 		tx.topicIDArgument = arguments[6].(int64)
 		if tx.failure == "invalid-reply" {
-			return publishTestRow{values: []any{tx.topicID, int64(0), tx.postNumber}}
+			return publishTestRow{values: []any{tx.topicID, int64(0), tx.postNumber, int64(tx.postNumber)}}
 		}
-		return publishTestRow{values: []any{tx.topicID, tx.postID, tx.postNumber}}
+		return publishTestRow{values: []any{tx.topicID, tx.postID, tx.postNumber, int64(tx.postNumber)}}
 	default:
 		panic("unexpected publishing query")
 	}

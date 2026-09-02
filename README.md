@@ -35,11 +35,11 @@ A release archive is built only from a clean exact native commit. The target
 directory must not already exist; packaging does not overwrite prior evidence.
 
 ```sh
-RELEASE_VERSION=1.0.0-alpha.1 \
+RELEASE_VERSION=1.0.0-alpha.2 \
 RELEASE_COMMIT="$(git rev-parse HEAD)" \
 RELEASE_GOOS="$(go env GOOS)" \
 RELEASE_GOARCH="$(go env GOARCH)" \
-RELEASE_OUTPUT="$PWD/dist/1.0.0-alpha.1" \
+RELEASE_OUTPUT="$PWD/dist/1.0.0-alpha.2" \
 make release
 ```
 

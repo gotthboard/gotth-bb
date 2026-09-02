@@ -29,7 +29,7 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 			Area:       db.Area{ID: 5, Slug: "announcements", Name: "Announcements & News", Description: "Durable <updates>", DisplayOrder: 1, Visibility: "public", PostingMode: "read_only"},
 			TopicCount: 3, PostCount: 27,
 			LatestPost: &store.VisibleAreaLatestPost{
-				TopicID: 91, TopicTitle: "Release <notes>", PostID: 117, PostNumber: 26,
+				TopicID: 91, TopicTitle: "Release <notes>", PostID: 117, PostNumber: 26, TreeOrdinal: 3,
 				Author: "Ada & Co", CreatedAt: time.Date(2026, time.September, 2, 14, 5, 0, 0, time.FixedZone("CDT", -5*60*60)),
 			},
 		},
@@ -65,7 +65,7 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 				!strings.Contains(body, `hx-swap="outerHTML"`) || !strings.Contains(body, `hx-push-url="true"`) ||
 				!strings.Contains(body, ">3<") || !strings.Contains(body, ">27<") ||
 				!strings.Contains(body, "Release &lt;notes&gt;") || !strings.Contains(body, "Ada &amp; Co") ||
-				!strings.Contains(body, `href="/bb/topics/91?page=2#post-117"`) ||
+				!strings.Contains(body, `href="/bb/topics/91#post-117"`) ||
 				!strings.Contains(body, "Sep 2, 2026 14:05 CDT") ||
 				strings.Contains(body, "read_only") || strings.Contains(body, "groups") {
 				t.Fatalf("area index response = (status %d, calls %d, body %q)", response.Code, calls, body)

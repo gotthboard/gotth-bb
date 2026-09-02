@@ -44,7 +44,7 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 		}, store.MaximumPostPage,
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			topicCalls++
-			return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1}, nil
+			return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1, NodeOrdinal: 1}, nil
 		},
 		func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 			panic("reply not expected")
@@ -212,7 +212,7 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	if topicResponse.Code != http.StatusOK || !strings.Contains(topicResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
 		!strings.Contains(topicResponse.Body.String(), `formaction="/bb/topics/42/replies/preview"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="parent_post_id" value="101"`) ||
-		!strings.Contains(topicResponse.Body.String(), `action="/bb/posts/126/delete"`) ||
+		!strings.Contains(topicResponse.Body.String(), `action="/bb/posts/101/delete"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="revision" value="2"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="_csrf" value="`+validCSRFTokenForTest(0x51)+`"`) {
 		t.Fatalf("eligible topic page = (%d, %q)", topicResponse.Code, topicResponse.Body.String())
@@ -295,7 +295,7 @@ func TestPublishingHandlerCreatesTopicAndRedirectsCanonically(t *testing.T) {
 		if access.UserID != 42 || area != "member-news" || title != "Careful title" || markdown != "Hello **world**" {
 			t.Fatalf("topic publishing input = (%+v, %q, %q, %q)", access, area, title, markdown)
 		}
-		return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1}, nil
+		return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1, NodeOrdinal: 1}, nil
 	}, nil)
 	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"member-news"}, "title": {"Careful title"}, "markdown": {"Hello **world**"}}
 	request := publishingTestRequest(http.MethodPost, "/topics", form.Encode(), true)
@@ -313,13 +313,13 @@ func TestPublishingHandlerCreatesReplyAndRedirectsToExactPostPage(t *testing.T) 
 		if access.UserID != 42 || topicID != 41 || parentPostID != 91 || markdown != "Reply body" {
 			t.Fatalf("reply publishing input = (%+v, %d, %d, %q)", access, topicID, parentPostID, markdown)
 		}
-		return forum.PublishResult{TopicID: 41, PostID: 116, PostNumber: 26}, nil
+		return forum.PublishResult{TopicID: 41, PostID: 116, PostNumber: 26, NodeOrdinal: 2}, nil
 	})
 	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"Reply body"}}
 	request := publishingTestRequest(http.MethodPost, "/topics/41/replies", form.Encode(), true)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/topics/41?page=2#post-116" || response.Body.Len() != 0 {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/topics/41#post-116" || response.Body.Len() != 0 {
 		t.Fatalf("reply response = (status %d location %q body %q)", response.Code, response.Header().Get("Location"), response.Body.String())
 	}
 }
@@ -328,7 +328,7 @@ func TestPublishingHandlerUsesHTMXLocationWithoutDocumentReload(t *testing.T) {
 	t.Parallel()
 
 	handler := newPublishingTestHandler(t, func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
-		return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1}, nil
+		return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1, NodeOrdinal: 1}, nil
 	}, nil)
 	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}
 	request := publishingTestRequest(http.MethodPost, "/topics", form.Encode(), true)

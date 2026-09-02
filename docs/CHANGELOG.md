@@ -5,6 +5,57 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 15:58 CDT — Complete the alpha.2 threaded forum surface
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `migrations/000005_threaded_posts.sql`
+- `internal/store/queries/areas.sql`
+- `internal/store/queries/topic_posts.sql`
+- `internal/store/queries/publishing.sql`
+- `internal/store/queries/editing.sql`
+- `internal/forum/`
+- `internal/store/`
+- `internal/httpui/`
+- `cmd/forum/main_test.go`
+- `package.json`
+- `package-lock.json`
+- `README.md`
+
+Explanation:
+
+Alpha.2 now renders the phpBB-inspired board index, topic list, and compact
+author/content post layout using only actor-filtered server projections. Topic
+pages are deterministic depth-first reply trees. Every visible nondeleted post
+has its own parent-addressed HTMX reply form, parent context remains linkable
+across pages, and visual indentation caps after six levels without changing
+logical ancestry.
+
+Deleted ancestors with visible descendants render as content-free tombstones.
+The query never projects their author, body, renderer, revision, or timestamps.
+Pagination, latest-post links, edit cancellation, edit success, and reply
+success use tree-node ordinals; chronological post numbers remain immutable
+identities and activity watermarks.
+
+Verification:
+
+- Unit tests cover tree order independent of post number, content-free
+  tombstones, parent-addressed forms, capped indentation, and tree-ordinal
+  navigation.
+- Generated Templ and sqlc code, the content-addressed stylesheet, formatting,
+  vet, race, coverage, PostgreSQL integration, deterministic packaging, backup,
+  deployment, and rollback evidence are required before admission.
+
+Risks / non-goals:
+
+- Tree pages are bounded to 25 nodes. Large-branch collapsing remains future
+  work; there is no unbounded recursive application load or per-post query.
+- Voting, ranking, reports, search, unread state, new moderation transitions,
+  registration-policy changes, and copied phpBB/Reddit assets remain outside
+  alpha.2.
+
 ### 2026-09-02 15:32 CDT — Admit threaded replies into alpha.2 scope
 
 Commit: current commit; hash assigned by Git after commit

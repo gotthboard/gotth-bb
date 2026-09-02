@@ -15,10 +15,10 @@ import (
 func TestGetEditablePostDerivesClosedOwnerAuthority(t *testing.T) {
 	t.Parallel()
 
-	querier := &editablePostTestQuerier{row: db.GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3}}
+	querier := &editablePostTestQuerier{row: db.GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3, NodeOrdinal: 7}}
 	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleAdministrator, GroupIDs: []int64{7, 9}}
 	got, err := GetEditablePost(context.Background(), querier, 91, actor)
-	want := EditablePost{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3}
+	want := EditablePost{PostID: 91, TopicID: 41, PostNumber: 2, NodeOrdinal: 7, MarkdownSource: "source", Revision: 3}
 	if err != nil || got != want || querier.calls != 1 || querier.params.PostID != 91 || querier.params.AuthorID != 11 ||
 		!querier.params.IsStaff || !reflect.DeepEqual(querier.params.GroupIds, []int64{7, 9}) {
 		t.Fatalf("GetEditablePost() = (%+v, %v, calls %d, params %+v)", got, err, querier.calls, querier.params)
@@ -69,11 +69,12 @@ func TestGetEditablePostRejectsDependenciesFailuresAndMalformedRows(t *testing.T
 	if got, err := GetEditablePost(context.Background(), &editablePostTestQuerier{err: cause}, 91, actor); !errors.Is(err, cause) || got != (EditablePost{}) {
 		t.Fatalf("query failure = (%+v, %v)", got, err)
 	}
-	valid := db.GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3}
+	valid := db.GetEditablePostRow{PostID: 91, TopicID: 41, PostNumber: 2, MarkdownSource: "source", Revision: 3, NodeOrdinal: 7}
 	for _, mutate := range []func(*db.GetEditablePostRow){
 		func(row *db.GetEditablePostRow) { row.PostID = 0 },
 		func(row *db.GetEditablePostRow) { row.TopicID = 0 },
 		func(row *db.GetEditablePostRow) { row.PostNumber = 0 },
+		func(row *db.GetEditablePostRow) { row.NodeOrdinal = 0 },
 		func(row *db.GetEditablePostRow) { row.MarkdownSource = "" },
 		func(row *db.GetEditablePostRow) { row.MarkdownSource = strings.Repeat("x", 65_537) },
 		func(row *db.GetEditablePostRow) { row.MarkdownSource = string([]byte{0xff}) },

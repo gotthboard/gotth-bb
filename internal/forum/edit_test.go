@@ -20,7 +20,7 @@ func TestEditPostCommitsAuthorizedExpectedRevision(t *testing.T) {
 	tx := &editTestTx{postID: 91, authorID: 11, revision: 3, topicID: 41, postNumber: 2, areaID: 7, visibility: "groups", postingMode: "normal", groupIDs: []int64{4, 9}}
 	result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, func() time.Time { return at },
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{9}}, 91, 3, "Edited **body**")
-	if err != nil || result != (EditResult{TopicID: 41, PostID: 91, PostNumber: 2, Revision: 4}) {
+	if err != nil || result != (EditResult{TopicID: 41, PostID: 91, PostNumber: 2, NodeOrdinal: 2, Revision: 4}) {
 		t.Fatalf("EditPost() = (%+v, %v)", result, err)
 	}
 	if !tx.committed || tx.rolledBack || tx.updateCalls != 1 || tx.markdown != "Edited **body**" ||
@@ -200,9 +200,9 @@ func (tx *editTestTx) QueryRow(_ context.Context, query string, arguments ...any
 		tx.atTime = arguments[3].(pgtype.Timestamptz).Time
 		tx.expectedRevision = arguments[5].(int32)
 		if tx.failure == "invalid-update" {
-			return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 2}}
+			return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 2, int64(tx.postNumber)}}
 		}
-		return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 1}}
+		return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 1, int64(tx.postNumber)}}
 	case strings.Contains(query, "SoftDeletePost"):
 		if tx.failure == "delete" {
 			return publishTestRow{err: errPublishTest}

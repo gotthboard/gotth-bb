@@ -40,7 +40,7 @@ func TestListVisibleAreaSummariesDerivesAccessAndConvertsCompleteRows(t *testing
 			}
 			if got[0].Area.ID != 7 || got[0].Area.Slug != "general" || got[0].TopicCount != 2 || got[0].PostCount != 5 || got[0].LatestPost == nil ||
 				got[0].LatestPost.TopicID != 41 || got[0].LatestPost.TopicTitle != "Current topic" || got[0].LatestPost.PostID != 91 ||
-				got[0].LatestPost.PostNumber != 4 || got[0].LatestPost.Author != "Alice" || !got[0].LatestPost.CreatedAt.Equal(created.Add(time.Hour)) {
+				got[0].LatestPost.PostNumber != 4 || got[0].LatestPost.TreeOrdinal != 3 || got[0].LatestPost.Author != "Alice" || !got[0].LatestPost.CreatedAt.Equal(created.Add(time.Hour)) {
 				t.Fatalf("summary = %+v", got[0])
 			}
 			parameters := querier.parameters
@@ -61,6 +61,7 @@ func TestListVisibleAreaSummariesAcceptsAnEmptyArea(t *testing.T) {
 	row.LatestTopicTitle = pgtype.Text{}
 	row.LatestPostID = pgtype.Int8{}
 	row.LatestPostNumber = pgtype.Int4{}
+	row.LatestPostOrdinal = pgtype.Int8{}
 	row.LatestPostAuthor = pgtype.Text{}
 	row.LatestPostCreatedAt = pgtype.Timestamptz{}
 	querier := &visibleAreaSummaryTestQuerier{rows: []db.ListVisibleAreaSummariesRow{row}}
@@ -97,6 +98,7 @@ func TestListVisibleAreaSummariesRejectsMalformedRowsWithoutPartialResults(t *te
 		{name: "latest topic title", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestTopicTitle.String = "" }},
 		{name: "latest post ID", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostID.Int64 = 0 }},
 		{name: "latest post number", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostNumber.Int32 = 0 }},
+		{name: "latest post ordinal", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostOrdinal.Int64 = 0 }},
 		{name: "latest author", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostAuthor.String = "" }},
 		{name: "latest time", change: func(row *db.ListVisibleAreaSummariesRow) { row.LatestPostCreatedAt.InfinityModifier = pgtype.Infinity }},
 	}
@@ -148,7 +150,8 @@ func validVisibleAreaSummaryRow(created time.Time) db.ListVisibleAreaSummariesRo
 		TopicCount: 2, PostCount: 5,
 		LatestTopicID: pgtype.Int8{Int64: 41, Valid: true}, LatestTopicTitle: pgtype.Text{String: "Current topic", Valid: true},
 		LatestPostID: pgtype.Int8{Int64: 91, Valid: true}, LatestPostNumber: pgtype.Int4{Int32: 4, Valid: true},
-		LatestPostAuthor: pgtype.Text{String: "Alice", Valid: true}, LatestPostCreatedAt: pgtype.Timestamptz{Time: created.Add(time.Hour), Valid: true},
+		LatestPostOrdinal: pgtype.Int8{Int64: 3, Valid: true},
+		LatestPostAuthor:  pgtype.Text{String: "Alice", Valid: true}, LatestPostCreatedAt: pgtype.Timestamptz{Time: created.Add(time.Hour), Valid: true},
 	}
 }
 

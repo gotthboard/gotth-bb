@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
 	contentrender "git.dannyhunn.com/agents/gotth-bb/internal/render"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
@@ -90,7 +91,8 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			(first.AreaPostingMode != "normal" && first.AreaPostingMode != "read_only" && first.AreaPostingMode != "archived") ||
 			first.TopicTitle == "" || first.TopicAuthorDisplayName == "" || !first.TopicCreatedAt.Valid ||
 			len(loaded.Rows) > int(store.PostPageSize) ||
-			(loaded.TotalPosts == 0 && (pageNumber != 1 || len(loaded.Rows) != 1 || first.PostID.Valid || first.PostNumber.Valid ||
+			(loaded.TotalPosts == 0 && (pageNumber != 1 || len(loaded.Rows) != 1 || first.PostID.Valid || first.PostNumber.Valid || first.ParentPostID.Valid ||
+				first.ThreadDepth != 0 || first.IsTombstone.Valid || first.NodeOrdinal.Valid ||
 				first.RenderedHtml.Valid || first.RendererVersion.Valid || first.Revision.Valid || first.PostCreatedAt.Valid ||
 				first.PostUpdatedAt.Valid || first.PostEditedAt.Valid || first.PostAuthorDisplayName.Valid ||
 				first.TotalVisiblePosts != loaded.TotalPosts)) ||
@@ -137,6 +139,22 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			nextURL, viewErr = builder.PathWithQuery(segments, url.Values{"page": {strconv.FormatInt(int64(pageNumber+1), 10)}})
 		}
 		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
+		mayReply := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
+			(first.AreaPostingMode == "normal" || staff && first.AreaPostingMode == "read_only") &&
+			(first.TopicState == "open" || staff && (first.TopicState == "locked" || first.TopicState == "hidden"))
+		replyAction := ""
+		replyPreview := ""
+		cancelURL := ""
+		token := csrfTokenFromContext(request.Context())
+		if mayReply && len(token) == sessionCookieEncodedBytes {
+			replyAction, viewErr = builder.Path("topics", identifier, "replies")
+			if viewErr == nil {
+				replyPreview, viewErr = builder.Path("topics", identifier, "replies", "preview")
+			}
+			if viewErr == nil {
+				cancelURL, viewErr = builder.PathWithQuery(segments, currentQuery)
+			}
+		}
 		moderationLinks, _ := request.Context().Value(userModerationLinksContextKey{}).(bool)
 		activeStaffLinks := moderationLinks && staff && authentication.Access.Authenticated &&
 			!authentication.Access.Suspended && authentication.Access.MutedUntil == nil
@@ -145,10 +163,8 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			for _, row := range loaded.Rows {
 				validRow := sameTopicPostPresentationMetadata(first, row) && row.TotalVisiblePosts == loaded.TotalPosts &&
 					row.PostID.Valid && row.PostID.Int64 > 0 && row.PostNumber.Valid && row.PostNumber.Int32 > 0 &&
-					row.RenderedHtml.Valid && row.RendererVersion.Valid && row.RendererVersion.String != "" &&
-					row.Revision.Valid && row.Revision.Int32 > 0 && row.PostCreatedAt.Valid && row.PostUpdatedAt.Valid &&
-					row.PostAuthorID.Valid && row.PostAuthorID.Int64 > 0 &&
-					row.PostAuthorDisplayName.Valid && row.PostAuthorDisplayName.String != ""
+					row.ThreadDepth >= 1 && row.ThreadDepth <= forum.MaximumReplyDepth && row.IsTombstone.Valid &&
+					row.NodeOrdinal.Valid && row.NodeOrdinal.Int64 > 0
 				if !validRow {
 					invalid = true
 					break
@@ -159,16 +175,44 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 					viewErr = permalinkErr
 					break
 				}
-				edited := ""
-				if row.PostEditedAt.Valid {
-					edited = "Edited " + row.PostEditedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST")
-				}
-				posts = append(posts, topicPostItem{
+				item := topicPostItem{
 					Anchor: anchor, Permalink: permalink, Number: row.PostNumber.Int32,
-					Author:  row.PostAuthorDisplayName.String,
-					Created: row.PostCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"), Edited: edited,
-					Body: contentrender.SanitizeHTML(row.RenderedHtml.String),
-				})
+					IndentClass: threadIndentClass(row.ThreadDepth), Tombstone: row.IsTombstone.Bool,
+				}
+				if row.ParentPostID.Valid {
+					parentPage := 1 + (row.ParentNodeOrdinal.Int64-1)/int64(store.PostPageSize)
+					parentQuery := url.Values(nil)
+					if parentPage > 1 {
+						parentQuery = url.Values{"page": {strconv.FormatInt(parentPage, 10)}}
+					}
+					item.ParentURL, viewErr = builder.PathWithQueryAndFragment(segments, parentQuery, "post-"+strconv.FormatInt(row.ParentPostID.Int64, 10))
+					if row.ParentAuthorDisplayName.Valid {
+						item.ParentLabel = "In reply to " + row.ParentAuthorDisplayName.String + " (post #" + strconv.FormatInt(int64(row.ParentPostNumber.Int32), 10) + ")"
+					} else {
+						item.ParentLabel = "In reply to deleted post #" + strconv.FormatInt(int64(row.ParentPostNumber.Int32), 10)
+					}
+				}
+				if row.IsTombstone.Bool {
+					posts = append(posts, item)
+					continue
+				}
+				if !row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" || !row.Revision.Valid || row.Revision.Int32 <= 0 ||
+					!row.PostCreatedAt.Valid || !row.PostUpdatedAt.Valid || !row.PostAuthorID.Valid || row.PostAuthorID.Int64 <= 0 ||
+					!row.PostAuthorDisplayName.Valid || row.PostAuthorDisplayName.String == "" {
+					invalid = true
+					break
+				}
+				item.Author = row.PostAuthorDisplayName.String
+				item.Created = row.PostCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST")
+				if row.PostEditedAt.Valid {
+					item.Edited = "Edited " + row.PostEditedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST")
+				}
+				item.Body = contentrender.SanitizeHTML(row.RenderedHtml.String)
+				if replyAction != "" {
+					item.ReplyForm = publishingFormView{Heading: "Reply to post #" + strconv.FormatInt(int64(row.PostNumber.Int32), 10), ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL, CSRFToken: token, ParentPostID: strconv.FormatInt(row.PostID.Int64, 10), Reply: true}
+					item.ShowReply = true
+				}
+				posts = append(posts, item)
 				if activeStaffLinks && row.PostAuthorID.Int64 != authentication.Access.UserID {
 					statusURL, statusErr := builder.Path("moderation", "users", strconv.FormatInt(row.PostAuthorID.Int64, 10))
 					if statusErr != nil {
@@ -229,29 +273,15 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 				}
 			}
 		}
-		mayReply := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
-			(first.AreaPostingMode == "normal" || staff && first.AreaPostingMode == "read_only") &&
-			(first.TopicState == "open" || staff && (first.TopicState == "locked" || first.TopicState == "hidden"))
 		replyForm := publishingFormView{}
-		if mayReply {
-			replyAction, replyErr := builder.Path("topics", identifier, "replies")
-			replyPreview := ""
-			cancelURL := ""
-			if replyErr == nil {
-				replyPreview, replyErr = builder.Path("topics", identifier, "replies", "preview")
-			}
-			if replyErr == nil {
-				cancelURL, replyErr = builder.PathWithQuery(segments, currentQuery)
-			}
-			token := csrfTokenFromContext(request.Context())
-			if replyErr != nil {
-				serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
-				return
-			}
-			if len(token) == sessionCookieEncodedBytes {
-				replyForm = publishingFormView{
-					Heading: "Reply", ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL,
-					CSRFToken: token, ParentPostID: strconv.FormatInt(first.TopicFirstPostID, 10), Reply: true,
+		if replyAction != "" {
+			for _, post := range posts {
+				if post.Number == 1 && !post.Tombstone {
+					replyForm = publishingFormView{
+						Heading: "Reply", ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL,
+						CSRFToken: token, ParentPostID: strconv.FormatInt(first.TopicFirstPostID, 10), Reply: true,
+					}
+					break
 				}
 			}
 		}
@@ -271,6 +301,27 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			panic(renderErr)
 		}
 	}), nil
+}
+
+// threadIndentClass maps logical ancestry to a closed, responsive visual
+// indentation set. Logical ancestry remains intact beyond the six-level cap.
+func threadIndentClass(depth int32) string {
+	switch depth {
+	case 1:
+		return ""
+	case 2:
+		return "ml-2 sm:ml-6"
+	case 3:
+		return "ml-4 sm:ml-12"
+	case 4:
+		return "ml-6 sm:ml-18"
+	case 5:
+		return "ml-8 sm:ml-24"
+	case 6:
+		return "ml-10 sm:ml-30"
+	default:
+		return "ml-12 sm:ml-36"
+	}
 }
 
 // sameTopicPostPresentationMetadata proves every projected row belongs to the

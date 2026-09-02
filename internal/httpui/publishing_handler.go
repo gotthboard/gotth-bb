@@ -191,7 +191,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			servePublishingError(response, publishErr)
 			return
 		}
-		if result.TopicID <= 0 || result.PostID <= 0 || result.PostNumber != 1 {
+		if result.TopicID <= 0 || result.PostID <= 0 || result.PostNumber != 1 || result.NodeOrdinal != 1 {
 			serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 			return
 		}
@@ -308,11 +308,11 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			servePublishingError(response, publishErr)
 			return
 		}
-		if result.TopicID != topicID || result.PostID <= 0 || result.PostNumber < 2 {
+		if result.TopicID != topicID || result.PostID <= 0 || result.PostNumber < 2 || result.NodeOrdinal < 2 {
 			serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 			return
 		}
-		page := 1 + (result.PostNumber-1)/store.PostPageSize
+		page := 1 + (result.NodeOrdinal-1)/int64(store.PostPageSize)
 		query := url.Values(nil)
 		if page > 1 {
 			query = url.Values{"page": {strconv.FormatInt(int64(page), 10)}}

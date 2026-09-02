@@ -38,22 +38,22 @@ func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 			wantResult: LockTopicForReplyRow{TopicID: 9, TopicState: "locked", AreaID: 7, Visibility: "public", PostingMode: "read_only", ParentPostID: 17, ParentDepth: 2},
 		},
 		{
-			name: "create topic", rowValues: []any{int64(9), int64(17), int32(1)},
+			name: "create topic", rowValues: []any{int64(9), int64(17), int32(1), int64(1)},
 			wantArgs: []any{int64(7), int64(11), "Title", atTime, "source", "<p>source</p>", "renderer-v1"},
 			required: []string{"pg_get_serial_sequence('public.topics', 'id')", "inserted_topic AS", "inserted_post AS"},
 			invoke: func(q *Queries) (any, error) {
 				return q.CreateTopicAndFirstPost(context.Background(), CreateTopicAndFirstPostParams{AreaID: 7, AuthorID: 11, Title: "Title", AtTime: atTime, MarkdownSource: "source", RenderedHtml: "<p>source</p>", RendererVersion: "renderer-v1"})
 			},
-			wantResult: CreateTopicAndFirstPostRow{TopicID: 9, PostID: 17, PostNumber: 1},
+			wantResult: CreateTopicAndFirstPostRow{TopicID: 9, PostID: 17, PostNumber: 1, NodeOrdinal: 1},
 		},
 		{
-			name: "create reply", rowValues: []any{int64(9), int64(18), int32(2)},
+			name: "create reply", rowValues: []any{int64(9), int64(18), int32(2), int64(2)},
 			wantArgs: []any{int64(11), "reply", "<p>reply</p>", "renderer-v1", pgtype.Int8{Int64: 17, Valid: true}, atTime, int64(9)},
 			required: []string{"topic.next_post_number", "reply_count = inserted_post.post_number - 1", "next_post_number = inserted_post.post_number + 1"},
 			invoke: func(q *Queries) (any, error) {
 				return q.CreateReplyAndAdvanceTopic(context.Background(), CreateReplyAndAdvanceTopicParams{AuthorID: 11, MarkdownSource: "reply", RenderedHtml: "<p>reply</p>", RendererVersion: "renderer-v1", ParentPostID: pgtype.Int8{Int64: 17, Valid: true}, AtTime: atTime, TopicID: 9})
 			},
-			wantResult: CreateReplyAndAdvanceTopicRow{TopicID: 9, PostID: 18, PostNumber: 2},
+			wantResult: CreateReplyAndAdvanceTopicRow{TopicID: 9, PostID: 18, PostNumber: 2, NodeOrdinal: 2},
 		},
 	} {
 		test := test

@@ -75,6 +75,9 @@ func TestTopicPostListHandlerRendersEmptyTopic(t *testing.T) {
 	t.Parallel()
 
 	page := topicPostTestPage(1)
+	for index := range page.Rows {
+		page.Rows[index].TopicState = "open"
+	}
 	page.Rows = page.Rows[:1]
 	clearTopicPostTestRow(&page.Rows[0])
 	page.TotalPosts = 0
@@ -112,8 +115,8 @@ func TestTopicPostListHandlerOffersDeleteButNotEditAtExhaustedRevision(t *testin
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	body := response.Body.String()
-	if response.Code != http.StatusOK || strings.Contains(body, `href="/bb/posts/126/edit"`) ||
-		!strings.Contains(body, `action="/bb/posts/126/delete"`) || !strings.Contains(body, `name="revision" value="2147483647"`) {
+	if response.Code != http.StatusOK || strings.Contains(body, `href="/bb/posts/101/edit"`) ||
+		!strings.Contains(body, `action="/bb/posts/101/delete"`) || !strings.Contains(body, `name="revision" value="2147483647"`) {
 		t.Fatalf("exhausted revision actions = (%d, %q)", response.Code, body)
 	}
 }
@@ -453,6 +456,49 @@ func TestNewTopicPostListHandlerRejectsDependencies(t *testing.T) {
 	}
 }
 
+func TestTopicPostListHandlerRendersThreadContextAndContentFreeTombstone(t *testing.T) {
+	t.Parallel()
+
+	page := topicPostTestPage(1)
+	for index := range page.Rows {
+		page.Rows[index].TopicState = "open"
+	}
+	page.Rows[0].IsTombstone.Bool = true
+	page.Rows[0].RenderedHtml = pgtype.Text{}
+	page.Rows[0].RendererVersion = pgtype.Text{}
+	page.Rows[0].Revision = pgtype.Int4{}
+	page.Rows[0].PostCreatedAt = pgtype.Timestamptz{}
+	page.Rows[0].PostUpdatedAt = pgtype.Timestamptz{}
+	page.Rows[0].PostEditedAt = pgtype.Timestamptz{}
+	page.Rows[0].PostAuthorID = pgtype.Int8{}
+	page.Rows[0].PostAuthorDisplayName = pgtype.Text{}
+	page.Rows[1].ParentAuthorDisplayName = pgtype.Text{}
+	handler, err := newTopicPostListHandler(areaTopicTestBuilder(t), store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+		return page, nil
+	})
+	if err != nil {
+		t.Fatalf("newTopicPostListHandler() returned error: %v", err)
+	}
+	request := topicPostTestRequest("/topics/42", "42", auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember})
+	request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, validCSRFTokenForTest(0x51)))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	body := response.Body.String()
+	if response.Code != http.StatusOK || !strings.Contains(body, "This post was deleted") ||
+		!strings.Contains(body, "In reply to deleted post #1") || !strings.Contains(body, `name="parent_post_id" value="127"`) ||
+		strings.Contains(body, `name="parent_post_id" value="101"`) || strings.Contains(body, "Hello <strong>safe</strong>") {
+		t.Fatalf("thread tombstone response = (%d, %q)", response.Code, body)
+	}
+}
+
+func TestThreadIndentClassCapsVisualDepth(t *testing.T) {
+	t.Parallel()
+
+	if threadIndentClass(1) != "" || threadIndentClass(2) == "" || threadIndentClass(7) != threadIndentClass(32) {
+		t.Fatalf("thread indentation mapping is not bounded")
+	}
+}
+
 func topicPostTestPage(number int32) store.VisibleTopicPostPage {
 	topicCreated := time.Date(2026, time.September, 1, 20, 0, 0, 0, time.UTC)
 	postCreated := time.Date(2026, time.September, 2, 2, 0, 0, 0, time.UTC)
@@ -462,25 +508,47 @@ func topicPostTestPage(number int32) store.VisibleTopicPostPage {
 		TopicPinnedAt:  pgtype.Timestamptz{Time: topicCreated, Valid: true},
 		TopicCreatedAt: pgtype.Timestamptz{Time: topicCreated, Valid: true}, TopicAuthorDisplayName: "Alice & Bob",
 		PostID: pgtype.Int8{Int64: 126, Valid: true}, PostNumber: pgtype.Int4{Int32: 26, Valid: true},
+		ParentPostID: pgtype.Int8{Int64: 101, Valid: true}, ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true},
 		RenderedHtml:    pgtype.Text{String: `<p onclick="alert(1)">Hello <strong>safe</strong><script>alert(1)</script></p>`, Valid: true},
 		RendererVersion: pgtype.Text{String: "renderer-v1", Valid: true}, Revision: pgtype.Int4{Int32: 2, Valid: true},
 		PostCreatedAt: pgtype.Timestamptz{Time: postCreated, Valid: true},
 		PostUpdatedAt: pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
 		PostEditedAt:  pgtype.Timestamptz{Time: postCreated.Add(30 * time.Minute), Valid: true},
-		PostAuthorID:  pgtype.Int8{Int64: 42, Valid: true}, PostAuthorDisplayName: pgtype.Text{String: "Carol <Admin>", Valid: true}, TotalVisiblePosts: 27,
+		PostAuthorID:  pgtype.Int8{Int64: 42, Valid: true}, PostAuthorDisplayName: pgtype.Text{String: "Carol <Admin>", Valid: true},
+		ParentPostNumber: pgtype.Int4{Int32: 1, Valid: true}, ParentAuthorDisplayName: pgtype.Text{String: "Alice & Bob", Valid: true}, ParentNodeOrdinal: pgtype.Int8{Int64: 1, Valid: true},
+		NodeOrdinal: pgtype.Int8{Int64: 26, Valid: true}, TotalVisiblePosts: 27,
 	}
 	second := base
 	second.PostID = pgtype.Int8{Int64: 127, Valid: true}
 	second.PostNumber = pgtype.Int4{Int32: 27, Valid: true}
+	second.NodeOrdinal = pgtype.Int8{Int64: 27, Valid: true}
 	second.Revision = pgtype.Int4{Int32: 1, Valid: true}
 	second.PostEditedAt = pgtype.Timestamptz{}
 	second.RenderedHtml = pgtype.Text{String: `<p><a href="javascript:alert(1)">unsafe link</a></p>`, Valid: true}
+	if number == 1 {
+		base.PostID = pgtype.Int8{Int64: 101, Valid: true}
+		base.PostNumber = pgtype.Int4{Int32: 1, Valid: true}
+		base.ParentPostID = pgtype.Int8{}
+		base.ThreadDepth = 1
+		base.ParentPostNumber = pgtype.Int4{}
+		base.ParentAuthorDisplayName = pgtype.Text{}
+		base.ParentNodeOrdinal = pgtype.Int8{}
+		base.NodeOrdinal = pgtype.Int8{Int64: 1, Valid: true}
+		second.ParentPostID = pgtype.Int8{Int64: 101, Valid: true}
+		second.ParentPostNumber = pgtype.Int4{Int32: 1, Valid: true}
+		second.ParentAuthorDisplayName = pgtype.Text{String: "Carol <Admin>", Valid: true}
+		second.ParentNodeOrdinal = pgtype.Int8{Int64: 1, Valid: true}
+		second.NodeOrdinal = pgtype.Int8{Int64: 2, Valid: true}
+	}
 	return store.VisibleTopicPostPage{Rows: []db.GetVisibleTopicPostPageRow{base, second}, Number: number, TotalPosts: 27, TotalPages: 2}
 }
 
 func clearTopicPostTestRow(row *db.GetVisibleTopicPostPageRow) {
 	row.PostID = pgtype.Int8{}
 	row.PostNumber = pgtype.Int4{}
+	row.ParentPostID = pgtype.Int8{}
+	row.ThreadDepth = 0
+	row.IsTombstone = pgtype.Bool{}
 	row.RenderedHtml = pgtype.Text{}
 	row.RendererVersion = pgtype.Text{}
 	row.Revision = pgtype.Int4{}
@@ -489,6 +557,10 @@ func clearTopicPostTestRow(row *db.GetVisibleTopicPostPageRow) {
 	row.PostEditedAt = pgtype.Timestamptz{}
 	row.PostAuthorID = pgtype.Int8{}
 	row.PostAuthorDisplayName = pgtype.Text{}
+	row.ParentPostNumber = pgtype.Int4{}
+	row.ParentAuthorDisplayName = pgtype.Text{}
+	row.ParentNodeOrdinal = pgtype.Int8{}
+	row.NodeOrdinal = pgtype.Int8{}
 	row.TotalVisiblePosts = 0
 }
 

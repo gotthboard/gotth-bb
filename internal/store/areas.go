@@ -26,12 +26,13 @@ type visibleAreaBySlugQuerier interface {
 // VisibleAreaLatestPost is the bounded latest-post metadata exposed by the
 // board index. It contains no user-authored post body.
 type VisibleAreaLatestPost struct {
-	TopicID    int64
-	TopicTitle string
-	PostID     int64
-	PostNumber int32
-	Author     string
-	CreatedAt  time.Time
+	TopicID     int64
+	TopicTitle  string
+	PostID      int64
+	PostNumber  int32
+	TreeOrdinal int64
+	Author      string
+	CreatedAt   time.Time
 }
 
 // VisibleAreaSummary is one actor-visible area and its exact actor-visible
@@ -99,15 +100,15 @@ func visibleAreaSummaryFromRow(row db.ListVisibleAreaSummariesRow) (VisibleAreaS
 		return VisibleAreaSummary{}, false
 	}
 	present := row.LatestTopicID.Valid && row.LatestTopicTitle.Valid && row.LatestPostID.Valid &&
-		row.LatestPostNumber.Valid && row.LatestPostAuthor.Valid && row.LatestPostCreatedAt.Valid
+		row.LatestPostNumber.Valid && row.LatestPostOrdinal.Valid && row.LatestPostAuthor.Valid && row.LatestPostCreatedAt.Valid
 	absent := !row.LatestTopicID.Valid && !row.LatestTopicTitle.Valid && !row.LatestPostID.Valid &&
-		!row.LatestPostNumber.Valid && !row.LatestPostAuthor.Valid && !row.LatestPostCreatedAt.Valid
+		!row.LatestPostNumber.Valid && !row.LatestPostOrdinal.Valid && !row.LatestPostAuthor.Valid && !row.LatestPostCreatedAt.Valid
 	if row.PostCount == 0 {
 		if !absent {
 			return VisibleAreaSummary{}, false
 		}
 	} else if !present || row.LatestTopicID.Int64 <= 0 || row.LatestTopicTitle.String == "" ||
-		row.LatestPostID.Int64 <= 0 || row.LatestPostNumber.Int32 <= 0 || row.LatestPostAuthor.String == "" ||
+		row.LatestPostID.Int64 <= 0 || row.LatestPostNumber.Int32 <= 0 || row.LatestPostOrdinal.Int64 <= 0 || row.LatestPostAuthor.String == "" ||
 		row.LatestPostCreatedAt.InfinityModifier != pgtype.Finite {
 		return VisibleAreaSummary{}, false
 	}
@@ -120,7 +121,7 @@ func visibleAreaSummaryFromRow(row db.ListVisibleAreaSummariesRow) (VisibleAreaS
 	if present {
 		summary.LatestPost = &VisibleAreaLatestPost{
 			TopicID: row.LatestTopicID.Int64, TopicTitle: row.LatestTopicTitle.String,
-			PostID: row.LatestPostID.Int64, PostNumber: row.LatestPostNumber.Int32,
+			PostID: row.LatestPostID.Int64, PostNumber: row.LatestPostNumber.Int32, TreeOrdinal: row.LatestPostOrdinal.Int64,
 			Author: row.LatestPostAuthor.String, CreatedAt: row.LatestPostCreatedAt.Time,
 		}
 	}

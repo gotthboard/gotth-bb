@@ -81,7 +81,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		if buildErr != nil {
 			return publishingFormView{}, buildErr
 		}
-		page := 1 + (loaded.PostNumber-1)/store.PostPageSize
+		page := 1 + (loaded.NodeOrdinal-1)/int64(store.PostPageSize)
 		query := url.Values(nil)
 		if page > 1 {
 			query = url.Values{"page": {strconv.FormatInt(int64(page), 10)}}
@@ -102,7 +102,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		if loadErr != nil {
 			return publishingFormView{}, loadErr
 		}
-		if loaded.PostID != postID || loaded.TopicID <= 0 || loaded.PostNumber <= 0 || loaded.Revision <= 0 {
+		if loaded.PostID != postID || loaded.TopicID <= 0 || loaded.PostNumber <= 0 || loaded.NodeOrdinal <= 0 || loaded.Revision <= 0 {
 			return publishingFormView{}, fmt.Errorf("editable post loader returned an invalid result")
 		}
 		if !submitted {
@@ -228,11 +228,11 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 			serveError(response, editErr)
 			return
 		}
-		if result.PostID != postID || result.TopicID <= 0 || result.PostNumber <= 0 || result.Revision != revision+1 {
+		if result.PostID != postID || result.TopicID <= 0 || result.PostNumber <= 0 || result.NodeOrdinal <= 0 || result.Revision != revision+1 {
 			http.Error(response, "editing unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		page := 1 + (result.PostNumber-1)/store.PostPageSize
+		page := 1 + (result.NodeOrdinal-1)/int64(store.PostPageSize)
 		query := url.Values(nil)
 		if page > 1 {
 			query = url.Values{"page": {strconv.FormatInt(int64(page), 10)}}

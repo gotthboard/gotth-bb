@@ -72,12 +72,12 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 				TopicCount: summary.TopicCount, PostCount: summary.PostCount,
 			}
 			if latest := summary.LatestPost; latest != nil {
-				if latest.TopicID <= 0 || latest.TopicTitle == "" || latest.PostID <= 0 || latest.PostNumber <= 0 || latest.Author == "" || latest.CreatedAt.IsZero() {
+				if latest.TopicID <= 0 || latest.TopicTitle == "" || latest.PostID <= 0 || latest.PostNumber <= 0 || latest.TreeOrdinal <= 0 || latest.Author == "" || latest.CreatedAt.IsZero() {
 					serveUnavailable(response, request)
 					return
 				}
 				query := make(url.Values)
-				if page := 1 + (latest.PostNumber-1)/store.PostPageSize; page > 1 {
+				if page := 1 + (latest.TreeOrdinal-1)/int64(store.PostPageSize); page > 1 {
 					query.Set("page", strconv.FormatInt(int64(page), 10))
 				}
 				latestURL, buildErr := builder.PathWithQueryAndFragment(
