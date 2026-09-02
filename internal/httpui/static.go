@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-const appStylesheetFilename = "app-32d245fed73a1638ed8ebc73f4d61557cc154ed582f993b5ed8c7736df841dcb.css"
+const appStylesheetFilename = "app-36aa5f1c6d71db407e7dfc84ecbb3d38253bf7686e0b8b96cf7e1c34dae047e3.css"
 
-//go:embed static/app-32d245fed73a1638ed8ebc73f4d61557cc154ed582f993b5ed8c7736df841dcb.css
+//go:embed static/app-36aa5f1c6d71db407e7dfc84ecbb3d38253bf7686e0b8b96cf7e1c34dae047e3.css
 var appStylesheet []byte
 
 //go:embed static/htmx-2.0.10.min.js

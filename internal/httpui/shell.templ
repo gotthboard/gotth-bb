@@ -372,7 +372,7 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 		} else {
 			<ol class="mt-4 grid gap-3">
 				for _, post := range topic.Posts {
-					<li class={ post.IndentClass }>
+					<li class={ "min-w-0 " + post.IndentClass }>
 						<article id={ post.Anchor } aria-labelledby={ post.Anchor + "-author" } class="scroll-mt-6 overflow-hidden rounded border border-slate-300 border-l-4 border-l-blue-300 bg-white text-slate-800 shadow-sm">
 							if post.ParentURL != "" {
 								<p class="border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
@@ -415,7 +415,7 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 											</div>
 											<a href={ post.Permalink } class="font-semibold text-blue-800 hover:underline">Post #{ post.Number }</a>
 										</div>
-										<div class="mt-4 space-y-4 break-words leading-7 text-slate-800">@post.Body.Component()</div>
+									<div class="rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-800">@post.Body.Component()</div>
 										if post.ShowReply {
 											<details class="mt-5 border-t border-slate-200 pt-3">
 												<summary class="w-fit cursor-pointer rounded bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800">Reply</summary>

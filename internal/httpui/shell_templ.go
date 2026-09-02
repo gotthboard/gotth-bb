@@ -1936,7 +1936,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 				return templ_7745c5c3_Err
 			}
 			for _, post := range topic.Posts {
-				var templ_7745c5c3_Var101 = []any{post.IndentClass}
+				var templ_7745c5c3_Var101 = []any{"min-w-0 " + post.IndentClass}
 				templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var101...)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -2268,7 +2268,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</a></div><div class=\"mt-4 space-y-4 break-words leading-7 text-slate-800\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</a></div><div class=\"rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-800\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

@@ -48,6 +48,7 @@ func TestTopicPostListHandlerRendersSanitizedPageAndFragment(t *testing.T) {
 				"Members &amp; Friends", "Welcome &lt;everyone&gt;", "Locked", "Pinned", "Started by Alice &amp; Bob",
 				`id="post-126"`, `href="/bb/topics/42?page=2#post-126"`, `href="/bb/topics/42"`,
 				`href="/bb/areas/members"`, `href="/bb/posts/126/edit"`, `<strong>safe</strong>`, "Edited Sep 2, 2026 02:30 UTC",
+				`class="min-w-0 `, `class="rendered-post `,
 			} {
 				if !strings.Contains(body, required) {
 					t.Fatalf("topic response lacks %q: %s", required, body)

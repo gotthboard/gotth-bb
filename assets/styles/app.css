@@ -17,4 +17,21 @@
   .htmx-request.htmx-indicator {
     opacity: 1;
   }
+
+  .rendered-post {
+    overflow-wrap: anywhere;
+  }
+
+  .rendered-post pre,
+  .rendered-post table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .rendered-post img,
+  .rendered-post svg {
+    height: auto;
+    max-width: 100%;
+  }
 }
