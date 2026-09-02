@@ -407,6 +407,17 @@ authorized stale revision while preserving the escaped draft; HTMX explicitly
 swaps that conflict form. Successful ordinary/HTMX submissions navigate to the
 exact canonical topic page and post fragment.
 
+Author deletion is a distinct owner-only soft-delete transition; staff removal
+belongs to audited moderation and does not borrow author authority. The browser
+shows the POST control only to an active owner with a session CSRF token. The
+request carries the displayed revision, verifies CSRF before parsing, and the
+service then locks and reauthorizes the same current post/topic/area/group state
+before disclosing a revision conflict. The guarded update retains identifiers,
+source, rendered content, revision, and topic counters while setting
+`deleted_at`, `deleted_by`, and the fixed reason `Deleted by author`.
+`deleted_at` cannot precede create/update/edit time. Success navigates to the
+topic root because the deleted post no longer has a visible fragment.
+
 Reply creation renders and validates before opening a transaction, then locks
 the undeleted topic row for update, the owning area row for share, and the
 area's current group mappings for share. `CanReply` evaluates that locked
@@ -695,7 +706,7 @@ Internal routes are shown without the external `/bb` prefix.
 | `GET` | `/posts/{id}/edit` | Edit form | Author |
 | `POST` | `/posts/{id}/edit/preview` | Preview edit draft | Author |
 | `POST` | `/posts/{id}/edit` | Apply edit | Author |
-| `POST` | `/posts/{id}/delete` | Soft delete | Author/staff |
+| `POST` | `/posts/{id}/delete` | Author soft delete | Author |
 | `POST` | `/reports` | Create report | Member |
 | `GET` | `/moderation/reports` | Moderation queue | Moderator |
 | `POST` | `/moderation/actions` | Moderation transition | Moderator |

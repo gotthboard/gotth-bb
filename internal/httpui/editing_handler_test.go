@@ -26,7 +26,7 @@ func TestAuthenticatedForumRouterLoadsSessionOnlyForCanonicalEditRoutes(t *testi
 		service.authenticateCalls++
 		return auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember}}, nil
 	}
-	loadCalls := 0
+	loadCalls, deleteCalls := 0, 0
 	handler, err := NewAuthenticatedForumHandler(
 		callbackTestURLBuilder(t), service, emptyAreaIndexLister,
 		func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
@@ -50,6 +50,10 @@ func TestAuthenticatedForumRouterLoadsSessionOnlyForCanonicalEditRoutes(t *testi
 		func(context.Context, auth.AccessContext, int64, int32, string) (forum.EditResult, error) {
 			panic("edit not expected")
 		},
+		func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) {
+			deleteCalls++
+			return forum.DeleteResult{TopicID: 41, PostID: 91, PostNumber: 2, Revision: 3}, nil
+		},
 		"gotth_bb_session", true,
 	)
 	if err != nil {
@@ -68,6 +72,18 @@ func TestAuthenticatedForumRouterLoadsSessionOnlyForCanonicalEditRoutes(t *testi
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusOK || service.authenticateCalls != 1 || loadCalls != 1 || request.Pattern != "GET /posts/{postID}/edit" {
 		t.Fatalf("canonical edit route = (%d, auth %d, loads %d, pattern %q, body %q)", response.Code, service.authenticateCalls, loadCalls, request.Pattern, response.Body.String())
+	}
+	csrfToken, err := deriveCSRFToken(sessionToken)
+	if err != nil {
+		t.Fatalf("deriveCSRFToken() returned error: %v", err)
+	}
+	deleteRequest := httptest.NewRequest(http.MethodPost, "/posts/91/delete", strings.NewReader(url.Values{"_csrf": {csrfToken}, "revision": {"3"}}.Encode()))
+	deleteRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	deleteRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	deleteResponse := httptest.NewRecorder()
+	handler.ServeHTTP(deleteResponse, deleteRequest)
+	if deleteResponse.Code != http.StatusSeeOther || deleteResponse.Header().Get("Location") != "/bb/topics/41" || service.authenticateCalls != 2 || deleteCalls != 1 {
+		t.Fatalf("canonical delete route = (%d, %q, auth %d, deletes %d)", deleteResponse.Code, deleteResponse.Header().Get("Location"), service.authenticateCalls, deleteCalls)
 	}
 }
 
@@ -315,6 +331,71 @@ func TestEditingHandlerRejectsInvalidResultsAndConflictReloadFailure(t *testing.
 	}
 }
 
+func TestEditingHandlerSoftDeletesAndRedirectsToTopic(t *testing.T) {
+	t.Parallel()
+
+	deletePost := PostDeleter(func(_ context.Context, access auth.AccessContext, postID int64, revision int32) (forum.DeleteResult, error) {
+		if access.UserID != 42 || postID != 91 || revision != 3 {
+			t.Fatalf("delete arguments = (%+v, %d, %d)", access, postID, revision)
+		}
+		return forum.DeleteResult{TopicID: 41, PostID: 91, PostNumber: 27, Revision: 3}, nil
+	})
+	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"3"}}.Encode()
+	for _, fragment := range []bool{false, true} {
+		request := publishingTestRequest(http.MethodPost, "/posts/91/delete", form, true)
+		if fragment {
+			request.Header.Set("HX-Request", "true")
+		}
+		response := httptest.NewRecorder()
+		newEditingTestHandler(t, nil, nil, deletePost).ServeHTTP(response, request)
+		if fragment {
+			if response.Code != http.StatusNoContent || response.Header().Get("HX-Redirect") != "/bb/topics/41" {
+				t.Fatalf("HTMX delete redirect = (%d, %q)", response.Code, response.Header().Get("HX-Redirect"))
+			}
+		} else if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/topics/41" {
+			t.Fatalf("delete redirect = (%d, %q)", response.Code, response.Header().Get("Location"))
+		}
+	}
+}
+
+func TestEditingHandlerSoftDeleteFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	valid := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"3"}}.Encode()
+	for _, test := range []struct {
+		name        string
+		body        string
+		missingCSRF bool
+		deleteErr   error
+		result      forum.DeleteResult
+		wantStatus  int
+	}{
+		{name: "csrf", body: "revision=3", missingCSRF: true, wantStatus: http.StatusForbidden},
+		{name: "malformed", body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"03"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "denied", body: valid, deleteErr: forum.ErrPostDeleteDenied, wantStatus: http.StatusForbidden},
+		{name: "conflict", body: valid, deleteErr: forum.ErrPostDeleteConflict, wantStatus: http.StatusConflict},
+		{name: "storage", body: valid, deleteErr: errors.New("database failed"), wantStatus: http.StatusServiceUnavailable},
+		{name: "invalid result", body: valid, result: forum.DeleteResult{TopicID: 41, PostID: 91, PostNumber: 2, Revision: 4}, wantStatus: http.StatusServiceUnavailable},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			deletePost := PostDeleter(func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) {
+				return test.result, test.deleteErr
+			})
+			request := publishingTestRequest(http.MethodPost, "/posts/91/delete", test.body, true)
+			if test.missingCSRF {
+				request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, ""))
+			}
+			response := httptest.NewRecorder()
+			newEditingTestHandler(t, nil, nil, deletePost).ServeHTTP(response, request)
+			if response.Code != test.wantStatus {
+				t.Fatalf("delete %s = (%d, %q)", test.name, response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestParseEditFormRejectsNoncanonicalAndAmbiguousFields(t *testing.T) {
 	t.Parallel()
 
@@ -342,6 +423,34 @@ func TestParseEditFormPreservesReadFailure(t *testing.T) {
 	}
 }
 
+func TestParseDeleteFormAcceptsMaxAndRejectsMalformedFields(t *testing.T) {
+	t.Parallel()
+
+	valid := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("_csrf=x&revision=2147483647"))
+	valid.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if revision, err := parseDeleteForm(valid); err != nil || revision != int32(1<<31-1) {
+		t.Fatalf("parseDeleteForm(max) = (%d, %v)", revision, err)
+	}
+	for _, body := range []string{"_csrf=x", "_csrf=x&revision=0", "_csrf=x&revision=03", "_csrf=x&revision=3&markdown=x", "_csrf=x&revision=3&revision=4"} {
+		request := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if revision, err := parseDeleteForm(request); err == nil || revision != 0 {
+			t.Fatalf("parseDeleteForm(%q) = (%d, %v)", body, revision, err)
+		}
+	}
+}
+
+func TestParseDeleteFormPreservesReadFailure(t *testing.T) {
+	t.Parallel()
+
+	request := httptest.NewRequest(http.MethodPost, "/", nil)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Body = failingPublishingBody{}
+	if revision, err := parseDeleteForm(request); err == nil || revision != 0 {
+		t.Fatalf("parseDeleteForm(read failure) = (%d, %v)", revision, err)
+	}
+}
+
 func TestNewEditingHandlerRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 
@@ -351,22 +460,27 @@ func TestNewEditingHandlerRejectsMissingDependencies(t *testing.T) {
 	validEditor := PostEditor(func(context.Context, auth.AccessContext, int64, int32, string) (forum.EditResult, error) {
 		return forum.EditResult{}, nil
 	})
+	validDeleter := PostDeleter(func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) {
+		return forum.DeleteResult{}, nil
+	})
 	for _, test := range []struct {
 		builder URLBuilder
 		loader  EditablePostLoader
 		editor  PostEditor
+		deleter PostDeleter
 	}{
-		{builder: callbackTestURLBuilder(t), editor: validEditor},
-		{builder: callbackTestURLBuilder(t), loader: validLoader},
-		{loader: validLoader, editor: validEditor},
+		{builder: callbackTestURLBuilder(t), editor: validEditor, deleter: validDeleter},
+		{builder: callbackTestURLBuilder(t), loader: validLoader, deleter: validDeleter},
+		{builder: callbackTestURLBuilder(t), loader: validLoader, editor: validEditor},
+		{loader: validLoader, editor: validEditor, deleter: validDeleter},
 	} {
-		if handler, err := newEditingHandler(test.builder, test.loader, test.editor); err == nil || handler != nil {
+		if handler, err := newEditingHandler(test.builder, test.loader, test.editor, test.deleter); err == nil || handler != nil {
 			t.Fatalf("newEditingHandler(missing) = (%v, %v)", handler, err)
 		}
 	}
 }
 
-func newEditingTestHandler(t *testing.T, load EditablePostLoader, edit PostEditor) http.Handler {
+func newEditingTestHandler(t *testing.T, load EditablePostLoader, edit PostEditor, deleters ...PostDeleter) http.Handler {
 	t.Helper()
 	if load == nil {
 		load = func(context.Context, auth.AccessContext, int64) (store.EditablePost, error) {
@@ -378,7 +492,13 @@ func newEditingTestHandler(t *testing.T, load EditablePostLoader, edit PostEdito
 			panic("post edit is not expected")
 		}
 	}
-	handler, err := newEditingHandler(callbackTestURLBuilder(t), load, edit)
+	deletePost := PostDeleter(func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) {
+		panic("post delete is not expected")
+	})
+	if len(deleters) == 1 && deleters[0] != nil {
+		deletePost = deleters[0]
+	}
+	handler, err := newEditingHandler(callbackTestURLBuilder(t), load, edit, deletePost)
 	if err != nil {
 		t.Fatalf("newEditingHandler() returned error: %v", err)
 	}

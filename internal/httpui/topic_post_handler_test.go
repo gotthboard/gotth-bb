@@ -95,6 +95,29 @@ func TestTopicPostListHandlerRendersEmptyTopic(t *testing.T) {
 	}
 }
 
+func TestTopicPostListHandlerOffersDeleteButNotEditAtExhaustedRevision(t *testing.T) {
+	t.Parallel()
+
+	page := topicPostTestPage(1)
+	page.Rows = page.Rows[:1]
+	page.Rows[0].Revision.Int32 = int32(1<<31 - 1)
+	handler, err := newTopicPostListHandler(areaTopicTestBuilder(t), store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+		return page, nil
+	})
+	if err != nil {
+		t.Fatalf("newTopicPostListHandler() returned error: %v", err)
+	}
+	request := topicPostTestRequest("/topics/42", "42", auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember})
+	request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, validCSRFTokenForTest(0x51)))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	body := response.Body.String()
+	if response.Code != http.StatusOK || strings.Contains(body, `href="/bb/posts/126/edit"`) ||
+		!strings.Contains(body, `action="/bb/posts/126/delete"`) || !strings.Contains(body, `name="revision" value="2147483647"`) {
+		t.Fatalf("exhausted revision actions = (%d, %q)", response.Code, body)
+	}
+}
+
 func TestTopicPostListHandlerBuildsFirstPagePostAndNextURLs(t *testing.T) {
 	t.Parallel()
 

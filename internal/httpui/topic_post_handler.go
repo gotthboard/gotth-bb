@@ -167,12 +167,25 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 				})
 				if authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
 					row.PostAuthorID.Int64 == authentication.Access.UserID {
-					editURL, editErr := builder.Path("posts", strconv.FormatInt(row.PostID.Int64, 10), "edit")
-					if editErr != nil {
-						viewErr = editErr
-						break
+					if int64(row.Revision.Int32) < maximumEditFormRevision {
+						editURL, editErr := builder.Path("posts", strconv.FormatInt(row.PostID.Int64, 10), "edit")
+						if editErr != nil {
+							viewErr = editErr
+							break
+						}
+						posts[len(posts)-1].EditURL = editURL
 					}
-					posts[len(posts)-1].EditURL = editURL
+					token := csrfTokenFromContext(request.Context())
+					if len(token) == sessionCookieEncodedBytes {
+						deleteURL, deleteErr := builder.Path("posts", strconv.FormatInt(row.PostID.Int64, 10), "delete")
+						if deleteErr != nil {
+							viewErr = deleteErr
+							break
+						}
+						posts[len(posts)-1].DeleteURL = deleteURL
+						posts[len(posts)-1].CSRFToken = token
+						posts[len(posts)-1].Revision = strconv.FormatInt(int64(row.Revision.Int32), 10)
+					}
 				}
 			}
 		}

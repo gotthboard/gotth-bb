@@ -171,6 +171,8 @@ type editTestTx struct {
 	atTime                            time.Time
 	expectedRevision                  int32
 	updateCalls                       int
+	deleteCalls                       int
+	deletedBy                         int64
 	failure                           string
 	committed, rolledBack             bool
 }
@@ -201,6 +203,18 @@ func (tx *editTestTx) QueryRow(_ context.Context, query string, arguments ...any
 			return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 2}}
 		}
 		return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 1}}
+	case strings.Contains(query, "SoftDeletePost"):
+		if tx.failure == "delete" {
+			return publishTestRow{err: errPublishTest}
+		}
+		tx.deleteCalls++
+		tx.atTime = arguments[0].(pgtype.Timestamptz).Time
+		tx.deletedBy = arguments[1].(int64)
+		tx.expectedRevision = arguments[3].(int32)
+		if tx.failure == "invalid-delete" {
+			return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 1}}
+		}
+		return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision}}
 	default:
 		panic("unexpected edit query")
 	}

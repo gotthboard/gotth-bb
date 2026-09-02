@@ -23,6 +23,15 @@ func TestEditingQueriesBindScanAndPreserveGuards(t *testing.T) {
 		wantResult any
 	}{
 		{
+			name: "soft delete", rowValues: []any{int64(91), int64(41), int32(2), int32(3)},
+			wantArgs: []any{atTime, int64(11), int64(91), int32(3)},
+			required: []string{"deleted_at = GREATEST", "post.created_at", "post.updated_at", "COALESCE(post.edited_at", "deleted_by = $2::bigint", "deletion_reason = 'Deleted by author'", "post.author_id = $2::bigint", "post.revision = $4", "post.deleted_at IS NULL"},
+			invoke: func(q *Queries) (any, error) {
+				return q.SoftDeletePost(context.Background(), SoftDeletePostParams{AtTime: atTime, AuthorID: 11, PostID: 91, ExpectedRevision: 3})
+			},
+			wantResult: SoftDeletePostRow{PostID: 91, TopicID: 41, PostNumber: 2, Revision: 3},
+		},
+		{
 			name: "editable read", rowValues: []any{int64(91), int64(41), int32(2), "source", int32(3)},
 			wantArgs: []any{int64(91), int64(11), true, []int64{7, 9}},
 			required: []string{"post.author_id = $2", "post.deleted_at IS NULL", "topic.deleted_at IS NULL", "$3::boolean OR topic.state <> 'hidden'", "area.visibility = 'groups'", "membership.group_id = ANY($4::bigint[])"},
@@ -69,6 +78,7 @@ func TestEditingQueriesPreserveScanFailure(t *testing.T) {
 
 	cause := errors.New("scan failed")
 	for _, invoke := range []func(*Queries) (any, error){
+		func(q *Queries) (any, error) { return q.SoftDeletePost(context.Background(), SoftDeletePostParams{}) },
 		func(q *Queries) (any, error) { return q.GetEditablePost(context.Background(), GetEditablePostParams{}) },
 		func(q *Queries) (any, error) { return q.LockPostForEdit(context.Background(), 91) },
 		func(q *Queries) (any, error) {

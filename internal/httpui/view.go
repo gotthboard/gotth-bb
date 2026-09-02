@@ -69,6 +69,9 @@ type topicPostItem struct {
 	Created   string
 	Edited    string
 	EditURL   string
+	DeleteURL string
+	CSRFToken string
+	Revision  string
 	Body      contentrender.TrustedHTML
 }
 

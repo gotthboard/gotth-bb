@@ -211,6 +211,8 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	topicHandler.ServeHTTP(topicResponse, topicRequest)
 	if topicResponse.Code != http.StatusOK || !strings.Contains(topicResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
 		!strings.Contains(topicResponse.Body.String(), `formaction="/bb/topics/42/replies/preview"`) ||
+		!strings.Contains(topicResponse.Body.String(), `action="/bb/posts/126/delete"`) ||
+		!strings.Contains(topicResponse.Body.String(), `name="revision" value="2"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="_csrf" value="`+validCSRFTokenForTest(0x51)+`"`) {
 		t.Fatalf("eligible topic page = (%d, %q)", topicResponse.Code, topicResponse.Body.String())
 	}
@@ -231,7 +233,7 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	staffResponse := httptest.NewRecorder()
 	staffHandler.ServeHTTP(staffResponse, staffRequest)
 	if staffResponse.Code != http.StatusOK || !strings.Contains(staffResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
-		strings.Contains(staffResponse.Body.String(), `href="/bb/posts/126/edit"`) {
+		strings.Contains(staffResponse.Body.String(), `href="/bb/posts/126/edit"`) || strings.Contains(staffResponse.Body.String(), `action="/bb/posts/126/delete"`) {
 		t.Fatalf("eligible staff topic page = (%d, %q)", staffResponse.Code, staffResponse.Body.String())
 	}
 }
@@ -275,7 +277,8 @@ func TestReadablePagesHideIneligiblePublishingActions(t *testing.T) {
 			topicHandler.ServeHTTP(response, request)
 			body := response.Body.String()
 			if response.Code != http.StatusOK || strings.Contains(body, `action="/bb/topics/42/replies"`) ||
-				(test.name == "anonymous" || test.name == "suspended" || test.name == "muted") && strings.Contains(body, `href="/bb/posts/126/edit"`) {
+				(test.name == "anonymous" || test.name == "suspended" || test.name == "muted") &&
+					(strings.Contains(body, `href="/bb/posts/126/edit"`) || strings.Contains(body, `action="/bb/posts/126/delete"`)) {
 				t.Fatalf("ineligible topic page = (%d, %q)", response.Code, response.Body.String())
 			}
 		})

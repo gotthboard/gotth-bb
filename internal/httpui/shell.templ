@@ -173,6 +173,14 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 										if post.EditURL != "" {
 											<span> · <a href={ post.EditURL } hx-get={ post.EditURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200 hover:text-cyan-100">Edit</a></span>
 										}
+										if post.DeleteURL != "" {
+											<span> ·</span>
+											<form method="post" action={ post.DeleteURL } hx-post={ post.DeleteURL } hx-target="#main-content" hx-swap="outerHTML" class="inline">
+												<input type="hidden" name="_csrf" value={ post.CSRFToken }/>
+												<input type="hidden" name="revision" value={ post.Revision }/>
+												<button type="submit" class="text-rose-300 hover:text-rose-200">Delete</button>
+											</form>
+										}
 									</p>
 								</div>
 								<a href={ post.Permalink } class="rounded-sm text-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Post #{ post.Number }</a>

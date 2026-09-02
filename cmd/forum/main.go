@@ -166,6 +166,9 @@ func run(
 		func(editContext context.Context, access auth.AccessContext, postID int64, revision int32, markdown string) (forumservice.EditResult, error) {
 			return forumservice.EditPost(editContext, pool, time.Now, access, postID, revision, markdown)
 		},
+		func(deleteContext context.Context, access auth.AccessContext, postID int64, revision int32) (forumservice.DeleteResult, error) {
+			return forumservice.DeletePost(deleteContext, pool, time.Now, access, postID, revision)
+		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

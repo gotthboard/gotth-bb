@@ -125,6 +125,54 @@ func (q *Queries) LockPostForEdit(ctx context.Context, postID int64) (LockPostFo
 	return i, err
 }
 
+const softDeletePost = `-- name: SoftDeletePost :one
+UPDATE public.posts AS post
+SET deleted_at = GREATEST(
+        $1::timestamptz,
+        post.created_at,
+        post.updated_at,
+        COALESCE(post.edited_at, '-infinity'::timestamptz)
+    ),
+    deleted_by = $2::bigint,
+    deletion_reason = 'Deleted by author'
+WHERE post.id = $3
+  AND post.author_id = $2::bigint
+  AND post.revision = $4
+  AND post.deleted_at IS NULL
+RETURNING post.id AS post_id, post.topic_id, post.post_number, post.revision
+`
+
+type SoftDeletePostParams struct {
+	AtTime           pgtype.Timestamptz
+	AuthorID         int64
+	PostID           int64
+	ExpectedRevision int32
+}
+
+type SoftDeletePostRow struct {
+	PostID     int64
+	TopicID    int64
+	PostNumber int32
+	Revision   int32
+}
+
+func (q *Queries) SoftDeletePost(ctx context.Context, arg SoftDeletePostParams) (SoftDeletePostRow, error) {
+	row := q.db.QueryRow(ctx, softDeletePost,
+		arg.AtTime,
+		arg.AuthorID,
+		arg.PostID,
+		arg.ExpectedRevision,
+	)
+	var i SoftDeletePostRow
+	err := row.Scan(
+		&i.PostID,
+		&i.TopicID,
+		&i.PostNumber,
+		&i.Revision,
+	)
+	return i, err
+}
+
 const updatePostRevision = `-- name: UpdatePostRevision :one
 UPDATE public.posts AS post
 SET markdown_source = $1,

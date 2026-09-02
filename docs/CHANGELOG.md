@@ -5,6 +5,62 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 01:45 CDT — Soft-delete author-owned posts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/implementation-spec.md`
+- `internal/forum/delete.go`
+- `internal/forum/delete_test.go`
+- `internal/forum/edit_test.go`
+- `internal/forum/publish_integration_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/editing_handler.go`
+- `internal/httpui/editing_handler_test.go`
+- `internal/httpui/publishing_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/view.go`
+- `internal/store/db/editing.sql.go`
+- `internal/store/db/editing_test.go`
+- `internal/store/queries/editing.sql`
+
+Explanation:
+
+Added revision-guarded author soft deletion. This is deliberately not staff
+moderation: only the active owner of a currently visible post may use it, and
+the locked transaction rechecks area/group/topic visibility and ownership
+before revealing a stale-revision conflict.
+
+The update retains the post identity, Markdown, rendered HTML, revision, and
+topic counters while setting a nondecreasing deletion timestamp, the author as
+deleter, and the fixed reason `Deleted by author`. Topic pages emit the POST
+control only with owner authority and a session CSRF token. Successful ordinary
+and HTMX requests return to the topic root because the deleted post fragment is
+no longer visible.
+
+Verification:
+
+- Owner success, foreign-staff/hidden/group denial, authorization-before-
+  conflict, revision conflict, every transaction failure, and invalid results
+- Strict delete-form grammar and CSRF-first HTTP rejection
+- Owner-only presentation with hidden controls for anonymous, suspended,
+  muted, and foreign-staff viewers
+- PostgreSQL 17 proves retained source/identity, exact deletion metadata,
+  nondecreasing time, absence from visible reads, and repeat-as-missing behavior
+
+Risks / non-goals:
+
+- Staff hide/restore remains an audited A1-08 moderation transition
+- Author restore and hard purge are not part of alpha.1
+
 ### 2026-09-02 01:19 CDT — Wire author edit forms and preview
 
 Commit: current commit; hash assigned by Git after commit

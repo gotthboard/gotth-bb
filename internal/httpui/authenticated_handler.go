@@ -50,7 +50,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, sessionCookieName, secure,
+		nil, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -80,12 +80,12 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
 // NewAuthenticatedForumHandler constructs the current alpha browser boundary
-// with forum reads, publication, preview, and author editing.
+// with forum reads, publication, preview, author editing, and soft deletion.
 //
 // Complexity: construction and dispatch retain NewAuthenticatedHandler's
 // bounds; delegated publishing/editing services retain their own bounded
@@ -102,15 +102,16 @@ func NewAuthenticatedForumHandler(
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
 	editPost PostEditor,
+	deletePost PostDeleter,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
-	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil {
 		return nil, fmt.Errorf("browser forum services are required")
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, sessionCookieName, secure,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, sessionCookieName, secure,
 	)
 }
 
@@ -132,6 +133,7 @@ func newAuthenticatedHandler(
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
 	editPost PostEditor,
+	deletePost PostDeleter,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
@@ -230,11 +232,11 @@ func newAuthenticatedHandler(
 		}
 	}
 	var authenticatedEditingHandler http.Handler
-	if loadEditablePost != nil || editPost != nil {
-		if loadEditablePost == nil || editPost == nil {
+	if loadEditablePost != nil || editPost != nil || deletePost != nil {
+		if loadEditablePost == nil || editPost == nil || deletePost == nil {
 			return nil, fmt.Errorf("browser editing services are incomplete")
 		}
-		editingHandler, editingErr := newEditingHandler(builder, loadEditablePost, editPost)
+		editingHandler, editingErr := newEditingHandler(builder, loadEditablePost, editPost, deletePost)
 		if editingErr != nil {
 			return nil, fmt.Errorf("construct editing routes: %w", editingErr)
 		}
@@ -274,6 +276,9 @@ func newAuthenticatedHandler(
 				identifier, editPath := strings.CutSuffix(identifierAndSuffix, "/edit")
 				if !editPath && request.Method == http.MethodPost {
 					identifier, editPath = strings.CutSuffix(identifierAndSuffix, "/edit/preview")
+					if !editPath {
+						identifier, editPath = strings.CutSuffix(identifierAndSuffix, "/delete")
+					}
 				}
 				if postPath && editPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
 					if _, identifierErr := parsePostID(identifier); identifierErr == nil {

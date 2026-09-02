@@ -205,4 +205,34 @@ FROM (
 ) AS ordered_posts`, timestampTopic.TopicID).Scan(&timestampsMonotonic); err != nil || !timestampsMonotonic {
 		t.Fatalf("post timestamps monotonic = (%t, %v), want true/nil", timestampsMonotonic, err)
 	}
+
+	deleteTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Author deletion", "retain **source**")
+	if err != nil {
+		t.Fatalf("create delete topic: %v", err)
+	}
+	if foreign, foreignErr := DeletePost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, foreignActor, deleteTopic.PostID, 1); foreign != (DeleteResult{}) || !errors.Is(foreignErr, ErrPostDeleteDenied) {
+		t.Fatalf("foreign DeletePost() = (%+v, %v), want denied", foreign, foreignErr)
+	}
+	if stale, staleErr := DeletePost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, deleteTopic.PostID, 2); stale != (DeleteResult{}) || !errors.Is(staleErr, ErrPostDeleteConflict) {
+		t.Fatalf("stale DeletePost() = (%+v, %v), want conflict", stale, staleErr)
+	}
+	deleted, err := DeletePost(ctx, connections[0], func() time.Time { return createdAt.Add(-time.Hour) }, actor, deleteTopic.PostID, 1)
+	if err != nil || deleted != (DeleteResult{TopicID: deleteTopic.TopicID, PostID: deleteTopic.PostID, PostNumber: 1, Revision: 1}) {
+		t.Fatalf("DeletePost() = (%+v, %v)", deleted, err)
+	}
+	var deletedAt time.Time
+	var deletedBy int64
+	var deletionReason, retainedSource string
+	if err := connections[0].QueryRow(ctx, `SELECT deleted_at, deleted_by, deletion_reason, markdown_source FROM public.posts WHERE id = $1`, deleteTopic.PostID).Scan(
+		&deletedAt, &deletedBy, &deletionReason, &retainedSource,
+	); err != nil || deletedAt.Before(createdAt) || deletedBy != memberID || deletionReason != "Deleted by author" || retainedSource != "retain **source**" {
+		t.Fatalf("persisted delete = (%s, %d, %q, %q, %v)", deletedAt, deletedBy, deletionReason, retainedSource, err)
+	}
+	visibleAfterDelete, err := store.GetVisibleTopicPostPage(ctx, db.New(connections[0]), deleteTopic.TopicID, 1, actor)
+	if err != nil || visibleAfterDelete.TotalPosts != 0 || len(visibleAfterDelete.Rows) != 1 || visibleAfterDelete.Rows[0].PostID.Valid {
+		t.Fatalf("visible deleted topic = (%+v, %v), want empty sentinel", visibleAfterDelete, err)
+	}
+	if repeated, repeatedErr := DeletePost(ctx, connections[0], time.Now, actor, deleteTopic.PostID, 1); repeated != (DeleteResult{}) || !errors.Is(repeatedErr, pgx.ErrNoRows) {
+		t.Fatalf("repeated DeletePost() = (%+v, %v), want missing", repeated, repeatedErr)
+	}
 }

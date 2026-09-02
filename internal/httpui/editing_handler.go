@@ -17,24 +17,29 @@ import (
 
 type EditablePostLoader func(context.Context, auth.AccessContext, int64) (store.EditablePost, error)
 type PostEditor func(context.Context, auth.AccessContext, int64, int32, string) (forum.EditResult, error)
+type PostDeleter func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error)
 
 const maximumEditFormRevision = int64(1<<31 - 1)
+const maximumDeleteFormRevision = int64(1 << 31)
 
-// newEditingHandler constructs the authenticated author-edit form, preview,
-// and apply boundary. GET and preview use read authority for presentation;
-// apply delegates final authority to the locked edit transaction.
+// newEditingHandler constructs authenticated author edit, preview, apply, and
+// soft-delete routes. GET and preview use read authority for presentation;
+// writes delegate final authority to their locked transactions.
 //
 // Complexity: construction is tight Theta(1). For bounded form bytes
 // n <= 262,144, delegated work D, and response bytes r, request time is
 // O(n+D+r), Omega(1), and auxiliary space is O(n+r), Omega(1), without a tight
 // bound because PostgreSQL, rendering, and writer work vary. Each delegate is
 // called at most once on success paths and no work is retried or detached.
-func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEditor) (http.Handler, error) {
+func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEditor, deletePost PostDeleter) (http.Handler, error) {
 	if load == nil {
 		return nil, fmt.Errorf("editable post loader is required")
 	}
 	if edit == nil {
 		return nil, fmt.Errorf("post editor is required")
+	}
+	if deletePost == nil {
+		return nil, fmt.Errorf("post deleter is required")
 	}
 	loginURL, err := builder.Path("login")
 	if err != nil {
@@ -108,7 +113,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 	}
 	serveError := func(response http.ResponseWriter, editErr error) {
 		status, message := http.StatusServiceUnavailable, "editing unavailable"
-		if errors.Is(editErr, forum.ErrPostEditDenied) {
+		if errors.Is(editErr, forum.ErrPostEditDenied) || errors.Is(editErr, forum.ErrPostDeleteDenied) {
 			status, message = http.StatusForbidden, "editing denied"
 		} else if errors.Is(editErr, pgx.ErrNoRows) {
 			status, message = http.StatusNotFound, "page not found"
@@ -241,6 +246,47 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		}
 		servePublishingRedirect(response, request, location)
 	})
+	router.Post("/posts/{postID}/delete", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		access, redirect := authorized(request)
+		if redirect != "" {
+			servePublishingRedirect(response, request, redirect)
+			return
+		}
+		postID, parseErr := parsePostID(chi.URLParam(request, "postID"))
+		if request.URL.RawPath != "" || request.URL.RawQuery != "" || parseErr != nil {
+			http.Error(response, "page not found", http.StatusNotFound)
+			return
+		}
+		if csrfErr := validateCSRFRequest(request, maximumPublishingFormBytes); csrfErr != nil {
+			http.Error(response, "request verification failed", http.StatusForbidden)
+			return
+		}
+		revision, formErr := parseDeleteForm(request)
+		if formErr != nil {
+			http.Error(response, "invalid delete form", http.StatusBadRequest)
+			return
+		}
+		result, deleteErr := deletePost(request.Context(), access, postID, revision)
+		if deleteErr != nil {
+			if errors.Is(deleteErr, forum.ErrPostDeleteConflict) {
+				http.Error(response, "post changed; reload before deleting", http.StatusConflict)
+				return
+			}
+			serveError(response, deleteErr)
+			return
+		}
+		if result.PostID != postID || result.TopicID <= 0 || result.PostNumber <= 0 || result.Revision != revision {
+			http.Error(response, "editing unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		location, buildErr := builder.Path("topics", strconv.FormatInt(result.TopicID, 10))
+		if buildErr != nil {
+			http.Error(response, "editing unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		servePublishingRedirect(response, request, location)
+	})
 	return recordRoutePattern(router), nil
 }
 
@@ -263,9 +309,47 @@ func parseEditForm(request *http.Request) (string, int32, error) {
 		return "", 0, fmt.Errorf("edit form field is missing, duplicated, or unknown")
 	}
 	rawRevision := request.PostForm.Get("revision")
-	parsedRevision, err := strconv.ParseInt(rawRevision, 10, 32)
-	if err != nil || parsedRevision <= 0 || parsedRevision >= maximumEditFormRevision || strconv.FormatInt(parsedRevision, 10) != rawRevision {
+	parsedRevision, err := parseCanonicalRevision(rawRevision, maximumEditFormRevision)
+	if err != nil {
 		return "", 0, fmt.Errorf("edit revision is invalid")
 	}
-	return request.PostForm.Get("markdown"), int32(parsedRevision), nil
+	return request.PostForm.Get("markdown"), parsedRevision, nil
+}
+
+// parseDeleteForm accepts only the CSRF field and one canonical positive int32
+// revision from an already bounded request.
+//
+// Complexity: for n body bytes and f fields, time and auxiliary space are
+// O(n+f), Omega(n), delegated to net/http form parsing.
+func parseDeleteForm(request *http.Request) (int32, error) {
+	if err := request.ParseForm(); err != nil {
+		return 0, fmt.Errorf("parse delete form: %w", err)
+	}
+	allowed := map[string]bool{"_csrf": true, "revision": true}
+	for key, values := range request.PostForm {
+		if !allowed[key] || len(values) != 1 {
+			return 0, fmt.Errorf("delete form field is missing, duplicated, or unknown")
+		}
+	}
+	if len(request.PostForm["revision"]) != 1 {
+		return 0, fmt.Errorf("delete form field is missing, duplicated, or unknown")
+	}
+	revision, err := parseCanonicalRevision(request.PostForm.Get("revision"), maximumDeleteFormRevision)
+	if err != nil {
+		return 0, fmt.Errorf("delete revision is invalid")
+	}
+	return revision, nil
+}
+
+// parseCanonicalRevision accepts one positive canonical decimal int32 below an
+// operation-specific exclusive maximum.
+//
+// Complexity: for n <= 10 input bytes, time is O(n), Omega(1), and auxiliary
+// space is tight Theta(1).
+func parseCanonicalRevision(raw string, exclusiveMaximum int64) (int32, error) {
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil || parsed <= 0 || parsed >= exclusiveMaximum || strconv.FormatInt(parsed, 10) != raw {
+		return 0, fmt.Errorf("revision is invalid")
+	}
+	return int32(parsed), nil
 }

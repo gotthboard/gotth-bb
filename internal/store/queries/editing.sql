@@ -60,3 +60,19 @@ WHERE post.id = sqlc.arg(post_id)
       )
     )
   );
+
+-- name: SoftDeletePost :one
+UPDATE public.posts AS post
+SET deleted_at = GREATEST(
+        sqlc.arg(at_time)::timestamptz,
+        post.created_at,
+        post.updated_at,
+        COALESCE(post.edited_at, '-infinity'::timestamptz)
+    ),
+    deleted_by = sqlc.arg(author_id)::bigint,
+    deletion_reason = 'Deleted by author'
+WHERE post.id = sqlc.arg(post_id)
+  AND post.author_id = sqlc.arg(author_id)::bigint
+  AND post.revision = sqlc.arg(expected_revision)
+  AND post.deleted_at IS NULL
+RETURNING post.id AS post_id, post.topic_id, post.post_number, post.revision;
