@@ -47,7 +47,7 @@ SELECT
     advanced_topic.topic_id,
     advanced_topic.post_id,
     advanced_topic.post_number,
-    (
+    (1::bigint + (
         SELECT count(*)::bigint
         FROM public.posts AS node
         WHERE node.topic_id = advanced_topic.topic_id
@@ -63,7 +63,7 @@ SELECT
                   AND cardinality(descendant.thread_path) > cardinality(node.thread_path)
             )
           )
-    ) AS node_ordinal
+    ))::bigint AS node_ordinal
 FROM advanced_topic
 `
 

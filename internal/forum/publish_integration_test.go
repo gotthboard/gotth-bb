@@ -82,11 +82,11 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	actor := policy.AccessContext{Authenticated: true, UserID: memberID, Role: policy.RoleMember}
 	createdAt := time.Date(2026, time.September, 2, 4, 45, 0, 0, time.UTC)
 	topic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Concurrent replies", "First **post**")
-	if err != nil || topic.TopicID <= 0 || topic.PostID <= 0 || topic.PostNumber != 1 {
+	if err != nil || topic.TopicID <= 0 || topic.PostID <= 0 || topic.PostNumber != 1 || topic.NodeOrdinal != 1 {
 		t.Fatalf("CreateTopic() = (%+v, %v)", topic, err)
 	}
 	editable, err := store.GetEditablePost(ctx, db.New(connections[0]), topic.PostID, actor)
-	if err != nil || editable != (store.EditablePost{PostID: topic.PostID, TopicID: topic.TopicID, PostNumber: 1, MarkdownSource: "First **post**", Revision: 1}) {
+	if err != nil || editable != (store.EditablePost{PostID: topic.PostID, TopicID: topic.TopicID, PostNumber: 1, NodeOrdinal: 1, MarkdownSource: "First **post**", Revision: 1}) {
 		t.Fatalf("GetEditablePost() = (%+v, %v)", editable, err)
 	}
 	foreignEditable, foreignEditableErr := store.GetEditablePost(ctx, db.New(connections[0]), topic.PostID,
@@ -99,11 +99,11 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("read-only CreateTopic() = (%+v, %v), want denied", denied, err)
 	}
 	edited, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-time.Hour) }, actor, topic.PostID, 1, "Edited **first post**")
-	if err != nil || edited != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, Revision: 2}) {
+	if err != nil || edited != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, NodeOrdinal: 1, Revision: 2}) {
 		t.Fatalf("EditPost() = (%+v, %v)", edited, err)
 	}
 	secondEdit, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-2 * time.Hour) }, actor, topic.PostID, 2, "Edited **again**")
-	if err != nil || secondEdit != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, Revision: 3}) {
+	if err != nil || secondEdit != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, NodeOrdinal: 1, Revision: 3}) {
 		t.Fatalf("second EditPost() = (%+v, %v)", secondEdit, err)
 	}
 	if stale, staleErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, topic.PostID, 2, "stale overwrite"); stale != (EditResult{}) || !errors.Is(staleErr, ErrPostEditConflict) {
@@ -150,7 +150,7 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	numbers := make([]int, 0, concurrentReplies)
 	postIDs := make(map[int64]struct{}, concurrentReplies)
 	for result := range results {
-		if result.TopicID != topic.TopicID || result.PostID <= 0 {
+		if result.TopicID != topic.TopicID || result.PostID <= 0 || result.NodeOrdinal < 2 {
 			t.Fatalf("concurrent reply returned invalid result: %+v", result)
 		}
 		numbers = append(numbers, int(result.PostNumber))
@@ -212,11 +212,11 @@ FROM (
 		t.Fatalf("create threaded topic: %v", err)
 	}
 	firstChild, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(time.Minute) }, actor, threadTopic.TopicID, threadTopic.PostID, "first child")
-	if err != nil {
+	if err != nil || firstChild.NodeOrdinal != 2 {
 		t.Fatalf("create first child: %v", err)
 	}
 	grandchild, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(2 * time.Minute) }, actor, threadTopic.TopicID, firstChild.PostID, "grandchild")
-	if err != nil {
+	if err != nil || grandchild.NodeOrdinal != 3 {
 		t.Fatalf("create grandchild: %v", err)
 	}
 	var parentID int64

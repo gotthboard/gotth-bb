@@ -97,7 +97,7 @@ SELECT
     page_nodes.post_id,
     page_nodes.post_number,
     page_nodes.parent_post_id,
-    CASE WHEN page_nodes.post_id IS NOT NULL THEN cardinality(page_nodes.thread_path) ELSE NULL::integer END AS thread_depth,
+    COALESCE(cardinality(page_nodes.thread_path), 0)::integer AS thread_depth,
     page_nodes.is_tombstone,
     page_nodes.rendered_html,
     page_nodes.renderer_version,
