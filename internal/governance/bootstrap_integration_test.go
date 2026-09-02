@@ -3,6 +3,7 @@
 package governance
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -147,5 +148,56 @@ func TestBootstrapAdministratorOnPostgreSQL17(t *testing.T) {
 		actionType != "bootstrap_administrator" || previousRole != "member" || resultingRole != "administrator" {
 		t.Fatalf("admitted bootstrap state = (admins %d, audits %d, actor %q/%q, action %q, roles %q/%q, %v)",
 			activeAdministrators, finalAudits, actorKind, operatorIdentifier, actionType, previousRole, resultingRole, err)
+	}
+
+	if _, err := connections[0].Exec(ctx, `TRUNCATE public.moderation_actions, public.sessions, public.external_identities, public.users RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatalf("reset browser bootstrap scenario: %v", err)
+	}
+	var browserUserID, browserSessionID int64
+	var browserCreatedAt time.Time
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Browser Administrator') RETURNING id, created_at`).Scan(&browserUserID, &browserCreatedAt); err != nil {
+		t.Fatalf("insert browser bootstrap target: %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, $2, $3)`, browserUserID, issuer, subject); err != nil {
+		t.Fatalf("insert browser bootstrap identity: %v", err)
+	}
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at)
+		VALUES ($1, $2, $3, $3, $3, $4) RETURNING id`, bytes.Repeat([]byte{0x71}, 32), browserUserID, browserCreatedAt, browserCreatedAt.Add(time.Hour)).Scan(&browserSessionID); err != nil {
+		t.Fatalf("insert browser bootstrap session: %v", err)
+	}
+	browserAtTime := browserCreatedAt.Add(time.Second).UTC().Truncate(time.Microsecond)
+	browserResult, err := ClaimInitialAdministrator(
+		ctx, connections[0], func() time.Time { return browserAtTime }, browserUserID, browserSessionID, issuer, subject,
+		pgtype.UUID{Bytes: [16]byte{0x50}, Valid: true},
+	)
+	if err != nil || browserResult.UserID != browserUserID || browserResult.AuditID <= 0 || browserResult.RevokedSessionID != browserSessionID {
+		t.Fatalf("browser administrator claim = (%+v, %v)", browserResult, err)
+	}
+	var browserRole, browserActorKind, browserAction, browserPreviousRole, browserResultingRole string
+	var browserAuditActor, browserAuditTarget int64
+	var revokedAt *time.Time
+	if err := connections[0].QueryRow(ctx, `SELECT u.role, s.revoked_at, a.actor_kind, a.actor_user_id,
+		a.target_user_id, a.action_type, a.previous_state->>'role', a.resulting_state->>'role'
+		FROM public.users AS u
+		JOIN public.sessions AS s ON s.user_id = u.id
+		JOIN public.moderation_actions AS a ON a.target_user_id = u.id
+		WHERE u.id = $1`, browserUserID).Scan(
+		&browserRole, &revokedAt, &browserActorKind, &browserAuditActor, &browserAuditTarget,
+		&browserAction, &browserPreviousRole, &browserResultingRole,
+	); err != nil || browserRole != "administrator" || revokedAt == nil || !revokedAt.Equal(browserAtTime) ||
+		browserActorKind != "forum_user" || browserAuditActor != browserUserID || browserAuditTarget != browserUserID ||
+		browserAction != "bootstrap_administrator" || browserPreviousRole != "member" || browserResultingRole != "administrator" {
+		t.Fatalf("browser bootstrap state = (role %q, revoked %v, actor %q/%d, target %d, action %q, roles %q/%q, %v)",
+			browserRole, revokedAt, browserActorKind, browserAuditActor, browserAuditTarget, browserAction, browserPreviousRole, browserResultingRole, err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET role = 'member' WHERE id = $1`, browserUserID); err != nil {
+		t.Fatalf("simulate administrator-loss repair state: %v", err)
+	}
+	second, err := BootstrapAdministrator(
+		ctx, connections[0], func() time.Time { return browserAtTime.Add(time.Second) }, issuer, subject, "operator-after-browser",
+		pgtype.UUID{Bytes: [16]byte{0x51}, Valid: true},
+	)
+	if !errors.Is(err, ErrAdministratorSetupClosed) || second != (BootstrapResult{}) {
+		t.Fatalf("bootstrap after historical browser claim = (%+v, %v), want permanently closed", second, err)
 	}
 }
