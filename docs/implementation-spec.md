@@ -666,16 +666,41 @@ Each page contains at most 25 topics. Malformed, overflowed, zero, excessive,
 or empty later pages use the same `404` response as a missing or inaccessible
 area. PostgreSQL receives only the resulting bounded offset and fixed limit.
 
+Topic pages use a positive canonical base-10 `int64` topic ID path segment.
+Signs, leading zeros, overflow, escaped paths, extra segments, and zero are not
+normalized and share the same `404` response as a missing, deleted, hidden, or
+area-inaccessible topic. The page query uses the same canonical spelling and
+1-through-10,000 bound as area topic lists. Each page contains at most 25
+nondeleted posts in ascending immutable `post_number` order; an empty first page
+is permitted for a visible topic whose posts are all soft-deleted, while an
+empty later page is `404`. PostgreSQL receives a maximum offset of 249,975 and
+the fixed limit only.
+
+Topic metadata and the post page come from one access-filtered statement and
+one PostgreSQL snapshot. It joins the owning area, applies the complete
+server-derived member, staff, and group authority before returning topic text,
+and excludes deleted topics, hidden topics for nonstaff, and deleted posts. A
+left-joined null post row represents only a visible topic with zero visible
+posts on page 1; offset pages receive no sentinel and therefore return `404`.
+The window count and every breadcrumb field come from that same authorized
+result, so a concurrent policy commit cannot produce mixed-authority metadata
+and posts. Topic canonical URLs use `/topics/<topic-id>` and omit `page=1`.
+Stable post URLs append `#post-<post-id>` to that topic page, including the
+canonical page query when required. Breadcrumb area links use the immutable
+area slug returned by the same access-controlled result.
+
 Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
 bounded.
 
 The browser router activates `/login`, `/auth/callback`, and `/logout` as exact
 paths. Session lookup wraps only exact routes that can consume identity; in the
-current shell those are `/` and `/logout`. Health, static, and unknown paths go
-directly to the public router and cannot become unavailable merely because the
-session store is unavailable. Each later forum route must opt into session
-lookup explicitly when it is admitted.
+current shell those are `/`, one-segment `GET /areas/{slug}` requests, and
+`/logout`. Malformed/nested area paths, wrong area methods, health, static, and
+unknown paths go directly to the public router and cannot become unavailable
+merely because the session store is unavailable. `GET /topics/{id}` must opt
+into the same exact-shape session boundary when its handler is admitted; no
+broader `/topics/` prefix receives session authority.
 
 ## 11. Full-page and HTMX responses
 

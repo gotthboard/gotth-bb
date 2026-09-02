@@ -171,6 +171,8 @@ Requirements: FORUM-001 through FORUM-006, READ-001, READ-005.
 Deliverables:
 
 - Area index, area topic list, and paginated topic page.
+- Canonical positive topic-ID parsing and bounded 25-post pages.
+- One atomically access-filtered topic metadata and post-page query.
 - Stable topic and post URLs.
 - Pinned, locked, hidden, and archived display state.
 - Access-controlled list counts.
@@ -178,7 +180,7 @@ Deliverables:
 Exit evidence:
 
 - Restricted content is absent from every alpha list, count, and breadcrumb.
-- Pagination limits and invalid cursors/pages are bounded.
+- Pagination limits and invalid IDs/cursors/pages are bounded.
 
 ### A1-07: forum write path
 

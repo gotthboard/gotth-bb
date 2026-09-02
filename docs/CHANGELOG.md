@@ -5,6 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:52 CDT — Specify bounded topic read pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `docs/feature-plan.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Closed the remaining A1-06 implementation choices before adding topic-detail
+SQL or handlers. Topic IDs now have one canonical positive decimal contract;
+post pages use fixed 25-row ascending pages with a 10,000-page ceiling; empty
+later pages collapse into the normal inaccessible-topic `404`; and stable post
+URLs use the topic ID, canonical page query, and post ID fragment.
+
+The contract requires topic metadata, posts, counts, and breadcrumbs to come
+from one access-filtered PostgreSQL statement and snapshot. A left-joined null
+post row represents an authorized topic with no visible posts on page 1; later
+offsets receive no sentinel and collapse to `404`. This avoids mixed-authority
+results during concurrent visibility changes. Ordinary topic reads exclude
+soft-deleted posts rather than exposing moderation-retained content.
+
+Verification:
+
+- Route, identifier, pagination, ordering, URL, and soft-deletion behavior are
+  explicit enough to constrain SQL, store, and HTTP tests
+- Maximum page offset is fixed at 249,975 and only a fixed 25-row limit reaches
+  PostgreSQL
+- The single-snapshot query shape forbids mixed-authority metadata/posts during
+  concurrent policy changes
+
+Risks / non-goals:
+
+- This contract does not yet implement the topic queries or page
+- Staff moderation views of deleted posts remain part of A1-08, not the ordinary
+  topic read path
+
 ### 2026-09-01 21:40 CDT — Link visible discussion areas
 
 Commit: current commit; hash assigned by Git after commit
