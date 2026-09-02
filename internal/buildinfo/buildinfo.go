@@ -49,7 +49,7 @@ func validate(version, commit string) (Info, error) {
 		return Info{}, fmt.Errorf("release version is invalid")
 	}
 	parsed, parseErr := semver.NewVersion(version)
-	if parseErr != nil || parsed.String() != version {
+	if parseErr != nil || parsed.String() != version || !canonicalPreRelease(parsed.PreRelease) {
 		return Info{}, fmt.Errorf("release version is invalid")
 	}
 	if len(commit) != 40 {
@@ -61,4 +61,30 @@ func validate(version, commit string) (Info, error) {
 		}
 	}
 	return Info{Version: version, Commit: commit}, nil
+}
+
+// canonicalPreRelease enforces SemVer's no-leading-zero rule for numeric
+// prerelease identifiers, which the pinned parser deliberately does not
+// enforce itself.
+//
+// Complexity: for p prerelease bytes, time is O(p), Omega(1), and auxiliary
+// space is tight Theta(1).
+func canonicalPreRelease(preRelease semver.PreRelease) bool {
+	raw := string(preRelease)
+	segmentStart := 0
+	numeric := true
+	for index := 0; index <= len(raw); index++ {
+		if index == len(raw) || raw[index] == '.' {
+			if numeric && index-segmentStart > 1 && raw[segmentStart] == '0' {
+				return false
+			}
+			segmentStart = index + 1
+			numeric = true
+			continue
+		}
+		if raw[index] < '0' || raw[index] > '9' {
+			numeric = false
+		}
+	}
+	return true
 }
