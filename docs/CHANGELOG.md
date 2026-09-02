@@ -5,6 +5,63 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 13:34 CDT — Add audited discussion-area administration
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `internal/administration/area.go`
+- `internal/administration/area_integration_test.go`
+- `internal/administration/area_test.go`
+- `internal/httpui/area_administration_handler.go`
+- `internal/httpui/area_administration_handler_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/static.go`
+- `internal/httpui/view.go`
+- `internal/policy/administer.go`
+- `internal/policy/administer_test.go`
+- `internal/store/queries/areas.sql`
+- generated SQL, template, and stylesheet artifacts
+
+Explanation:
+
+Administrators now have a visible `Manage areas` route at `/admin/areas` that
+creates and edits the discussion areas required by the existing topic and
+reply flows. The form controls the immutable slug, name, description, display
+order, public/authenticated/group visibility, normal/read-only/archived posting
+mode, and an explicit audit reason. Group-restricted visibility is offered only
+when local groups exist and requires at least one selected group.
+
+Every mutation reauthorizes current active local administrator authority,
+requires fresh authentication and CSRF verification, locks the affected row,
+rejects stale edit revisions, and commits the area, group mappings, and one
+immutable moderation action in the same transaction. Duplicate slugs, missing
+groups, stale forms, malformed state, and audit failures leave no partial
+change. The stylesheet received a new full-SHA-256 URL because the generated
+bytes changed.
+
+Verification:
+
+- Full generation, formatting, vet, race, coverage, and repository verification
+  pass.
+- The changed policy and HTTP/service packages pass 50 race-detector
+  repetitions.
+- A PostgreSQL 17.10 integration uses a restricted runtime role to prove area
+  creation, group restriction, audited edits, stale-edit rejection,
+  duplicate-slug rollback, and audit-failure rollback.
+- Two independent native release builds are byte-identical.
+
+Risks / non-goals:
+
+- Area deletion and forum-group administration are intentionally absent.
+- Existing areas, topics, posts, identities, sessions, registration policy,
+  Caddy, and PostgreSQL schema are not changed by this feature.
+- Owner confirmation of the deployed create-area/topic/reply journey remains
+  required before this becomes a known-good reference.
+
 ### 2026-09-02 12:43 CDT — Recover stale logout at the area index
 
 Commit: current commit; hash assigned by Git after commit
