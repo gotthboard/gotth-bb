@@ -12,7 +12,7 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "36aa5f1c6d71db407e7dfc84ecbb3d38253bf7686e0b8b96cf7e1c34dae047e3"
+	const stylesheetSHA256 = "bc1d159bbac02ede6796386bbbd35f48226f85b0b719e0734fb57946954bf046"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
@@ -38,6 +38,26 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 				t.Fatalf("asset does not contain %q", test.contains)
 			}
 		})
+	}
+}
+
+func TestEmbeddedStylesheetContainsRuntimeThreadDepthClasses(t *testing.T) {
+	t.Parallel()
+
+	stylesheet := string(appStylesheet)
+	for _, selector := range []string{
+		".thread-depth-2{margin-inline-start:.5rem}",
+		".thread-depth-3{margin-inline-start:1rem}",
+		".thread-depth-4{margin-inline-start:1.5rem}",
+		".thread-depth-5{margin-inline-start:2rem}",
+		".thread-depth-6{margin-inline-start:2.5rem}",
+		".thread-depth-capped{margin-inline-start:3rem}",
+		"@media (min-width:40rem)",
+		".thread-depth-capped{margin-inline-start:9rem}",
+	} {
+		if !strings.Contains(stylesheet, selector) {
+			t.Fatalf("stylesheet does not contain runtime thread selector %q", selector)
+		}
 	}
 }
 

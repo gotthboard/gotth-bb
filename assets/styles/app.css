@@ -34,4 +34,59 @@
     height: auto;
     max-width: 100%;
   }
+
+  /*
+   * Thread indentation is selected by Go at runtime, so Tailwind cannot
+   * discover these class names by scanning the Templ source. Keep the closed
+   * depth mapping here where it is emitted into the built stylesheet.
+   */
+  .thread-depth-2 {
+    margin-inline-start: 0.5rem;
+  }
+
+  .thread-depth-3 {
+    margin-inline-start: 1rem;
+  }
+
+  .thread-depth-4 {
+    margin-inline-start: 1.5rem;
+  }
+
+  .thread-depth-5 {
+    margin-inline-start: 2rem;
+  }
+
+  .thread-depth-6 {
+    margin-inline-start: 2.5rem;
+  }
+
+  .thread-depth-capped {
+    margin-inline-start: 3rem;
+  }
+
+  @media (min-width: 40rem) {
+    .thread-depth-2 {
+      margin-inline-start: 1.5rem;
+    }
+
+    .thread-depth-3 {
+      margin-inline-start: 3rem;
+    }
+
+    .thread-depth-4 {
+      margin-inline-start: 4.5rem;
+    }
+
+    .thread-depth-5 {
+      margin-inline-start: 6rem;
+    }
+
+    .thread-depth-6 {
+      margin-inline-start: 7.5rem;
+    }
+
+    .thread-depth-capped {
+      margin-inline-start: 9rem;
+    }
+  }
 }

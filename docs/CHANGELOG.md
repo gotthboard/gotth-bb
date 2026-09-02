@@ -5,6 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 17:05 CDT — Ship the runtime thread-indentation rules
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `assets/styles/app.css`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/static.go`
+- `internal/httpui/static/`
+- `internal/httpui/static_test.go`
+- `package.json`
+
+Explanation:
+
+The alpha.2 candidate emitted thread-depth class names from Go, but Tailwind's
+static source scan could not discover those runtime-built strings. The HTML
+therefore contained distinct depth classes while the shipped stylesheet
+contained none of their margin rules, leaving every reply visually flush with
+the topic root.
+
+The bounded depth mapping now uses explicit component selectors declared in
+the CSS source. Depths two through six receive progressively larger logical
+inline margins, deeper replies share the documented visual cap, and the
+desktop breakpoint retains the larger spacing. The generated stylesheet has a
+new content-addressed filename.
+
+Verification:
+
+- The depth mapper test now checks every concrete class and the capped cases.
+- The embedded-asset test requires every runtime selector, the mobile values,
+  the desktop breakpoint, and the desktop cap in the generated CSS bytes.
+- Browser evidence on the superseded candidate recorded the emitted depth
+  classes computing to `0px`, directly reproducing the reported defect.
+
+Risks / non-goals:
+
+- This changes visual indentation only. Parent relationships, tree order,
+  pagination, publishing, editing, deletion, and database state are unchanged.
+
 ### 2026-09-02 15:58 CDT — Complete the alpha.2 threaded forum surface
 
 Commit: current commit; hash assigned by Git after commit

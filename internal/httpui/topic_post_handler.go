@@ -310,17 +310,17 @@ func threadIndentClass(depth int32) string {
 	case 1:
 		return ""
 	case 2:
-		return "ml-2 sm:ml-6"
+		return "thread-depth-2"
 	case 3:
-		return "ml-4 sm:ml-12"
+		return "thread-depth-3"
 	case 4:
-		return "ml-6 sm:ml-18"
+		return "thread-depth-4"
 	case 5:
-		return "ml-8 sm:ml-24"
+		return "thread-depth-5"
 	case 6:
-		return "ml-10 sm:ml-30"
+		return "thread-depth-6"
 	default:
-		return "ml-12 sm:ml-36"
+		return "thread-depth-capped"
 	}
 }
 

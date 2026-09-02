@@ -495,8 +495,14 @@ func TestTopicPostListHandlerRendersThreadContextAndContentFreeTombstone(t *test
 func TestThreadIndentClassCapsVisualDepth(t *testing.T) {
 	t.Parallel()
 
-	if threadIndentClass(1) != "" || threadIndentClass(2) == "" || threadIndentClass(7) != threadIndentClass(32) {
-		t.Fatalf("thread indentation mapping is not bounded")
+	wants := map[int32]string{
+		1: "", 2: "thread-depth-2", 3: "thread-depth-3", 4: "thread-depth-4",
+		5: "thread-depth-5", 6: "thread-depth-6", 7: "thread-depth-capped", 32: "thread-depth-capped",
+	}
+	for depth, want := range wants {
+		if got := threadIndentClass(depth); got != want {
+			t.Fatalf("threadIndentClass(%d) = %q, want %q", depth, got, want)
+		}
 	}
 }
 
