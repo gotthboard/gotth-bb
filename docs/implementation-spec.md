@@ -695,12 +695,14 @@ bounded.
 
 The browser router activates `/login`, `/auth/callback`, and `/logout` as exact
 paths. Session lookup wraps only exact routes that can consume identity; in the
-current shell those are `/`, one-segment `GET /areas/{slug}` requests, and
-`/logout`. Malformed/nested area paths, wrong area methods, health, static, and
-unknown paths go directly to the public router and cannot become unavailable
-merely because the session store is unavailable. `GET /topics/{id}` must opt
-into the same exact-shape session boundary when its handler is admitted; no
-broader `/topics/` prefix receives session authority.
+current shell those are `/`, one-segment `GET /areas/{slug}` requests,
+canonical positive-decimal one-segment `GET /topics/{id}` requests, and
+`/logout`. Topic IDs must pass the canonical parser before session lookup.
+Noncanonical escaped paths,
+malformed/nested read paths, wrong methods, health, static, and unknown paths go
+directly to the public router and cannot become unavailable merely because the
+session store is unavailable. No broader `/areas/` or `/topics/` prefix receives
+session authority.
 
 ## 11. Full-page and HTMX responses
 

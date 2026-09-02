@@ -91,7 +91,19 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		}
 		return store.VisibleAreaTopicPage{Area: db.Area{ID: 9, Slug: "members", Name: "Member area"}, Number: 1}, nil
 	}
-	handler, err := NewAuthenticatedHandler(builder, service, listAreas, loadAreaTopics, store.MaximumTopicPage, "gotth_bb_session", true)
+	postCalls := 0
+	loadTopicPosts := func(_ context.Context, access auth.AccessContext, topicID int64, page int32) (store.VisibleTopicPostPage, error) {
+		postCalls++
+		if !access.Authenticated || access.UserID != 17 || access.Role != auth.RoleMember ||
+			!reflect.DeepEqual(access.GroupIDs, []int64{23, 29}) || topicID != 42 || page != 1 {
+			t.Fatalf("topic-post access = (%+v, %d, %d)", access, topicID, page)
+		}
+		return topicPostTestPage(1), nil
+	}
+	handler, err := NewAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, store.MaximumTopicPage,
+		loadTopicPosts, store.MaximumPostPage, "gotth_bb_session", true,
+	)
 	if err != nil {
 		t.Fatalf("NewAuthenticatedHandler() returned error: %v", err)
 	}
@@ -110,12 +122,15 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if response.Code != test.wantStatus || service.authenticateCalls != 0 || areaCalls != 0 || topicCalls != 0 {
-			t.Fatalf("infrastructure request %q = (status %d, authentication/area/topic calls %d/%d/%d)",
-				test.target, response.Code, service.authenticateCalls, areaCalls, topicCalls)
+		if response.Code != test.wantStatus || service.authenticateCalls != 0 || areaCalls != 0 || topicCalls != 0 || postCalls != 0 {
+			t.Fatalf("infrastructure request %q = (status %d, authentication/area/topic/post calls %d/%d/%d/%d)",
+				test.target, response.Code, service.authenticateCalls, areaCalls, topicCalls, postCalls)
 		}
 	}
-	for _, target := range []string{"/areas", "/areas/", "/areas/public/nested", "/areas/public%2Fnested"} {
+	for _, target := range []string{
+		"/areas", "/areas/", "/areas/public/nested", "/areas/public%2Fnested", "/areas/%70ublic",
+		"/topics", "/topics/", "/topics/01", "/topics/42/nested", "/topics/42%2Fnested", "/topics/%34%32",
+	} {
 		request := httptest.NewRequest(http.MethodGet, target, nil)
 		request.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
 		response := httptest.NewRecorder()
@@ -130,6 +145,13 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 	handler.ServeHTTP(wrongMethodResponse, wrongMethodRequest)
 	if wrongMethodResponse.Code != http.StatusMethodNotAllowed || service.authenticateCalls != 0 || topicCalls != 0 {
 		t.Fatalf("wrong area method = (status %d, authentication/topic calls %d/%d)", wrongMethodResponse.Code, service.authenticateCalls, topicCalls)
+	}
+	wrongTopicMethodRequest := httptest.NewRequest(http.MethodPost, "/topics/42", nil)
+	wrongTopicMethodRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	wrongTopicMethodResponse := httptest.NewRecorder()
+	handler.ServeHTTP(wrongTopicMethodResponse, wrongTopicMethodRequest)
+	if wrongTopicMethodResponse.Code != http.StatusMethodNotAllowed || service.authenticateCalls != 0 || postCalls != 0 {
+		t.Fatalf("wrong topic method = (status %d, authentication/post calls %d/%d)", wrongTopicMethodResponse.Code, service.authenticateCalls, postCalls)
 	}
 
 	loginRequest := httptest.NewRequest(http.MethodGet, "/login", nil)
@@ -197,6 +219,16 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 			areaResponse.Code, service.authenticateCalls, topicCalls, areaRequest.Pattern, areaResponse.Body.String())
 	}
 
+	topicRequest := httptest.NewRequest(http.MethodGet, "/topics/42", nil)
+	topicRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	topicResponse := httptest.NewRecorder()
+	handler.ServeHTTP(topicResponse, topicRequest)
+	if topicResponse.Code != http.StatusOK || service.authenticateCalls != 4 || postCalls != 1 || topicRequest.Pattern != "GET /topics/{topicID}" ||
+		!strings.Contains(topicResponse.Body.String(), "Welcome") {
+		t.Fatalf("topic response = (status %d, auth/post calls %d/%d, pattern %q, body %q)",
+			topicResponse.Code, service.authenticateCalls, postCalls, topicRequest.Pattern, topicResponse.Body.String())
+	}
+
 	csrfToken, err := deriveCSRFToken(sessionToken)
 	if err != nil {
 		t.Fatalf("deriveCSRFToken() returned error: %v", err)
@@ -206,7 +238,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 	logoutRequest.Header.Set(csrfHeaderName, csrfToken)
 	logoutResponse := httptest.NewRecorder()
 	handler.ServeHTTP(logoutResponse, logoutRequest)
-	if logoutResponse.Code != http.StatusSeeOther || service.authenticateCalls != 4 || service.revokeCalls != 1 || logoutRequest.Pattern != "POST /logout" {
+	if logoutResponse.Code != http.StatusSeeOther || service.authenticateCalls != 5 || service.revokeCalls != 1 || logoutRequest.Pattern != "POST /logout" {
 		t.Fatalf("logout response = (status %d, auth/revoke calls %d/%d, pattern %q)", logoutResponse.Code, service.authenticateCalls, service.revokeCalls, logoutRequest.Pattern)
 	}
 }
@@ -251,7 +283,10 @@ func TestNewAuthenticatedHandlerRejectsInvalidDependencies(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got, err := NewAuthenticatedHandler(test.builder, test.service, test.list, test.topics, test.maximum, test.cookie, true); err == nil || got != nil {
+			if got, err := NewAuthenticatedHandler(
+				test.builder, test.service, test.list, test.topics, test.maximum,
+				panicTopicPostPageLoader, store.MaximumPostPage, test.cookie, true,
+			); err == nil || got != nil {
 				t.Fatalf("NewAuthenticatedHandler() = (%v, %v), want nil/error", got, err)
 			}
 		})
@@ -314,6 +349,8 @@ func TestNewAuthenticatedHandlerFailsRevalidationWithoutServerSessionAuthority(t
 				emptyAreaIndexLister,
 				panicAreaTopicPageLoader,
 				store.MaximumTopicPage,
+				panicTopicPostPageLoader,
+				store.MaximumPostPage,
 				"gotth_bb_session",
 				true,
 			)

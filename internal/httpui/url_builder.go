@@ -128,6 +128,27 @@ func (builder URLBuilder) PathWithQuery(segments []string, query url.Values) (st
 	return browserPath + "?" + encoded, nil
 }
 
+// PathWithQueryAndFragment builds a browser-facing path, deterministic query,
+// and escaped non-empty fragment from separate application-owned components.
+// No component can replace the validated path prefix or introduce an external
+// authority.
+//
+// Complexity: for k segments containing n bytes, q query keys, v query bytes,
+// and f fragment bytes, time is O(k+n+v+q*log(q)+f), Omega(1), and auxiliary
+// space is O(k+n+v+q+f). PathWithQuery owns the path/query work; url.URL owns
+// fragment escaping.
+func (builder URLBuilder) PathWithQueryAndFragment(segments []string, query url.Values, fragment string) (string, error) {
+	if fragment == "" {
+		return "", fmt.Errorf("URL fragment is required")
+	}
+	browserURL, err := builder.PathWithQuery(segments, query)
+	if err != nil {
+		return "", err
+	}
+	escapedFragment := (&url.URL{Fragment: fragment}).EscapedFragment()
+	return browserURL + "#" + escapedFragment, nil
+}
+
 // CookiePath returns the application root with a trailing slash so the session
 // cookie matches the configured subtree without also matching sibling paths
 // that merely share the BASE_PATH byte prefix.

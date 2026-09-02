@@ -14,6 +14,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -32,10 +33,12 @@ type closeFailingListener struct {
 }
 
 type fakeDatabasePool struct {
-	mutex      sync.Mutex
-	closes     int
-	queryCalls int
-	queryArgs  []any
+	mutex               sync.Mutex
+	closes              int
+	areaQueryCalls      int
+	areaQueryArgs       []any
+	topicPostQueryCalls int
+	topicPostQueryArgs  []any
 }
 
 func (pool *fakeDatabasePool) Close() {
@@ -53,7 +56,13 @@ func (pool *fakeDatabasePool) closeCount() int {
 func (pool *fakeDatabasePool) areaQuerySnapshot() (int, []any) {
 	pool.mutex.Lock()
 	defer pool.mutex.Unlock()
-	return pool.queryCalls, append([]any(nil), pool.queryArgs...)
+	return pool.areaQueryCalls, append([]any(nil), pool.areaQueryArgs...)
+}
+
+func (pool *fakeDatabasePool) topicPostQuerySnapshot() (int, []any) {
+	pool.mutex.Lock()
+	defer pool.mutex.Unlock()
+	return pool.topicPostQueryCalls, append([]any(nil), pool.topicPostQueryArgs...)
 }
 
 func (*fakeDatabasePool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
@@ -61,14 +70,20 @@ func (*fakeDatabasePool) Exec(context.Context, string, ...any) (pgconn.CommandTa
 }
 
 func (pool *fakeDatabasePool) Query(_ context.Context, query string, args ...any) (pgx.Rows, error) {
-	if !strings.Contains(query, "FROM public.areas AS a") {
-		panic("unexpected database query")
-	}
 	pool.mutex.Lock()
 	defer pool.mutex.Unlock()
-	pool.queryCalls++
-	pool.queryArgs = append([]any(nil), args...)
-	return &fakeAreaRows{}, nil
+	switch {
+	case strings.Contains(query, "FROM public.areas AS a"):
+		pool.areaQueryCalls++
+		pool.areaQueryArgs = append([]any(nil), args...)
+		return &fakeAreaRows{}, nil
+	case strings.Contains(query, "WITH visible_topic AS"):
+		pool.topicPostQueryCalls++
+		pool.topicPostQueryArgs = append([]any(nil), args...)
+		return &fakeTopicPostRows{}, nil
+	default:
+		panic("unexpected database query")
+	}
 }
 
 type fakeAreaRows struct {
@@ -102,6 +117,48 @@ func (*fakeAreaRows) Scan(destinations ...any) error {
 }
 
 func (*fakeAreaRows) Err() error { return nil }
+
+type fakeTopicPostRows struct {
+	pgx.Rows
+	yielded bool
+}
+
+func (*fakeTopicPostRows) Close() {}
+
+func (rows *fakeTopicPostRows) Next() bool {
+	if rows.yielded {
+		return false
+	}
+	rows.yielded = true
+	return true
+}
+
+func (*fakeTopicPostRows) Scan(destinations ...any) error {
+	created := time.Date(2026, time.September, 1, 12, 0, 0, 0, time.UTC)
+	*(destinations[0].(*int64)) = 7
+	*(destinations[1].(*string)) = "public"
+	*(destinations[2].(*string)) = "Public area"
+	*(destinations[3].(*string)) = "Visible to everyone"
+	*(destinations[4].(*int64)) = 42
+	*(destinations[5].(*string)) = "First topic"
+	*(destinations[6].(*string)) = "open"
+	*(destinations[7].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[8].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[9].(*string)) = "Starter"
+	*(destinations[10].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
+	*(destinations[11].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
+	*(destinations[12].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
+	*(destinations[13].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
+	*(destinations[14].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
+	*(destinations[15].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[16].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[18].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[19].(*int64)) = 1
+	return nil
+}
+
+func (*fakeTopicPostRows) Err() error { return nil }
 
 func (*fakeDatabasePool) QueryRow(context.Context, string, ...any) pgx.Row {
 	panic("database query is not expected")
@@ -221,6 +278,25 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 		queryCalls != 1 || len(queryArgs) != 3 || queryArgs[0] != false || queryArgs[1] != false || !groupsOK || len(groupIDs) != 0 {
 		t.Fatalf("GET / = (status %d, body %q, query calls %d, args %#v, read %v)",
 			rootResponse.StatusCode, rootBody.String(), queryCalls, queryArgs, readErr)
+	}
+	topicResponse, err := client.Get("http://" + listener.Addr().String() + "/topics/42")
+	if err != nil {
+		t.Fatalf("GET /topics/42 returned error: %v", err)
+	}
+	topicBody := new(bytes.Buffer)
+	_, topicReadErr := topicBody.ReadFrom(topicResponse.Body)
+	_ = topicResponse.Body.Close()
+	topicCalls, topicArgs := pool.topicPostQuerySnapshot()
+	var topicGroupIDs []int64
+	topicGroupsOK := false
+	if len(topicArgs) == 6 {
+		topicGroupIDs, topicGroupsOK = topicArgs[5].([]int64)
+	}
+	if topicReadErr != nil || topicResponse.StatusCode != http.StatusOK || !strings.Contains(topicBody.String(), "<strong>forum</strong>") ||
+		topicCalls != 1 || len(topicArgs) != 6 || topicArgs[0] != int32(0) || topicArgs[1] != store.PostPageSize ||
+		topicArgs[2] != int64(42) || topicArgs[3] != false || topicArgs[4] != false || !topicGroupsOK || len(topicGroupIDs) != 0 {
+		t.Fatalf("GET /topics/42 = (status %d, body %q, query calls %d, args %#v, read %v)",
+			topicResponse.StatusCode, topicBody.String(), topicCalls, topicArgs, topicReadErr)
 	}
 	cancel()
 	if err := <-result; err != nil {

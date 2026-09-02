@@ -25,30 +25,33 @@ type AuthenticationService interface {
 
 // NewAuthenticatedHandler activates the login, callback, authenticated shell,
 // and local logout boundaries around the public router. Only the exact forum
-// root, a one-segment GET area route, revalidation, and logout perform session
-// lookup; infrastructure, malformed area paths, wrong methods, and unknown
-// paths remain usable when the session store is unavailable.
+// root, canonical one-segment GET area/topic routes, revalidation, and logout
+// perform session lookup; infrastructure, malformed/noncanonical read paths,
+// wrong methods, and unknown paths remain usable when the session store is
+// unavailable.
 //
 // Complexity: construction is tight Theta(1) time and auxiliary space around
 // fixed handler state. For path bytes p and delegated handler cost D, request
 // dispatch is O(p+D) time and Omega(1); local auxiliary space is tight
-// Theta(1), plus space owned by the delegated handler. Only the area
-// prefix/segment checks scan p. OIDC, PostgreSQL, cookie, CSRF, template, and
-// transport costs retain their documented bounds. No operation is retried or
-// detached.
+// Theta(1), plus space owned by the delegated handler. Area/topic prefix and
+// segment checks scan p, and canonical numeric topic parsing scans at most 19
+// bytes. OIDC, PostgreSQL, cookie, CSRF, template, and transport costs retain
+// their documented bounds. No operation is retried or detached.
 func NewAuthenticatedHandler(
 	builder URLBuilder,
 	service AuthenticationService,
 	listAreas AreaIndexLister,
 	loadAreaTopics AreaTopicPageLoader,
 	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("browser authentication service is required")
 	}
-	publicHandler, err := NewHandler(builder, listAreas, loadAreaTopics, maximumTopicPage)
+	publicHandler, err := NewHandler(builder, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage)
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
 	}
@@ -140,9 +143,18 @@ func NewAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
-			if request.Method == http.MethodGet {
+			if request.Method == http.MethodGet && request.URL.RawPath == "" {
 				slug, areaPath := strings.CutPrefix(request.URL.Path, "/areas/")
 				if areaPath && slug != "" && !strings.ContainsRune(slug, '/') {
+					authenticatedPublicHandler.ServeHTTP(response, request)
+					return
+				}
+				identifier, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
+				if topicPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseTopicID(identifier); identifierErr != nil {
+						publicHandler.ServeHTTP(response, request)
+						return
+					}
 					authenticatedPublicHandler.ServeHTTP(response, request)
 					return
 				}

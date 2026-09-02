@@ -138,17 +138,21 @@ func run(
 	if authenticationService == nil {
 		return fmt.Errorf("construct authentication service returned no service")
 	}
-	areaQueries := db.New(pool)
+	queries := db.New(pool)
 	applicationHandler, err := httpui.NewAuthenticatedHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
-			return store.ListVisibleAreas(areaContext, areaQueries, access)
+			return store.ListVisibleAreas(areaContext, queries, access)
 		},
 		func(topicContext context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
-			return store.GetVisibleAreaTopicPage(topicContext, areaQueries, slug, page, access)
+			return store.GetVisibleAreaTopicPage(topicContext, queries, slug, page, access)
 		},
 		store.MaximumTopicPage,
+		func(postContext context.Context, access auth.AccessContext, topicID int64, page int32) (store.VisibleTopicPostPage, error) {
+			return store.GetVisibleTopicPostPage(postContext, queries, topicID, page, access)
+		},
+		store.MaximumPostPage,
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

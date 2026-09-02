@@ -105,7 +105,7 @@ func TestPublicAreaTopicRouteBindsSlugAndPattern(t *testing.T) {
 			t.Fatalf("area topic call = (access %+v, slug %q, page %d)", access, slug, page)
 		}
 		return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Number: 1}, nil
-	}, 10000)
+	}, 10000, panicTopicPostPageLoader, store.MaximumPostPage)
 	if err != nil {
 		t.Fatalf("NewHandler() returned error: %v", err)
 	}
@@ -120,6 +120,39 @@ func TestPublicAreaTopicRouteBindsSlugAndPattern(t *testing.T) {
 	handler.ServeHTTP(escapedResponse, escapedRequest)
 	if escapedResponse.Code != http.StatusNotFound || calls != 1 {
 		t.Fatalf("escaped area route = (status %d, calls %d, body %q)", escapedResponse.Code, calls, escapedResponse.Body.String())
+	}
+}
+
+func TestPublicTopicPostRouteBindsIdentifierPageAndPattern(t *testing.T) {
+	t.Parallel()
+
+	builder := callbackTestURLBuilder(t)
+	calls := 0
+	handler, err := NewHandler(
+		builder, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
+		func(_ context.Context, access auth.AccessContext, topicID int64, page int32) (store.VisibleTopicPostPage, error) {
+			calls++
+			if access.Authenticated || access.UserID != 0 || len(access.GroupIDs) != 0 || topicID != 42 || page != 2 {
+				t.Fatalf("topic post call = (access %+v, topic %d, page %d)", access, topicID, page)
+			}
+			return topicPostTestPage(2), nil
+		},
+		store.MaximumPostPage,
+	)
+	if err != nil {
+		t.Fatalf("NewHandler() returned error: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/topics/42?page=2", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || calls != 1 || request.Pattern != "GET /topics/{topicID}" || !strings.Contains(response.Body.String(), "Welcome") {
+		t.Fatalf("topic route = (status %d, calls %d, pattern %q, body %q)", response.Code, calls, request.Pattern, response.Body.String())
+	}
+	escapedRequest := httptest.NewRequest(http.MethodGet, "/topics/%34%32", nil)
+	escapedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(escapedResponse, escapedRequest)
+	if escapedResponse.Code != http.StatusNotFound || calls != 1 {
+		t.Fatalf("escaped topic route = (status %d, calls %d, body %q)", escapedResponse.Code, calls, escapedResponse.Body.String())
 	}
 }
 
@@ -196,17 +229,23 @@ func TestRouterReturnsFullAndHTMXNotFoundPagesAndStandardsCompliantMethodError(t
 func TestNewHandlerRejectsInvalidDependencies(t *testing.T) {
 	t.Parallel()
 
-	if got, err := NewHandler(URLBuilder{}, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000); err == nil || got != nil {
+	if got, err := NewHandler(URLBuilder{}, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000, panicTopicPostPageLoader, store.MaximumPostPage); err == nil || got != nil {
 		t.Fatalf("NewHandler(zero builder) = (%v, %v), want (nil, error)", got, err)
 	}
-	if got, err := NewHandler(callbackTestURLBuilder(t), nil, panicAreaTopicPageLoader, 10000); err == nil || got != nil {
+	if got, err := NewHandler(callbackTestURLBuilder(t), nil, panicAreaTopicPageLoader, 10000, panicTopicPostPageLoader, store.MaximumPostPage); err == nil || got != nil {
 		t.Fatalf("NewHandler(nil lister) = (%v, %v), want (nil, error)", got, err)
 	}
-	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, nil, 10000); err == nil || got != nil {
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, nil, 10000, panicTopicPostPageLoader, store.MaximumPostPage); err == nil || got != nil {
 		t.Fatalf("NewHandler(nil topic loader) = (%v, %v), want (nil, error)", got, err)
 	}
-	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 0); err == nil || got != nil {
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 0, panicTopicPostPageLoader, store.MaximumPostPage); err == nil || got != nil {
 		t.Fatalf("NewHandler(invalid topic maximum) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 10000, nil, store.MaximumPostPage); err == nil || got != nil {
+		t.Fatalf("NewHandler(nil post loader) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 10000, panicTopicPostPageLoader, 0); err == nil || got != nil {
+		t.Fatalf("NewHandler(invalid post maximum) = (%v, %v), want (nil, error)", got, err)
 	}
 }
 
@@ -235,7 +274,7 @@ func newTestHandler(t *testing.T, basePath string) http.Handler {
 	if err != nil {
 		t.Fatalf("NewURLBuilder() returned error: %v", err)
 	}
-	handler, err := NewHandler(builder, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000)
+	handler, err := NewHandler(builder, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000, panicTopicPostPageLoader, store.MaximumPostPage)
 	if err != nil {
 		t.Fatalf("NewHandler() returned error: %v", err)
 	}

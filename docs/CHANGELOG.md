@@ -5,6 +5,84 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 22:50 CDT — Render bounded visible topic post pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_id.go`
+- `internal/httpui/topic_id_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/url_builder.go`
+- `internal/httpui/url_builder_test.go`
+- `internal/httpui/view.go`
+
+Explanation:
+
+Added the ordinary `GET /topics/{id}` read path from process composition through
+the exact session boundary, Chi route, bounded access-aware store call, narrow
+presentation projection, trusted-HTML conversion, and full/HTMX templates.
+Topic IDs accept only canonical positive decimal `int64` spelling; post pages
+reuse the fixed 1-10,000 query contract and 25-row store bound. Missing,
+inaccessible, malformed, and empty-later results preserve the generic `404` or
+redacted `503` boundary without exposing persistence details.
+
+Topic pages render access-filtered breadcrumbs and counts, pinned/open/locked/
+hidden/archived state, authorship and UTC timestamps, sanitized persisted post
+bodies, stable `#post-<id>` anchors, canonical later-page URLs, and bounded
+previous/next navigation. One URL-builder method owns path, deterministic query,
+and escaped fragment assembly. Noncanonical escaped topic paths and
+noncanonical numeric IDs bypass session lookup, so they remain public `404`
+responses even when the session store is unavailable.
+
+The forum process now wires `store.GetVisibleTopicPostPage` through the same
+generated query set as area reads. Its lifecycle test executes the generated
+query binding end to end, proves anonymous authority arguments, and renders the
+sanitized returned body through the live server.
+
+Verification:
+
+- Full and HTMX responses, page-1/later canonical URLs, stable post links,
+  previous/next navigation, empty topics, every visible topic state, edited and
+  unedited metadata, hostile HTML, unsafe link schemes, generic missing results,
+  redacted failures, malformed rows/sentinels, and committed write failures are
+  covered under the race detector
+- Router tests prove exact route patterns, canonical identifier/page binding,
+  anonymous and authenticated authority propagation, and no session lookup for
+  malformed, nested, escaped, wrong-method, or noncanonical topic paths
+- Process-level HTTP testing proves generated PostgreSQL argument order and the
+  rendered trusted-HTML result; the pinned Tailwind asset digest was updated to
+  `4bb5a0a324f4cdddfa8358a9dd3f3a07a125977ff1194718363d4d03c0ac43c1`
+- Full `make verify` passes. Canonical ID parsing, fragment URL construction,
+  and metadata comparison have 100% statement coverage; the new topic handler
+  has 97.7%
+
+Risks / non-goals:
+
+- The handler's sole uncovered two-statement branch retains fail-closed error
+  handling if permalink construction fails after the same immutable builder,
+  fixed positive path segments, and non-empty generated fragment have already
+  succeeded. That state is mechanically unreachable without corrupting captured
+  handler state; removing the check to manufacture 100% would be dishonest
+- This ordinary read route excludes soft-deleted posts and does not add reply,
+  edit, read-marker, moderation, or Markdown-writing behavior
+- At most 25 schema-bounded bodies are re-sanitized and buffered per page. The
+  work is linear in returned rows and HTML bytes, with one database query, no
+  retry, no detached work, and no hidden cache
+
 ### 2026-09-01 22:25 CDT — Enforce trusted rendered HTML boundary
 
 Commit: current commit; hash assigned by Git after commit

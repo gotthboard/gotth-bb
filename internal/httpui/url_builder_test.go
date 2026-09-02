@@ -154,6 +154,56 @@ func TestURLBuilderPathWithQuery(t *testing.T) {
 	}
 }
 
+func TestURLBuilderPathWithQueryAndFragment(t *testing.T) {
+	t.Parallel()
+
+	builder := urlBuilderTestBuilder(t)
+	for _, test := range []struct {
+		name     string
+		segments []string
+		query    url.Values
+		fragment string
+		want     string
+	}{
+		{name: "first topic page post", segments: []string{"topics", "42"}, fragment: "post-101", want: "/bb/topics/42#post-101"},
+		{name: "later topic page post", segments: []string{"topics", "42"}, query: url.Values{"page": {"3"}}, fragment: "post-151", want: "/bb/topics/42?page=3#post-151"},
+		{name: "escaped fragment", segments: []string{"topics", "42"}, fragment: "post /?#", want: "/bb/topics/42#post%20/?%23"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := builder.PathWithQueryAndFragment(test.segments, test.query, test.fragment)
+			if err != nil || got != test.want {
+				t.Fatalf("PathWithQueryAndFragment() = (%q, %v), want (%q, nil)", got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestURLBuilderPathWithQueryAndFragmentRejectsInvalidInput(t *testing.T) {
+	t.Parallel()
+
+	builder := urlBuilderTestBuilder(t)
+	for _, test := range []struct {
+		name     string
+		builder  URLBuilder
+		segments []string
+		fragment string
+	}{
+		{name: "zero builder", segments: []string{"topics", "42"}, fragment: "post-1"},
+		{name: "invalid segment", builder: builder, segments: []string{"topics", ".."}, fragment: "post-1"},
+		{name: "missing fragment", builder: builder, segments: []string{"topics", "42"}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got, err := test.builder.PathWithQueryAndFragment(test.segments, nil, test.fragment); err == nil || got != "" {
+				t.Fatalf("PathWithQueryAndFragment() = (%q, %v), want empty/error", got, err)
+			}
+		})
+	}
+}
+
 func TestURLBuilderAbsoluteWithQuery(t *testing.T) {
 	t.Parallel()
 
@@ -331,4 +381,13 @@ func TestNewURLBuilderRejectsInconsistentOrUnsafePublicBase(t *testing.T) {
 			}
 		})
 	}
+}
+
+func urlBuilderTestBuilder(t *testing.T) URLBuilder {
+	t.Helper()
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder() returned error: %v", err)
+	}
+	return builder
 }

@@ -1,6 +1,10 @@
 package httpui
 
-import "fmt"
+import (
+	"fmt"
+
+	contentrender "git.dannyhunn.com/agents/gotth-bb/internal/render"
+)
 
 const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`
 
@@ -37,6 +41,31 @@ type areaTopicListItem struct {
 	ReplyLabel   string
 	Author       string
 	LastActivity string
+}
+
+type topicPostPageView struct {
+	AreaName    string
+	AreaURL     string
+	Title       string
+	StateLabel  string
+	Pinned      bool
+	Author      string
+	Started     string
+	Posts       []topicPostItem
+	Number      int32
+	TotalPosts  int64
+	PreviousURL string
+	NextURL     string
+}
+
+type topicPostItem struct {
+	Anchor    string
+	Permalink string
+	Number    int32
+	Author    string
+	Created   string
+	Edited    string
+	Body      contentrender.TrustedHTML
 }
 
 // newPageView resolves every application-owned shell URL through one validated
