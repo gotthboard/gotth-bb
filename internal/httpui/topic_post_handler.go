@@ -194,23 +194,28 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			return
 		}
 		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
-		moderationControl := topicModerationView{}
+		var moderationControls []topicModerationView
 		if staff && authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil {
 			token := csrfTokenFromContext(request.Context())
-			action := ""
-			label := ""
-			if first.TopicState == "open" {
-				action, label = "lock", "Lock topic"
-			} else if first.TopicState == "locked" {
-				action, label = "unlock", "Unlock topic"
+			actions := [][2]string(nil)
+			switch first.TopicState {
+			case "open":
+				actions = [][2]string{{"lock", "Lock topic"}, {"hide", "Hide topic"}}
+			case "locked":
+				actions = [][2]string{{"unlock", "Unlock topic"}}
+			case "hidden":
+				actions = [][2]string{{"restore", "Restore topic"}}
 			}
-			if action != "" && len(token) == sessionCookieEncodedBytes {
-				actionURL, actionErr := builder.Path("topics", identifier, action)
-				if actionErr != nil {
-					serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
-					return
+			if len(actions) > 0 && len(token) == sessionCookieEncodedBytes {
+				moderationControls = make([]topicModerationView, 0, len(actions))
+				for _, action := range actions {
+					actionURL, actionErr := builder.Path("topics", identifier, action[0])
+					if actionErr != nil {
+						serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+						return
+					}
+					moderationControls = append(moderationControls, topicModerationView{ActionURL: actionURL, CSRFToken: token, SubmitLabel: action[1]})
 				}
-				moderationControl = topicModerationView{ActionURL: actionURL, CSRFToken: token, SubmitLabel: label}
 			}
 		}
 		mayReply := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
@@ -245,7 +250,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			Author: first.TopicAuthorDisplayName, Started: first.TopicCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"),
 			Posts: posts, Number: pageNumber, TotalPosts: loaded.TotalPosts,
 			PreviousURL: previousURL, NextURL: nextURL, ReplyForm: replyForm, ShowReply: replyForm.ActionURL != "",
-			Moderation: moderationControl, ShowModeration: moderationControl.ActionURL != "",
+			Moderation: moderationControls,
 		}
 		if renderErr := renderResponse(
 			response, request, http.StatusOK,

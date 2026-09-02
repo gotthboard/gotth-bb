@@ -904,8 +904,12 @@ Alpha topic hide/restore is likewise strict: only `open -> hidden` and
 before hiding, so restoration never guesses at or silently discards prior lock
 state. Both directions require the same canonical reason and request UUID and
 use the same row-lock, guarded update, atomic audit, monotonic-time, and
-no-retry mechanism as lock/unlock. Browser hide/restore controls remain a
-separate bounded unit.
+no-retry mechanism as lock/unlock. Browser controls use exact POST-only
+`hide`/`restore` routes behind the same current-session, Authentik
+revalidation, CSRF, bounded-form, request-UUID, typed-error, and validated
+redirect boundary. Active staff see Lock and Hide on open topics, Unlock on
+locked topics, Restore on hidden topics, and no transition control on archived
+topics; the transaction remains final authority.
 
 ## 15. Migrations
 

@@ -174,6 +174,9 @@ func run(
 		func(moderationContext context.Context, access auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderationservice.TopicTransitionResult, error) {
 			return moderationservice.ChangeTopicLock(moderationContext, pool, time.Now, access, topicID, lock, reason, requestID)
 		},
+		func(moderationContext context.Context, access auth.AccessContext, topicID int64, hide bool, reason string, requestID pgtype.UUID) (moderationservice.TopicTransitionResult, error) {
+			return moderationservice.ChangeTopicVisibility(moderationContext, pool, time.Now, access, topicID, hide, reason, requestID)
+		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

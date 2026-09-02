@@ -194,19 +194,23 @@ func TestTopicPostListHandlerRendersStatesAndLaterPagination(t *testing.T) {
 	}
 }
 
-func TestTopicPostListHandlerShowsLockControlOnlyToActiveStaff(t *testing.T) {
+func TestTopicPostListHandlerShowsStateValidModerationControlsOnlyToActiveStaff(t *testing.T) {
 	t.Parallel()
 
 	mute := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
 	for _, test := range []struct {
-		name, state, wantAction, wantLabel string
-		access                             auth.AccessContext
+		name, state string
+		access      auth.AccessContext
+		wantActions []string
+		wantLabels  []string
 	}{
-		{name: "moderator locks", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}, wantAction: `/bb/topics/42/lock`, wantLabel: "Lock topic"},
-		{name: "administrator unlocks", state: "locked", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleAdministrator}, wantAction: `/bb/topics/42/unlock`, wantLabel: "Unlock topic"},
+		{name: "moderator locks or hides open", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}, wantActions: []string{`/bb/topics/42/lock`, `/bb/topics/42/hide`}, wantLabels: []string{"Lock topic", "Hide topic"}},
+		{name: "administrator unlocks locked", state: "locked", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleAdministrator}, wantActions: []string{`/bb/topics/42/unlock`}, wantLabels: []string{"Unlock topic"}},
+		{name: "moderator restores hidden", state: "hidden", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}, wantActions: []string{`/bb/topics/42/restore`}, wantLabels: []string{"Restore topic"}},
+		{name: "archived", state: "archived", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleAdministrator}},
 		{name: "member", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember}},
 		{name: "muted moderator", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator, MutedUntil: &mute}},
-		{name: "hidden", state: "hidden", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}},
+		{name: "suspended administrator", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleAdministrator, Suspended: true}},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -230,13 +234,23 @@ func TestTopicPostListHandlerShowsLockControlOnlyToActiveStaff(t *testing.T) {
 			if response.Code != http.StatusOK {
 				t.Fatalf("topic response = (%d, %q)", response.Code, body)
 			}
-			if test.wantAction == "" {
-				if strings.Contains(body, "Moderation reason") || strings.Contains(body, `/topics/42/lock`) || strings.Contains(body, `/topics/42/unlock`) {
+			if len(test.wantActions) == 0 {
+				if strings.Contains(body, "Moderation reason") || strings.Contains(body, `/topics/42/lock`) || strings.Contains(body, `/topics/42/unlock`) || strings.Contains(body, `/topics/42/hide`) || strings.Contains(body, `/topics/42/restore`) {
 					t.Fatalf("unauthorized moderation control: %s", body)
 				}
 				return
 			}
-			for _, required := range []string{`action="` + test.wantAction + `"`, `hx-post="` + test.wantAction + `"`, `name="_csrf" value="` + validCSRFTokenForTest(0x51) + `"`, `name="reason"`, test.wantLabel} {
+			if strings.Count(body, "Moderation reason") != len(test.wantActions) || strings.Count(body, `name="reason"`) != len(test.wantActions) {
+				t.Fatalf("moderation form count = %d, want %d: %s", strings.Count(body, "Moderation reason"), len(test.wantActions), body)
+			}
+			for _, action := range test.wantActions {
+				for _, required := range []string{`action="` + action + `"`, `hx-post="` + action + `"`} {
+					if !strings.Contains(body, required) {
+						t.Fatalf("moderation control lacks %q: %s", required, body)
+					}
+				}
+			}
+			for _, required := range append([]string{`name="_csrf" value="` + validCSRFTokenForTest(0x51) + `"`}, test.wantLabels...) {
 				if !strings.Contains(body, required) {
 					t.Fatalf("moderation control lacks %q: %s", required, body)
 				}

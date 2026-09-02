@@ -5,6 +5,53 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 02:53 CDT — Wire staff topic visibility controls
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/implementation-spec.md`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/moderation_handler.go`
+- `internal/httpui/moderation_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/view.go`
+
+Explanation:
+
+Wired the admitted topic visibility transaction into the authenticated browser
+surface. Active moderators and administrators receive only state-valid
+controls: Lock and Hide on open topics, Unlock on locked topics, Restore on
+hidden topics, and none on archived topics. Inactive staff and members receive
+no moderation form.
+
+The exact hide/restore POST routes reuse the current-session, Authentik
+revalidation, CSRF-first bounded form, server request UUID, typed error,
+validated result, and ordinary/HTMX redirect boundary. Lock and visibility
+remain separate typed service dependencies despite their deliberately shared
+wire shape.
+
+Verification:
+
+- Exact lock, unlock, hide, and restore route dispatch and boolean semantics
+- Visibility routes cannot call the lock service
+- Exact actor, target, canonical reason, server request UUID, result state, and
+  audit identifier validation
+- Full-page and HTMX success behavior plus structurally valid error fragments
+- Presentation proves the complete state/authority control matrix and exact
+  number of moderation forms
+
+Risks / non-goals:
+
+- Locked topics must still be explicitly unlocked before Hide becomes valid
+- Account suspend/reinstate and the local account-status view remain next
+- No deployment or release state is changed
+
 ### 2026-09-02 02:38 CDT — Add audited topic hide transitions
 
 Commit: current commit; hash assigned by Git after commit

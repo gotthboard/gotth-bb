@@ -18,19 +18,20 @@ import (
 const maximumModerationFormBytes = 8192
 
 type TopicLockChanger func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error)
+type TopicVisibilityChanger func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error)
 
-// newModerationHandler constructs the authenticated topic lock/unlock browser
+// newModerationHandler constructs the authenticated topic-state browser
 // boundary. It verifies CSRF and bounded form syntax before deriving the
-// server request UUID and delegating final authority to the locked service.
+// server request UUID and delegating final authority to the serialized service.
 //
 // Complexity: construction is tight Theta(1). For bounded form bytes
 // n <= 8,192, delegated work D, and response bytes r, request time is
 // O(n+D+r), Omega(1), and auxiliary space is O(n+r), Omega(1), without a tight
 // bound because database and transport work vary. One service call is made at
 // most once; no request is retried or detached.
-func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Handler, error) {
-	if change == nil {
-		return nil, fmt.Errorf("topic lock changer is required")
+func newModerationHandler(builder URLBuilder, changeLock TopicLockChanger, changeVisibility TopicVisibilityChanger) (http.Handler, error) {
+	if changeLock == nil || changeVisibility == nil {
+		return nil, fmt.Errorf("topic moderation changers are required")
 	}
 	loginURL, err := builder.Path("login")
 	if err != nil {
@@ -67,7 +68,7 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 		}
 		return authentication.Access, ""
 	}
-	serve := func(lock bool) http.HandlerFunc {
+	serve := func(change func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error), enabled bool, expectedState string) http.HandlerFunc {
 		return func(response http.ResponseWriter, request *http.Request) {
 			response.Header().Set("Cache-Control", "no-store")
 			access, redirect := authorized(request)
@@ -94,7 +95,7 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				return
 			}
-			result, changeErr := change(request.Context(), access, topicID, lock, reason, requestID)
+			result, changeErr := change(request.Context(), access, topicID, enabled, reason, requestID)
 			if changeErr != nil {
 				switch {
 				case errors.Is(changeErr, moderation.ErrTopicModerationInput):
@@ -109,10 +110,6 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 					serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				}
 				return
-			}
-			expectedState := "locked"
-			if !lock {
-				expectedState = "open"
 			}
 			if result.TopicID != topicID || string(result.State) != expectedState || result.AuditID <= 0 {
 				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
@@ -129,8 +126,10 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 
 	router := chi.NewRouter()
 	router.Use(captureRoutePattern)
-	router.Post("/topics/{topicID}/lock", serve(true))
-	router.Post("/topics/{topicID}/unlock", serve(false))
+	router.Post("/topics/{topicID}/lock", serve(changeLock, true, "locked"))
+	router.Post("/topics/{topicID}/unlock", serve(changeLock, false, "open"))
+	router.Post("/topics/{topicID}/hide", serve(changeVisibility, true, "hidden"))
+	router.Post("/topics/{topicID}/restore", serve(changeVisibility, false, "open"))
 	return recordRoutePattern(router), nil
 }
 

@@ -45,22 +45,21 @@ type areaTopicListItem struct {
 }
 
 type topicPostPageView struct {
-	AreaName       string
-	AreaURL        string
-	Title          string
-	StateLabel     string
-	Pinned         bool
-	Author         string
-	Started        string
-	Posts          []topicPostItem
-	Number         int32
-	TotalPosts     int64
-	PreviousURL    string
-	NextURL        string
-	ReplyForm      publishingFormView
-	ShowReply      bool
-	Moderation     topicModerationView
-	ShowModeration bool
+	AreaName    string
+	AreaURL     string
+	Title       string
+	StateLabel  string
+	Pinned      bool
+	Author      string
+	Started     string
+	Posts       []topicPostItem
+	Number      int32
+	TotalPosts  int64
+	PreviousURL string
+	NextURL     string
+	ReplyForm   publishingFormView
+	ShowReply   bool
+	Moderation  []topicModerationView
 }
 
 type topicModerationView struct {

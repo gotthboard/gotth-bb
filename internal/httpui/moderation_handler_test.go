@@ -41,13 +41,21 @@ func TestModerationHandlerLocksAndUnlocksWithExactServerAuthority(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			calls := 0
-			handler := newModerationTestHandler(t, func(ctx context.Context, actor auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderation.TopicTransitionResult, error) {
+			changeLock := func(ctx context.Context, actor auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderation.TopicTransitionResult, error) {
 				calls++
 				if ctx == nil || !reflect.DeepEqual(actor, wantActor) || topicID != 41 || lock != test.lock || reason != "Clear reason" || requestID != wantUUID {
 					t.Fatalf("topic lock call = (%v, %+v, %d, %t, %q, %+v)", ctx, actor, topicID, lock, reason, requestID)
 				}
 				return moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.state), AuditID: 71}, nil
-			})
+			}
+			handler, err := newModerationHandler(callbackTestURLBuilder(t), changeLock,
+				func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
+					panic("topic visibility service called for lock route")
+				})
+			if err != nil {
+				t.Fatalf("newModerationHandler() returned error: %v", err)
+			}
+			handler = withModerationTestRequestID(t, handler)
 			request := moderationTestRequest("/topics/41/"+test.suffix, url.Values{
 				"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Clear reason"},
 			}, auth.SessionAuthentication{SessionID: 7, Access: wantActor})
@@ -65,6 +73,60 @@ func TestModerationHandlerLocksAndUnlocksWithExactServerAuthority(t *testing.T) 
 				}
 			} else if response.Header().Get("Location") != "/bb/topics/41" || response.Header().Get("HX-Redirect") != "" {
 				t.Fatalf("ordinary moderation redirect headers = %v", response.Header())
+			}
+		})
+	}
+}
+
+func TestModerationHandlerHidesAndRestoresWithExactServerAuthority(t *testing.T) {
+	t.Parallel()
+
+	wantActor := auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}
+	wantUUID := pgtype.UUID{Bytes: [16]byte{0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51, 0x51}, Valid: true}
+	for _, test := range []struct {
+		name, suffix, state string
+		hide, htmx          bool
+		wantStatus          int
+	}{
+		{name: "hide", suffix: "hide", state: "hidden", hide: true, wantStatus: http.StatusSeeOther},
+		{name: "restore HTMX", suffix: "restore", state: "open", htmx: true, wantStatus: http.StatusNoContent},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			calls := 0
+			changeVisibility := func(ctx context.Context, actor auth.AccessContext, topicID int64, hide bool, reason string, requestID pgtype.UUID) (moderation.TopicTransitionResult, error) {
+				calls++
+				if ctx == nil || !reflect.DeepEqual(actor, wantActor) || topicID != 41 || hide != test.hide || reason != "Clear reason" || requestID != wantUUID {
+					t.Fatalf("topic visibility call = (%v, %+v, %d, %t, %q, %+v)", ctx, actor, topicID, hide, reason, requestID)
+				}
+				return moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.state), AuditID: 72}, nil
+			}
+			handler, err := newModerationHandler(callbackTestURLBuilder(t),
+				func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
+					panic("topic lock service called for visibility route")
+				}, changeVisibility)
+			if err != nil {
+				t.Fatalf("newModerationHandler() returned error: %v", err)
+			}
+			handler = withModerationTestRequestID(t, handler)
+			request := moderationTestRequest("/topics/41/"+test.suffix, url.Values{
+				"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Clear reason"},
+			}, auth.SessionAuthentication{SessionID: 7, Access: wantActor})
+			if test.htmx {
+				request.Header.Set("HX-Request", "true")
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || calls != 1 || response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("visibility response = (status %d, calls %d, headers %v, body %q)", response.Code, calls, response.Header(), response.Body.String())
+			}
+			if test.htmx {
+				if response.Header().Get("HX-Redirect") != "/bb/topics/41" || response.Header().Get("Location") != "" {
+					t.Fatalf("HTMX visibility redirect headers = %v", response.Header())
+				}
+			} else if response.Header().Get("Location") != "/bb/topics/41" || response.Header().Get("HX-Redirect") != "" {
+				t.Fatalf("ordinary visibility redirect headers = %v", response.Header())
 			}
 		})
 	}
@@ -96,10 +158,11 @@ func TestModerationHandlerFailsClosedBeforeMutation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			calls := 0
-			base, err := newModerationHandler(callbackTestURLBuilder(t), func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
+			change := func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
 				calls++
 				return moderation.TopicTransitionResult{}, nil
-			})
+			}
+			base, err := newModerationHandler(callbackTestURLBuilder(t), TopicLockChanger(change), TopicVisibilityChanger(change))
 			if err != nil {
 				t.Fatalf("newModerationHandler() returned error: %v", err)
 			}
@@ -122,6 +185,7 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 
 	for _, test := range []struct {
 		name       string
+		target     string
 		result     moderation.TopicTransitionResult
 		err        error
 		wantStatus int
@@ -134,6 +198,7 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 		{name: "failure", err: errors.New("secret database failure"), wantStatus: http.StatusServiceUnavailable},
 		{name: "wrong topic", result: moderation.TopicTransitionResult{TopicID: 40, State: policy.TopicLocked, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
 		{name: "wrong state", result: moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicOpen, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
+		{name: "hide wrong state", target: "/topics/41/hide", result: moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicLocked, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
 		{name: "missing audit", result: moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicLocked}, wantStatus: http.StatusServiceUnavailable},
 	} {
 		test := test
@@ -143,7 +208,11 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 				return test.result, test.err
 			})
 			response := httptest.NewRecorder()
-			request := moderationTestRequest("/topics/41/lock", validModerationForm(), auth.SessionAuthentication{
+			target := test.target
+			if target == "" {
+				target = "/topics/41/lock"
+			}
+			request := moderationTestRequest(target, validModerationForm(), auth.SessionAuthentication{
 				SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator},
 			})
 			if test.htmx {
@@ -176,7 +245,7 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	}
 	if missing, missingErr := NewAuthenticatedModeratedForumHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil,
+		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
 		"gotth_bb_session", true,
 	); missingErr == nil || missing != nil {
 		t.Fatalf("NewAuthenticatedModeratedForumHandler(missing) = (%v, %v)", missing, missingErr)
@@ -202,6 +271,14 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 			}
 			return moderation.TopicTransitionResult{TopicID: 41, State: state, AuditID: 71}, nil
 		},
+		func(_ context.Context, _ auth.AccessContext, _ int64, hide bool, _ string, _ pgtype.UUID) (moderation.TopicTransitionResult, error) {
+			changes++
+			state := policy.TopicHidden
+			if !hide {
+				state = policy.TopicOpen
+			}
+			return moderation.TopicTransitionResult{TopicID: 41, State: state, AuditID: 72}, nil
+		},
 		"gotth_bb_session", true,
 	)
 	if err != nil {
@@ -215,6 +292,8 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 		{target: "/topics/041/lock", wantStatus: http.StatusNotFound},
 		{target: "/topics/41/lock", wantStatus: http.StatusSeeOther, wantAuth: 1, wantChanges: 1},
 		{target: "/topics/41/unlock", wantStatus: http.StatusSeeOther, wantAuth: 2, wantChanges: 2},
+		{target: "/topics/41/hide", wantStatus: http.StatusSeeOther, wantAuth: 3, wantChanges: 3},
+		{target: "/topics/41/restore", wantStatus: http.StatusSeeOther, wantAuth: 4, wantChanges: 4},
 	} {
 		form := url.Values{"_csrf": {csrf}, "reason": {"Clear reason"}}
 		request := httptest.NewRequest(http.MethodPost, test.target, strings.NewReader(form.Encode()))
@@ -267,14 +346,16 @@ func TestModerationFormAndRequestIDBoundaries(t *testing.T) {
 func TestNewModerationHandlerRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 
-	valid := TopicLockChanger(func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
+	validLock := TopicLockChanger(func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
 		return moderation.TopicTransitionResult{}, nil
 	})
+	validVisibility := TopicVisibilityChanger(validLock)
 	for _, test := range []struct {
-		builder URLBuilder
-		change  TopicLockChanger
-	}{{builder: callbackTestURLBuilder(t)}, {change: valid}} {
-		if handler, err := newModerationHandler(test.builder, test.change); err == nil || handler != nil {
+		builder          URLBuilder
+		changeLock       TopicLockChanger
+		changeVisibility TopicVisibilityChanger
+	}{{builder: callbackTestURLBuilder(t), changeLock: validLock}, {builder: callbackTestURLBuilder(t), changeVisibility: validVisibility}, {changeLock: validLock, changeVisibility: validVisibility}} {
+		if handler, err := newModerationHandler(test.builder, test.changeLock, test.changeVisibility); err == nil || handler != nil {
 			t.Fatalf("newModerationHandler(missing) = (%v, %v)", handler, err)
 		}
 	}
@@ -282,7 +363,7 @@ func TestNewModerationHandlerRejectsMissingDependencies(t *testing.T) {
 
 func newModerationTestHandler(t *testing.T, change TopicLockChanger) http.Handler {
 	t.Helper()
-	handler, err := newModerationHandler(callbackTestURLBuilder(t), change)
+	handler, err := newModerationHandler(callbackTestURLBuilder(t), change, TopicVisibilityChanger(change))
 	if err != nil {
 		t.Fatalf("newModerationHandler() returned error: %v", err)
 	}
