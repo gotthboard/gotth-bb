@@ -244,6 +244,12 @@ The initial policy API remains small:
 Read queries still enforce access in SQL. These functions govern mutation and
 provide unit-testable explanations. Do not create a stringly typed
 `Can(actor, action, resource)` framework for seven operations.
+For publishing predicates, `AccessContext.MutedUntil != nil` means the snapshot
+builder has already established an active mute at `ValidatedAt`; expired mute
+timestamps are normalized to nil before policy evaluation. `CanCreateTopic`
+requires valid authenticated visibility, rejects suspension or active mute,
+allows members only in normal areas, allows staff in normal/read-only areas,
+and rejects archived areas for every actor until restoration changes policy.
 
 ## 6. Database specification
 

@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:24 CDT — Enforce topic-creation area policy
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/policy/create_topic.go`
+- `internal/policy/create_topic_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the narrow `CanCreateTopic` publishing predicate. It requires canonical
+authenticated visibility and denies visitors, suspended actors, and snapshots
+with an active mute. Members publish only in normal areas they can view;
+moderators and administrators may also publish in read-only areas. Archived
+areas deny every actor until an administrator restores the area, preventing an
+accidental moderator archival bypass.
+
+Verification:
+
+- The matrix crosses visitor/member/matching and nonmatching group/moderator/
+  administrator with public/authenticated/group visibility and normal/read-only/
+  archived posting modes
+- Suspended and actively muted member/staff snapshots deny, as do malformed
+  actors and unknown/impossible area policy values
+- The production predicate and entire policy package reach 100% statement
+  coverage and pass 50 repeated race-detector runs
+
+Risks / non-goals:
+
+- Snapshot construction must normalize expired mute timestamps to nil at its
+  validated time. Rate limiting and the transactional topic insert remain
+  separate later units.
+
 ### 2026-09-01 19:18 CDT — Derive visible-area query authority
 
 Commit: current commit; hash assigned by Git after commit
