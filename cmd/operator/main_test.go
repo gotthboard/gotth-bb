@@ -49,6 +49,21 @@ func TestRunBootstrapsExactAdministratorAndReportsCommittedIDs(t *testing.T) {
 	}
 }
 
+func TestRunReportsReleaseIdentityWithoutDatabaseAccess(t *testing.T) {
+	t.Parallel()
+
+	lookup := func(string) (string, bool) { panic("version command must not read configuration") }
+	var output bytes.Buffer
+	if err := run(context.Background(), lookup, []string{"version"}, &output, bytes.NewReader(make([]byte, 16)), time.Now, panicOperatorConnect, panicAdministratorBootstrap); err != nil ||
+		output.String() != "gotth-bb version=development commit=unknown\n" {
+		t.Fatalf("run(version) = (%q, %v)", output.String(), err)
+	}
+	cause := errors.New("write failed")
+	if err := run(context.Background(), lookup, []string{"version"}, errorWriter{cause}, bytes.NewReader(make([]byte, 16)), time.Now, panicOperatorConnect, panicAdministratorBootstrap); !errors.Is(err, cause) {
+		t.Fatalf("run(version write failure) = %v, want cause", err)
+	}
+}
+
 func TestRunRejectsInvalidDependenciesBeforeWork(t *testing.T) {
 	t.Parallel()
 

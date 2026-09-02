@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
 	"github.com/jackc/pgx/v5"
@@ -120,6 +121,16 @@ func run(
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("operator command canceled: %w", err)
+	}
+	if len(args) == 1 && args[0] == "version" {
+		release, releaseErr := buildinfo.Current()
+		if releaseErr != nil {
+			return fmt.Errorf("load release identity: %w", releaseErr)
+		}
+		if _, writeErr := fmt.Fprintf(output, "gotth-bb version=%s commit=%s\n", release.Version, release.Commit); writeErr != nil {
+			return fmt.Errorf("write release identity: %w", writeErr)
+		}
+		return nil
 	}
 	if len(args) == 0 || args[0] != "bootstrap-administrator" {
 		return fmt.Errorf("expected bootstrap-administrator command")

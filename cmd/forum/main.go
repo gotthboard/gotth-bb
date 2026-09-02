@@ -15,6 +15,7 @@ import (
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/app"
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	forumservice "git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
@@ -108,6 +109,10 @@ func run(
 	configured, err := config.Load(lookup)
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
+	}
+	release, err := buildinfo.Current()
+	if err != nil {
+		return fmt.Errorf("load release identity: %w", err)
 	}
 	urlBuilder, err := httpui.NewURLBuilder(configured.PublicBaseURL, configured.BasePath)
 	if err != nil {
@@ -215,6 +220,7 @@ func run(
 		}
 		return fmt.Errorf("service startup canceled: %w", err)
 	}
+	logger.InfoContext(context.Background(), "service starting", "version", release.Version, "commit", release.Commit)
 	if err := app.RunHTTPServer(ctx, server, listener, shutdownTimeout); err != nil {
 		return err
 	}

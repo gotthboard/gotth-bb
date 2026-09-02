@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 04:20 CDT — Add fail-closed release identity
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `cmd/operator/main.go`
+- `cmd/operator/main_test.go`
+- `docs/release-operations.md`
+- `internal/buildinfo/buildinfo.go`
+- `internal/buildinfo/buildinfo_test.go`
+
+Explanation:
+
+Added the first A1-09 release-artifact boundary. Linker-injected version and
+full Git commit values are accepted only as one bounded release pair; ordinary
+builds retain explicit `development` and `unknown` sentinels instead of
+fabricating provenance.
+
+The forum validates and records that identity in its structured startup log
+before serving. The operator binary exposes the same identity through a
+database-free `version` command, allowing an operator to compare the staged
+binary with the release record without loading secrets or contacting
+PostgreSQL.
+
+Verification:
+
+- Exact development and release identity acceptance
+- Empty, oversized, malformed, partial, abbreviated, uppercase, and non-hex
+  identity rejection
+- A real `-trimpath -buildvcs=false` operator build with package-private `-X`
+  version/commit injection reports the exact supplied alpha identity
+- Database-free operator output and write-failure propagation
+- Structured forum startup identity alongside the existing stop record
+
+Risks / non-goals:
+
+- This unit does not yet produce, checksum, sign, tag, or deploy an artifact
+- Target host, service manager, Caddy, PostgreSQL, Authentik, backups, and
+  monitoring remain owner-confirmed deployment inputs
+- No infrastructure or remote service state is changed
+
 ### 2026-09-02 04:00 CDT — Wire browser account suspension controls
 
 Commit: current commit; hash assigned by Git after commit

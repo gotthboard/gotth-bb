@@ -74,6 +74,22 @@ Releases follow semantic versioning:
 Build metadata may include date and abbreviated commit, but precedence and
 deployment decisions use the base semantic version and artifact digest.
 
+Release builds inject the exact version and full lowercase 40-character Git
+commit into the package-private `internal/buildinfo.version` and
+`internal/buildinfo.commit` linker targets with
+Go linker `-X` flags. The pair is accepted together or rejected together;
+ordinary developer builds report the explicit `development`/`unknown`
+sentinels. The forum validates the pair before binding its listener and writes
+it in the structured `service starting` record. The matching operator binary
+reports the same database-free identity with:
+
+```sh
+gotth-bb-operator version
+```
+
+An artifact whose operator identity differs from its release record or whose
+forum startup identity differs from the operator output is not deployable.
+
 Each deployed release record contains:
 
 - Version and Git commit.
@@ -95,8 +111,8 @@ The release pipeline produces:
 - Pinned HTMX and compiled/versioned Tailwind/static assets.
 - Software bill of materials or dependency manifest.
 - Checksums/digests.
-- Version information exposed through an operator-only command and structured
-  startup log, not a public sensitive endpoint.
+- Version information exposed through the database-free operator `version`
+  command and structured forum startup log, not a public sensitive endpoint.
 
 Builds run from a clean checkout. A dirty worktree, generated-code drift, test
 failure, or secret finding blocks artifact publication.

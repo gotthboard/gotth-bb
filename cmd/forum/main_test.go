@@ -304,7 +304,8 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	if err := <-result; err != nil {
 		t.Fatalf("run() returned error: %v", err)
 	}
-	if !strings.Contains(logs.String(), `"msg":"service stopped"`) {
+	if !strings.Contains(logs.String(), `"msg":"service starting","version":"development","commit":"unknown"`) ||
+		!strings.Contains(logs.String(), `"msg":"service stopped"`) {
 		t.Fatalf("lifecycle logs = %q", logs.String())
 	}
 	if pool.closeCount() != 1 {
