@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.1` |
+| Current target | `1.0.0-alpha.2` |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -245,7 +245,68 @@ Exit evidence:
   dropped capabilities, no privilege escalation, loopback-only publication,
   external secrets, pinned images, and preserved PostgreSQL storage.
 
-## 4. Milestone `1.0.0-alpha.N`
+## 4. Milestone `1.0.0-alpha.2`
+
+Alpha.2 establishes the conventional, information-dense GOTTH Board forum
+surface. It does not absorb reports, search, unread state, new moderation
+transitions, administration completion, abuse controls, or registration-policy
+changes.
+
+### A2-00: presentation contract
+
+Requirements: UX-001 through UX-005, READ-001, READ-005, ACL-004 through
+ACL-006, and the PRD alpha.2 acceptance boundary.
+
+- Record the actor-filtered aggregate read model, semantic HTML contract,
+  responsive collapse, HTMX invariants, and third-party asset boundary.
+- Decompose the work so read-model changes land before dependent templates.
+
+### A2-01: authorized board-index summaries
+
+Requirements: READ-001, ACL-004 through ACL-006, ADMIN-005.
+
+- Add one access-filtered SQL/store projection for exact topic/post counts and
+  latest visible post metadata.
+- Reject malformed or partially nullable projections before rendering.
+- Prove public, authenticated, group, staff, hidden-topic, soft-delete, empty,
+  and failure behavior without per-area queries.
+
+### A2-02: masthead and board index
+
+Requirements: UX-001 through UX-004, READ-001, READ-005.
+
+- Add compact GOTTH Board masthead, utility navigation, breadcrumb bar, forum
+  rows, desktop statistics, mobile metadata, empty state, and focus behavior.
+- Preserve content-addressed assets, canonical URLs, full-page/HTMX parity,
+  and ordinary navigation fallback.
+
+### A2-03: topic-list surface
+
+Requirements: UX-001 through UX-004, READ-001, READ-005.
+
+- Present topic state, title/starter, replies, and last activity as compact
+  forum rows using the existing authorized topic-page projection.
+- Keep pagination, publishing eligibility, moderation state, and canonical
+  navigation behavior unchanged.
+
+### A2-04: topic and post surface
+
+Requirements: UX-001 through UX-005, FORUM-004, CONTENT-004 through
+CONTENT-006.
+
+- Render semantic post articles with desktop author/content columns and a
+  linear mobile collapse.
+- Unify action buttons, publishing forms, notices, pagination, and moderation
+  controls while preserving HTMX swaps and conflict drafts.
+
+### A2-05: integrated acceptance and deployment
+
+- Run access-leakage, SQL/store, HTTP/HTMX, responsive, keyboard, generation,
+  race, PostgreSQL integration, deterministic artifact, backup, deploy, and
+  rollback evidence.
+- Require owner acceptance before recording the alpha.2 known-good reference.
+
+## 5. Milestone `1.0.0-alpha.N`
 
 Additional alpha releases integrate the remaining version 1.0 behavior while
 the user surface may still change.
@@ -290,7 +351,7 @@ Requirements: MOD-005, MOD-006.
 - Blocked-link/domain rules.
 - Observable and bounded rejection behavior.
 
-## 5. Milestone `1.0.0-beta.1`
+## 6. Milestone `1.0.0-beta.1`
 
 Beta.1 is feature-complete for the version 1.0 PRD. Ordinary test users should
 not encounter knowingly absent core features.
@@ -313,7 +374,7 @@ Beta work emphasizes:
 - Backup/restore implementation and initial rehearsal.
 - Operator dashboards, logs, and actionable error behavior.
 
-## 6. Milestone `1.0.0-rc.1`
+## 7. Milestone `1.0.0-rc.1`
 
 Release candidate means no known product-scope gap.
 
@@ -328,7 +389,7 @@ Entry gates:
 RC work is limited to defect correction, operational rehearsal, documentation,
 and evidence completion. New features return to a later release.
 
-## 7. Milestone `1.0.0`
+## 8. Milestone `1.0.0`
 
 Stable release requires:
 
@@ -338,7 +399,7 @@ Stable release requires:
 - Owner acceptance of the deployed candidate.
 - Exact known-good commit and artifact recorded after owner confirmation.
 
-## 8. Versions 2.0 through 5.0
+## 9. Versions 2.0 through 5.0
 
 The PRD owns the product scope. Before implementation of each major version:
 
@@ -351,7 +412,7 @@ The PRD owns the product scope. Before implementation of each major version:
 
 Do not prebuild version 4 or 5 abstractions in version 1.0.
 
-## 9. Issue contract
+## 10. Issue contract
 
 Every implementation issue contains:
 
@@ -369,7 +430,7 @@ Every implementation issue contains:
 Issue states are `READY`, `ACTIVE`, `HANDOFF`, `DONE`, `BLOCKED`, or `FAILED`.
 Only one issue is `ACTIVE` per feature worktree.
 
-## 10. Change control
+## 11. Change control
 
 If implementation reveals that a requirement is impossible, unsafe, or much
 more expensive than represented, stop and update the appropriate upstream

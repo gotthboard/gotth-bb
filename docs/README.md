@@ -13,8 +13,8 @@ but it may not silently change one.
 
 Implementation history is recorded in the [change log](CHANGELOG.md).
 
-The current target is `1.0.0-alpha.1`, followed by beta and release-candidate
-builds before `1.0.0`.
+The current target is `1.0.0-alpha.2`, followed by additional alpha, beta, and
+release-candidate builds before `1.0.0`.
 
 ## Document status
 

@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.3 |
+| Document version | 0.4 |
 | Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -341,7 +341,41 @@ Search, unread state, the complete report queue, polished administration,
 advanced spam controls, and final backup/restore evidence may remain incomplete
 until beta.
 
-## 8. Stable 1.0 acceptance boundary
+## 8. Alpha.2 acceptance boundary
+
+`1.0.0-alpha.2` establishes the compact, information-dense forum surface used
+by the remaining version 1.0 work. It is acceptable when all of the following
+work in one deployed environment:
+
+1. The board index presents each visible area with its name, description,
+   visible topic count, visible post count, and latest visible post summary.
+2. Area statistics and latest-post selection use the same actor-authorized
+   visibility predicate as the corresponding area/topic reads; hidden or
+   restricted content does not affect an unauthorized actor's result.
+3. Topic lists present state, title, starter, reply count, and last activity in
+   a compact conventional forum layout without changing canonical URLs.
+4. Topic pages present each post as one semantic article with an author panel,
+   post metadata, content, permalink, and authorized controls.
+5. The masthead, breadcrumbs, pagination, notices, forms, and action controls
+   use one coherent GOTTH Board visual system inspired by conventional bulletin
+   boards without copying phpBB code, markup, images, icons, or branding.
+6. The index, topic list, topic page, and publishing controls remain usable at
+   320 CSS pixels and at desktop widths without document-level horizontal
+   scrolling.
+7. In-session interactions retain the alpha.1 HTMX contract: only the
+   authoritative board region changes, browser history remains correct, and
+   ordinary HTML navigation/form fallbacks remain equivalent.
+8. Keyboard focus, semantic table/list relationships, headings, form labels,
+   and status announcements remain usable after both full-page and HTMX
+   navigation.
+9. Focused SQL, store, handler, rendering, access-leakage, responsive, and HTMX
+   tests pass reproducibly.
+
+Search, unread state, reports, new moderation transitions, group
+administration, site-setting administration, and public registration are not
+part of this presentation increment.
+
+## 9. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -355,7 +389,7 @@ until beta.
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 9. Constraints and assumptions
+## 10. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -366,7 +400,7 @@ until beta.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 10. Open owner decisions
+## 11. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:

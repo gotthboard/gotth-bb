@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 15:05 CDT — Define the alpha.2 forum presentation increment
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `README.md`
+- `docs/README.md`
+- `docs/prd.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/feature-plan.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Alpha.2 is narrowed to a conventional, information-dense forum presentation:
+authorized board-index statistics and latest-post metadata, compact area/topic
+rows, semantic two-column posts, coherent masthead/breadcrumb/action styling,
+and responsive collapse. The phpBB influence is information architecture only;
+GOTTH Board retains its own markup, styles, wording, assets, authorization, and
+HTMX behavior.
+
+The new aggregate projection is explicitly one actor-filtered SQL query. It
+cannot expose hidden or restricted content through counts or latest-post
+metadata, cannot issue per-area follow-up queries, and never returns post
+bodies. Existing topic and post projections remain authoritative where they
+already contain the required data.
+
+Verification:
+
+- The product acceptance boundary, architecture, implementation contract, and
+  feature decomposition agree on scope and dependency order.
+- Alpha.1 remains the immutable base tag; no runtime, schema, dependency, or
+  deployment change is part of this documentation unit.
+
+Risks / non-goals:
+
+- Reports, search, unread state, new moderation transitions, group/site
+  administration, abuse controls, and registration policy remain separate.
+- A pixel clone or copied phpBB asset is explicitly inadmissible.
+
 ### 2026-09-02 14:24 CDT — Keep in-session mutations inside HTMX
 
 Commit: current commit; hash assigned by Git after commit

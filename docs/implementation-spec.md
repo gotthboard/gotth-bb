@@ -905,6 +905,37 @@ session store is unavailable. No broader `/areas/`, `/topics/`, `/posts/`, or
 - Authorization/not-found behavior remains identical between modes.
 - Errors never return a successful fragment containing an error message.
 
+### 11.1 Alpha.2 forum-surface contract
+
+`ListVisibleAreaSummaries` replaces the plain index projection. Its single SQL
+statement returns area identity and display fields plus:
+
+- `topic_count`: actor-visible, non-deleted topics;
+- `post_count`: non-deleted posts belonging to those topics;
+- an optional latest-post tuple containing topic ID/title, post number,
+  author display name, and post creation time.
+
+The complete area visibility predicate appears in the area-producing relation
+before aggregation. Non-staff topic visibility excludes `hidden`; staff topic
+visibility admits it. Deleted topics and soft-deleted posts are always excluded
+from the summary. Counts are exact `bigint` values. The latest-post tuple is
+selected by `created_at DESC, id DESC` from the same authorized topic set and
+is SQL NULL in its entirety when no visible post exists. The store rejects
+negative counts, partial nullable tuples, empty required strings, non-positive
+identifiers, or non-finite timestamps.
+
+The handler builds the latest-post URL through `URLBuilder`; templates never
+concatenate paths. Board-index output uses semantic row headings and labels
+that remain intelligible when desktop statistic columns collapse into mobile
+metadata. Topic-list and topic-page changes reuse their existing read models;
+new queries are not justified for fields already returned.
+
+Every alpha.2 browser page continues to return a complete document for an
+ordinary request and the same `#main-content` component for an exact HTMX
+request. Responsive presentation is CSS-only. It introduces no client-side
+state, JSON API, authorization branch, copied third-party forum asset, or
+runtime stylesheet dependency.
+
 ## 12. URL builder
 
 One URL builder owns:

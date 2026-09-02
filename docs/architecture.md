@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft constrained by PRD 0.1 |
+| Status | Draft constrained by PRD 0.4 |
 | Product | GOTTH Board |
 | Applies to | Version 1.0 unless noted |
 | Governing document | [Product requirements](prd.md) |
@@ -400,6 +400,29 @@ authorization boundary.
 Tailwind output is compiled at build time. No Tailwind runtime or arbitrary
 class construction from user input is permitted. Static assets are content-
 hashed or release-versioned and referenced through the URL builder.
+
+### 11.1 Alpha.2 forum presentation read model
+
+The compact forum surface is a projection over existing forum authority, not a
+second authorization system. PostgreSQL returns one row per actor-visible area
+with scalar topic/post counts and at most one latest visible post. The area
+predicate is applied before any aggregate or lateral latest-row lookup. Topic
+state filtering is actor-aware: non-staff results exclude hidden topics, while
+staff results may include them because staff already possess that direct-read
+authority. Soft-deleted posts never contribute to board-index counts or latest
+post summaries.
+
+The query returns no post bodies and does not issue per-area follow-up queries.
+The handler validates every nullable latest-post field as an all-null or
+all-present tuple before building a canonical URL. Templ receives only the
+typed projection and renders semantic HTML. Styling may change layout at
+responsive breakpoints, but it may not change order, authority, meaning, or
+the ordinary-HTML/HTMX response contract.
+
+The phpBB influence is limited to established forum information architecture:
+compact blue/gray chrome, forum/topic rows, metadata columns, author/content
+post columns, breadcrumbs, pagination, and action placement. GOTTH Board owns
+all markup, styles, wording, and assets.
 
 ## 12. Security architecture
 
