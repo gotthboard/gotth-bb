@@ -16,6 +16,7 @@ Affected files:
 - `cmd/operator/main.go`
 - `cmd/operator/main_test.go`
 - `docs/release-operations.md`
+- `go.mod`
 - `internal/buildinfo/buildinfo.go`
 - `internal/buildinfo/buildinfo_test.go`
 
@@ -34,7 +35,7 @@ PostgreSQL.
 
 Verification:
 
-- Exact development and release identity acceptance
+- Exact development and canonical semantic-version release identity acceptance
 - Empty, oversized, malformed, partial, abbreviated, uppercase, and non-hex
   identity rejection
 - A real `-trimpath -buildvcs=false` operator build with package-private `-X`

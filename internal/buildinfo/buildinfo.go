@@ -1,6 +1,10 @@
 package buildinfo
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/coreos/go-semver/semver"
+)
 
 const (
 	developmentVersion  = "development"
@@ -26,29 +30,26 @@ type Info struct {
 // Current validates the link-time release identity before it reaches output
 // or structured logs.
 //
-// Complexity: for v <= 64 version bytes and c <= 40 commit bytes, time is
-// O(v+c), Omega(1), and auxiliary space is tight Theta(1).
+// Complexity: for v <= 64 version bytes and c <= 40 commit bytes, time and
+// auxiliary space are O(v+c), Omega(1), through semantic-version parsing.
 func Current() (Info, error) {
 	return validate(version, commit)
 }
 
-// validate accepts the explicit development sentinel or a bounded release
-// version paired with an exact lowercase full Git object name.
+// validate accepts the explicit development sentinel or a canonical semantic
+// release version paired with an exact lowercase full Git object name.
 //
-// Complexity: for v <= 64 version bytes and c <= 40 commit bytes, time is
-// O(v+c), Omega(1), and auxiliary space is tight Theta(1).
+// Complexity: for v <= 64 version bytes and c <= 40 commit bytes, time and
+// auxiliary space are O(v+c), Omega(1), through semantic-version parsing.
 func validate(version, commit string) (Info, error) {
 	if version == developmentVersion && commit == unknownCommit {
 		return Info{Version: version, Commit: commit}, nil
 	}
-	if len(version) == 0 || len(version) > maximumVersionBytes || version[0] < '0' || version[0] > '9' {
+	if len(version) == 0 || len(version) > maximumVersionBytes {
 		return Info{}, fmt.Errorf("release version is invalid")
 	}
-	for _, character := range []byte(version) {
-		if character >= '0' && character <= '9' || character >= 'A' && character <= 'Z' ||
-			character >= 'a' && character <= 'z' || character == '.' || character == '-' || character == '+' {
-			continue
-		}
+	parsed, parseErr := semver.NewVersion(version)
+	if parseErr != nil || parsed.String() != version {
 		return Info{}, fmt.Errorf("release version is invalid")
 	}
 	if len(commit) != 40 {

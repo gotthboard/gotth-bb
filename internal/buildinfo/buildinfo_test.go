@@ -33,6 +33,8 @@ func TestValidateRejectsUntraceableIdentity(t *testing.T) {
 		{version: "development", commit: "0123456789abcdef0123456789abcdef01234567"},
 		{version: "1.0.0-alpha.1", commit: "unknown"},
 		{version: "", commit: "0123456789abcdef0123456789abcdef01234567"},
+		{version: "1", commit: "0123456789abcdef0123456789abcdef01234567"},
+		{version: "01.0.0", commit: "0123456789abcdef0123456789abcdef01234567"},
 		{version: "x.1", commit: "0123456789abcdef0123456789abcdef01234567"},
 		{version: "1.0.0_alpha", commit: "0123456789abcdef0123456789abcdef01234567"},
 		{version: "1.0.0-alpha.1", commit: "0123456789abcdef0123456789abcdef0123456"},
