@@ -24,6 +24,8 @@ The implementation must preserve these invariants:
 5. Every access-changing or moderation mutation commits with its audit event.
 6. Every browser-facing URL is generated through the configured base path.
 7. PostgreSQL constraints and transactions remain authoritative.
+8. Every non-root post has one immutable same-topic parent and one immutable
+   bounded tree path; display indentation is never treated as authority.
 
 ## 2. Toolchain and dependencies
 
@@ -394,15 +396,39 @@ not a moderation transition and does not create a moderation-audit row.
 ### 6.9 `posts`
 
 - `id`, `topic_id`, `author_id`, `post_number`
+- `parent_post_id` nullable only for the first post
+- `thread_path` as a one-through-32-element `integer[]` rooted at `1`
 - `markdown_source`
 - `rendered_html`, `renderer_version`
 - `revision`
 - `created_at`, `updated_at`, `edited_at`, `deleted_at`
 - `deleted_by`, `deletion_reason` nullable
 - unique `(topic_id, post_number)`
+- unique `(topic_id, id)` supporting the same-topic parent foreign key
 
 Source and rendered sizes have limits. A post edit increments `revision` and
 uses `WHERE revision = $expected` to detect lost updates.
+
+`(topic_id, parent_post_id)` references `(topic_id, id)` so a reply cannot name
+a post in another topic. Post 1 has no parent and path `{1}`. Every later post
+has one parent with a smaller immutable post number and path equal to the
+parent path with its own post number appended. Parent and path are immutable;
+their validation trigger rejects cycles, inconsistent roots, a depth above 32,
+or path drift. `posts_topic_thread_order_idx` orders `(topic_id, thread_path)`
+for depth-first page reads. The fixed logical depth bound limits row and index
+growth; it does not control CSS indentation.
+
+Migration from alpha.1 adds both columns, backfills each first post as `{1}`
+and each existing flat reply as a direct child of `topics.first_post_id` with
+path `{1, post_number}`, then validates the tree before enabling its constraints
+and index. The migration is additive but the backfill updates existing post
+rows and must be timed and backed up before deployment. A documented
+compatibility trigger maps a missing parent from the previous alpha.1 binary
+to the topic's first post and derives the path, preserving app-only rollback.
+Alpha.2 request parsing nevertheless requires an explicit parent and never
+relies on that compatibility behavior. Removing the compatibility trigger and
+tightening the parent column require a later migration after the alpha.1
+rollback window closes.
 
 Author edit is deliberately not a staff content-rewrite power. The service
 validates and renders the bounded draft before opening one transaction, then
@@ -440,15 +466,17 @@ source, rendered content, revision, and topic counters while setting
 topic root because the deleted post no longer has a visible fragment.
 
 Reply creation renders and validates before opening a transaction, then locks
-the undeleted topic row for update, the owning area row for share, and the
-area's current group mappings for share. `CanReply` evaluates that locked
-policy. The held topic lock serializes allocation from `next_post_number`; one
-statement inserts the reply and advances `latest_post_id`, `reply_count`,
-`next_post_number`, and activity timestamps. The persisted reply/activity time
-is the greater of the caller's bounded UTC timestamp and existing topic
-activity, so a request that waited on the lock cannot move chronological post
-timestamps or area-list activity backward. There is no automatic retry after
-an unknown commit outcome.
+the undeleted topic row for update, locks the addressed parent post, the owning
+area row for share, and the area's current group mappings for share. The parent
+must be visible, undeleted, in the locked topic, and below the maximum logical
+depth before `CanReply` evaluates the locked policy. The held topic lock
+serializes allocation from `next_post_number`; one statement inserts the reply
+with its immutable parent and derived path and advances `latest_post_id`,
+`reply_count`, `next_post_number`, and activity timestamps. The persisted
+reply/activity time is the greater of the caller's bounded UTC timestamp and
+existing topic activity, so a request that waited on the lock cannot move
+chronological post timestamps or area-list activity backward. There is no
+automatic retry after an unknown commit outcome.
 
 ### 6.10 `topic_reads`
 
@@ -753,8 +781,8 @@ Internal routes are shown relative to the configured external base URL.
 | `GET` | `/topics/new` | New-topic form | Eligible member |
 | `POST` | `/topics/preview` | Preview new-topic draft | Member session |
 | `POST` | `/topics` | Create topic | Eligible member |
-| `POST` | `/topics/{id}/replies/preview` | Preview reply draft | Member session |
-| `POST` | `/topics/{id}/replies` | Create reply | Eligible member |
+| `POST` | `/topics/{id}/replies/preview` | Preview a parent-addressed reply draft | Member session |
+| `POST` | `/topics/{id}/replies` | Create a parent-addressed reply | Eligible member |
 | `GET` | `/posts/{id}/edit` | Edit form | Author |
 | `POST` | `/posts/{id}/edit/preview` | Preview edit draft | Author |
 | `POST` | `/posts/{id}/edit` | Apply edit | Author |
@@ -787,6 +815,15 @@ bytes so percent-encoding can carry the 65,536-byte decoded Markdown maximum.
 CSRF verification consumes and restores the bounded bytes before any form
 parsing or publisher call. Parsing then rejects missing, duplicated, or unknown
 fields. Only the server-owned session snapshot reaches the publishing service.
+
+Every reply and reply-preview form carries exactly one canonical positive
+`parent_post_id`. The visible Reply action on a post supplies that post's ID;
+the topic-wide reply action supplies the first-post ID. The value is selection,
+not authority: preview may preserve it but cannot probe it, and final
+publication locks and reauthorizes the current parent, topic, area, and group
+policy before insertion. A malformed, cross-topic, deleted, hidden, missing, or
+over-depth parent uses the same generic denial/not-found boundary and never
+echoes protected parent metadata.
 
 Publishing validation returns `422` with the exact submitted title/Markdown
 escaped back into the full page or HTMX fragment and a field-specific message.
@@ -828,23 +865,29 @@ Signs, leading zeros, overflow, escaped paths, extra segments, and zero are not
 normalized and share the same `404` response as a missing, deleted, hidden, or
 area-inaccessible topic. The page query uses the same canonical spelling and
 1-through-10,000 bound as area topic lists. Each page contains at most 25
-nondeleted posts in ascending immutable `post_number` order; an empty first page
-is permitted for a visible topic whose posts are all soft-deleted, while an
-empty later page is `404`. PostgreSQL receives a maximum offset of 249,975 and
-the fixed limit only.
+visible conversation nodes in ascending immutable `thread_path` order. The
+first post remains the tree root and appears on page 1. A soft-deleted node with
+visible descendants remains as a body-free tombstone; a deleted leaf is omitted.
+An empty first page is permitted only for a visible topic with no renderable
+root, while an empty later page is `404`. PostgreSQL receives a maximum offset
+of 249,975 and the fixed limit only.
 
 Topic metadata and the post page come from one access-filtered statement and
 one PostgreSQL snapshot. It joins the owning area, applies the complete
 server-derived member, staff, and group authority before returning topic text,
-and excludes deleted topics, hidden topics for nonstaff, and deleted posts. A
-left-joined null post row represents only a visible topic with zero visible
-posts on page 1; offset pages receive no sentinel and therefore return `404`.
-The window count and every breadcrumb field come from that same authorized
-result, so a concurrent policy commit cannot produce mixed-authority metadata
-and posts. Topic canonical URLs use `/topics/<topic-id>` and omit `page=1`.
-Stable post URLs append `#post-<post-id>` to that topic page, including the
-canonical page query when required. Breadcrumb area links use the immutable
-area slug returned by the same access-controlled result.
+and excludes deleted topics and hidden topics for nonstaff. The projection
+returns each node's depth, parent ID, safe parent author/permalink metadata,
+and whether a deleted node must remain as a structural tombstone. It never
+returns deleted Markdown or rendered HTML to an ordinary reader. A left-joined
+null post row represents only a visible topic with no renderable posts on page
+1; offset pages receive no sentinel and therefore return `404`. The window
+count, target post page calculation, and every breadcrumb field come from the
+same authorized tree order, so a concurrent policy commit cannot produce
+mixed-authority metadata and posts. Topic canonical URLs use
+`/topics/<topic-id>` and omit `page=1`. Stable post URLs append
+`#post-<post-id>` to that topic page, including the canonical tree-order page
+query when required. Breadcrumb area links use the immutable area slug returned
+by the same access-controlled result.
 
 Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
@@ -935,6 +978,43 @@ ordinary request and the same `#main-content` component for an exact HTMX
 request. Responsive presentation is CSS-only. It introduces no client-side
 state, JSON API, authorization branch, copied third-party forum asset, or
 runtime stylesheet dependency.
+
+### 11.2 Alpha.2 threaded-reply contract
+
+The topic-post query orders by `(topic_id, thread_path)` and returns at most 25
+conversation nodes after the canonical one-based page offset. `depth` is
+`cardinality(thread_path) - 1`. The store rejects an empty or non-rooted path,
+a last path element different from `post_number`, depth above 32, a partial
+parent tuple, or a parent relationship inconsistent with the row's depth. Page
+and stable-post URL calculations use the same tree order; chronological latest
+activity and unread watermarks continue to use immutable `post_number`.
+
+Each post article owns a child container and a Reply control whose form carries
+the post ID as `parent_post_id`. The topic-level Reply control addresses the
+first post. A successful HTMX reply returns a same-origin main-region location
+for the canonical tree-order page and post fragment. HTMX therefore reloads
+one authorized bounded region and places the reply under its parent without a
+document refresh. Ordinary submission performs the equivalent `303`. Preview,
+validation, reauthentication, and conflict behavior preserve the selected
+parent without treating it as authority.
+
+Desktop rendering may show the conventional author/content columns around the
+thread, but ancestry is expressed by semantic nesting metadata, a visible
+reply-to label, and connector styling. CSS indentation increases for depths one
+through six only; deeper nodes retain their true `data-depth`, reply-to label,
+DOM order, and accessible relationship while using the sixth-level inset. At
+320 CSS pixels the author panel collapses above content before indentation is
+applied, and no node may force document-level horizontal scrolling.
+
+An ordinary reader never receives a soft-deleted post body. A deleted leaf is
+omitted. A deleted post with a visible descendant produces a tombstone article
+with stable post ID, structural parent relationship, fixed “Deleted” wording,
+and no source, rendered body, deletion reason, or unauthorized actor metadata.
+Editing a post replaces only that article. Deleting or restoring a post
+refreshes the bounded topic region so tombstone and descendant structure are
+recomputed by the server. Hard-purge tooling must refuse to orphan children or
+must remove/reparent an explicitly audited subtree; silent reparenting is not
+permitted.
 
 ## 12. URL builder
 

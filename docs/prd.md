@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.4 |
+| Document version | 0.5 |
 | Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -172,10 +172,11 @@ Requirements:
 - **FORUM-001:** Version 1.0 shall support one level of areas/categories.
 - **FORUM-002:** An area shall have a name, slug, description, display order,
   visibility, posting mode, and optional group restrictions.
-- **FORUM-003:** Members shall create topics in eligible areas and chronological
-  replies inside eligible topics.
-- **FORUM-004:** Version 1.0 replies shall be flat and chronological. Quotes may
-  reference earlier posts without creating a reply tree.
+- **FORUM-003:** Members shall create topics in eligible areas and replies to
+  visible posts inside eligible topics.
+- **FORUM-004:** A topic shall form one rooted reply tree. The first post is the
+  root; every later post identifies one immutable parent in the same topic;
+  sibling replies are ordered oldest-first by immutable post number.
 - **FORUM-005:** Topics may be pinned, locked, moved, hidden, restored, or
   archived by authorized staff.
 - **FORUM-006:** Topics and posts shall have stable identifiers and canonical
@@ -193,12 +194,12 @@ Requirements:
 - **CONTENT-006:** Validation failure shall preserve submitted content and
   return field-specific errors.
 - **CONTENT-007:** Version 1.0 shall not include attachments, polls, arbitrary
-  embeds, nested replies, or private messaging.
+  embeds, or private messaging.
 
 ### 5.4 Reading and discovery
 
-- **READ-001:** The forum shall provide an area index, topic lists, topic
-  pages, recent activity, and conventional pagination.
+- **READ-001:** The forum shall provide an area index, topic lists, threaded
+  topic pages, recent activity, and bounded pagination or continuation.
 - **READ-002:** Signed-in members shall have new/unread indicators and a jump
   to first unread action.
 - **READ-003:** PostgreSQL full-text search shall support text, author, area,
@@ -207,6 +208,8 @@ Requirements:
   predicate as direct reads before rows are returned or counted.
 - **READ-005:** Pages shall provide breadcrumbs and canonical URLs that include
   the configured external base path, including a root deployment.
+- **READ-006:** Threaded topic reads shall preserve deterministic parent/child
+  order and reply-to context without requiring an unbounded topic response.
 
 ### 5.5 Moderation
 
@@ -355,25 +358,39 @@ work in one deployed environment:
 3. Topic lists present state, title, starter, reply count, and last activity in
    a compact conventional forum layout without changing canonical URLs.
 4. Topic pages present each post as one semantic article with an author panel,
-   post metadata, content, permalink, and authorized controls.
-5. The masthead, breadcrumbs, pagination, notices, forms, and action controls
+   post metadata, content, permalink, authorized controls, and an explicit
+   reply-to relationship.
+5. A member can reply to any visible post in an eligible topic. The committed
+   reply appears beneath its parent without a full-document refresh; sibling
+   order is deterministic and the submitted draft survives validation or
+   conflict responses.
+6. Nested replies use visible hierarchy and connector cues. Mobile layout caps
+   visual indentation without changing logical ancestry, order, canonical
+   post URLs, or keyboard traversal.
+7. Soft-deleting a post with visible descendants leaves a content-free
+   tombstone in the tree so descendants retain their conversational context.
+8. Topic reads remain bounded. Continuation preserves tree order and identifies
+   an omitted parent through safe metadata or a canonical permalink rather
+   than silently presenting a child as a top-level reply.
+9. The masthead, breadcrumbs, pagination, notices, forms, and action controls
    use one coherent GOTTH Board visual system inspired by conventional bulletin
    boards without copying phpBB code, markup, images, icons, or branding.
-6. The index, topic list, topic page, and publishing controls remain usable at
+10. The index, topic list, topic page, and publishing controls remain usable at
    320 CSS pixels and at desktop widths without document-level horizontal
    scrolling.
-7. In-session interactions retain the alpha.1 HTMX contract: only the
+11. In-session interactions retain the alpha.1 HTMX contract: only the
    authoritative board region changes, browser history remains correct, and
    ordinary HTML navigation/form fallbacks remain equivalent.
-8. Keyboard focus, semantic table/list relationships, headings, form labels,
+12. Keyboard focus, semantic table/list relationships, headings, form labels,
    and status announcements remain usable after both full-page and HTMX
    navigation.
-9. Focused SQL, store, handler, rendering, access-leakage, responsive, and HTMX
-   tests pass reproducibly.
+13. Focused migration, SQL, store, publishing, handler, rendering,
+    access-leakage, responsive, pagination/continuation, and HTMX tests pass
+    reproducibly.
 
 Search, unread state, reports, new moderation transitions, group
 administration, site-setting administration, and public registration are not
-part of this presentation increment.
+part of this surface-and-threading increment.
 
 ## 9. Stable 1.0 acceptance boundary
 

@@ -5,6 +5,56 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 15:32 CDT — Admit threaded replies into alpha.2 scope
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `README.md`
+- `docs/README.md`
+- `docs/prd.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/feature-plan.md`
+- `docs/verification.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Owner acceptance adds parent-addressed nested replies to alpha.2. The topic
+starter is the root; every later post addresses one immutable earlier post in
+the same topic. Siblings retain oldest-first post-number order while a bounded
+tree path provides deterministic depth-first presentation. Reply controls are
+per post, HTMX retains the no-document-refresh contract, and ordinary HTML
+fallback remains equivalent.
+
+The contract adds a bounded logical depth, capped visual indentation on narrow
+screens, explicit reply-to context when a parent is outside the current page,
+and content-free tombstones for deleted posts that retain visible descendants.
+It keeps unread and latest-activity chronology on immutable post numbers rather
+than confusing conversational order with publication order.
+
+The planned additive migration backfills existing replies beneath each topic
+root and retains explicit compatibility for the alpha.1 rollback binary. The
+database must reject cross-topic parents, cycles, later parents, excessive
+depth, and parent/path drift. Current alpha.2 requests must submit and
+reauthorize an explicit visible parent even though rollback compatibility can
+derive the root parent for an older binary.
+
+Verification:
+
+- Documentation links, requirement/verification references, feature ordering,
+  and stale flat-reply assumptions were inspected after the amendment.
+- Markdown whitespace and repository diff checks pass.
+
+Risks / non-goals:
+
+- This checkpoint changes the governing scope only. It creates no migration,
+  route, query, template, asset, runtime, or deployed-state change.
+- Unbounded recursive topic loads, per-post SQL queries, copied Reddit/phpBB
+  assets, voting, ranking, and branch collapsing are not admitted.
+
 ### 2026-09-02 15:18 CDT — Add authorized board-index summaries
 
 Commit: current commit; hash assigned by Git after commit

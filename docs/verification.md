@@ -45,12 +45,15 @@ exists.
 | ACL-001–ACL-003 | area schema and policy types | UT, DB, REV | Alpha.1 |
 | ACL-004–ACL-006 | every area-owned query and route | DB, HTTP, E2E, SEC | Alpha.1 |
 | ACL-007–ACL-008 | admin/moderation transactions and audit | DB, HTTP, REV | Alpha.1 |
-| FORUM-001–FORUM-006 | area/topic/post stores and pages | UT, DB, HTTP, E2E | Alpha.1 |
+| FORUM-001–FORUM-002 | area schema, stores, and pages | UT, DB, HTTP, E2E | Alpha.1 |
+| FORUM-003–FORUM-004 | parent-addressed publishing and threaded topic pages | UT, DB, HTTP, E2E | Alpha.2 |
+| FORUM-005–FORUM-006 | moderation state and stable URLs | UT, DB, HTTP, E2E | Alpha.1 |
 | CONTENT-001–CONTENT-007 | composer, renderer, post services | UT, DB, HTTP, SEC | Alpha.1 |
-| READ-001 | index/list/topic handlers | HTTP, E2E, A11Y | Alpha.1 |
+| READ-001 | index/list/threaded-topic handlers | HTTP, E2E, A11Y | Alpha.1 baseline; Alpha.2 threaded |
 | READ-002 | read markers and unread views | UT, DB, HTTP | Beta.1 |
 | READ-003–READ-004 | PostgreSQL search/activity queries | DB, HTTP, SEC | Beta.1 |
 | READ-005 | URL builder and templates | UT, HTTP, E2E | Alpha.1 |
+| READ-006 | tree-order paging and reply-to context | UT, DB, HTTP, E2E, A11Y | Alpha.2 |
 | MOD-001–MOD-002 | report service and queue | UT, DB, HTTP, E2E | Beta.1 |
 | MOD-003–MOD-004 | moderation transitions | UT, DB, HTTP, E2E | Alpha.1 minimum; Beta complete |
 | MOD-005–MOD-006 | abuse controls | UT, HTTP, SEC, OPS | Beta.1 |
@@ -160,6 +163,15 @@ production identities are not fixtures.
 - Preview/publish equivalence for the same renderer version.
 - Stale edit revision conflict.
 - Concurrent replies allocate unique consecutive post numbers.
+- Concurrent replies to different parents allocate unique consecutive post
+  numbers and immutable parent/path pairs without lost topic activity.
+- Parent validation rejects nonexistent, deleted, cross-topic, later,
+  self-referential, cyclic, and over-depth relationships without existence
+  disclosure.
+- Tree-order paging is deterministic; stable post links calculate the same
+  page; a child whose parent is outside the page retains safe reply-to context.
+- Soft-deleted leaves disappear, while deleted ancestors with visible
+  descendants render body-free tombstones and never expose retained content.
 - Locked topic and read-only/archived area races.
 - Author deletion, moderator restoration, and redaction semantics.
 - Transaction rollback after simulated audit failure.
@@ -175,6 +187,12 @@ Each migration set is verified by:
 4. Migrating a snapshot from the previous release to head.
 5. Running application smoke tests against the upgraded database.
 6. Exercising the documented rollback or restore path.
+
+The alpha.2 thread migration additionally proves the alpha.1 flat fixture
+backfills every reply beneath the correct first post, invalid parent/path state
+cannot commit, the tree-order index is usable, and the previous alpha.1 binary
+can still publish a direct-root reply through the documented compatibility
+boundary.
 
 Tests inspect foreign keys, unique constraints, check constraints, indexes used
 by access-controlled lists, and migration-table consistency. A down migration

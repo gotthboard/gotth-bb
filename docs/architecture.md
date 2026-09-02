@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft constrained by PRD 0.4 |
+| Status | Draft constrained by PRD 0.5 |
 | Product | GOTTH Board |
 | Applies to | Version 1.0 unless noted |
 | Governing document | [Product requirements](prd.md) |
@@ -20,6 +20,8 @@
 - Use Authentik OIDC as the only authentication authority.
 - Store opaque, revocable sessions server-side.
 - Model area visibility and posting mode as independent columns.
+- Model each non-root post as an immutable reply to one earlier post in the
+  same topic; presentation depth never substitutes for stored ancestry.
 - Apply access predicates inside data-access queries and explicit write-policy
   checks.
 - Deploy behind Caddy at `https://bb.alhstudios.com/` with no path prefix.
@@ -348,6 +350,14 @@ An area owns topics; a topic owns posts. A topic is created with post number 1
 in one transaction. Reply numbering and activity pointers update while the
 topic row is locked, preventing duplicate numbers and lost counters.
 
+Each topic is also one rooted adjacency tree. The first post has no parent.
+Every later post names one earlier parent in the same topic. Immutable post
+numbers remain the chronological identity and unread watermark; the reply
+tree controls conversational presentation. A bounded materialized tree path
+derived from immutable post numbers supports deterministic depth-first reads
+without a recursive full-topic scan on every page. The parent and path are
+immutable together and database-validated.
+
 Posts keep Markdown source as canonical content. Sanitized HTML may be stored
 as a derived cache with a renderer-version marker. A renderer change can rebuild
 the cache from source.
@@ -363,8 +373,9 @@ silently break referential or audit integrity.
 
 - Login callback: identity upsert, groups, role, and session in one transaction.
 - Topic creation: topic, first post, and area/topic counters in one transaction.
-- Reply creation: lock topic, verify state, allocate number, insert post, update
-  activity in one transaction.
+- Reply creation: lock topic, lock and validate the visible parent in that
+  topic, verify state, allocate number, derive the immutable tree path, insert
+  the post, and update activity in one transaction.
 - Post edit: use a revision number to detect stale concurrent edits.
 - Area access change: update policy and append audit event in one transaction.
 - Role/suspension change: lock the singleton governance row and target, define
@@ -388,6 +399,10 @@ shared unauthenticated cache.
 Unread state records the last post position read for a user and topic. Counts
 may be approximate only if the UI labels them as such; access filtering is never
 approximate.
+
+Thread presentation does not redefine unread chronology. `post_number` remains
+the monotonic topic position used by unread state and latest activity even
+though the topic page orders visible conversation nodes by immutable tree path.
 
 ## 11. Rendering and client behavior
 
@@ -423,6 +438,40 @@ The phpBB influence is limited to established forum information architecture:
 compact blue/gray chrome, forum/topic rows, metadata columns, author/content
 post columns, breadcrumbs, pagination, and action placement. GOTTH Board owns
 all markup, styles, wording, and assets.
+
+### 11.2 Alpha.2 threaded-reply architecture
+
+Nested replies are stored relationships, not indentation inferred from time or
+markup. `posts.parent_post_id` points to the addressed post and
+`posts.thread_path` stores the bounded sequence of immutable post numbers from
+the topic root to the post. A same-topic composite foreign key, root/child
+checks, immutable-column trigger, and path-validation trigger reject cross-topic
+parents, cycles, later parents, and path drift. The maximum logical depth is 32;
+presentation visually indents at most six levels so narrow screens retain usable
+content width.
+
+The alpha.2 migration backfills every existing flat reply as a direct child of
+its topic's first post. An explicit compatibility trigger maps a missing parent
+from an alpha.1 rollback binary to that first post and derives the path. This is
+the narrow cost of keeping application rollback usable after the additive
+migration; current alpha.2 requests must still submit and validate an explicit
+parent.
+
+Topic reads use `thread_path` for stable depth-first order and the existing
+bounded 25-post pages. Each row carries parent identity and safe reply-to
+metadata. If a page does not contain a node's parent, the renderer identifies
+the omitted parent and links to its canonical post URL; it never promotes the
+child visually to a top-level reply. Stable post links calculate the target's
+page from the same tree order. No request loads an unbounded topic or
+recursively issues one query per post.
+
+Each visible post exposes its own reply action. The server reauthorizes the
+parent and topic under lock. Successful HTMX publication inserts or refreshes
+the authoritative bounded topic region without a full-document reload; ordinary
+HTML submission remains equivalent. A soft-deleted post with visible
+descendants renders a content-free tombstone carrying only the stable
+conversation structure and permitted metadata. Hard purge must treat a parent
+and its descendants explicitly and may not orphan a tree.
 
 ## 12. Security architecture
 

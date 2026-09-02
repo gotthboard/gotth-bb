@@ -10,7 +10,8 @@ The planned stack is Go, Templ, HTMX, Tailwind CSS, and PostgreSQL, with
 Authentik as the identity provider.
 
 `1.0.0-alpha.1` is released. Development of the phpBB-inspired, GOTTH-owned
-forum presentation planned for `1.0.0-alpha.2` is in progress.
+forum presentation and parent-addressed threaded replies planned for
+`1.0.0-alpha.2` is in progress.
 
 Project documentation lives in [`docs/`](docs/README.md).
 

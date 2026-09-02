@@ -173,7 +173,8 @@ Exit evidence:
 
 ### A1-06: forum read path
 
-Requirements: FORUM-001 through FORUM-006, READ-001, READ-005.
+Requirements: FORUM-001, FORUM-002, FORUM-005, FORUM-006, the alpha.1
+flat-topic baseline of READ-001, and READ-005.
 
 Deliverables:
 
@@ -191,8 +192,9 @@ Exit evidence:
 
 ### A1-07: forum write path
 
-Requirements: CONTENT-001 through CONTENT-007 and publishing portions of
-FORUM-003 through FORUM-005.
+Requirements: CONTENT-001 through CONTENT-007, the alpha.1 flat-reply baseline
+of FORUM-003, and FORUM-005. Threaded completion of FORUM-003 and FORUM-004 is
+owned by A2-04 and A2-05.
 
 Deliverables:
 
@@ -248,9 +250,9 @@ Exit evidence:
 ## 4. Milestone `1.0.0-alpha.2`
 
 Alpha.2 establishes the conventional, information-dense GOTTH Board forum
-surface. It does not absorb reports, search, unread state, new moderation
-transitions, administration completion, abuse controls, or registration-policy
-changes.
+surface and parent-addressed threaded conversations. It does not absorb
+reports, search, unread state, new moderation transitions, administration
+completion, abuse controls, or registration-policy changes.
 
 ### A2-00: presentation contract
 
@@ -289,21 +291,36 @@ Requirements: UX-001 through UX-004, READ-001, READ-005.
 - Keep pagination, publishing eligibility, moderation state, and canonical
   navigation behavior unchanged.
 
-### A2-04: topic and post surface
+### A2-04: threaded-reply data and publication
+
+Requirements: FORUM-003, FORUM-004, FORUM-006, CONTENT-005, CONTENT-006,
+READ-006, ACL-004 through ACL-006.
+
+- Add the additive parent/path migration, alpha.1 compatibility behavior,
+  immutable same-topic tree constraints, bounded depth, and tree-order index.
+- Backfill existing replies beneath each topic root and prove migration,
+  integrity, rollback compatibility, and hard-purge refusal behavior.
+- Require and reauthorize an explicit visible parent during reply preview and
+  publication while preserving topic counters, chronology, and HTMX fallback.
+
+### A2-05: threaded topic and post surface
 
 Requirements: UX-001 through UX-005, FORUM-004, CONTENT-004 through
-CONTENT-006.
+CONTENT-006, READ-001, READ-005, READ-006.
 
 - Render semantic post articles with desktop author/content columns and a
-  linear mobile collapse.
+  bounded-depth reply hierarchy, visible reply-to context, connector styling,
+  tombstones, and capped mobile indentation.
 - Unify action buttons, publishing forms, notices, pagination, and moderation
   controls while preserving HTMX swaps and conflict drafts.
+- Prove tree-order pages, stable post links, omitted-parent context, keyboard
+  order, 320-pixel layout, and no per-post query behavior.
 
-### A2-05: integrated acceptance and deployment
+### A2-06: integrated acceptance and deployment
 
-- Run access-leakage, SQL/store, HTTP/HTMX, responsive, keyboard, generation,
-  race, PostgreSQL integration, deterministic artifact, backup, deploy, and
-  rollback evidence.
+- Run migration, tree-integrity, access-leakage, SQL/store, publishing,
+  HTTP/HTMX, responsive, keyboard, generation, race, PostgreSQL integration,
+  deterministic artifact, backup, deploy, and rollback evidence.
 - Require owner acceptance before recording the alpha.2 known-good reference.
 
 ## 5. Milestone `1.0.0-alpha.N`
