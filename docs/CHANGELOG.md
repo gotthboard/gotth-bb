@@ -5,6 +5,58 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 22:25 CDT — Enforce trusted rendered HTML boundary
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `go.mod`
+- `go.sum`
+- `internal/render/trusted_html.go`
+- `internal/render/trusted_html_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the sole persisted-content boundary permitted to bypass Templ escaping.
+Its opaque `TrustedHTML` type has a private representation and safe zero value;
+the only constructor always runs a fixed Bluemonday v1.0.27 policy before the
+type can produce a Templ component. The boundary sanitizes again at read time,
+so a corrupt row or obsolete Markdown renderer cannot inject active markup.
+
+The allowlist contains only paragraphs, emphasis, strong emphasis, ordered and
+unordered lists, list items, links, block quotes, preformatted/code text, and
+line breaks. Styling, identifiers, event attributes, images, tables, embeds,
+scripts, and arbitrary metadata are stripped. Only parseable relative, HTTP,
+and HTTPS links survive; every surviving link receives `nofollow noreferrer`.
+Applying that relation policy to local links too deliberately removes the seam
+between Go and browser classification of ambiguous relative references.
+
+Verification:
+
+- Intended formatting and emoji survive while executable, embedded,
+  undocumented, styled, and attribute-bearing markup is removed
+- JavaScript, data, and mail schemes lose their links; local, scheme-relative,
+  ambiguous-relative, HTTP, and HTTPS references retain only the fixed policy
+- Component rendering emits sanitized markup without a raw-string accessor;
+  the zero value renders empty
+- The shared completed policy passed concurrent race testing, 100 repeated
+  race-detector runs, full `make verify`, and 100% statement coverage for every
+  changed production function
+- Cold review found and removed the external-only URL-classification seam;
+  two fresh reviews then returned CLEAN on the admitted code state
+
+Risks / non-goals:
+
+- This unit does not parse Markdown or wire the topic HTTP handler; it defines
+  the presentation trust boundary those later units must consume
+- Sanitization allocates output linear in the schema-bounded rendered HTML;
+  it performs no I/O, retry, detached work, or cache mutation
+- Bluemonday adds two transitive CSS-policy modules even though this narrow
+  policy allows no style attributes; replacing a reviewed sanitizer with a
+  hand-written HTML parser would be a worse security trade
+
 ### 2026-09-01 22:06 CDT — Bound visible topic post pages
 
 Commit: current commit; hash assigned by Git after commit
