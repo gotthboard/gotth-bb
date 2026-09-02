@@ -91,8 +91,9 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			len(loaded.Rows) > int(store.PostPageSize) ||
 			(loaded.TotalPosts == 0 && (pageNumber != 1 || len(loaded.Rows) != 1 || first.PostID.Valid || first.PostNumber.Valid ||
 				first.RenderedHtml.Valid || first.RendererVersion.Valid || first.Revision.Valid || first.PostCreatedAt.Valid ||
-				first.PostUpdatedAt.Valid || first.PostEditedAt.Valid || first.PostAuthorDisplayName.Valid)) ||
-			(loaded.TotalPosts > 0 && (pageNumber > int32(loaded.TotalPages) || !first.PostID.Valid))
+				first.PostUpdatedAt.Valid || first.PostEditedAt.Valid || first.PostAuthorDisplayName.Valid ||
+				first.TotalVisiblePosts != loaded.TotalPosts)) ||
+			(loaded.TotalPosts > 0 && (int64(pageNumber) > loaded.TotalPages || !first.PostID.Valid))
 		stateLabel := ""
 		switch first.TopicState {
 		case "open":

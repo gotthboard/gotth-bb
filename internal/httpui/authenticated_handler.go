@@ -25,10 +25,10 @@ type AuthenticationService interface {
 
 // NewAuthenticatedHandler activates the login, callback, authenticated shell,
 // and local logout boundaries around the public router. Only the exact forum
-// root, canonical one-segment GET area/topic routes, revalidation, and logout
-// perform session lookup; infrastructure, malformed/noncanonical read paths,
-// wrong methods, and unknown paths remain usable when the session store is
-// unavailable.
+// root, one-segment GET area routes, canonical positive-decimal one-segment GET
+// topic routes, revalidation, and logout perform session lookup;
+// infrastructure, malformed/noncanonical read paths, wrong methods, and
+// unknown paths remain usable when the session store is unavailable.
 //
 // Complexity: construction is tight Theta(1) time and auxiliary space around
 // fixed handler state. For path bytes p and delegated handler cost D, request

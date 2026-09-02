@@ -69,6 +69,9 @@ Verification:
 - Full `make verify` passes. Canonical ID parsing, fragment URL construction,
   and metadata comparison have 100% statement coverage; the new topic handler
   has 97.7%
+- Cold review removed an unsafe `int64`-to-`int32` total-page narrowing and
+  required the authorized-empty sentinel's repeated count to agree with the
+  page total
 
 Risks / non-goals:
 

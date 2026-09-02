@@ -3,6 +3,7 @@ package httpui
 import (
 	"context"
 	"errors"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -170,6 +171,27 @@ func TestTopicPostListHandlerRendersStatesAndLaterPagination(t *testing.T) {
 	}
 }
 
+func TestTopicPostListHandlerDoesNotNarrowTotalPageCount(t *testing.T) {
+	t.Parallel()
+
+	page := topicPostTestPage(1)
+	page.Rows = page.Rows[:1]
+	page.TotalPosts = math.MaxInt64
+	page.TotalPages = 1 + (math.MaxInt64-1)/int64(store.PostPageSize)
+	page.Rows[0].TotalVisiblePosts = math.MaxInt64
+	handler, err := newTopicPostListHandler(areaTopicTestBuilder(t), store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+		return page, nil
+	})
+	if err != nil {
+		t.Fatalf("newTopicPostListHandler() returned error: %v", err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, topicPostTestRequest("/topics/42", "42", auth.AccessContext{}))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "Welcome") {
+		t.Fatalf("large total response = (%d, %q)", response.Code, response.Body.String())
+	}
+}
+
 func TestTopicPostListHandlerCollapsesMissingAndRedactsFailures(t *testing.T) {
 	t.Parallel()
 
@@ -244,6 +266,7 @@ func TestTopicPostListHandlerRejectsMalformedEmptySentinel(t *testing.T) {
 	t.Parallel()
 
 	for _, mutate := range []func(*db.GetVisibleTopicPostPageRow){
+		func(row *db.GetVisibleTopicPostPageRow) { row.TotalVisiblePosts = 1 },
 		func(row *db.GetVisibleTopicPostPageRow) { row.PostNumber = pgtype.Int4{Int32: 1, Valid: true} },
 		func(row *db.GetVisibleTopicPostPageRow) {
 			row.RenderedHtml = pgtype.Text{String: "secret", Valid: true}
