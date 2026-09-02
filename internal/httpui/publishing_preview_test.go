@@ -64,7 +64,7 @@ func TestPublishingHandlerPreviewsSanitizedTopicAndReplyDrafts(t *testing.T) {
 						t.Fatalf("preview lacks %q: %s", required, body)
 					}
 				}
-				if strings.Contains(body, "<script>") || strings.Contains(body, "{true false}") {
+				if strings.Contains(body, "<script>") || strings.Contains(body, "{true false}") || strings.Contains(body, "aria-invalid") {
 					t.Fatalf("preview contains unsafe HTML or malformed attribute: %s", body)
 				}
 			}

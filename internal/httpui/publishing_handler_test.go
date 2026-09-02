@@ -68,6 +68,13 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 	if malformedResponse.Code != http.StatusNotFound || service.authenticateCalls != 1 {
 		t.Fatalf("malformed reply = (status %d auth calls %d)", malformedResponse.Code, service.authenticateCalls)
 	}
+	malformedPreview := httptest.NewRequest(http.MethodPost, "/topics/041/replies/preview", strings.NewReader("markdown=body"))
+	malformedPreview.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	malformedPreviewResponse := httptest.NewRecorder()
+	handler.ServeHTTP(malformedPreviewResponse, malformedPreview)
+	if malformedPreviewResponse.Code != http.StatusNotFound || service.authenticateCalls != 1 {
+		t.Fatalf("malformed reply preview = (status %d auth calls %d)", malformedPreviewResponse.Code, service.authenticateCalls)
+	}
 	form := url.Values{"_csrf": {csrfToken}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}
 	previewRequest := httptest.NewRequest(http.MethodPost, "/topics/preview", strings.NewReader(form.Encode()))
 	previewRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
