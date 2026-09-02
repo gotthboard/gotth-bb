@@ -7,7 +7,7 @@
 | Product | GOTTH Board |
 | Status | Draft for owner review |
 | Document version | 0.2 |
-| Initial development URL | `https://alhstudios.com/bb/` |
+| Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
 | Identity authority | Authentik |
@@ -35,7 +35,8 @@ for identity.
   moderation history inside the forum.
 - Make access rules explicit, auditable, and impossible to bypass through
   search, feeds, counts, direct URLs, or partial HTMX requests.
-- Preserve simple page navigation and stable links beneath `/bb`.
+- Preserve simple page navigation and stable links beneath the configured
+  public base URL.
 - Ship each major version as an independently operable release.
 - Keep deployment, backup, rollback, and failure behavior documented.
 
@@ -101,7 +102,7 @@ claims never grant moderator, administrator, or area-access privileges.
   authorized, and audited. No transition may leave the forum without an active
   administrator.
 - **ID-006:** The forum shall maintain server-side sessions with rotation,
-  expiration, revocation, and a cookie scoped to `/bb`.
+  expiration, revocation, and a cookie scoped to the configured base path.
 - **ID-007:** A local suspension shall deny participation even while Authentik
   authentication remains valid.
 - **ID-008:** Disabling an identity in Authentik shall take effect no later than
@@ -160,7 +161,7 @@ Requirements:
 - **FORUM-005:** Topics may be pinned, locked, moved, hidden, restored, or
   archived by authorized staff.
 - **FORUM-006:** Topics and posts shall have stable identifiers and canonical
-  URLs beneath `/bb`.
+  URLs beneath the configured public base URL.
 - **CONTENT-001:** Authors shall write Markdown and preview the sanitized
   rendered result before publication.
 - **CONTENT-002:** Supported version 1.0 formatting shall include paragraphs,
@@ -187,7 +188,7 @@ Requirements:
 - **READ-004:** Search and activity queries shall apply the same access
   predicate as direct reads before rows are returned or counted.
 - **READ-005:** Pages shall provide breadcrumbs and canonical URLs that include
-  the external `/bb` prefix.
+  the configured external base path, including a root deployment.
 
 ### 5.5 Moderation
 
@@ -313,7 +314,7 @@ environment:
    URLs.
 8. PostgreSQL migrations create a fresh database successfully.
 9. The interface works beneath the initial development URL
-   `https://alhstudios.com/bb/` with correct links, forms, HTMX requests,
+   `https://bb.alhstudios.com/` with correct links, forms, HTMX requests,
    assets, cookies, and OIDC callback.
 10. Authentication and access-control tests pass in CI or an equivalent
     reproducible command.
@@ -340,7 +341,7 @@ until beta.
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
-- Caddy terminates TLS and routes the external `/bb/` path to the service.
+- Caddy terminates TLS and routes `bb.alhstudios.com` to the service.
 - Authentik exposes a reachable OIDC issuer and the required identity claims.
 - SMTP, object storage, WebSockets, SCIM, and external search are not required
   for version 1.0.

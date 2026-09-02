@@ -5,7 +5,9 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft; no infrastructure changes performed |
-| Initial development base | `https://alhstudios.com/bb/` |
+| Initial development base | `https://bb.alhstudios.com/` |
+| Target host | `development` (`10.0.0.97`) |
+| Service manager | systemd |
 | Identity provider | Authentik OIDC |
 | Edge proxy | Caddy |
 | Durable store | PostgreSQL |
@@ -46,7 +48,7 @@ public base URL and path.
 
 ### 2.3 Alpha/beta
 
-- Real Caddy route and `/bb` prefix.
+- Real Caddy site for `bb.alhstudios.com` with an empty base path.
 - Dedicated Authentik application/client.
 - Dedicated PostgreSQL database and credentials.
 - Access restricted to designated test users/groups until the owner approves
@@ -150,12 +152,8 @@ failure, or secret finding blocks artifact publication.
 The intended route shape is:
 
 ```caddyfile
-alhstudios.com {
-    redir /bb /bb/
-
-    handle_path /bb/* {
-        reverse_proxy 127.0.0.1:8080
-    }
+bb.alhstudios.com {
+    reverse_proxy 127.0.0.1:18082
 }
 ```
 
@@ -163,12 +161,12 @@ The final Caddy configuration must be merged with the existing site rather than
 blindly replacing the site block. Before reload:
 
 1. Resolve the current canonical Caddyfile and active configuration.
-2. Confirm that `/bb` does not collide with another handler.
+2. Confirm that `bb.alhstudios.com` does not collide with another site block.
 3. Confirm the application listen address and firewall boundary.
 4. Format and validate the complete configuration.
 5. Capture the prior configuration for rollback.
 6. Reload rather than terminate active traffic.
-7. Verify `/bb`, `/bb/`, assets, health routing policy, and an unknown path.
+7. Verify `/`, assets, health routing policy, and an unknown path.
 
 The application uses configured `PUBLIC_BASE_URL` and `BASE_PATH`; it does not
 trust incoming host or prefix headers to generate callbacks or links.
@@ -177,7 +175,7 @@ trust incoming host or prefix headers to generate callbacks or links.
 
 The alpha environment requires a dedicated OIDC provider/application with:
 
-- Exact redirect URI `https://alhstudios.com/bb/auth/callback`.
+- Exact redirect URI `https://bb.alhstudios.com/auth/callback`.
 - Exact post-logout return URI if RP-initiated logout is enabled.
 - Authorization Code flow.
 - Confidential client credentials stored outside Git.
@@ -266,7 +264,7 @@ selected. The required sequence is independent of that choice:
 8. Run migrations once with an explicit result.
 9. Start or switch to the new application artifact.
 10. Wait for readiness.
-11. Run deployed smoke tests through Caddy at `/bb/`.
+11. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
 12. Record result, version, migration head, and evidence.
 13. If any gate fails, stop and execute the documented rollback/repair decision.
 
@@ -277,7 +275,7 @@ must not duplicate migrations, seed users, or moderation data.
 
 Every deployed prerelease verifies:
 
-- `/bb` redirects to `/bb/`.
+- `/` serves the public index through the dedicated Caddy site.
 - Public index behavior matches site policy.
 - Authentik login begins with the correct callback and returns successfully.
 - Eligible member local provisioning succeeds.
@@ -417,9 +415,10 @@ artifact digest, and migration result for review.
 
 ## 16. Alpha.1 operational readiness checklist
 
-- [ ] Target host and service manager selected.
+- [x] Target host and service manager selected: `development`, systemd.
 - [ ] Inbound reachability, firewall, and TLS verified.
-- [ ] Existing Caddy configuration captured and validated with `/bb` route.
+- [ ] Existing Caddy configuration captured and validated with the
+      `bb.alhstudios.com` site.
 - [ ] PostgreSQL database, runtime role, migration role, and backup location
       created.
 - [ ] Authentik client, callback, approved claims, and test identities configured.
@@ -445,12 +444,13 @@ good reference. Passing automation alone does not claim that user confirmation.
 
 Before alpha deployment, the owner must select or confirm:
 
-1. Target host and whether the service runs under systemd or a container
-   runtime.
-2. Inbound routing/port-forwarding path to the Caddy host.
-3. PostgreSQL host/version and backup destination.
-4. Authentik issuer, client, and approved profile claims.
-5. Initial administrator issuer/subject, alpha access policy, and test users.
-6. Session/revalidation lifetimes.
-7. Soft-deletion and audit retention.
-8. Monitoring and alert destination.
+1. Inbound port-forwarding path to the Caddy host, if the public DNS target is
+   not terminated directly on `development`.
+2. PostgreSQL backup destination; PostgreSQL 17 remains the supported alpha
+   contract and must not be silently replaced by the host's PostgreSQL 18.
+3. Authentik client and approved profile claims; the deployed issuer host is
+   `https://auth.dannyhunn.com`.
+4. Initial administrator issuer/subject, alpha access policy, and test users.
+5. Session/revalidation lifetimes.
+6. Soft-deletion and audit retention.
+7. Monitoring and alert destination.

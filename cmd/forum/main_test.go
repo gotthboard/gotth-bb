@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
+	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -15,6 +17,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -81,6 +84,8 @@ func (pool *fakeDatabasePool) Query(_ context.Context, query string, args ...any
 		pool.topicPostQueryCalls++
 		pool.topicPostQueryArgs = append([]any(nil), args...)
 		return &fakeTopicPostRows{}, nil
+	case strings.Contains(query, "FROM public.gotth_schema_migrations"):
+		return newFakeMigrationRows(), nil
 	default:
 		panic("unexpected database query")
 	}
@@ -162,13 +167,72 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 
 func (*fakeTopicPostRows) Err() error { return nil }
 
-func (*fakeDatabasePool) QueryRow(context.Context, string, ...any) pgx.Row {
-	panic("database query is not expected")
+func (*fakeDatabasePool) QueryRow(_ context.Context, query string, _ ...any) pgx.Row {
+	switch {
+	case strings.Contains(query, "pg_catalog.pg_class"):
+		return fakeBooleanRow(true)
+	case strings.Contains(query, "FROM public.governance_state"):
+		return fakeBooleanRow(true)
+	default:
+		panic("unexpected database row query")
+	}
 }
 
 func (*fakeDatabasePool) Begin(context.Context) (pgx.Tx, error) {
 	panic("database transaction is not expected")
 }
+
+type fakeBooleanRow bool
+
+func (row fakeBooleanRow) Scan(destinations ...any) error {
+	*(destinations[0].(*bool)) = bool(row)
+	return nil
+}
+
+type fakeMigrationRow struct {
+	version int64
+	name    string
+	digest  [sha256.Size]byte
+}
+
+type fakeMigrationRows struct {
+	pgx.Rows
+	rows  []fakeMigrationRow
+	index int
+}
+
+func newFakeMigrationRows() *fakeMigrationRows {
+	entries, err := fs.ReadDir(migrations.Files(), ".")
+	if err != nil {
+		panic(err)
+	}
+	rows := make([]fakeMigrationRow, 0, len(entries))
+	for index, entry := range entries {
+		body, readErr := fs.ReadFile(migrations.Files(), entry.Name())
+		if readErr != nil {
+			panic(readErr)
+		}
+		rows = append(rows, fakeMigrationRow{version: int64(index + 1), name: entry.Name(), digest: sha256.Sum256(body)})
+	}
+	return &fakeMigrationRows{rows: rows}
+}
+
+func (*fakeMigrationRows) Close() {}
+
+func (rows *fakeMigrationRows) Next() bool {
+	return rows.index < len(rows.rows)
+}
+
+func (rows *fakeMigrationRows) Scan(destinations ...any) error {
+	row := rows.rows[rows.index]
+	rows.index++
+	*(destinations[0].(*int64)) = row.version
+	*(destinations[1].(*string)) = row.name
+	*(destinations[2].(*[]byte)) = append([]byte(nil), row.digest[:]...)
+	return nil
+}
+
+func (*fakeMigrationRows) Err() error { return nil }
 
 func returnPool(pool databasePool) poolFactory {
 	return func(context.Context, *pgxpool.Config) (databasePool, error) {
@@ -262,6 +326,16 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "https://auth.example/authorize?state=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" ||
 		len(cookies) != 1 || cookies[0].Name != "gotth_bb_session_oidc_state" || cookies[0].Path != "/bb/" || cookies[0].Secure {
 		t.Fatalf("GET /login = (status %d, location %q)", response.StatusCode, response.Header.Get("Location"))
+	}
+	readinessResponse, err := client.Get("http://" + listener.Addr().String() + "/health/ready")
+	if err != nil {
+		t.Fatalf("GET /health/ready returned error: %v", err)
+	}
+	readinessBody := new(bytes.Buffer)
+	_, readinessReadErr := readinessBody.ReadFrom(readinessResponse.Body)
+	_ = readinessResponse.Body.Close()
+	if readinessReadErr != nil || readinessResponse.StatusCode != http.StatusOK || readinessBody.String() != "ok\n" {
+		t.Fatalf("GET /health/ready = (status %d, body %q, read %v)", readinessResponse.StatusCode, readinessBody.String(), readinessReadErr)
 	}
 	rootResponse, err := client.Get("http://" + listener.Addr().String() + "/")
 	if err != nil {

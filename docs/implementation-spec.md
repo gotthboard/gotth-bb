@@ -107,8 +107,8 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | --- | --- | --- |
 | `APP_ENV` | Yes | `development`, `test`, or `production` |
 | `LISTEN_ADDR` | Yes | Numeric IP and nonzero port; loopback in production |
-| `PUBLIC_BASE_URL` | Yes | Exact external base, including `/bb` |
-| `BASE_PATH` | Yes | Browser path prefix, `/bb` in production |
+| `PUBLIC_BASE_URL` | Yes | Exact external base, including any path prefix |
+| `BASE_PATH` | Yes | Browser path prefix; explicitly empty for the initial deployment |
 | `DATABASE_URL` | Yes | Opaque PostgreSQL connection string supplied as a secret |
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
@@ -144,7 +144,7 @@ Rules:
 - `SESSION_COOKIE_NAME` must be a valid HTTP cookie token. Browser magic
   prefixes (`__Host-`, `__Secure-`, `__Http-`, and `__Host-Http-`) are rejected
   case-insensitively because their transport and path requirements conflict
-  with supported HTTP development and `/bb` deployment semantics.
+  with supported root and path-prefixed deployment semantics.
 - `OIDC_ISSUER_URL` must be the exact Authentik per-provider issuer in
   `/application/o/<application_slug>/` form: an absolute HTTP(S) URL with no
   credentials, query, or fragment. Production requires HTTPS. Encoding and
@@ -281,9 +281,10 @@ One seeded singleton row exists solely as a transaction lock for
 administrator-continuity decisions. Its key is a boolean primary key constrained
 to `true`, so the schema permits at most one row; the initial migration inserts
 that row. The runtime role has no UPDATE or DELETE privilege on it, and
-readiness fails if exact cardinality one is not observed. Bootstrap and every
-role or suspension transition that can change the active-administrator set lock
-this row with `SELECT ... FOR UPDATE` before evaluating state. An active
+readiness fails if exact cardinality one is not observed or no active
+administrator exists. Bootstrap and every role or suspension transition that
+can change the active-administrator set lock this row with `SELECT ... FOR
+UPDATE` before evaluating state. An active
 administrator has `role = administrator` and no suspension effective at the
 transaction time. The row contains no cached administrator count that could
 drift.
@@ -669,7 +670,8 @@ the first grant.
   bound is applied. The form body is restored byte-for-byte for later parsing.
   Missing, duplicate, malformed, or mismatched values fail before mutation;
   comparison is fixed-length and constant-time.
-- Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/bb`.
+- Production cookie flags: `Secure`, `HttpOnly`, `SameSite=Lax`, with `Path`
+  equal to the configured base path or `/` for an empty base path.
 - Session rotation occurs after login and any future privilege elevation.
 - Once `AUTH_REVALIDATE_INTERVAL` elapses, protected routes require a fresh OIDC
   authorization before the session can authorize them. Public reads may proceed
@@ -687,7 +689,7 @@ the first grant.
 
 ## 10. HTTP and route contract
 
-Internal routes are shown without the external `/bb` prefix.
+Internal routes are shown relative to the configured external base URL.
 
 | Method | Route | Purpose | Minimum actor |
 | --- | --- | --- | --- |
@@ -1069,7 +1071,7 @@ operator logs.
 - OIDC start/callback failure and success with a controlled test issuer.
 - CSRF rejection.
 - Full-page and HTMX parity.
-- Correct `/bb` links, cookies, redirects, assets, and callback.
+- Correct root and path-prefixed links, cookies, redirects, assets, and callback.
 - Validation preservation and status codes.
 - Not-found equivalence for missing and unauthorized resources.
 

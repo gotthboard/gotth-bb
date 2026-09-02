@@ -4,7 +4,7 @@ A self-hosted bulletin board and forum built with the GOTTH stack and
 PostgreSQL.
 
 The initial development deployment target is
-`https://alhstudios.com/bb/`. That temporary URL is not the product identity.
+`https://bb.alhstudios.com/`. That temporary URL is not the product identity.
 
 The planned stack is Go, Templ, HTMX, Tailwind CSS, and PostgreSQL, with
 Authentik as the identity provider.
@@ -83,7 +83,7 @@ zero-administrator decision and commits the role plus immutable operator audit
 event together. Do not retry an unknown result blindly; inspect the user and
 audit state first. Later attempts fail once an active administrator exists.
 
-The current HTTP shell renders the base-path-safe public area placeholder,
-serves versioned embedded assets, exposes liveness, and intentionally reports
-not-ready until migration-head and administrator invariants are wired into the
-readiness check.
+The HTTP shell renders base-path-safe forum pages, serves versioned embedded
+assets, exposes liveness, and reports ready only when the live database matches
+the embedded migration release, contains exactly one governance singleton, and
+has at least one active administrator.

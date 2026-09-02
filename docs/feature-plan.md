@@ -55,8 +55,8 @@ flowchart TD
 
 ## 3. Milestone `1.0.0-alpha.1`
 
-Alpha.1 proves the complete mechanism beneath the real `/bb` prefix. It is not
-feature-complete version 1.0.
+Alpha.1 proves the complete mechanism at the real `bb.alhstudios.com` origin.
+It is not feature-complete version 1.0.
 
 ### A1-00: documentation baseline
 
@@ -223,8 +223,8 @@ Requirements: OPS-002 through OPS-005 and alpha acceptance boundary.
 Deliverables:
 
 - Immutable release artifact tagged `1.0.0-alpha.1`.
-- Caddy `/bb` route, runtime service, PostgreSQL, and Authentik client configured
-  in the alpha environment.
+- Caddy `bb.alhstudios.com` site, runtime service, PostgreSQL, and Authentik
+  client configured in the alpha environment.
 - Migration, smoke-test, and rollback commands.
 - Deployment record containing release commit and migration state.
 

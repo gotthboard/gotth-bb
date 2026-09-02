@@ -22,7 +22,7 @@
 - Model area visibility and posting mode as independent columns.
 - Apply access predicates inside data-access queries and explicit write-policy
   checks.
-- Deploy behind Caddy at the external `/bb/` prefix.
+- Deploy behind Caddy at `https://bb.alhstudios.com/` with no path prefix.
 - Prefer direct SQL, explicit transactions, and small interfaces over an ORM or
   generic policy framework.
 
@@ -30,7 +30,7 @@
 
 ```mermaid
 flowchart LR
-    B[Browser] -->|HTTPS /bb/*| C[Caddy]
+    B[Browser] -->|HTTPS bb.alhstudios.com| C[Caddy]
     C -->|HTTP on loopback| A[Go forum service]
     A -->|OIDC redirects and validation| I[Authentik]
     A -->|SQL| P[(PostgreSQL)]
@@ -50,8 +50,8 @@ same owner.
 
 Caddy shall:
 
-- Redirect `/bb` to `/bb/`.
-- Match `/bb/*` and strip `/bb` before proxying to the application.
+- Match the dedicated `bb.alhstudios.com` site.
+- Proxy the request path unchanged to the application on loopback.
 - Set normal reverse-proxy forwarding headers.
 - Expose only intended application routes.
 - Apply sensible request-body and timeout limits at the edge.
@@ -111,7 +111,7 @@ component as explicitly typed trusted markup.
 
 ### 4.1 Read request
 
-1. Caddy strips `/bb` and proxies the request on loopback.
+1. Caddy proxies the request path unchanged on loopback.
 2. Middleware assigns a request ID, records bounded access evidence, recovers
    panics, sets defensive headers, and loads the opaque session cookie. The
    executable order is request ID → access log → recovery → application so a
@@ -143,23 +143,23 @@ idempotency key or the failure is known to occur before commit.
 
 ## 5. Public path handling
 
-The initial development deployment uses `https://alhstudios.com/bb`.
-Internally, after Caddy strips the prefix, routes begin at `/`. Production
-deployments may use another origin or path without renaming the product.
+The initial development deployment uses `https://bb.alhstudios.com`.
+Routes begin at `/`. Other deployments may use another origin or a path prefix
+without renaming the product.
 
 The service receives two immutable settings:
 
-- `PUBLIC_BASE_URL=https://alhstudios.com/bb`
-- `BASE_PATH=/bb`
+- `PUBLIC_BASE_URL=https://bb.alhstudios.com`
+- `BASE_PATH=` (an explicitly configured empty value)
 
 `PUBLIC_BASE_URL` constructs absolute OIDC and canonical URLs. `BASE_PATH`
 constructs browser-facing relative URLs and the session-cookie Path. Incoming
 forwarded headers may be logged for diagnosis but cannot override these values.
 
 No template, redirect, form action, HTMX target, asset reference, or canonical
-link may concatenate `/bb` itself. All use the URL builder. Tests run the same
-view and handler suite with both `/bb` and an alternate prefix to expose hard-
-coded paths.
+link may hard-code a deployment path. All use the URL builder. Tests run the
+same view and handler suite with an empty base path and non-empty prefixes to
+expose hard-coded paths.
 
 ## 6. Identity architecture
 
@@ -170,7 +170,7 @@ coded paths.
    login-attempt record.
 2. The browser is redirected to the configured Authentik authorization
    endpoint.
-3. Authentik redirects to the exact configured callback URL beneath `/bb`.
+3. Authentik redirects to the exact configured callback URL.
 4. The callback consumes the state once, exchanges the code, validates issuer,
    audience, signature, expiry, nonce, and PKCE, then extracts approved claims.
 5. One transaction creates a new verified identity as a local member or updates
@@ -371,7 +371,7 @@ hashed or release-versioned and referenced through the URL builder.
 
 Version 1.0 runs as:
 
-- One Caddy instance serving the domain and proxying `/bb/*`.
+- One Caddy instance serving `bb.alhstudios.com` and proxying it on loopback.
 - One or more identical Go service processes; alpha may use one.
 - One PostgreSQL database.
 - A migration command using the same release artifact as the service.

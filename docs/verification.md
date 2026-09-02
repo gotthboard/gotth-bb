@@ -253,7 +253,7 @@ regardless of the current small dataset.
 - Failed migration handling.
 - Application rollback with schema compatibility.
 - Backup creation, off-host retention, and restoration into a clean instance.
-- Caddy route, TLS, `/bb` redirect, asset, cookie, and callback behavior.
+- Caddy site, TLS, root route, asset, cookie, and callback behavior.
 - Log and request-ID usefulness during a simulated failure.
 
 ## 14. Coverage policy

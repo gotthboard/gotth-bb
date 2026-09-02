@@ -195,6 +195,45 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 	}
 }
 
+func TestReadinessRouteReportsOnlyFixedState(t *testing.T) {
+	t.Parallel()
+
+	builder := callbackTestURLBuilder(t)
+	for _, test := range []struct {
+		name       string
+		check      ReadinessChecker
+		wantStatus int
+		wantBody   string
+	}{
+		{name: "ready", check: func(context.Context) error { return nil }, wantStatus: http.StatusOK, wantBody: "ok\n"},
+		{name: "not ready", check: func(context.Context) error { return errors.New("sensitive database detail") }, wantStatus: http.StatusServiceUnavailable, wantBody: "not ready\n"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			handler, err := newHandler(
+				builder, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
+				panicTopicPostPageLoader, store.MaximumPostPage, test.check,
+			)
+			if err != nil {
+				t.Fatalf("newHandler() returned error: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodGet, "/health/ready", nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || response.Body.String() != test.wantBody {
+				t.Fatalf("readiness response = (%d, %q), want (%d, %q)", response.Code, response.Body.String(), test.wantStatus, test.wantBody)
+			}
+			if response.Header().Get("Cache-Control") != "no-store" || response.Header().Get("Content-Type") != "text/plain; charset=utf-8" {
+				t.Fatalf("readiness headers = %+v", response.Header())
+			}
+			if strings.Contains(response.Body.String(), "sensitive") {
+				t.Fatal("readiness response exposed checker failure")
+			}
+		})
+	}
+}
+
 func TestRouterReturnsFullAndHTMXNotFoundPagesAndStandardsCompliantMethodError(t *testing.T) {
 	t.Parallel()
 
@@ -246,6 +285,9 @@ func TestNewHandlerRejectsInvalidDependencies(t *testing.T) {
 	}
 	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 10000, panicTopicPostPageLoader, 0); err == nil || got != nil {
 		t.Fatalf("NewHandler(invalid post maximum) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := newHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage, panicTopicPostPageLoader, store.MaximumPostPage, nil); err == nil || got != nil {
+		t.Fatalf("newHandler(nil readiness) = (%v, %v), want (nil, error)", got, err)
 	}
 }
 

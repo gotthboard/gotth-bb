@@ -52,7 +52,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -82,7 +82,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -113,7 +113,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -143,6 +143,7 @@ func NewAuthenticatedModeratedForumHandler(
 	changeUserSuspension UserSuspensionChanger,
 	sessionCookieName string,
 	secure bool,
+	checkReadiness ReadinessChecker,
 ) (http.Handler, error) {
 	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil {
 		return nil, fmt.Errorf("browser moderated forum services are required")
@@ -150,7 +151,7 @@ func NewAuthenticatedModeratedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, sessionCookieName, secure,
+		loadModerationUser, changeUserSuspension, sessionCookieName, secure, checkReadiness,
 	)
 }
 
@@ -181,11 +182,12 @@ func newAuthenticatedHandler(
 	changeUserSuspension UserSuspensionChanger,
 	sessionCookieName string,
 	secure bool,
+	checkReadiness ReadinessChecker,
 ) (http.Handler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("browser authentication service is required")
 	}
-	publicHandler, err := NewHandler(builder, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage)
+	publicHandler, err := newHandler(builder, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage, checkReadiness)
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
 	}

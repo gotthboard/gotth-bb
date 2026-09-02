@@ -19,9 +19,12 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	forumservice "git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
+	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
 	moderationservice "git.dannyhunn.com/agents/gotth-bb/internal/moderation"
+	"git.dannyhunn.com/agents/gotth-bb/internal/readiness"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -146,6 +149,16 @@ func run(
 	if authenticationService == nil {
 		return fmt.Errorf("construct authentication service returned no service")
 	}
+	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
+	if err != nil {
+		return fmt.Errorf("construct migration release verifier: %w", err)
+	}
+	readinessChecker, err := readiness.New(pool, func(readinessContext context.Context) error {
+		return releaseMigrations.Verify(readinessContext, pool)
+	}, time.Now)
+	if err != nil {
+		return fmt.Errorf("construct readiness checker: %w", err)
+	}
 	queries := db.New(pool)
 	applicationHandler, err := httpui.NewAuthenticatedModeratedForumHandler(
 		urlBuilder,
@@ -190,6 +203,7 @@ func run(
 		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
+		readinessChecker.Check,
 	)
 	if err != nil {
 		return fmt.Errorf("construct authenticated HTTP routes: %w", err)

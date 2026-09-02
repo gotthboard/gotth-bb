@@ -5,6 +5,66 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 08:30 CDT — Wire fail-closed database readiness
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `README.md`
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/architecture.md`
+- `docs/feature-plan.md`
+- `docs/implementation-spec.md`
+- `docs/prd.md`
+- `docs/release-operations.md`
+- `docs/verification.md`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `internal/httpui/moderation_handler_test.go`
+- `internal/httpui/user_moderation_handler_test.go`
+- `internal/migration/verify.go`
+- `internal/migration/verify_test.go`
+- `internal/readiness/checker.go`
+- `internal/readiness/checker_test.go`
+- `internal/readiness/checker_integration_test.go`
+
+Changed:
+
+- Replaced the production readiness stub with a two-second, fail-closed check
+  of the exact embedded migration release, governance singleton cardinality,
+  and existence of an active administrator.
+- Kept readiness responses fixed at `ok` or `not ready`, with no database or
+  migration details exposed to the browser.
+- Loaded and hashed the immutable migration release once at startup rather
+  than repeating file work for each probe.
+- Corrected the canonical deployment contract to
+  `https://bb.alhstudios.com/` on the `development` host under systemd, with an
+  explicitly empty base path and loopback application listener.
+
+Verification:
+
+- Full `make verify`, including generation drift, formatting, `go vet`, race
+  detector, and coverage, passes.
+- The changed readiness package and migration-verifier functions have 100%
+  statement coverage; changed HTTP readiness functions have 100% statement
+  coverage.
+- Fifty race-enabled focused repetitions pass for readiness, migration, and
+  HTTP packages.
+- PostgreSQL 17.10 integration on `development` proves a migrated database
+  without an administrator is unready and becomes ready after an active
+  administrator exists.
+
+Not included:
+
+- No Caddy, systemd, Authentik, PostgreSQL deployment, secret, merge, or tag
+  mutation is part of this commit.
+- Backup destination, Authentik client, first administrator identity, alpha
+  test users, session lifetimes, retention, and alert destination remain owner
+  decisions before deployment.
+
 ### 2026-09-02 08:00 CDT — Add deterministic release packaging
 
 Commit: current commit; hash assigned by Git after commit

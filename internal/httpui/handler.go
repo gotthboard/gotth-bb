@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,9 +9,14 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// NewHandler constructs the internal HTTP routing shell from one validated
-// browser URL authority. Caddy removes the external base prefix before requests
-// reach these routes; every rendered browser URL adds it back through builder.
+// ReadinessChecker proves the running process may safely receive traffic.
+// Error details remain inside the service boundary; the public health response
+// is deliberately fixed.
+type ReadinessChecker func(context.Context) error
+
+// NewHandler constructs the fail-closed internal HTTP routing shell from one
+// validated browser URL authority. A configured edge proxy passes internal
+// paths to these routes; every rendered browser URL uses builder.
 //
 // Complexity: construction uses tight Theta(1) time and auxiliary space for a
 // fixed route/view table. Chi owns request matching; visible-area/topic,
@@ -25,6 +31,24 @@ func NewHandler(
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
 ) (http.Handler, error) {
+	return newHandler(
+		builder, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts,
+		maximumPostPage, unavailableReadiness,
+	)
+}
+
+func newHandler(
+	builder URLBuilder,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	checkReadiness ReadinessChecker,
+) (http.Handler, error) {
+	if checkReadiness == nil {
+		return nil, fmt.Errorf("readiness checker is required")
+	}
 	rootView, err := newPageView(builder, "Discussion areas")
 	if err != nil {
 		return nil, fmt.Errorf("construct public shell view: %w", err)
@@ -51,7 +75,7 @@ func NewHandler(
 	router.Get("/areas/{slug}", areaTopicHandler.ServeHTTP)
 	router.Get("/topics/{topicID}", topicPostHandler.ServeHTTP)
 	router.Get("/health/live", serveLiveness)
-	router.Get("/health/ready", serveNotReady)
+	router.Get("/health/ready", readinessHandler(checkReadiness))
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)
 	htmx := staticAssetHandler("text/javascript; charset=utf-8", htmxScript)
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
@@ -82,11 +106,25 @@ func serveLiveness(response http.ResponseWriter, _ *http.Request) {
 	_, _ = io.WriteString(response, "ok\n")
 }
 
-// serveNotReady fails closed until the database-backed readiness contract is
-// implemented; an incomplete alpha foundation must not advertise readiness.
+func unavailableReadiness(context.Context) error {
+	return fmt.Errorf("readiness is not configured")
+}
+
+// readinessHandler exposes one fixed response while delegating the bounded
+// release, database, and governance proof to the configured checker.
 //
-// Complexity: this writes a fixed ten-byte body in Θ(1) time and Θ(1)
-// auxiliary space; http.Error delegates fixed-size ResponseWriter I/O.
-func serveNotReady(response http.ResponseWriter, _ *http.Request) {
-	http.Error(response, "not ready", http.StatusServiceUnavailable)
+// Complexity: local time and auxiliary space are tight Theta(1); total time is
+// the delegated checker cost plus fixed-size ResponseWriter I/O.
+func readinessHandler(check ReadinessChecker) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		if err := check(request.Context()); err != nil {
+			response.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = io.WriteString(response, "not ready\n")
+			return
+		}
+		response.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(response, "ok\n")
+	}
 }
