@@ -911,6 +911,31 @@ redirect boundary. Active staff see Lock and Hide on open topics, Unlock on
 locked topics, Restore on hidden topics, and no transition control on archived
 topics; the transaction remains final authority.
 
+Alpha local-account suspension/reinstatement is a strict audited transition.
+Suspension means an indefinite local suspension (`suspended_until` is null);
+reinstatement explicitly clears all three suspension fields. Both directions
+require a canonical nonblank single-line UTF-8 reason of at most 500 characters
+and 2,000 bytes plus a nonzero server request UUID. Repetition of the effective
+current state is a conflict and creates no audit.
+
+An active moderator may act only on a member. An active administrator may act
+on any other local account but never itself, and suspension may not leave zero
+active administrators. The transaction locks the governance singleton, then
+the actor and target user rows in ascending user-ID order. It revalidates the
+actor's persisted role, suspension, and mute state rather than trusting the
+request's session snapshot. One guarded data-modifying statement changes the
+target and appends the typed `suspend_user` or `reinstate_user` audit with exact
+previous/resulting suspension JSON. Its effective update/audit timestamp is
+nondecreasing across target-row lock waits. Authorization and effective
+suspension state are evaluated against the request observation time, never the
+later persistence timestamp, so a future target update cannot expire an
+actor's mute or activate a scheduled state early. Any lock, count, update,
+audit, scan, or commit failure rolls back the entire operation, and an unknown
+commit outcome is never retried. A committed suspension immediately removes
+every existing session for that user from active-session lookup without
+deleting the sessions or authored content; reinstatement makes otherwise-valid
+sessions eligible again.
+
 ## 15. Migrations
 
 - Migration filenames are ordered, contiguous, and immutable after a database

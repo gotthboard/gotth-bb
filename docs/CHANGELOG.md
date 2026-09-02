@@ -5,6 +5,55 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 03:24 CDT — Add audited account suspension transitions
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/moderation/user_suspension.go`
+- `internal/moderation/user_suspension_integration_test.go`
+- `internal/moderation/user_suspension_test.go`
+- `internal/store/db/moderation.sql.go`
+- `internal/store/db/moderation_test.go`
+- `internal/store/db/publishing_test.go`
+- `internal/store/queries/moderation.sql`
+
+Explanation:
+
+Added strict indefinite suspension and explicit reinstatement for local
+accounts. The transaction serializes governance plus both involved users,
+revalidates the staff actor from locked database state, enforces the
+moderator/member hierarchy and administrator continuity, then changes the user
+and appends one exact immutable audit in the same guarded statement.
+
+Both directions require a canonical reason and request UUID, reject repetition,
+keep observation time separate from the nondecreasing persistence/audit time,
+and never retry an unknown commit. Suspension immediately makes all
+otherwise-valid sessions fail active lookup; reinstatement clears the
+suspension fields without deleting sessions or user content.
+
+Verification:
+
+- Every actor, target, hierarchy, state, timestamp, reason, UUID, transaction,
+  generated-binding, result-validation, commit, and rollback boundary
+- Deterministic ascending user-row lock order and persisted actor-authority
+  revalidation after a stale session snapshot; future persistence timestamps
+  cannot expire a current actor restriction
+- PostgreSQL 17 forced-audit failure rollback, exact suspend/reinstate user and
+  audit states, conflict without duplicate audit, immediate session denial and
+  later restoration, and preservation of one active administrator
+- Moderation production package remains at 100% statement coverage
+
+Risks / non-goals:
+
+- This unit admits the service/SQL transaction; the account-status page and
+  browser suspension controls remain separate
+- Alpha suspension is indefinite; scheduled durations and appeals workflow
+  remain outside this transition
+- No deployment or release state is changed
+
 ### 2026-09-02 02:53 CDT — Wire staff topic visibility controls
 
 Commit: current commit; hash assigned by Git after commit

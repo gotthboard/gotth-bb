@@ -111,3 +111,251 @@ func (q *Queries) LockTopicForModeration(ctx context.Context, topicID int64) (Lo
 	err := row.Scan(&i.ID, &i.State)
 	return i, err
 }
+
+const lockUserForSuspension = `-- name: LockUserForSuspension :one
+SELECT
+    forum_user.id,
+    forum_user.role,
+    forum_user.suspended_at,
+    forum_user.suspended_until,
+    forum_user.suspension_reason,
+    forum_user.muted_until,
+    forum_user.created_at,
+    forum_user.updated_at
+FROM public.users AS forum_user
+WHERE forum_user.id = $1
+FOR UPDATE OF forum_user
+`
+
+type LockUserForSuspensionRow struct {
+	ID               int64
+	Role             string
+	SuspendedAt      pgtype.Timestamptz
+	SuspendedUntil   pgtype.Timestamptz
+	SuspensionReason pgtype.Text
+	MutedUntil       pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+func (q *Queries) LockUserForSuspension(ctx context.Context, userID int64) (LockUserForSuspensionRow, error) {
+	row := q.db.QueryRow(ctx, lockUserForSuspension, userID)
+	var i LockUserForSuspensionRow
+	err := row.Scan(
+		&i.ID,
+		&i.Role,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.SuspensionReason,
+		&i.MutedUntil,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const reinstateUserAndAudit = `-- name: ReinstateUserAndAudit :one
+WITH changed AS (
+    UPDATE public.users AS forum_user
+    SET suspended_at = NULL,
+        suspended_until = NULL,
+        suspension_reason = NULL,
+        updated_at = GREATEST($1::timestamptz, forum_user.updated_at)
+    WHERE forum_user.id = $2
+      AND forum_user.suspended_at <= $3::timestamptz
+      AND (
+          forum_user.suspended_until IS NULL
+          OR forum_user.suspended_until > $3::timestamptz
+      )
+    RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
+              forum_user.suspension_reason, forum_user.updated_at
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        actor_user_id,
+        target_type,
+        target_user_id,
+        action_type,
+        reason,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'forum_user',
+        $4,
+        'user',
+        changed.id,
+        'reinstate_user',
+        $5,
+        jsonb_build_object(
+            'suspended_at', $6::timestamptz,
+            'suspended_until', $7::timestamptz,
+            'suspension_reason', $8::text
+        ),
+        jsonb_build_object(
+            'suspended_at', changed.suspended_at,
+            'suspended_until', changed.suspended_until,
+            'suspension_reason', changed.suspension_reason
+        ),
+        $9,
+        changed.updated_at
+    FROM changed
+    RETURNING id, target_user_id
+)
+SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
+       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+FROM changed
+JOIN audit ON audit.target_user_id = changed.id
+`
+
+type ReinstateUserAndAuditParams struct {
+	UpdatedAt                pgtype.Timestamptz
+	UserID                   int64
+	ObservedAt               pgtype.Timestamptz
+	ActorUserID              pgtype.Int8
+	Reason                   pgtype.Text
+	PreviousSuspendedAt      pgtype.Timestamptz
+	PreviousSuspendedUntil   pgtype.Timestamptz
+	PreviousSuspensionReason string
+	RequestID                pgtype.UUID
+}
+
+type ReinstateUserAndAuditRow struct {
+	UserID           int64
+	SuspendedAt      pgtype.Timestamptz
+	SuspendedUntil   pgtype.Timestamptz
+	SuspensionReason pgtype.Text
+	UpdatedAt        pgtype.Timestamptz
+	AuditID          int64
+}
+
+func (q *Queries) ReinstateUserAndAudit(ctx context.Context, arg ReinstateUserAndAuditParams) (ReinstateUserAndAuditRow, error) {
+	row := q.db.QueryRow(ctx, reinstateUserAndAudit,
+		arg.UpdatedAt,
+		arg.UserID,
+		arg.ObservedAt,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.PreviousSuspendedAt,
+		arg.PreviousSuspendedUntil,
+		arg.PreviousSuspensionReason,
+		arg.RequestID,
+	)
+	var i ReinstateUserAndAuditRow
+	err := row.Scan(
+		&i.UserID,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.SuspensionReason,
+		&i.UpdatedAt,
+		&i.AuditID,
+	)
+	return i, err
+}
+
+const suspendUserAndAudit = `-- name: SuspendUserAndAudit :one
+WITH changed AS (
+    UPDATE public.users AS forum_user
+    SET suspended_at = GREATEST($1::timestamptz, forum_user.created_at),
+        suspended_until = NULL,
+        suspension_reason = $2,
+        updated_at = GREATEST($3::timestamptz, forum_user.updated_at)
+    WHERE forum_user.id = $4
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > $5::timestamptz
+          OR forum_user.suspended_until <= $5::timestamptz
+      )
+    RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
+              forum_user.suspension_reason, forum_user.updated_at
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        actor_user_id,
+        target_type,
+        target_user_id,
+        action_type,
+        reason,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'forum_user',
+        $6,
+        'user',
+        changed.id,
+        'suspend_user',
+        $2,
+        jsonb_build_object(
+            'suspended_at', $7::timestamptz,
+            'suspended_until', $8::timestamptz,
+            'suspension_reason', $9::text
+        ),
+        jsonb_build_object(
+            'suspended_at', changed.suspended_at,
+            'suspended_until', changed.suspended_until,
+            'suspension_reason', changed.suspension_reason
+        ),
+        $10,
+        changed.updated_at
+    FROM changed
+    RETURNING id, target_user_id
+)
+SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
+       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+FROM changed
+JOIN audit ON audit.target_user_id = changed.id
+`
+
+type SuspendUserAndAuditParams struct {
+	SuspendedAt              pgtype.Timestamptz
+	Reason                   pgtype.Text
+	UpdatedAt                pgtype.Timestamptz
+	UserID                   int64
+	ObservedAt               pgtype.Timestamptz
+	ActorUserID              pgtype.Int8
+	PreviousSuspendedAt      pgtype.Timestamptz
+	PreviousSuspendedUntil   pgtype.Timestamptz
+	PreviousSuspensionReason pgtype.Text
+	RequestID                pgtype.UUID
+}
+
+type SuspendUserAndAuditRow struct {
+	UserID           int64
+	SuspendedAt      pgtype.Timestamptz
+	SuspendedUntil   pgtype.Timestamptz
+	SuspensionReason pgtype.Text
+	UpdatedAt        pgtype.Timestamptz
+	AuditID          int64
+}
+
+func (q *Queries) SuspendUserAndAudit(ctx context.Context, arg SuspendUserAndAuditParams) (SuspendUserAndAuditRow, error) {
+	row := q.db.QueryRow(ctx, suspendUserAndAudit,
+		arg.SuspendedAt,
+		arg.Reason,
+		arg.UpdatedAt,
+		arg.UserID,
+		arg.ObservedAt,
+		arg.ActorUserID,
+		arg.PreviousSuspendedAt,
+		arg.PreviousSuspendedUntil,
+		arg.PreviousSuspensionReason,
+		arg.RequestID,
+	)
+	var i SuspendUserAndAuditRow
+	err := row.Scan(
+		&i.UserID,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.SuspensionReason,
+		&i.UpdatedAt,
+		&i.AuditID,
+	)
+	return i, err
+}

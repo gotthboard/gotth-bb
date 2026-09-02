@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -14,8 +15,14 @@ func TestTopicModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T)
 	t.Parallel()
 
 	atTime := pgtype.Timestamptz{Valid: true}
+	observedAt := pgtype.Timestamptz{Time: time.Unix(1, 0), Valid: true}
+	suspendedAt := pgtype.Timestamptz{Time: time.Unix(2, 0), Valid: true}
+	updatedAt := pgtype.Timestamptz{Time: time.Unix(3, 0), Valid: true}
 	actorID := pgtype.Int8{Int64: 11, Valid: true}
 	reason := pgtype.Text{String: "reason", Valid: true}
+	previousReason := pgtype.Text{String: "previous reason", Valid: true}
+	previousAt := pgtype.Timestamptz{Valid: true}
+	previousUntil := pgtype.Timestamptz{Valid: true}
 	requestID := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
 	for _, test := range []struct {
 		name       string
@@ -47,6 +54,42 @@ func TestTopicModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T)
 			},
 			wantResult: ChangeTopicStateAndAuditRow{TopicID: 41, State: "locked", UpdatedAt: atTime, AuditID: 71},
 		},
+		{
+			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime},
+			wantArgs:   []any{int64(42)},
+			required:   []string{"FROM public.users AS forum_user", "FOR UPDATE OF forum_user"},
+			invoke:     func(q *Queries) (any, error) { return q.LockUserForSuspension(context.Background(), 42) },
+			wantResult: LockUserForSuspensionRow{ID: 42, Role: "member", SuspendedAt: previousAt, SuspendedUntil: previousUntil, SuspensionReason: previousReason, CreatedAt: atTime, UpdatedAt: atTime},
+		},
+		{
+			name:      "suspend user and audit",
+			rowValues: []any{int64(42), suspendedAt, pgtype.Timestamptz{}, reason, updatedAt, int64(72)},
+			wantArgs:  []any{suspendedAt, reason, updatedAt, int64(42), observedAt, actorID, previousAt, previousUntil, previousReason, requestID},
+			required:  []string{"suspended_at = GREATEST($1::timestamptz", "updated_at = GREATEST($3::timestamptz", "forum_user.suspended_at > $5::timestamptz", "'suspend_user'", "'suspension_reason', $9::text", "JOIN audit ON audit.target_user_id = changed.id"},
+			invoke: func(q *Queries) (any, error) {
+				return q.SuspendUserAndAudit(context.Background(), SuspendUserAndAuditParams{
+					ObservedAt: observedAt, SuspendedAt: suspendedAt, UpdatedAt: updatedAt,
+					Reason: reason, UserID: 42, ActorUserID: actorID,
+					PreviousSuspendedAt: previousAt, PreviousSuspendedUntil: previousUntil,
+					PreviousSuspensionReason: previousReason, RequestID: requestID,
+				})
+			},
+			wantResult: SuspendUserAndAuditRow{UserID: 42, SuspendedAt: suspendedAt, SuspensionReason: reason, UpdatedAt: updatedAt, AuditID: 72},
+		},
+		{
+			name:      "reinstate user and audit",
+			rowValues: []any{int64(42), pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, updatedAt, int64(73)},
+			wantArgs:  []any{updatedAt, int64(42), observedAt, actorID, reason, previousAt, previousUntil, previousReason.String, requestID},
+			required:  []string{"SET suspended_at = NULL", "updated_at = GREATEST($1::timestamptz", "forum_user.suspended_at <= $3::timestamptz", "'reinstate_user'", "'suspension_reason', $8::text", "JOIN audit ON audit.target_user_id = changed.id"},
+			invoke: func(q *Queries) (any, error) {
+				return q.ReinstateUserAndAudit(context.Background(), ReinstateUserAndAuditParams{
+					ObservedAt: observedAt, UpdatedAt: updatedAt, UserID: 42, ActorUserID: actorID, Reason: reason,
+					PreviousSuspendedAt: previousAt, PreviousSuspendedUntil: previousUntil,
+					PreviousSuspensionReason: previousReason.String, RequestID: requestID,
+				})
+			},
+			wantResult: ReinstateUserAndAuditRow{UserID: 42, UpdatedAt: updatedAt, AuditID: 73},
+		},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -73,6 +116,13 @@ func TestTopicModerationQueriesPreserveScanFailure(t *testing.T) {
 		func(q *Queries) (any, error) { return q.LockTopicForModeration(context.Background(), 41) },
 		func(q *Queries) (any, error) {
 			return q.ChangeTopicStateAndAudit(context.Background(), ChangeTopicStateAndAuditParams{})
+		},
+		func(q *Queries) (any, error) { return q.LockUserForSuspension(context.Background(), 41) },
+		func(q *Queries) (any, error) {
+			return q.SuspendUserAndAudit(context.Background(), SuspendUserAndAuditParams{})
+		},
+		func(q *Queries) (any, error) {
+			return q.ReinstateUserAndAudit(context.Background(), ReinstateUserAndAuditParams{})
 		},
 	} {
 		database := &publishingDBTX{row: publishingRow{err: cause}}

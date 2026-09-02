@@ -144,6 +144,8 @@ func (row publishingRow) Scan(destinations ...any) error {
 			*destination = value.(string)
 		case *pgtype.Timestamptz:
 			*destination = value.(pgtype.Timestamptz)
+		case *pgtype.Text:
+			*destination = value.(pgtype.Text)
 		default:
 			panic("unexpected publishing row destination")
 		}
