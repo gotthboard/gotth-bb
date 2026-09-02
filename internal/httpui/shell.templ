@@ -487,6 +487,9 @@ templ publishingFormSection(form publishingFormView) {
 			}
 			<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-8 grid gap-6">
 				<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
+				if form.Reply {
+					<input type="hidden" name="parent_post_id" value={ form.ParentPostID }/>
+				}
 				if form.Edit {
 					<input type="hidden" name="revision" value={ form.Revision }/>
 				}

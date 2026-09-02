@@ -263,7 +263,9 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			panic("publish")
 		},
-		func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) { panic("reply") },
+		func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
+			panic("reply")
+		},
 		func(context.Context, auth.AccessContext, int64) (store.EditablePost, error) { panic("load edit") },
 		func(context.Context, auth.AccessContext, int64, int32, string) (forum.EditResult, error) {
 			panic("edit")

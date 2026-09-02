@@ -19,7 +19,7 @@ import (
 const maximumPublishingFormBytes = 262_144
 
 type TopicPublisher func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error)
-type ReplyPublisher func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error)
+type ReplyPublisher func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error)
 
 // newPublishingHandler constructs the authenticated topic/reply form boundary.
 // CSRF validation always precedes form parsing and mutation. Validation errors
@@ -281,7 +281,12 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 			return
 		}
-		result, publishErr := createReply(request.Context(), access, topicID, form.Markdown)
+		parentPostID, parseParentErr := strconv.ParseInt(form.ParentPostID, 10, 64)
+		if parseParentErr != nil || parentPostID <= 0 || strconv.FormatInt(parentPostID, 10) != form.ParentPostID {
+			serveFailure(response, http.StatusBadRequest, "invalid publishing form")
+			return
+		}
+		result, publishErr := createReply(request.Context(), access, topicID, parentPostID, form.Markdown)
 		if publishErr != nil {
 			if invalid, validation := publishingValidation(publishErr); validation {
 				actionURL, actionErr := builder.Path("topics", topicIdentifier, "replies")
@@ -347,7 +352,9 @@ func parsePublishingForm(request *http.Request, reply bool) (publishingFormView,
 		return publishingFormView{}, fmt.Errorf("parse publishing form: %w", err)
 	}
 	allowed := map[string]bool{"_csrf": true, "markdown": true}
-	if !reply {
+	if reply {
+		allowed["parent_post_id"] = true
+	} else {
 		allowed["area"], allowed["title"] = true, true
 	}
 	for key, values := range request.PostForm {
@@ -355,12 +362,19 @@ func parsePublishingForm(request *http.Request, reply bool) (publishingFormView,
 			return publishingFormView{}, fmt.Errorf("publishing form field is missing, duplicated, or unknown")
 		}
 	}
-	if len(request.PostForm["markdown"]) != 1 || !reply && (len(request.PostForm["area"]) != 1 || len(request.PostForm["title"]) != 1) {
+	if len(request.PostForm["markdown"]) != 1 || reply && len(request.PostForm["parent_post_id"]) != 1 || !reply && (len(request.PostForm["area"]) != 1 || len(request.PostForm["title"]) != 1) {
 		return publishingFormView{}, fmt.Errorf("publishing form field is missing, duplicated, or unknown")
+	}
+	if reply {
+		parent := request.PostForm.Get("parent_post_id")
+		identifier, err := strconv.ParseInt(parent, 10, 64)
+		if err != nil || identifier <= 0 || strconv.FormatInt(identifier, 10) != parent {
+			return publishingFormView{}, fmt.Errorf("publishing reply parent is invalid")
+		}
 	}
 	return publishingFormView{
 		AreaSlug: request.PostForm.Get("area"), Title: request.PostForm.Get("title"),
-		Markdown: request.PostForm.Get("markdown"), Reply: reply,
+		ParentPostID: request.PostForm.Get("parent_post_id"), Markdown: request.PostForm.Get("markdown"), Reply: reply,
 	}, nil
 }
 

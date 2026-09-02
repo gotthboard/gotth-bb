@@ -30,10 +30,12 @@ func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 			wantResult: LockAreaForTopicCreationRow{ID: 7, Visibility: "groups", PostingMode: "normal"},
 		},
 		{
-			name: "lock topic", rowValues: []any{int64(9), "locked", int64(7), "public", "read_only"}, wantArgs: []any{int64(9)},
-			required:   []string{"topic.deleted_at IS NULL", "FOR UPDATE OF topic", "FOR SHARE OF area"},
-			invoke:     func(q *Queries) (any, error) { return q.LockTopicForReply(context.Background(), 9) },
-			wantResult: LockTopicForReplyRow{TopicID: 9, TopicState: "locked", AreaID: 7, Visibility: "public", PostingMode: "read_only"},
+			name: "lock topic", rowValues: []any{int64(9), "locked", int64(7), "public", "read_only", int64(17), int32(2)}, wantArgs: []any{int64(17), int64(9)},
+			required: []string{"parent.id = $1", "topic.id = $2", "parent.deleted_at IS NULL", "FOR UPDATE OF topic", "FOR SHARE OF area, parent"},
+			invoke: func(q *Queries) (any, error) {
+				return q.LockTopicForReply(context.Background(), LockTopicForReplyParams{TopicID: 9, ParentPostID: 17})
+			},
+			wantResult: LockTopicForReplyRow{TopicID: 9, TopicState: "locked", AreaID: 7, Visibility: "public", PostingMode: "read_only", ParentPostID: 17, ParentDepth: 2},
 		},
 		{
 			name: "create topic", rowValues: []any{int64(9), int64(17), int32(1)},
@@ -46,10 +48,10 @@ func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 		},
 		{
 			name: "create reply", rowValues: []any{int64(9), int64(18), int32(2)},
-			wantArgs: []any{int64(11), "reply", "<p>reply</p>", "renderer-v1", atTime, int64(9)},
+			wantArgs: []any{int64(11), "reply", "<p>reply</p>", "renderer-v1", pgtype.Int8{Int64: 17, Valid: true}, atTime, int64(9)},
 			required: []string{"topic.next_post_number", "reply_count = inserted_post.post_number - 1", "next_post_number = inserted_post.post_number + 1"},
 			invoke: func(q *Queries) (any, error) {
-				return q.CreateReplyAndAdvanceTopic(context.Background(), CreateReplyAndAdvanceTopicParams{AuthorID: 11, MarkdownSource: "reply", RenderedHtml: "<p>reply</p>", RendererVersion: "renderer-v1", AtTime: atTime, TopicID: 9})
+				return q.CreateReplyAndAdvanceTopic(context.Background(), CreateReplyAndAdvanceTopicParams{AuthorID: 11, MarkdownSource: "reply", RenderedHtml: "<p>reply</p>", RendererVersion: "renderer-v1", ParentPostID: pgtype.Int8{Int64: 17, Valid: true}, AtTime: atTime, TopicID: 9})
 			},
 			wantResult: CreateReplyAndAdvanceTopicRow{TopicID: 9, PostID: 18, PostNumber: 2},
 		},

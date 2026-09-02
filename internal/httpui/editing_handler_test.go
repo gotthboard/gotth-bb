@@ -40,7 +40,7 @@ func TestAuthenticatedForumRouterLoadsSessionOnlyForCanonicalEditRoutes(t *testi
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			panic("topic creation not expected")
 		},
-		func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+		func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 			panic("reply creation not expected")
 		},
 		func(context.Context, auth.AccessContext, int64) (store.EditablePost, error) {

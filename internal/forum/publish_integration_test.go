@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"reflect"
 	"sort"
 	"sync"
 	"testing"
@@ -132,7 +133,7 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 		go func() {
 			defer wait.Done()
 			<-start
-			result, replyErr := CreateReply(ctx, connection, func() time.Time { return createdAt.Add(time.Duration(index+1) * time.Second) }, actor, topic.TopicID, "Reply **number**")
+			result, replyErr := CreateReply(ctx, connection, func() time.Time { return createdAt.Add(time.Duration(index+1) * time.Second) }, actor, topic.TopicID, topic.PostID, "Reply **number**")
 			results <- result
 			errorsChannel <- replyErr
 		}()
@@ -189,10 +190,10 @@ GROUP BY topic.id`, topic.TopicID, render.RendererVersion).Scan(
 	if err != nil {
 		t.Fatalf("create timestamp topic: %v", err)
 	}
-	if _, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(2 * time.Hour) }, actor, timestampTopic.TopicID, "later clock"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(2 * time.Hour) }, actor, timestampTopic.TopicID, timestampTopic.PostID, "later clock"); err != nil {
 		t.Fatalf("create later-clock reply: %v", err)
 	}
-	if _, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, timestampTopic.TopicID, "earlier clock"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, timestampTopic.TopicID, timestampTopic.PostID, "earlier clock"); err != nil {
 		t.Fatalf("create earlier-clock reply: %v", err)
 	}
 	var timestampsMonotonic bool
@@ -204,6 +205,47 @@ FROM (
     WHERE topic_id = $1
 ) AS ordered_posts`, timestampTopic.TopicID).Scan(&timestampsMonotonic); err != nil || !timestampsMonotonic {
 		t.Fatalf("post timestamps monotonic = (%t, %v), want true/nil", timestampsMonotonic, err)
+	}
+
+	threadTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Threaded replies", "root")
+	if err != nil {
+		t.Fatalf("create threaded topic: %v", err)
+	}
+	firstChild, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(time.Minute) }, actor, threadTopic.TopicID, threadTopic.PostID, "first child")
+	if err != nil {
+		t.Fatalf("create first child: %v", err)
+	}
+	grandchild, err := CreateReply(ctx, connections[0], func() time.Time { return createdAt.Add(2 * time.Minute) }, actor, threadTopic.TopicID, firstChild.PostID, "grandchild")
+	if err != nil {
+		t.Fatalf("create grandchild: %v", err)
+	}
+	var parentID int64
+	var threadPath []int32
+	if err := connections[0].QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, grandchild.PostID).Scan(&parentID, &threadPath); err != nil || parentID != firstChild.PostID || !reflect.DeepEqual(threadPath, []int32{1, 2, 3}) {
+		t.Fatalf("grandchild metadata = (parent %d, path %v, error %v)", parentID, threadPath, err)
+	}
+	otherTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Other topic", "other root")
+	if err != nil {
+		t.Fatalf("create other topic: %v", err)
+	}
+	if cross, crossErr := CreateReply(ctx, connections[0], time.Now, actor, threadTopic.TopicID, otherTopic.PostID, "cross-topic"); cross != (PublishResult{}) || !errors.Is(crossErr, pgx.ErrNoRows) {
+		t.Fatalf("cross-topic reply = (%+v, %v), want missing", cross, crossErr)
+	}
+
+	depthTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Depth limit", "root")
+	if err != nil {
+		t.Fatalf("create depth topic: %v", err)
+	}
+	depthParent := depthTopic.PostID
+	for depth := int32(2); depth <= MaximumReplyDepth; depth++ {
+		created, createErr := CreateReply(ctx, connections[0], time.Now, actor, depthTopic.TopicID, depthParent, "nested")
+		if createErr != nil {
+			t.Fatalf("create reply at depth %d: %v", depth, createErr)
+		}
+		depthParent = created.PostID
+	}
+	if tooDeep, tooDeepErr := CreateReply(ctx, connections[0], time.Now, actor, depthTopic.TopicID, depthParent, "too deep"); tooDeep != (PublishResult{}) || tooDeepErr == nil {
+		t.Fatalf("over-depth reply = (%+v, %v), want rejected", tooDeep, tooDeepErr)
 	}
 
 	deleteTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Author deletion", "retain **source**")

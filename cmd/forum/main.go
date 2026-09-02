@@ -210,8 +210,8 @@ func run(
 		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
 			return forumservice.CreateTopic(publishContext, pool, time.Now, access, areaSlug, title, markdown)
 		},
-		func(publishContext context.Context, access auth.AccessContext, topicID int64, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateReply(publishContext, pool, time.Now, access, topicID, markdown)
+		func(publishContext context.Context, access auth.AccessContext, topicID, parentPostID int64, markdown string) (forumservice.PublishResult, error) {
+			return forumservice.CreateReply(publishContext, pool, time.Now, access, topicID, parentPostID, markdown)
 		},
 		func(editContext context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
 			return store.GetEditablePost(editContext, queries, postID, access)

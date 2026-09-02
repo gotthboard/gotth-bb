@@ -44,7 +44,7 @@ inserted_topic AS (
 inserted_post AS (
     INSERT INTO public.posts (
         id, topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, created_at, updated_at
+        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at
     )
     SELECT
         identifiers.post_id,
@@ -55,6 +55,8 @@ inserted_post AS (
         sqlc.arg(rendered_html),
         sqlc.arg(renderer_version),
         1,
+        NULL,
+        ARRAY[1]::integer[],
         sqlc.arg(at_time),
         sqlc.arg(at_time)
     FROM identifiers
@@ -70,19 +72,25 @@ SELECT
     topic.state AS topic_state,
     area.id AS area_id,
     area.visibility,
-    area.posting_mode
+    area.posting_mode,
+    parent.id AS parent_post_id,
+    cardinality(parent.thread_path)::integer AS parent_depth
 FROM public.topics AS topic
 JOIN public.areas AS area ON area.id = topic.area_id
+JOIN public.posts AS parent
+  ON parent.topic_id = topic.id
+ AND parent.id = sqlc.arg(parent_post_id)
+ AND parent.deleted_at IS NULL
 WHERE topic.id = sqlc.arg(topic_id)
   AND topic.deleted_at IS NULL
 FOR UPDATE OF topic
-FOR SHARE OF area;
+FOR SHARE OF area, parent;
 
 -- name: CreateReplyAndAdvanceTopic :one
 WITH inserted_post AS (
     INSERT INTO public.posts (
         topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, created_at, updated_at
+        renderer_version, revision, parent_post_id, created_at, updated_at
     )
     SELECT
         topic.id,
@@ -92,6 +100,7 @@ WITH inserted_post AS (
         sqlc.arg(rendered_html),
         sqlc.arg(renderer_version),
         1,
+        sqlc.arg(parent_post_id),
         GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at),
         GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at)
     FROM public.topics AS topic

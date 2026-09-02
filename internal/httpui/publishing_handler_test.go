@@ -46,7 +46,7 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 			topicCalls++
 			return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1}, nil
 		},
-		func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+		func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 			panic("reply not expected")
 		},
 		"gotth_bb_session", true,
@@ -84,7 +84,7 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 	if previewResponse.Code != http.StatusOK || service.authenticateCalls != 2 || topicCalls != 0 {
 		t.Fatalf("authenticated preview = (status %d auth calls %d topic calls %d body %q)", previewResponse.Code, service.authenticateCalls, topicCalls, previewResponse.Body.String())
 	}
-	replyPreviewForm := url.Values{"_csrf": {csrfToken}, "markdown": {"reply body"}}
+	replyPreviewForm := url.Values{"_csrf": {csrfToken}, "parent_post_id": {"91"}, "markdown": {"reply body"}}
 	replyPreviewRequest := httptest.NewRequest(http.MethodPost, "/topics/41/replies/preview", strings.NewReader(replyPreviewForm.Encode()))
 	replyPreviewRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	replyPreviewRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
@@ -118,7 +118,7 @@ func TestNewAuthenticatedPublishingHandlerRejectsMissingPublishers(t *testing.T)
 	validTopic := TopicPublisher(func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 		return forum.PublishResult{}, nil
 	})
-	validReply := ReplyPublisher(func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+	validReply := ReplyPublisher(func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 		return forum.PublishResult{}, nil
 	})
 	for _, publishers := range []struct {
@@ -138,7 +138,7 @@ func TestNewPublishingHandlerRejectsMissingDependencies(t *testing.T) {
 	validTopic := TopicPublisher(func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 		return forum.PublishResult{}, nil
 	})
-	validReply := ReplyPublisher(func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+	validReply := ReplyPublisher(func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 		return forum.PublishResult{}, nil
 	})
 	for _, test := range []struct {
@@ -211,6 +211,7 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	topicHandler.ServeHTTP(topicResponse, topicRequest)
 	if topicResponse.Code != http.StatusOK || !strings.Contains(topicResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
 		!strings.Contains(topicResponse.Body.String(), `formaction="/bb/topics/42/replies/preview"`) ||
+		!strings.Contains(topicResponse.Body.String(), `name="parent_post_id" value="101"`) ||
 		!strings.Contains(topicResponse.Body.String(), `action="/bb/posts/126/delete"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="revision" value="2"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="_csrf" value="`+validCSRFTokenForTest(0x51)+`"`) {
@@ -308,13 +309,13 @@ func TestPublishingHandlerCreatesTopicAndRedirectsCanonically(t *testing.T) {
 func TestPublishingHandlerCreatesReplyAndRedirectsToExactPostPage(t *testing.T) {
 	t.Parallel()
 
-	handler := newPublishingTestHandler(t, nil, func(_ context.Context, access auth.AccessContext, topicID int64, markdown string) (forum.PublishResult, error) {
-		if access.UserID != 42 || topicID != 41 || markdown != "Reply body" {
-			t.Fatalf("reply publishing input = (%+v, %d, %q)", access, topicID, markdown)
+	handler := newPublishingTestHandler(t, nil, func(_ context.Context, access auth.AccessContext, topicID, parentPostID int64, markdown string) (forum.PublishResult, error) {
+		if access.UserID != 42 || topicID != 41 || parentPostID != 91 || markdown != "Reply body" {
+			t.Fatalf("reply publishing input = (%+v, %d, %d, %q)", access, topicID, parentPostID, markdown)
 		}
 		return forum.PublishResult{TopicID: 41, PostID: 116, PostNumber: 26}, nil
 	})
-	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"Reply body"}}
+	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"Reply body"}}
 	request := publishingTestRequest(http.MethodPost, "/topics/41/replies", form.Encode(), true)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
@@ -358,7 +359,7 @@ func TestPublishingValidationPreservesSubmittedFields(t *testing.T) {
 		},
 		{
 			name: "reply markdown", target: "/topics/41/replies",
-			form:       url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"kept <script>body</script>"}},
+			form:       url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"kept <script>body</script>"}},
 			replyError: "markdown", want: []string{`kept &lt;script&gt;body&lt;/script&gt;`, `Check the Markdown body.`},
 		},
 		{
@@ -377,7 +378,7 @@ func TestPublishingValidationPreservesSubmittedFields(t *testing.T) {
 						func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 							return forum.PublishResult{}, forum.InvalidPublishingInput{Field: test.topicError}
 						},
-						func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+						func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 							return forum.PublishResult{}, forum.InvalidPublishingInput{Field: test.replyError}
 						},
 					)
@@ -418,7 +419,9 @@ func TestPublishingHandlerFailsClosedBeforeMutation(t *testing.T) {
 		{name: "unknown field", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}, "extra": {"x"}}.Encode(), wantStatus: http.StatusBadRequest},
 		{name: "topic query", target: "/topics?extra=1", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusBadRequest},
 		{name: "reply missing CSRF", target: "/topics/41/replies", authenticated: true, body: "markdown=body", wantStatus: http.StatusForbidden},
-		{name: "reply unknown field", target: "/topics/41/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}, "extra": {"x"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "reply unknown field", target: "/topics/41/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"body"}, "extra": {"x"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "reply missing parent", target: "/topics/41/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusBadRequest},
+		{name: "reply noncanonical parent", target: "/topics/41/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"091"}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusBadRequest},
 		{name: "denied", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), creatorError: forum.ErrPublishingDenied, wantStatus: http.StatusForbidden},
 		{name: "unavailable", target: "/topics", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode(), creatorError: errors.New("database unavailable"), wantStatus: http.StatusServiceUnavailable},
 		{name: "noncanonical reply", target: "/topics/041/replies", authenticated: true, body: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}}.Encode(), wantStatus: http.StatusNotFound},
@@ -430,7 +433,7 @@ func TestPublishingHandlerFailsClosedBeforeMutation(t *testing.T) {
 			handler := newPublishingTestHandler(t, func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 				calls++
 				return forum.PublishResult{}, test.creatorError
-			}, func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+			}, func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 				calls++
 				return forum.PublishResult{}, test.creatorError
 			})
@@ -547,7 +550,7 @@ func TestParsePublishingFormRejectsMissingFieldsAndReadFailure(t *testing.T) {
 func TestPublishingHandlerMapsMissingTargetsAndInvalidResults(t *testing.T) {
 	t.Parallel()
 
-	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}}
+	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"body"}}
 	for _, test := range []struct {
 		name       string
 		result     forum.PublishResult
@@ -560,7 +563,7 @@ func TestPublishingHandlerMapsMissingTargetsAndInvalidResults(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			handler := newPublishingTestHandler(t, nil, func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+			handler := newPublishingTestHandler(t, nil, func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 				return test.result, test.err
 			})
 			response := httptest.NewRecorder()
@@ -580,7 +583,7 @@ func newPublishingTestHandler(t *testing.T, createTopic TopicPublisher, createRe
 		}
 	}
 	if createReply == nil {
-		createReply = func(context.Context, auth.AccessContext, int64, string) (forum.PublishResult, error) {
+		createReply = func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 			panic("reply creation is not expected")
 		}
 	}

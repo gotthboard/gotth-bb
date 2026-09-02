@@ -106,6 +106,8 @@ type Post struct {
 	DeletedAt       pgtype.Timestamptz
 	DeletedBy       pgtype.Int8
 	DeletionReason  pgtype.Text
+	ParentPostID    pgtype.Int8
+	ThreadPath      []int32
 }
 
 type Report struct {

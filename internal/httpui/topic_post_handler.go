@@ -251,7 +251,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			if len(token) == sessionCookieEncodedBytes {
 				replyForm = publishingFormView{
 					Heading: "Reply", ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL,
-					CSRFToken: token, Reply: true,
+					CSRFToken: token, ParentPostID: strconv.FormatInt(first.TopicFirstPostID, 10), Reply: true,
 				}
 			}
 		}
@@ -280,7 +280,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 func sameTopicPostPresentationMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 	return row.AreaID == first.AreaID && row.AreaSlug == first.AreaSlug && row.AreaName == first.AreaName &&
 		row.AreaDescription == first.AreaDescription && row.AreaPostingMode == first.AreaPostingMode &&
-		row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
+		row.TopicID == first.TopicID && row.TopicFirstPostID == first.TopicFirstPostID && row.TopicTitle == first.TopicTitle &&
 		row.TopicState == first.TopicState && row.TopicPinnedAt == first.TopicPinnedAt && row.TopicCreatedAt == first.TopicCreatedAt &&
 		row.TopicAuthorDisplayName == first.TopicAuthorDisplayName
 }

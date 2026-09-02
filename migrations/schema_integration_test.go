@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -88,8 +89,8 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 4 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 4, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 5 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 5, 1)", serverVersion, migrationCount, governanceCount)
 	}
 
 	var administratorID int64
@@ -464,10 +465,25 @@ WHERE id = $1`, topicID, replyID); err != nil {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit reply transaction: %v", err)
 	}
+	var rootParent *int64
+	var rootPath []int32
+	var replyParent int64
+	var replyPath []int32
+	if err := conn.QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, firstPostID).Scan(&rootParent, &rootPath); err != nil {
+		t.Fatalf("inspect root thread metadata: %v", err)
+	}
+	if err := conn.QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, replyID).Scan(&replyParent, &replyPath); err != nil {
+		t.Fatalf("inspect alpha.1-compatible reply metadata: %v", err)
+	}
+	if rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent != firstPostID || !reflect.DeepEqual(replyPath, []int32{1, 2}) {
+		t.Fatalf("thread metadata = (root parent %v path %v, reply parent %d path %v)", rootParent, rootPath, replyParent, replyPath)
+	}
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.posts
     (topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version)
 VALUES ($1, $2, 2, 'Duplicate', '<p>Duplicate</p>', 'test-v1')`, topicID, memberID)
 	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET post_number = 3 WHERE id = $1", replyID)
+	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET parent_post_id = NULL WHERE id = $1", replyID)
+	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET thread_path = ARRAY[1, 99] WHERE id = $1", replyID)
 
 	tx, err = conn.Begin(ctx)
 	if err != nil {

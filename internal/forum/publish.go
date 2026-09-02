@@ -22,6 +22,8 @@ var (
 	ErrPublishingDenied       = errors.New("forum publishing denied")
 )
 
+const MaximumReplyDepth int32 = 32
+
 // InvalidPublishingInput identifies one safe form field without retaining or
 // exposing submitted bytes.
 type InvalidPublishingInput struct {
@@ -211,6 +213,7 @@ func CreateReply(
 	clock func() time.Time,
 	actor policy.AccessContext,
 	topicID int64,
+	parentPostID int64,
 	markdownSource string,
 ) (PublishResult, error) {
 	if ctx == nil {
@@ -227,6 +230,9 @@ func CreateReply(
 	}
 	if topicID <= 0 {
 		return PublishResult{}, InvalidPublishingInput{Field: "topic"}
+	}
+	if parentPostID <= 0 {
+		return PublishResult{}, InvalidPublishingInput{Field: "parent"}
 	}
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create reply: %w", err)
@@ -246,11 +252,11 @@ func CreateReply(
 
 	result := PublishResult{}
 	err = store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
-		topic, err := queries.LockTopicForReply(ctx, topicID)
+		topic, err := queries.LockTopicForReply(ctx, db.LockTopicForReplyParams{TopicID: topicID, ParentPostID: parentPostID})
 		if err != nil {
 			return fmt.Errorf("lock reply topic: %w", err)
 		}
-		if topic.TopicID != topicID || topic.AreaID <= 0 {
+		if topic.TopicID != topicID || topic.AreaID <= 0 || topic.ParentPostID != parentPostID || topic.ParentDepth < 1 || topic.ParentDepth >= MaximumReplyDepth {
 			return fmt.Errorf("reply topic lock returned an invalid result")
 		}
 		areaPolicy, err := lockedAreaPolicy(ctx, queries, topic.AreaID, topic.Visibility, topic.PostingMode)
@@ -262,7 +268,7 @@ func CreateReply(
 		}
 		created, err := queries.CreateReplyAndAdvanceTopic(ctx, db.CreateReplyAndAdvanceTopicParams{
 			AuthorID: actor.UserID, MarkdownSource: markdownSource, RenderedHtml: renderedHTML,
-			RendererVersion: rendererVersion, AtTime: atTime, TopicID: topicID,
+			RendererVersion: rendererVersion, ParentPostID: pgtype.Int8{Int64: parentPostID, Valid: true}, AtTime: atTime, TopicID: topicID,
 		})
 		if err != nil {
 			return fmt.Errorf("insert reply and advance topic: %w", err)

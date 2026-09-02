@@ -148,6 +148,7 @@ type publishingFormView struct {
 	CancelURL     string
 	CSRFToken     string
 	AreaSlug      string
+	ParentPostID  string
 	Title         string
 	Markdown      string
 	TitleError    string

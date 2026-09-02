@@ -44,7 +44,7 @@ func TestPublishingHandlerPreviewsSanitizedTopicAndReplyDrafts(t *testing.T) {
 		},
 		{
 			name: "reply", target: "/topics/41/replies/preview",
-			form: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"A [safe](https://example.test) reply"}},
+			form: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"A [safe](https://example.test) reply"}},
 			want: []string{`A [safe](https://example.test) reply`, `<a href="https://example.test" rel="nofollow noreferrer">safe</a>`, `formaction="/bb/topics/41/replies/preview"`},
 		},
 	} {
@@ -111,7 +111,7 @@ func TestPublishingPreviewFailsClosedAtEveryRequestBoundary(t *testing.T) {
 	t.Parallel()
 
 	validTopic := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}.Encode()
-	validReply := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {"body"}}.Encode()
+	validReply := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"body"}}.Encode()
 	for _, test := range []struct {
 		name          string
 		target        string
@@ -155,7 +155,7 @@ func TestPublishingReplyPreviewReturnsFieldSpecificValidation(t *testing.T) {
 	t.Parallel()
 
 	handler := newPublishingTestHandler(t, nil, nil)
-	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "markdown": {" "}}
+	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {" "}}
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, publishingTestRequest(http.MethodPost, "/topics/41/replies/preview", form.Encode(), true))
 	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Check the Markdown body.") ||

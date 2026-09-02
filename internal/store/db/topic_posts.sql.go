@@ -20,6 +20,7 @@ WITH visible_topic AS (
         area.description AS area_description,
         area.posting_mode AS area_posting_mode,
         topic.id AS topic_id,
+        topic.first_post_id AS topic_first_post_id,
         topic.title AS topic_title,
         topic.state AS topic_state,
         topic.pinned_at AS topic_pinned_at,
@@ -58,6 +59,7 @@ SELECT
     visible_topic.area_description,
     visible_topic.area_posting_mode,
     visible_topic.topic_id,
+    visible_topic.topic_first_post_id,
     visible_topic.topic_title,
     visible_topic.topic_state,
     visible_topic.topic_pinned_at,
@@ -99,6 +101,7 @@ type GetVisibleTopicPostPageRow struct {
 	AreaDescription        string
 	AreaPostingMode        string
 	TopicID                int64
+	TopicFirstPostID       int64
 	TopicTitle             string
 	TopicState             string
 	TopicPinnedAt          pgtype.Timestamptz
@@ -140,6 +143,7 @@ func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTop
 			&i.AreaDescription,
 			&i.AreaPostingMode,
 			&i.TopicID,
+			&i.TopicFirstPostID,
 			&i.TopicTitle,
 			&i.TopicState,
 			&i.TopicPinnedAt,

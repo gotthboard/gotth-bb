@@ -50,11 +50,12 @@ func TestCreateReplyCommitsAuthorizedOrderedPost(t *testing.T) {
 	at := time.Date(2026, time.September, 2, 4, 31, 0, 999, time.FixedZone("offset", -5*60*60))
 	tx := &publishTestTx{areaID: 7, visibility: "public", postingMode: "read_only", topicID: 101, topicState: "locked", postID: 202, postNumber: 2}
 	result, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, func() time.Time { return at },
-		policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleModerator}, 101, "A `reply`")
+		policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleModerator}, 101, 201, "A `reply`")
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 202, PostNumber: 2}) {
 		t.Fatalf("CreateReply() = (%+v, %v)", result, err)
 	}
 	if !tx.committed || tx.rolledBack || tx.createdTopic != 0 || tx.createdReply != 1 || tx.topicIDArgument != 101 || tx.authorID != 12 ||
+		tx.parentPostID != 201 ||
 		tx.markdown != "A `reply`" || tx.renderedHTML != "<p>A <code>reply</code></p>\n" || tx.rendererVersion != render.RendererVersion ||
 		!tx.atTime.Equal(at.UTC().Truncate(time.Microsecond)) {
 		t.Fatalf("persisted reply = %+v", tx)
@@ -74,7 +75,7 @@ func TestPublishingDenialRollsBackBeforeInsert(t *testing.T) {
 			return err
 		}},
 		{name: "reply locked", run: func(tx *publishTestTx) error {
-			_, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, time.Now, member, 101, "body")
+			_, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, time.Now, member, 101, 201, "body")
 			return err
 		}},
 	} {
@@ -119,11 +120,15 @@ func TestPublishingRejectsInvalidInputBeforeTransaction(t *testing.T) {
 			return err
 		}},
 		{name: "invalid reply ID", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, actor, 0, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, actor, 0, 1, "body")
+			return err
+		}},
+		{name: "invalid reply parent", run: func() error {
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, 0, "body")
 			return err
 		}},
 		{name: "invalid reply body", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
 			return err
 		}},
 	} {
@@ -164,24 +169,27 @@ func TestPublishingRejectsInvalidConfigurationCancellationAndClock(t *testing.T)
 			return err
 		}},
 		{name: "nil reply context", run: func() error {
-			_, err := CreateReply(nil, panicPublishBeginner{}, time.Now, actor, 1, "body")
+			_, err := CreateReply(nil, panicPublishBeginner{}, time.Now, actor, 1, 1, "body")
 			return err
 		}},
-		{name: "nil reply beginner", run: func() error { _, err := CreateReply(context.Background(), nil, time.Now, actor, 1, "body"); return err }},
+		{name: "nil reply beginner", run: func() error {
+			_, err := CreateReply(context.Background(), nil, time.Now, actor, 1, 1, "body")
+			return err
+		}},
 		{name: "nil reply clock", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, nil, actor, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, nil, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid reply actor", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, policy.AccessContext{}, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, time.Now, policy.AccessContext{}, 1, 1, "body")
 			return err
 		}},
 		{name: "canceled reply", run: func() error {
-			_, err := CreateReply(canceled, panicPublishBeginner{}, time.Now, actor, 1, "body")
+			_, err := CreateReply(canceled, panicPublishBeginner{}, time.Now, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "zero reply clock", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, func() time.Time { return time.Time{} }, actor, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, func() time.Time { return time.Time{} }, actor, 1, 1, "body")
 			return err
 		}},
 	} {
@@ -246,11 +254,28 @@ func TestCreateReplyFailsClosedAtTransactionStages(t *testing.T) {
 			if failure == "begin" {
 				beginner.err = errPublishTest
 			}
-			result, err := CreateReply(context.Background(), beginner, time.Now, actor, 101, "body")
+			result, err := CreateReply(context.Background(), beginner, time.Now, actor, 101, 201, "body")
 			if err == nil || result != (PublishResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
 				t.Fatalf("CreateReply(%q) = (%+v, %v), transaction %+v", failure, result, err, tx)
 			}
 		})
+	}
+}
+
+func TestCreateReplyRejectsMaximumDepthBeforeInsert(t *testing.T) {
+	t.Parallel()
+
+	tx := &publishTestTx{
+		areaID: 7, visibility: "public", postingMode: "normal", topicID: 101,
+		topicState: "open", parentDepth: MaximumReplyDepth,
+	}
+	result, err := CreateReply(
+		context.Background(), publishTestBeginner{tx: tx}, time.Now,
+		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember},
+		101, 201, "body",
+	)
+	if err == nil || result != (PublishResult{}) || tx.createdReply != 0 || tx.committed || !tx.rolledBack {
+		t.Fatalf("maximum-depth reply = (%+v, %v), transaction %+v", result, err, tx)
 	}
 }
 
@@ -276,15 +301,16 @@ func (beginner publishTestBeginner) Begin(context.Context) (pgx.Tx, error) {
 
 type publishTestTx struct {
 	pgx.Tx
-	areaID, areaIDArgument, topicID, topicIDArgument, postID, authorID int64
-	visibility, postingMode, topicState, title, markdown               string
-	renderedHTML, rendererVersion                                      string
-	groupIDs                                                           []int64
-	postNumber                                                         int32
-	atTime                                                             time.Time
-	failure                                                            string
-	createdTopic, createdReply                                         int
-	committed, rolledBack                                              bool
+	areaID, areaIDArgument, topicID, topicIDArgument, postID, parentPostID, authorID int64
+	visibility, postingMode, topicState, title, markdown                             string
+	renderedHTML, rendererVersion                                                    string
+	groupIDs                                                                         []int64
+	postNumber                                                                       int32
+	parentDepth                                                                      int32
+	atTime                                                                           time.Time
+	failure                                                                          string
+	createdTopic, createdReply                                                       int
+	committed, rolledBack                                                            bool
 }
 
 func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
@@ -301,11 +327,16 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		if tx.failure == "lock-topic" {
 			return publishTestRow{err: errPublishTest}
 		}
-		tx.topicIDArgument = arguments[0].(int64)
+		tx.parentPostID = arguments[0].(int64)
+		tx.topicIDArgument = arguments[1].(int64)
 		if tx.failure == "invalid-topic-lock" {
-			return publishTestRow{values: []any{tx.topicID + 1, tx.topicState, tx.areaID, tx.visibility, tx.postingMode}}
+			return publishTestRow{values: []any{tx.topicID + 1, tx.topicState, tx.areaID, tx.visibility, tx.postingMode, tx.parentPostID, int32(1)}}
 		}
-		return publishTestRow{values: []any{tx.topicID, tx.topicState, tx.areaID, tx.visibility, tx.postingMode}}
+		depth := tx.parentDepth
+		if depth == 0 {
+			depth = 1
+		}
+		return publishTestRow{values: []any{tx.topicID, tx.topicState, tx.areaID, tx.visibility, tx.postingMode, tx.parentPostID, depth}}
 	case strings.Contains(query, "CreateTopicAndFirstPost"):
 		if tx.failure == "create-topic" {
 			return publishTestRow{err: errPublishTest}
@@ -323,8 +354,9 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		}
 		tx.createdReply++
 		tx.authorID = arguments[0].(int64)
-		tx.captureBody([]any{arguments[4], arguments[1], arguments[2], arguments[3]})
-		tx.topicIDArgument = arguments[5].(int64)
+		tx.parentPostID = arguments[4].(pgtype.Int8).Int64
+		tx.captureBody([]any{arguments[5], arguments[1], arguments[2], arguments[3]})
+		tx.topicIDArgument = arguments[6].(int64)
 		if tx.failure == "invalid-reply" {
 			return publishTestRow{values: []any{tx.topicID, int64(0), tx.postNumber}}
 		}

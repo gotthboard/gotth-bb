@@ -211,22 +211,23 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 	*(destinations[3].(*string)) = "Visible to everyone"
 	*(destinations[4].(*string)) = "normal"
 	*(destinations[5].(*int64)) = 42
-	*(destinations[6].(*string)) = "First topic"
-	*(destinations[7].(*string)) = "open"
-	*(destinations[8].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[9].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[10].(*string)) = "Starter"
-	*(destinations[11].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
-	*(destinations[12].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[13].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
-	*(destinations[14].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
-	*(destinations[15].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[16].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[6].(*int64)) = 101
+	*(destinations[7].(*string)) = "First topic"
+	*(destinations[8].(*string)) = "open"
+	*(destinations[9].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[10].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[11].(*string)) = "Starter"
+	*(destinations[12].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
+	*(destinations[13].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
+	*(destinations[14].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
+	*(destinations[15].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
+	*(destinations[16].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
 	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[18].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[19].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
-	*(destinations[20].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
-	*(destinations[21].(*int64)) = 1
+	*(destinations[18].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[19].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[20].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
+	*(destinations[21].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[22].(*int64)) = 1
 	return nil
 }
 

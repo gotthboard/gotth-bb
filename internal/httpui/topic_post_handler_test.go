@@ -458,7 +458,7 @@ func topicPostTestPage(number int32) store.VisibleTopicPostPage {
 	postCreated := time.Date(2026, time.September, 2, 2, 0, 0, 0, time.UTC)
 	base := db.GetVisibleTopicPostPageRow{
 		AreaID: 8, AreaSlug: "members", AreaName: "Members & Friends", AreaDescription: "Private <discussion>", AreaPostingMode: "normal",
-		TopicID: 42, TopicTitle: "Welcome <everyone>", TopicState: "locked",
+		TopicID: 42, TopicFirstPostID: 101, TopicTitle: "Welcome <everyone>", TopicState: "locked",
 		TopicPinnedAt:  pgtype.Timestamptz{Time: topicCreated, Valid: true},
 		TopicCreatedAt: pgtype.Timestamptz{Time: topicCreated, Valid: true}, TopicAuthorDisplayName: "Alice & Bob",
 		PostID: pgtype.Int8{Int64: 126, Valid: true}, PostNumber: pgtype.Int4{Int32: 26, Valid: true},

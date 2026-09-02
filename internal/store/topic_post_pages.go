@@ -79,7 +79,7 @@ func GetVisibleTopicPostPage(
 	first := rows[0]
 	validMetadata := first.AreaID > 0 && policy.ValidAreaSlug(first.AreaSlug) && first.AreaName != "" &&
 		validPostingMode(first.AreaPostingMode) &&
-		first.TopicID == topicID && first.TopicTitle != "" && validVisibleTopicState(first.TopicState) &&
+		first.TopicID == topicID && first.TopicFirstPostID > 0 && first.TopicTitle != "" && validVisibleTopicState(first.TopicState) &&
 		first.TopicCreatedAt.Valid && first.TopicCreatedAt.InfinityModifier == pgtype.Finite && first.TopicAuthorDisplayName != "" &&
 		(!first.TopicPinnedAt.Valid || first.TopicPinnedAt.InfinityModifier == pgtype.Finite && !first.TopicPinnedAt.Time.Before(first.TopicCreatedAt.Time)) &&
 		(first.TopicState != "hidden" || actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator)
@@ -137,7 +137,7 @@ func validPostingMode(mode string) bool {
 func sameVisibleTopicMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 	return row.AreaID == first.AreaID && row.AreaSlug == first.AreaSlug && row.AreaName == first.AreaName &&
 		row.AreaDescription == first.AreaDescription && row.AreaPostingMode == first.AreaPostingMode &&
-		row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
+		row.TopicID == first.TopicID && row.TopicFirstPostID == first.TopicFirstPostID && row.TopicTitle == first.TopicTitle &&
 		row.TopicState == first.TopicState && row.TopicPinnedAt == first.TopicPinnedAt && row.TopicCreatedAt == first.TopicCreatedAt &&
 		row.TopicAuthorDisplayName == first.TopicAuthorDisplayName
 }

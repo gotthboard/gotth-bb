@@ -15,7 +15,7 @@ const createReplyAndAdvanceTopic = `-- name: CreateReplyAndAdvanceTopic :one
 WITH inserted_post AS (
     INSERT INTO public.posts (
         topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, created_at, updated_at
+        renderer_version, revision, parent_post_id, created_at, updated_at
     )
     SELECT
         topic.id,
@@ -25,10 +25,11 @@ WITH inserted_post AS (
         $3,
         $4,
         1,
-        GREATEST($5::timestamptz, topic.last_activity_at),
-        GREATEST($5::timestamptz, topic.last_activity_at)
+        $5,
+        GREATEST($6::timestamptz, topic.last_activity_at),
+        GREATEST($6::timestamptz, topic.last_activity_at)
     FROM public.topics AS topic
-    WHERE topic.id = $6
+    WHERE topic.id = $7
     RETURNING id, topic_id, post_number, created_at AS post_created_at
 ),
 advanced_topic AS (
@@ -51,6 +52,7 @@ type CreateReplyAndAdvanceTopicParams struct {
 	MarkdownSource  string
 	RenderedHtml    string
 	RendererVersion string
+	ParentPostID    pgtype.Int8
 	AtTime          pgtype.Timestamptz
 	TopicID         int64
 }
@@ -67,6 +69,7 @@ func (q *Queries) CreateReplyAndAdvanceTopic(ctx context.Context, arg CreateRepl
 		arg.MarkdownSource,
 		arg.RenderedHtml,
 		arg.RendererVersion,
+		arg.ParentPostID,
 		arg.AtTime,
 		arg.TopicID,
 	)
@@ -105,7 +108,7 @@ inserted_topic AS (
 inserted_post AS (
     INSERT INTO public.posts (
         id, topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, created_at, updated_at
+        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at
     )
     SELECT
         identifiers.post_id,
@@ -116,6 +119,8 @@ inserted_post AS (
         $6,
         $7,
         1,
+        NULL,
+        ARRAY[1]::integer[],
         $4,
         $4
     FROM identifiers
@@ -214,25 +219,38 @@ SELECT
     topic.state AS topic_state,
     area.id AS area_id,
     area.visibility,
-    area.posting_mode
+    area.posting_mode,
+    parent.id AS parent_post_id,
+    cardinality(parent.thread_path)::integer AS parent_depth
 FROM public.topics AS topic
 JOIN public.areas AS area ON area.id = topic.area_id
-WHERE topic.id = $1
+JOIN public.posts AS parent
+  ON parent.topic_id = topic.id
+ AND parent.id = $1
+ AND parent.deleted_at IS NULL
+WHERE topic.id = $2
   AND topic.deleted_at IS NULL
 FOR UPDATE OF topic
-FOR SHARE OF area
+FOR SHARE OF area, parent
 `
 
-type LockTopicForReplyRow struct {
-	TopicID     int64
-	TopicState  string
-	AreaID      int64
-	Visibility  string
-	PostingMode string
+type LockTopicForReplyParams struct {
+	ParentPostID int64
+	TopicID      int64
 }
 
-func (q *Queries) LockTopicForReply(ctx context.Context, topicID int64) (LockTopicForReplyRow, error) {
-	row := q.db.QueryRow(ctx, lockTopicForReply, topicID)
+type LockTopicForReplyRow struct {
+	TopicID      int64
+	TopicState   string
+	AreaID       int64
+	Visibility   string
+	PostingMode  string
+	ParentPostID int64
+	ParentDepth  int32
+}
+
+func (q *Queries) LockTopicForReply(ctx context.Context, arg LockTopicForReplyParams) (LockTopicForReplyRow, error) {
+	row := q.db.QueryRow(ctx, lockTopicForReply, arg.ParentPostID, arg.TopicID)
 	var i LockTopicForReplyRow
 	err := row.Scan(
 		&i.TopicID,
@@ -240,6 +258,8 @@ func (q *Queries) LockTopicForReply(ctx context.Context, topicID int64) (LockTop
 		&i.AreaID,
 		&i.Visibility,
 		&i.PostingMode,
+		&i.ParentPostID,
+		&i.ParentDepth,
 	)
 	return i, err
 }
