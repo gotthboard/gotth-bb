@@ -36,7 +36,7 @@ func document(view pageView, content templ.Component) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\" class=\"h-full bg-slate-100\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"htmx-config\" content=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!doctype html><html lang=\"en\" class=\"h-full bg-slate-950\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><meta name=\"htmx-config\" content=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -111,7 +111,7 @@ func document(view pageView, content templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"></head><body class=\"min-h-full bg-slate-100 text-slate-900 antialiased\"><a href=\"#main-content\" class=\"sr-only fixed left-4 top-4 z-50 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 focus:not-sr-only focus:outline-2 focus:outline-offset-2 focus:outline-cyan-100\">Skip to main content</a><header class=\"border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 text-white shadow-sm\"><div class=\"mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8\"><div class=\"flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between\"><div><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"></head><body class=\"min-h-full bg-slate-950 text-slate-200 antialiased\"><a href=\"#main-content\" class=\"sr-only fixed left-4 top-4 z-50 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 focus:not-sr-only focus:outline-2 focus:outline-offset-2 focus:outline-cyan-100\">Skip to main content</a><header class=\"border-b border-slate-800 bg-gradient-to-b from-blue-950 to-slate-950 text-white shadow-lg shadow-black/20\"><div class=\"mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8\"><div class=\"flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between\"><div><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -390,7 +390,7 @@ func areaAdministrationContent(view pageView, page areaAdministrationPageView) t
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-600\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Manage areas</span></nav><section aria-labelledby=\"area-administration-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"area-administration-title\" class=\"text-3xl font-bold tracking-tight text-white\">Manage discussion areas</h1><p class=\"mt-4 text-slate-300\">Create the places where topics and replies live. Area slugs cannot be changed after creation.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Manage areas</span></nav><section aria-labelledby=\"area-administration-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"area-administration-title\" class=\"text-3xl font-bold tracking-tight text-white\">Manage discussion areas</h1><p class=\"mt-4 text-slate-300\">Create the places where topics and replies live. Area slugs cannot be changed after creation.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1033,7 +1033,7 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 			templ_7745c5c3_Var49 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm\"><ol><li><span aria-current=\"page\">Areas</span></li></ol></nav>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm\"><ol><li><span aria-current=\"page\">Areas</span></li></ol></nav>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1043,22 +1043,22 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<section aria-labelledby=\"areas-title\" class=\"overflow-hidden rounded border border-slate-400 bg-white shadow-sm\"><div class=\"border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 px-4 py-2 text-white\"><h1 id=\"areas-title\" class=\"text-base font-bold\">Discussion areas</h1></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<section aria-labelledby=\"areas-title\" class=\"overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-lg shadow-black/20\"><div class=\"border-b border-slate-700 bg-gradient-to-b from-blue-900 to-blue-950 px-4 py-2 text-white\"><h1 id=\"areas-title\" class=\"text-base font-bold\">Discussion areas</h1></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(areas) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<p class=\"px-4 pt-4 text-slate-700\">No public discussion areas are available yet.</p><div role=\"status\" aria-live=\"polite\" class=\"m-4 rounded border border-dashed border-slate-400 bg-slate-50 p-5 text-slate-700\">This community is ready for its first discussion area.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<p class=\"px-4 pt-4 text-slate-300\">No public discussion areas are available yet.</p><div role=\"status\" aria-live=\"polite\" class=\"m-4 rounded border border-dashed border-slate-700 bg-slate-950/60 p-5 text-slate-300\">This community is ready for its first discussion area.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<div class=\"hidden grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] gap-3 border-b border-slate-300 bg-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-700 md:grid\" aria-hidden=\"true\"><span>Forum</span><span class=\"text-center\">Topics</span><span class=\"text-center\">Posts</span><span>Last post</span></div><ul class=\"divide-y divide-slate-300\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<div class=\"hidden grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] gap-3 border-b border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-300 md:grid\" aria-hidden=\"true\"><span>Forum</span><span class=\"text-center\">Topics</span><span class=\"text-center\">Posts</span><span>Last post</span></div><ul class=\"divide-y divide-slate-700\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, area := range areas {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<li class=\"grid gap-3 bg-slate-50 px-4 py-4 even:bg-slate-100 md:grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] md:items-center\"><div class=\"flex min-w-0 gap-3\"><span aria-hidden=\"true\" class=\"mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-lg text-blue-800\">●</span><div class=\"min-w-0\"><h2 class=\"font-bold\"><a href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<li class=\"grid gap-3 bg-slate-900 px-4 py-4 even:bg-slate-950 md:grid-cols-[minmax(0,1fr)_5rem_5rem_minmax(13rem,0.7fr)] md:items-center\"><div class=\"flex min-w-0 gap-3\"><span aria-hidden=\"true\" class=\"mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-700 bg-blue-950 text-lg text-blue-300\">●</span><div class=\"min-w-0\"><h2 class=\"font-bold\"><a href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1084,7 +1084,7 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-blue-800 hover:text-blue-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1102,7 +1102,7 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 					return templ_7745c5c3_Err
 				}
 				if area.Description != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<p class=\"mt-1 text-sm leading-5 text-slate-600\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<p class=\"mt-1 text-sm leading-5 text-slate-400\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1120,7 +1120,7 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</div></div><div class=\"flex gap-4 text-sm text-slate-700 md:contents\"><p class=\"md:text-center\"><span class=\"font-semibold md:sr-only\">Topics: </span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</div></div><div class=\"flex gap-4 text-sm text-slate-300 md:contents\"><p class=\"md:text-center\"><span class=\"font-semibold md:sr-only\">Topics: </span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1146,7 +1146,7 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</p></div><div class=\"min-w-0 text-sm text-slate-600\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "</p></div><div class=\"min-w-0 text-sm text-slate-400\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1177,14 +1177,14 @@ func areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerif
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"block truncate font-semibold text-blue-800 hover:underline\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"block truncate font-semibold text-blue-300 hover:text-blue-100 hover:underline\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var58 string
 					templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(area.LatestTitle)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 249, Col: 212}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 249, Col: 232}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
 					if templ_7745c5c3_Err != nil {
@@ -1294,7 +1294,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 			templ_7745c5c3_Var62 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm\"><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm\"><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1320,7 +1320,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">Board index</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-400\">›</span> <span aria-current=\"page\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">Board index</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-400\">›</span> <span aria-current=\"page\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1333,7 +1333,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</span></nav><div class=\"mb-3 flex flex-wrap items-end justify-between gap-3\"><div><h1 id=\"area-title\" class=\"text-2xl font-bold tracking-tight text-slate-950\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</span></nav><div class=\"mb-3 flex flex-wrap items-end justify-between gap-3\"><div><h1 id=\"area-title\" class=\"text-2xl font-bold tracking-tight text-slate-100\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1351,7 +1351,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 			return templ_7745c5c3_Err
 		}
 		if area.Description != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<p class=\"mt-1 max-w-3xl text-sm leading-6 text-slate-600\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<p class=\"mt-1 max-w-3xl text-sm leading-6 text-slate-400\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1405,17 +1405,17 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</div><section aria-labelledby=\"area-title\" class=\"overflow-hidden rounded border border-slate-400 bg-white shadow-sm\"><div class=\"hidden grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] gap-3 border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white md:grid\" aria-hidden=\"true\"><span>Topics</span><span class=\"text-center\">Replies</span><span>Last activity</span></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "</div><section aria-labelledby=\"area-title\" class=\"overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-lg shadow-black/20\"><div class=\"hidden grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] gap-3 border-b border-slate-700 bg-gradient-to-b from-blue-900 to-blue-950 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white md:grid\" aria-hidden=\"true\"><span>Topics</span><span class=\"text-center\">Replies</span><span>Last activity</span></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(area.Topics) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<div role=\"status\" aria-live=\"polite\" class=\"m-4 rounded border border-dashed border-slate-400 bg-slate-50 p-5 text-slate-700\">No topics have been published in this area yet.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 128, "<div role=\"status\" aria-live=\"polite\" class=\"m-4 rounded border border-dashed border-slate-700 bg-slate-950/60 p-5 text-slate-300\">No topics have been published in this area yet.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<p class=\"border-b border-slate-300 bg-slate-200 px-4 py-2 text-xs text-slate-700\">Page ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<p class=\"border-b border-slate-700 bg-slate-800 px-4 py-2 text-xs text-slate-300\">Page ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1441,17 +1441,17 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, " topics available to you</p><ul class=\"divide-y divide-slate-300\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, " topics available to you</p><ul class=\"divide-y divide-slate-700\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, topic := range area.Topics {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "<li class=\"grid gap-3 bg-slate-50 px-4 py-4 even:bg-slate-100 md:grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] md:items-center\"><div class=\"flex min-w-0 gap-3\"><span aria-hidden=\"true\" class=\"mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-blue-800\">●</span><div class=\"min-w-0\"><div class=\"flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "<li class=\"grid gap-3 bg-slate-900 px-4 py-4 even:bg-slate-950 md:grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] md:items-center\"><div class=\"flex min-w-0 gap-3\"><span aria-hidden=\"true\" class=\"mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-700 bg-blue-950 text-blue-300\">●</span><div class=\"min-w-0\"><div class=\"flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if topic.Pinned {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<span class=\"rounded border border-amber-400 bg-amber-100 px-1.5 py-0.5 text-amber-900\">Pinned</span> ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<span class=\"rounded border border-amber-700 bg-amber-950/40 px-1.5 py-0.5 text-amber-200\">Pinned</span> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -1495,7 +1495,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-blue-800 hover:text-blue-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1508,7 +1508,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</a></h2><p class=\"mt-1 text-xs text-slate-600\">Started by ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "</a></h2><p class=\"mt-1 text-xs text-slate-400\">Started by ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1521,7 +1521,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</p></div></div><p class=\"text-sm text-slate-700 md:text-center\"><span class=\"font-semibold md:sr-only\">Replies: </span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "</p></div></div><p class=\"text-sm text-slate-300 md:text-center\"><span class=\"font-semibold md:sr-only\">Replies: </span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1534,7 +1534,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</p><p class=\"text-sm text-slate-600\"><span class=\"font-semibold md:sr-only\">Last activity: </span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "</p><p class=\"text-sm text-slate-400\"><span class=\"font-semibold md:sr-only\">Last activity: </span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1593,7 +1593,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">Previous</a> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 147, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-blue-300 shadow-sm hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">Previous</a> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1625,7 +1625,7 @@ func areaTopicListContent(view pageView, area areaTopicListView) templ.Component
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">Next</a>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 150, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-semibold text-blue-300 shadow-sm hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">Next</a>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1693,7 +1693,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 			templ_7745c5c3_Var84 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-4 rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700 shadow-sm\"><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, "<main id=\"main-content\" tabindex=\"-1\" class=\"mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8\"><nav aria-label=\"Breadcrumb\" class=\"mb-4 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm\"><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1719,7 +1719,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">Board index</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-400\">›</span> <a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">Board index</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-400\">›</span> <a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1745,14 +1745,14 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var89 string
 		templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(topic.AreaName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 343, Col: 284}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 343, Col: 304}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 		if templ_7745c5c3_Err != nil {
@@ -1771,17 +1771,17 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</span></nav><section aria-labelledby=\"topic-title\" class=\"rounded border border-slate-300 bg-white p-4 text-slate-800 shadow-sm sm:p-5\"><div class=\"flex flex-wrap items-center gap-3 text-sm\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, "</span></nav><section aria-labelledby=\"topic-title\" class=\"rounded border border-slate-700 bg-slate-900 p-4 text-slate-200 shadow-lg shadow-black/20 sm:p-5\"><div class=\"flex flex-wrap items-center gap-3 text-sm\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if topic.Pinned {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "<span class=\"rounded border border-amber-400 bg-amber-100 px-2 py-1 font-semibold text-amber-900\">Pinned</span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, "<span class=\"rounded border border-amber-700 bg-amber-950/40 px-2 py-1 font-semibold text-amber-200\">Pinned</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<span class=\"font-semibold text-slate-600\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<span class=\"font-semibold text-slate-300\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1794,7 +1794,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</span></div><h1 id=\"topic-title\" class=\"mt-2 text-2xl font-bold tracking-tight text-blue-950 sm:text-3xl\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</span></div><h1 id=\"topic-title\" class=\"mt-2 text-2xl font-bold tracking-tight text-blue-100 sm:text-3xl\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1807,7 +1807,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</h1><p class=\"mt-2 text-sm text-slate-600\">Started by ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</h1><p class=\"mt-2 text-sm text-slate-400\">Started by ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1833,7 +1833,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</p><p class=\"mt-1 text-sm text-slate-600\">Page ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "</p><p class=\"mt-1 text-sm text-slate-400\">Page ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1980,12 +1980,12 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\" class=\"scroll-mt-6 overflow-hidden rounded border border-slate-300 border-l-4 border-l-blue-300 bg-white text-slate-800 shadow-sm\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\" class=\"scroll-mt-6 overflow-hidden rounded border border-slate-700 border-l-4 border-l-blue-500 bg-slate-900 text-slate-200 shadow-lg shadow-black/20\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if post.ParentURL != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "<p class=\"border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600\"><a href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "<p class=\"border-b border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-slate-400\"><a href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2011,14 +2011,14 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"font-semibold text-blue-800 hover:underline\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"font-semibold text-blue-300 hover:text-blue-100 hover:underline\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var107 string
 					templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(post.ParentLabel)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 379, Col: 197}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 379, Col: 217}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 					if templ_7745c5c3_Err != nil {
@@ -2030,7 +2030,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					}
 				}
 				if post.Tombstone {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<div class=\"px-4 py-5 text-sm italic text-slate-500\"><h2 id=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<div class=\"px-4 py-5 text-sm italic text-slate-400\"><h2 id=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2048,7 +2048,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						return templ_7745c5c3_Err
 					}
 				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<div class=\"md:grid md:grid-cols-[11rem_minmax(0,1fr)]\"><header class=\"border-b border-slate-200 bg-blue-50 px-4 py-3 md:border-r md:border-b-0\"><h2 id=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<div class=\"md:grid md:grid-cols-[11rem_minmax(0,1fr)]\"><header class=\"border-b border-slate-700 bg-slate-800 px-4 py-3 md:border-r md:border-b-0\"><h2 id=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2061,7 +2061,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "\" class=\"font-bold text-blue-950\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "\" class=\"font-bold text-blue-100\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2074,7 +2074,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "</h2><p class=\"mt-1 text-xs text-slate-600\">Posted ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "</h2><p class=\"mt-1 text-xs text-slate-400\">Posted ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2092,7 +2092,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						return templ_7745c5c3_Err
 					}
 					if post.Edited != "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<p class=\"mt-1 text-xs text-slate-500\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<p class=\"mt-1 text-xs text-slate-400\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -2137,12 +2137,12 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"mt-2 inline-block text-xs font-semibold text-blue-800 hover:underline\">Account status</a>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"mt-2 inline-block text-xs font-semibold text-blue-300 hover:text-blue-100 hover:underline\">Account status</a>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "</header><div class=\"min-w-0 p-4\"><div class=\"flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2 text-xs\"><div class=\"flex flex-wrap gap-3\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "</header><div class=\"min-w-0 p-4\"><div class=\"flex flex-wrap items-center justify-between gap-2 border-b border-slate-700 pb-2 text-xs\"><div class=\"flex flex-wrap gap-3\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2179,7 +2179,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"font-semibold text-blue-800 hover:underline\">Edit</a> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 199, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"font-semibold text-blue-300 hover:text-blue-100 hover:underline\">Edit</a> ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -2237,7 +2237,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\"> <button type=\"submit\" class=\"font-semibold text-rose-700 hover:underline\">Delete</button></form>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\"> <button type=\"submit\" class=\"font-semibold text-rose-300 hover:text-rose-200 hover:underline\">Delete</button></form>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -2255,20 +2255,20 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "\" class=\"font-semibold text-blue-800 hover:underline\">Post #")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "\" class=\"font-semibold text-blue-300 hover:text-blue-100 hover:underline\">Post #")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var122 string
 					templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(post.Number)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 416, Col: 109}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 416, Col: 129}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var122))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</a></div><div class=\"rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-800\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "</a></div><div class=\"rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-200\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -2281,7 +2281,7 @@ func topicPostListContent(view pageView, topic topicPostPageView) templ.Componen
 						return templ_7745c5c3_Err
 					}
 					if post.ShowReply {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "<details class=\"mt-5 border-t border-slate-200 pt-3\"><summary class=\"w-fit cursor-pointer rounded bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800\">Reply</summary>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "<details class=\"mt-5 border-t border-slate-700 pt-3\"><summary class=\"w-fit cursor-pointer rounded bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800\">Reply</summary>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -2470,7 +2470,7 @@ func inlineReplyForm(form publishingFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "\"> <label class=\"grid gap-1 text-sm font-semibold text-slate-700\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "\"> <label class=\"grid gap-1 text-sm font-semibold text-slate-200\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2483,7 +2483,7 @@ func inlineReplyForm(form publishingFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, " <textarea name=\"markdown\" required maxlength=\"65536\" rows=\"6\" class=\"rounded border border-slate-400 bg-white px-3 py-2 font-mono text-sm text-slate-900\"></textarea></label><div class=\"flex flex-wrap gap-2\"><button type=\"submit\" class=\"rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800\">Post reply</button> <button type=\"submit\" formaction=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, " <textarea name=\"markdown\" required maxlength=\"65536\" rows=\"6\" class=\"rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white\"></textarea></label><div class=\"flex flex-wrap gap-2\"><button type=\"submit\" class=\"rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800\">Post reply</button> <button type=\"submit\" formaction=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2509,7 +2509,7 @@ func inlineReplyForm(form publishingFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "\" class=\"rounded border border-slate-400 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50\">Preview</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "\" class=\"rounded border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800\">Preview</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2622,7 +2622,7 @@ func moderationUserContent(view pageView, user moderationUserView) templ.Compone
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-600\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Account status</span></nav><section aria-labelledby=\"account-status-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Local account</p><h1 id=\"account-status-title\" class=\"text-3xl font-bold tracking-tight text-white\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Account status</span></nav><section aria-labelledby=\"account-status-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Local account</p><h1 id=\"account-status-title\" class=\"text-3xl font-bold tracking-tight text-white\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3274,7 +3274,7 @@ func errorContent(view pageView, status int, heading, message string) templ.Comp
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 291, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-600\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Error ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 291, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Error ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

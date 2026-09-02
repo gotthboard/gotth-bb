@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 17:12 CDT — Add the alpha.2 dark forum theme
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/area_index_handler_test.go`
+- `internal/httpui/static.go`
+- `internal/httpui/static/`
+- `internal/httpui/static_test.go`
+- `package.json`
+
+Explanation:
+
+The phpBB-inspired alpha.2 surface now uses a coherent dark palette across the
+document, masthead, breadcrumbs, board index, topic lists, post cards, author
+panels, pagination, and inline reply controls. It preserves the existing blue
+forum hierarchy and status colors while replacing light cards and low-contrast
+dark text with slate surfaces and readable foreground colors.
+
+Verification:
+
+- The complete board-index response must include the dark document and forum
+  surfaces and must not contain the superseded light surface classes.
+- The embedded generated stylesheet must contain the dark palette selectors in
+  addition to the separately protected thread-depth rules.
+- Desktop and 320-pixel browser checks cover contrast, horizontal overflow,
+  HTMX navigation, and preservation of nested-reply indentation.
+
+Risks / non-goals:
+
+- This is a default dark theme, not a user-selectable theme system. It changes
+  presentation only; authorization, posting, tree order, schema, and data are
+  unchanged.
+
 ### 2026-09-02 17:05 CDT — Ship the runtime thread-indentation rules
 
 Commit: current commit; hash assigned by Git after commit

@@ -12,7 +12,7 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "bc1d159bbac02ede6796386bbbd35f48226f85b0b719e0734fb57946954bf046"
+	const stylesheetSHA256 = "177466ae32809a5995ba983457020173e88013d161a62a676361d1d5398383a1"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
@@ -57,6 +57,24 @@ func TestEmbeddedStylesheetContainsRuntimeThreadDepthClasses(t *testing.T) {
 	} {
 		if !strings.Contains(stylesheet, selector) {
 			t.Fatalf("stylesheet does not contain runtime thread selector %q", selector)
+		}
+	}
+}
+
+func TestEmbeddedStylesheetContainsDarkForumTheme(t *testing.T) {
+	t.Parallel()
+
+	stylesheet := string(appStylesheet)
+	for _, selector := range []string{
+		".bg-slate-950{",
+		".bg-slate-900{",
+		".bg-slate-800{",
+		".text-slate-200{",
+		".text-blue-300{",
+		".border-slate-700{",
+	} {
+		if !strings.Contains(stylesheet, selector) {
+			t.Fatalf("stylesheet does not contain dark-theme selector %q", selector)
 		}
 	}
 }

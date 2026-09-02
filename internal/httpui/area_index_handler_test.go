@@ -73,6 +73,21 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 			if gotPage := strings.HasPrefix(body, "<!doctype html>"); gotPage != (hxRequest == "") {
 				t.Fatalf("complete page = %t, want %t", gotPage, hxRequest == "")
 			}
+			for _, darkSurface := range []string{
+				`class="h-full bg-slate-950"`,
+				`bg-slate-900`,
+				`text-slate-200`,
+				`text-blue-300`,
+			} {
+				if hxRequest == "" && !strings.Contains(body, darkSurface) {
+					t.Fatalf("complete page lacks dark-theme surface %q: %s", darkSurface, body)
+				}
+			}
+			for _, lightSurface := range []string{"bg-white", "bg-slate-50", "bg-slate-100", "bg-blue-50"} {
+				if strings.Contains(body, lightSurface) {
+					t.Fatalf("area index contains obsolete light surface %q: %s", lightSurface, body)
+				}
+			}
 		})
 	}
 }
