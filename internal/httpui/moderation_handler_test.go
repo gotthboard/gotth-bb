@@ -14,6 +14,7 @@ import (
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/forum"
+	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
 	"git.dannyhunn.com/agents/gotth-bb/internal/moderation"
 	"git.dannyhunn.com/agents/gotth-bb/internal/observability"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
@@ -246,6 +247,7 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	if missing, missingErr := NewAuthenticatedModeratedForumHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
 		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		url.URL{}, false, nil, nil,
 		"gotth_bb_session", true, unavailableReadiness,
 	); missingErr == nil || missing != nil {
 		t.Fatalf("NewAuthenticatedModeratedForumHandler(missing) = (%v, %v)", missing, missingErr)
@@ -284,6 +286,14 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 		},
 		func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.UserSuspensionResult, error) {
 			panic("change user suspension")
+		},
+		url.URL{Scheme: "https", Host: "auth.example", Path: "/if/flow/register/"},
+		true,
+		func(context.Context, auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {
+			return governance.InitialAdministratorSetupStatus{}, nil
+		},
+		func(context.Context, auth.SessionAuthentication, pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+			return governance.InitialAdministratorClaimResult{}, nil
 		},
 		"gotth_bb_session", true, unavailableReadiness,
 	)

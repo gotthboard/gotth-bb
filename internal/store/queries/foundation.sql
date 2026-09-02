@@ -112,6 +112,11 @@ WHERE role = 'administrator'
       OR suspended_until <= sqlc.arg(at_time)::timestamptz
   );
 
+-- name: CountAdministratorBootstraps :one
+SELECT count(*)::bigint
+FROM public.moderation_actions
+WHERE action_type = 'bootstrap_administrator';
+
 -- name: BootstrapAdministratorAndAudit :one
 WITH target AS MATERIALIZED (
     SELECT forum_user.id, forum_user.role AS previous_role
@@ -161,3 +166,78 @@ audit AS (
 SELECT updated.id AS user_id, audit.id AS audit_id
 FROM updated
 JOIN audit ON audit.target_user_id = updated.id;
+
+-- name: ClaimInitialAdministratorAndAudit :one
+WITH current_session AS MATERIALIZED (
+    SELECT session.id, session.user_id
+    FROM public.sessions AS session
+    WHERE session.id = sqlc.arg(session_id)
+      AND session.user_id = sqlc.arg(user_id)
+      AND session.revoked_at IS NULL
+      AND session.issued_at <= sqlc.arg(at_time)::timestamptz
+      AND session.expires_at > sqlc.arg(at_time)::timestamptz
+    FOR UPDATE OF session
+),
+target AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.role AS previous_role
+    FROM public.users AS forum_user
+    JOIN public.external_identities AS identity ON identity.user_id = forum_user.id
+    JOIN current_session ON current_session.user_id = forum_user.id
+    WHERE forum_user.id = sqlc.arg(user_id)
+      AND identity.issuer = sqlc.arg(issuer)
+      AND identity.subject = sqlc.arg(subject)
+      AND forum_user.role = 'member'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > sqlc.arg(at_time)::timestamptz
+          OR forum_user.suspended_until <= sqlc.arg(at_time)::timestamptz
+      )
+    FOR UPDATE OF forum_user, identity
+),
+updated AS (
+    UPDATE public.users AS forum_user
+    SET role = 'administrator',
+        updated_at = sqlc.arg(at_time)::timestamptz
+    FROM target
+    WHERE forum_user.id = target.id
+    RETURNING forum_user.id
+),
+revoked AS (
+    UPDATE public.sessions AS session
+    SET revoked_at = sqlc.arg(at_time)::timestamptz
+    FROM current_session, updated
+    WHERE session.id = current_session.id
+      AND current_session.user_id = updated.id
+    RETURNING session.id
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        actor_user_id,
+        target_type,
+        target_user_id,
+        action_type,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'forum_user',
+        updated.id,
+        'user',
+        updated.id,
+        'bootstrap_administrator',
+        jsonb_build_object('role', target.previous_role),
+        jsonb_build_object('role', 'administrator'),
+        sqlc.arg(request_id),
+        sqlc.arg(at_time)::timestamptz
+    FROM updated
+    JOIN target ON target.id = updated.id
+    JOIN revoked ON true
+    RETURNING id, target_user_id
+)
+SELECT updated.id AS user_id, audit.id AS audit_id, revoked.id AS revoked_session_id
+FROM updated
+JOIN audit ON audit.target_user_id = updated.id
+JOIN revoked ON true;

@@ -34,6 +34,9 @@ func TestLoad(t *testing.T) {
 	if got.oidcClientSecret.value != values["OIDC_CLIENT_SECRET"] {
 		t.Fatal("OIDCClientSecret did not preserve configured secret")
 	}
+	if got.BootstrapAdminSubject != values["BOOTSTRAP_ADMIN_SUBJECT"] || got.RegistrationURL.String() != values["REGISTRATION_URL"] || !got.RegistrationEnabled {
+		t.Fatalf("setup identity = (%q, %q)", got.BootstrapAdminSubject, got.RegistrationURL.String())
+	}
 	if got.SessionCookieName != "gotth_bb_session" {
 		t.Fatalf("SessionCookieName = %q", got.SessionCookieName)
 	}
@@ -53,6 +56,7 @@ func TestLoadUsesOptionalDefaultsAndAllowsDevelopmentPublicClient(t *testing.T) 
 	values["LISTEN_ADDR"] = "0.0.0.0:8080"
 	values["PUBLIC_BASE_URL"] = "http://127.0.0.1:8080/bb"
 	values["OIDC_ISSUER_URL"] = "http://127.0.0.1:9000/application/o/gotth-bb/"
+	values["REGISTRATION_URL"] = "http://127.0.0.1:9000/if/flow/gotth-bb-enrollment/"
 	delete(values, "OIDC_CLIENT_SECRET")
 	delete(values, "SESSION_COOKIE_NAME")
 	delete(values, "LOG_LEVEL")
@@ -81,6 +85,9 @@ func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 		"OIDC_ISSUER_URL",
 		"OIDC_CLIENT_ID",
 		"OIDC_CLIENT_SECRET",
+		"BOOTSTRAP_ADMIN_SUBJECT",
+		"REGISTRATION_URL",
+		"REGISTRATION_ENABLED",
 		"SESSION_MAX_AGE",
 		"SESSION_IDLE_TIMEOUT",
 		"AUTH_REVALIDATE_INTERVAL",
@@ -115,6 +122,11 @@ func TestLoadRejectsInvalidRelationships(t *testing.T) {
 		{name: "invalid OIDC issuer", change: func(values map[string]string) { values["OIDC_ISSUER_URL"] = "https://auth.example.com/" }},
 		{name: "empty OIDC client ID", change: func(values map[string]string) { values["OIDC_CLIENT_ID"] = "" }},
 		{name: "empty production OIDC secret", change: func(values map[string]string) { values["OIDC_CLIENT_SECRET"] = "" }},
+		{name: "invalid bootstrap administrator subject", change: func(values map[string]string) { values["BOOTSTRAP_ADMIN_SUBJECT"] = "bad\nsubject" }},
+		{name: "invalid registration URL", change: func(values map[string]string) {
+			values["REGISTRATION_URL"] = "https://other.example.com/if/flow/gotth-bb-enrollment/"
+		}},
+		{name: "invalid registration enabled", change: func(values map[string]string) { values["REGISTRATION_ENABLED"] = "yes" }},
 		{name: "invalid session maximum", change: func(values map[string]string) { values["SESSION_MAX_AGE"] = "forever" }},
 		{name: "invalid session idle timeout", change: func(values map[string]string) { values["SESSION_IDLE_TIMEOUT"] = "forever" }},
 		{name: "invalid auth revalidation interval", change: func(values map[string]string) { values["AUTH_REVALIDATE_INTERVAL"] = "forever" }},
@@ -169,6 +181,9 @@ func validConfigEnvironment() map[string]string {
 		"OIDC_ISSUER_URL":          "https://auth.example.com/application/o/gotth-bb/",
 		"OIDC_CLIENT_ID":           "gotth-bb",
 		"OIDC_CLIENT_SECRET":       "oidc-client-secret",
+		"BOOTSTRAP_ADMIN_SUBJECT":  "fixed-opaque-subject",
+		"REGISTRATION_URL":         "https://auth.example.com/if/flow/gotth-bb-enrollment/",
+		"REGISTRATION_ENABLED":     "true",
 		"SESSION_COOKIE_NAME":      "",
 		"SESSION_MAX_AGE":          "24h",
 		"SESSION_IDLE_TIMEOUT":     "30m",

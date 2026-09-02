@@ -2,6 +2,7 @@ package governance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -22,6 +23,9 @@ type BootstrapResult struct {
 	UserID  int64
 	AuditID int64
 }
+
+var ErrAdministratorSetupClosed = errors.New("administrator setup is permanently closed")
+var ErrAdministratorSetupDenied = errors.New("administrator setup identity is not eligible")
 
 // BootstrapAdministrator grants the first local administrator role to one
 // already-provisioned external identity. The governance singleton serializes
@@ -55,17 +59,10 @@ func BootstrapAdministrator(
 	if clock == nil {
 		return BootstrapResult{}, fmt.Errorf("administrator bootstrap clock is required")
 	}
-	validText := func(value string, maximum int) bool {
-		if !utf8.ValidString(value) {
-			return false
-		}
-		length := utf8.RuneCountInString(value)
-		return length >= 1 && length <= maximum && strings.IndexFunc(value, unicode.IsControl) < 0
-	}
-	if !validText(issuer, 2048) || !validText(subject, 512) {
+	if !validBootstrapText(issuer, 2048) || !validBootstrapText(subject, 512) {
 		return BootstrapResult{}, fmt.Errorf("administrator bootstrap identity is invalid")
 	}
-	if !validText(operatorIdentifier, 200) {
+	if !validBootstrapText(operatorIdentifier, 200) {
 		return BootstrapResult{}, fmt.Errorf("administrator bootstrap operator identifier is invalid")
 	}
 	if !requestID.Valid || requestID.Bytes == ([16]byte{}) {
@@ -88,6 +85,13 @@ func BootstrapAdministrator(
 		}
 		if !locked {
 			return fmt.Errorf("administrator governance singleton is missing")
+		}
+		bootstraps, err := queries.CountAdministratorBootstraps(ctx)
+		if err != nil {
+			return fmt.Errorf("count administrator bootstraps: %w", err)
+		}
+		if bootstraps != 0 {
+			return ErrAdministratorSetupClosed
 		}
 		administrators, err := queries.CountActiveAdministrators(ctx, atTime)
 		if err != nil {
@@ -124,4 +128,12 @@ func BootstrapAdministrator(
 		return BootstrapResult{}, fmt.Errorf("bootstrap first administrator: %w", err)
 	}
 	return result, nil
+}
+
+func validBootstrapText(value string, maximum int) bool {
+	if !utf8.ValidString(value) {
+		return false
+	}
+	length := utf8.RuneCountInString(value)
+	return length >= 1 && length <= maximum && strings.IndexFunc(value, unicode.IsControl) < 0
 }

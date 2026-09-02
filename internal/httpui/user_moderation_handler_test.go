@@ -372,7 +372,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 		missing, missingErr := newAuthenticatedHandler(
 			builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
 			panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
-			services.load, services.change, "gotth_bb_session", true, unavailableReadiness,
+			services.load, services.change, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 		)
 		if missingErr == nil || missing != nil {
 			t.Fatalf("newAuthenticatedHandler(incomplete user moderation) = (%v, %v)", missing, missingErr)
@@ -390,7 +390,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 			changes++
 			return moderation.UserSuspensionResult{UserID: userID, Suspended: suspend, AuditID: 81}, nil
 		},
-		"gotth_bb_session", true, unavailableReadiness,
+		url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)
 	if err != nil {
 		t.Fatalf("newAuthenticatedHandler() returned error: %v", err)

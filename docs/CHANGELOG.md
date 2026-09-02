@@ -5,6 +5,36 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 10:20 CDT — First-run administration and gated registration
+
+Commit: current commit; hash assigned by Git after commit
+
+Changed:
+
+- Added an exact-subject, freshly reauthenticated, CSRF-protected first-run
+  administrator confirmation page. The serialized transaction grants the
+  local role, writes an immutable self-bootstrap audit, and revokes the
+  elevating session atomically.
+- Made browser and operator bootstrap permanently close after the first
+  bootstrap audit, even if no active administrator remains later.
+- Added a fixed Authentik enrollment redirect, a verified-email enrollment
+  blueprint, and an explicit `REGISTRATION_ENABLED` gate. Disabled registration
+  has no route and no navigation link.
+- Added anonymous Login/Register and authenticated Logout navigation without
+  exposing the configured administrator subject.
+- Regenerated the content-addressed stylesheet as
+  `app-d9885fe579594b2122500e7147b24669b23a75689683a1e808a69183b99c4a93.css`.
+
+Operational constraint:
+
+- Registration activation remains blocked while any sibling Authentik
+  application is open by default through a missing access binding.
+
+Verification:
+
+- Focused configuration, governance, generated-query, HTTP, and forum-command
+  tests pass. Full repository and PostgreSQL verification follows before push.
+
 ### 2026-09-02 09:45 CDT — Content-address immutable stylesheet
 
 Commit: current commit; hash assigned by Git after commit

@@ -25,6 +25,11 @@
 - Backups are not considered valid until restoration succeeds.
 - Restricted content and credentials do not enter logs, metrics, or public
   health output.
+- First-administrator setup is deployed with `REGISTRATION_ENABLED=false`.
+  Public registration is enabled only after the one-time setup succeeds, the
+  Authentik enrollment blueprint and email delivery are verified, and every
+  sibling Authentik application has an explicit access binding that excludes
+  the board-only group.
 
 ## 2. Environments
 

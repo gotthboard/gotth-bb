@@ -18,6 +18,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	forumservice "git.dannyhunn.com/agents/gotth-bb/internal/forum"
+	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
 	moderationservice "git.dannyhunn.com/agents/gotth-bb/internal/moderation"
@@ -200,6 +201,14 @@ func run(
 		},
 		func(moderationContext context.Context, access auth.AccessContext, userID int64, suspend bool, reason string, requestID pgtype.UUID) (moderationservice.UserSuspensionResult, error) {
 			return moderationservice.ChangeUserSuspension(moderationContext, pool, time.Now, access, userID, suspend, reason, requestID)
+		},
+		configured.RegistrationURL,
+		configured.RegistrationEnabled,
+		func(setupContext context.Context, authentication auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {
+			return governance.LoadInitialAdministratorSetup(setupContext, queries, time.Now, authentication.Access.UserID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject)
+		},
+		func(setupContext context.Context, authentication auth.SessionAuthentication, requestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+			return governance.ClaimInitialAdministrator(setupContext, pool, time.Now, authentication.Access.UserID, authentication.SessionID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject, requestID)
 		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",

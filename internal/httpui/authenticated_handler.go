@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -52,7 +53,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -82,7 +83,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -113,7 +114,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -141,17 +142,22 @@ func NewAuthenticatedModeratedForumHandler(
 	changeTopicVisibility TopicVisibilityChanger,
 	loadModerationUser ModerationUserStatusLoader,
 	changeUserSuspension UserSuspensionChanger,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
 	sessionCookieName string,
 	secure bool,
 	checkReadiness ReadinessChecker,
 ) (http.Handler, error) {
-	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil || registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
 		return nil, fmt.Errorf("browser moderated forum services are required")
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, sessionCookieName, secure, checkReadiness,
+		loadModerationUser, changeUserSuspension, registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		sessionCookieName, secure, checkReadiness,
 	)
 }
 
@@ -180,6 +186,10 @@ func newAuthenticatedHandler(
 	changeTopicVisibility TopicVisibilityChanger,
 	loadModerationUser ModerationUserStatusLoader,
 	changeUserSuspension UserSuspensionChanger,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
 	sessionCookieName string,
 	secure bool,
 	checkReadiness ReadinessChecker,
@@ -253,6 +263,27 @@ func newAuthenticatedHandler(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("construct logout route: %w", err)
+	}
+	var registrationHandler http.Handler
+	var authenticatedAdministratorSetupHandler http.Handler
+	if registrationURL.Scheme != "" || loadAdministratorSetup != nil || claimInitialAdministrator != nil {
+		if registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
+			return nil, fmt.Errorf("browser first-run identity services are incomplete")
+		}
+		if registrationEnabled {
+			registrationHandler, err = newRegistrationRedirectHandler(builder, registrationURL)
+			if err != nil {
+				return nil, fmt.Errorf("construct registration route: %w", err)
+			}
+		}
+		setupHandler, setupErr := newAdministratorSetupHandler(builder, loadAdministratorSetup, claimInitialAdministrator, sessionCookieName, secure)
+		if setupErr != nil {
+			return nil, fmt.Errorf("construct administrator setup route: %w", setupErr)
+		}
+		authenticatedAdministratorSetupHandler, setupErr = newSessionAuthenticationHandler(setupHandler, service.AuthenticateSession, sessionCookieName, builder, secure)
+		if setupErr != nil {
+			return nil, fmt.Errorf("construct administrator setup session boundary: %w", setupErr)
+		}
 	}
 	authenticatedPublicHandler, err := newSessionAuthenticationHandler(publicHandler, service.AuthenticateSession, sessionCookieName, builder, secure)
 	if err != nil {
@@ -332,7 +363,7 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct user moderation session boundary: %w", moderationErr)
 		}
 	}
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
 			request.Pattern = request.Method + " /login"
@@ -346,6 +377,20 @@ func newAuthenticatedHandler(
 		case "/logout":
 			request.Pattern = request.Method + " /logout"
 			authenticatedLogoutHandler.ServeHTTP(response, request)
+		case "/register":
+			if registrationHandler != nil {
+				request.Pattern = request.Method + " /register"
+				registrationHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
+		case "/setup", "/setup/administrator":
+			if authenticatedAdministratorSetupHandler != nil {
+				request.Pattern = request.Method + " " + request.URL.Path
+				authenticatedAdministratorSetupHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
 		case "/topics/new", "/topics", "/topics/preview":
 			if authenticatedPublishingHandler != nil {
 				authenticatedPublishingHandler.ServeHTTP(response, request)
@@ -438,5 +483,11 @@ func newAuthenticatedHandler(
 			}
 			publicHandler.ServeHTTP(response, request)
 		}
+	})
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		ctx := context.WithValue(request.Context(), registrationEnabledContextKey{}, registrationEnabled)
+		contextualRequest := request.WithContext(ctx)
+		dispatch.ServeHTTP(response, contextualRequest)
+		request.Pattern = contextualRequest.Pattern
 	}), nil
 }

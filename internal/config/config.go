@@ -23,6 +23,9 @@ type Config struct {
 	OIDCIssuerURL          url.URL
 	OIDCClientID           string
 	oidcClientSecret       secret
+	BootstrapAdminSubject  string
+	RegistrationURL        url.URL
+	RegistrationEnabled    bool
 	SessionCookieName      string
 	SessionMaxAge          time.Duration
 	SessionIdleTimeout     time.Duration
@@ -125,6 +128,34 @@ func Load(lookup LookupEnv) (Config, error) {
 	if environment == EnvironmentProduction && (!secretPresent || oidcClientSecret == "") {
 		return Config{}, fmt.Errorf("OIDC_CLIENT_SECRET is required in production")
 	}
+	bootstrapAdminSubjectRaw, err := required("BOOTSTRAP_ADMIN_SUBJECT")
+	if err != nil {
+		return Config{}, err
+	}
+	bootstrapAdminSubject, err := ParseBootstrapAdministratorSubject(bootstrapAdminSubjectRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	registrationRaw, err := required("REGISTRATION_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	registrationURL, err := ParseRegistrationURL(registrationRaw, oidcIssuerURL, environment == EnvironmentProduction)
+	if err != nil {
+		return Config{}, err
+	}
+	registrationEnabledRaw, err := required("REGISTRATION_ENABLED")
+	if err != nil {
+		return Config{}, err
+	}
+	registrationEnabled := false
+	switch registrationEnabledRaw {
+	case "true":
+		registrationEnabled = true
+	case "false":
+	default:
+		return Config{}, fmt.Errorf("REGISTRATION_ENABLED must be exactly true or false")
+	}
 
 	sessionMaxAgeRaw, err := required("SESSION_MAX_AGE")
 	if err != nil {
@@ -177,6 +208,9 @@ func Load(lookup LookupEnv) (Config, error) {
 		OIDCIssuerURL:          oidcIssuerURL,
 		OIDCClientID:           oidcClientID,
 		oidcClientSecret:       secret{value: oidcClientSecret},
+		BootstrapAdminSubject:  bootstrapAdminSubject,
+		RegistrationURL:        registrationURL,
+		RegistrationEnabled:    registrationEnabled,
 		SessionCookieName:      sessionCookieName,
 		SessionMaxAge:          sessionMaxAge,
 		SessionIdleTimeout:     sessionIdleTimeout,

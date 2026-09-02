@@ -115,6 +115,7 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
 | `BOOTSTRAP_ADMIN_SUBJECT` | Yes | Exact verified OIDC subject allowed to claim first-run administration |
 | `REGISTRATION_URL` | Yes | Exact same-origin Authentik enrollment-flow URL |
+| `REGISTRATION_ENABLED` | Yes | Exact `true`/`false` operational gate for the public registration route and link |
 | `SESSION_COOKIE_NAME` | No | Defaults to `gotth_bb_session` |
 | `SESSION_MAX_AGE` | Yes | Absolute authenticated-session lifetime |
 | `SESSION_IDLE_TIMEOUT` | Yes | Idle session expiry |
@@ -167,6 +168,10 @@ Rules:
   `/if/flow/<flow_slug>/` path, and contain no credentials, query, or fragment.
   The registration handler appends the application-owned absolute `/login`
   return URL; browser input cannot select the enrollment authority or return.
+- `REGISTRATION_ENABLED` accepts only lowercase `true` or `false`. It remains
+  `false` until first-administrator setup, enrollment blueprint application,
+  email delivery verification, and the sibling-application access audit all
+  pass. While false, `/register` is not routed and no Register link is shown.
 - OIDC claims never assign forum roles or local group membership.
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.

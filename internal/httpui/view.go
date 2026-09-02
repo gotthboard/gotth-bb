@@ -13,8 +13,16 @@ type pageView struct {
 	Title         string
 	CanonicalURL  string
 	HomeURL       string
+	LoginURL      string
+	RegisterURL   string
+	LogoutURL     string
 	StylesheetURL string
 	HTMXURL       string
+}
+
+type administratorSetupView struct {
+	ActionURL string
+	CSRFToken string
 }
 
 type areaIndexItem struct {
@@ -139,6 +147,18 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build HTMX URL: %w", err)
 	}
+	loginURL, err := builder.Path("login")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build login URL: %w", err)
+	}
+	registerURL, err := builder.Path("register")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build registration URL: %w", err)
+	}
+	logoutURL, err := builder.Path("logout")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build logout URL: %w", err)
+	}
 	canonicalURL, err := builder.Absolute(canonicalSegments...)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
@@ -148,6 +168,9 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		Title:         title,
 		CanonicalURL:  canonicalURL,
 		HomeURL:       homeURL,
+		LoginURL:      loginURL,
+		RegisterURL:   registerURL,
+		LogoutURL:     logoutURL,
 		StylesheetURL: stylesheetURL,
 		HTMXURL:       htmxURL,
 	}, nil

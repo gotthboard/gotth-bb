@@ -1,0 +1,158 @@
+version: 1
+metadata:
+  name: GOTTH Board - self-registration with verified email
+  labels:
+    blueprints.goauthentik.io/instantiate: "false"
+entries:
+  - identifiers:
+      name: gotth-bb-users
+    id: gotth-bb-users
+    model: authentik_core.group
+    attrs:
+      is_superuser: false
+
+  - identifiers:
+      slug: gotth-bb-enrollment
+    id: gotth-bb-enrollment
+    model: authentik_flows.flow
+    attrs:
+      name: GOTTH Board enrollment
+      title: Register for GOTTH Board
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  - identifiers:
+      name: gotth-bb-enrollment-username
+    id: username
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: username
+      label: Username
+      type: username
+      required: true
+      placeholder: Username
+      placeholder_expression: false
+      order: 0
+
+  - identifiers:
+      name: gotth-bb-enrollment-password
+    id: password
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: password
+      label: Password
+      type: password
+      required: true
+      placeholder: Password
+      placeholder_expression: false
+      order: 1
+
+  - identifiers:
+      name: gotth-bb-enrollment-password-repeat
+    id: password-repeat
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: password_repeat
+      label: Password (repeat)
+      type: password
+      required: true
+      placeholder: Password (repeat)
+      placeholder_expression: false
+      order: 2
+
+  - identifiers:
+      name: gotth-bb-enrollment-name
+    id: name
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: name
+      label: Display name
+      type: text
+      required: true
+      placeholder: Display name
+      placeholder_expression: false
+      order: 3
+
+  - identifiers:
+      name: gotth-bb-enrollment-email
+    id: email
+    model: authentik_stages_prompt.prompt
+    attrs:
+      field_key: email
+      label: Email
+      type: email
+      required: true
+      placeholder: Email
+      placeholder_expression: false
+      order: 4
+
+  - identifiers:
+      name: gotth-bb-enrollment-prompts
+    id: prompts
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields:
+        - !KeyOf username
+        - !KeyOf password
+        - !KeyOf password-repeat
+        - !KeyOf name
+        - !KeyOf email
+
+  - identifiers:
+      name: gotth-bb-enrollment-user-write
+    id: user-write
+    model: authentik_stages_user_write.userwritestage
+    attrs:
+      create_users_as_inactive: true
+      user_creation_mode: always_create
+      user_type: external
+      user_path_template: users/gotth-bb
+      create_users_group: !KeyOf gotth-bb-users
+
+  - identifiers:
+      name: gotth-bb-enrollment-email-verification
+    id: email-verification
+    model: authentik_stages_email.emailstage
+    attrs:
+      use_global_settings: true
+      template: email/account_confirmation.html
+      activate_user_on_success: true
+
+  - identifiers:
+      name: gotth-bb-enrollment-user-login
+    id: user-login
+    model: authentik_stages_user_login.userloginstage
+
+  - identifiers:
+      target: !KeyOf gotth-bb-enrollment
+      stage: !KeyOf prompts
+      order: 10
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf gotth-bb-enrollment
+      stage: !KeyOf user-write
+      order: 20
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf gotth-bb-enrollment
+      stage: !KeyOf email-verification
+      order: 30
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf gotth-bb-enrollment
+      stage: !KeyOf user-login
+      order: 100
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !Find [authentik_core.application, [slug, gotth-bb]]
+      group: !KeyOf gotth-bb-users
+      order: 20
+    model: authentik_policies.policybinding
+    attrs:
+      enabled: true
+      negate: false
+      failure_result: false

@@ -23,7 +23,7 @@ func TestBootstrapAdministratorCommitsExactGovernedGrant(t *testing.T) {
 	if err != nil || result != (BootstrapResult{UserID: 41, AuditID: 73}) {
 		t.Fatalf("bootstrapAdministrator() = (%+v, %v)", result, err)
 	}
-	if tx.queryCalls != 4 || !tx.commitCalled || tx.rollbackCalled {
+	if tx.queryCalls != 5 || !tx.commitCalled || tx.rollbackCalled {
 		t.Fatalf("transaction = (queries %d, commit %t, rollback %t)", tx.queryCalls, tx.commitCalled, tx.rollbackCalled)
 	}
 }
@@ -76,7 +76,8 @@ func TestBootstrapAdministratorRollsBackEveryTransactionalFailure(t *testing.T) 
 
 	cause := errors.New("stage failed")
 	for _, failure := range []string{
-		"governance lock query", "false governance lock", "administrator count query", "existing administrator",
+		"governance lock query", "false governance lock", "bootstrap count query", "existing bootstrap",
+		"administrator count query", "existing administrator",
 		"identity query", "invalid identity", "bootstrap query", "invalid bootstrap result", "commit",
 	} {
 		failure := failure
@@ -151,6 +152,16 @@ func (tx *bootstrapTestTx) QueryRow(context.Context, string, ...any) pgx.Row {
 		}}
 	case 2:
 		return bootstrapTestRow{scan: func(destinations ...any) error {
+			if tx.failure == "bootstrap count query" {
+				return tx.cause
+			}
+			if tx.failure == "existing bootstrap" {
+				*(destinations[0].(*int64)) = 1
+			}
+			return nil
+		}}
+	case 3:
+		return bootstrapTestRow{scan: func(destinations ...any) error {
 			if tx.failure == "administrator count query" {
 				return tx.cause
 			}
@@ -159,7 +170,7 @@ func (tx *bootstrapTestTx) QueryRow(context.Context, string, ...any) pgx.Row {
 			}
 			return nil
 		}}
-	case 3:
+	case 4:
 		return bootstrapTestRow{scan: func(destinations ...any) error {
 			if tx.failure == "identity query" {
 				return tx.cause
@@ -171,7 +182,7 @@ func (tx *bootstrapTestTx) QueryRow(context.Context, string, ...any) pgx.Row {
 			*(destinations[0].(*int64)) = userID
 			return nil
 		}}
-	case 4:
+	case 5:
 		return bootstrapTestRow{scan: func(destinations ...any) error {
 			if tx.failure == "bootstrap query" {
 				return tx.cause
