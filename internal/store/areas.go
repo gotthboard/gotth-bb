@@ -6,10 +6,15 @@ import (
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5"
 )
 
 type visibleAreaQuerier interface {
 	ListVisibleAreas(context.Context, db.ListVisibleAreasParams) ([]db.Area, error)
+}
+
+type visibleAreaBySlugQuerier interface {
+	GetVisibleAreaBySlug(context.Context, db.GetVisibleAreaBySlugParams) (db.Area, error)
 }
 
 // ListVisibleAreas validates one server-owned access snapshot, derives the
@@ -44,4 +49,52 @@ func ListVisibleAreas(ctx context.Context, querier visibleAreaQuerier, actor pol
 		return nil, fmt.Errorf("query visible areas: %w", err)
 	}
 	return areas, nil
+}
+
+// GetVisibleAreaBySlug validates one server-owned access snapshot, derives the
+// closed member/staff booleans and local group IDs, and delegates both slug
+// matching and visibility enforcement to PostgreSQL. Slugs outside the schema
+// grammar, missing slugs, and unauthorized slugs all retain the query's same
+// no-row behavior.
+//
+// Complexity: with s slug bytes, g actor groups, and delegated indexed-query
+// cost Q(g), time is O(s+g+Q(g)), Omega(1), with no tight Theta bound because
+// PostgreSQL and driver work varies. Auxiliary space is O(A(Q)), Omega(1),
+// with no tight Theta bound established; the group slice is passed read-only.
+func GetVisibleAreaBySlug(ctx context.Context, querier visibleAreaBySlugQuerier, slug string, actor policy.AccessContext) (db.Area, error) {
+	if ctx == nil {
+		return db.Area{}, fmt.Errorf("visible area lookup context is required")
+	}
+	if querier == nil {
+		return db.Area{}, fmt.Errorf("visible area lookup querier is required")
+	}
+	if !actor.Valid() {
+		return db.Area{}, fmt.Errorf("visible area lookup access context is invalid")
+	}
+	if err := ctx.Err(); err != nil {
+		return db.Area{}, fmt.Errorf("get visible area by slug: %w", err)
+	}
+	validSlug := len(slug) >= 1 && len(slug) <= 80
+	for index := 0; validSlug && index < len(slug); index++ {
+		character := slug[index]
+		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') {
+			continue
+		}
+		if character != '-' || index == 0 || index == len(slug)-1 || slug[index-1] == '-' {
+			validSlug = false
+		}
+	}
+	if !validSlug {
+		return db.Area{}, fmt.Errorf("query visible area by slug: %w", pgx.ErrNoRows)
+	}
+	area, err := querier.GetVisibleAreaBySlug(ctx, db.GetVisibleAreaBySlugParams{
+		Slug:     slug,
+		IsStaff:  actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator,
+		IsMember: actor.Authenticated,
+		GroupIds: actor.GroupIDs,
+	})
+	if err != nil {
+		return db.Area{}, fmt.Errorf("query visible area by slug: %w", err)
+	}
+	return area, nil
 }

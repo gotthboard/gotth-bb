@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:38 CDT — Derive direct-area lookup authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/areas.go`
+- `internal/store/areas_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the store boundary for direct visible-area lookup. It accepts only the
+canonical server-owned access snapshot, validates it, derives the closed staff,
+member, and local-group facts, and delegates the exact slug plus those facts to
+the generated PostgreSQL query. Slugs outside the database schema's exact ASCII
+grammar return the same wrapped `pgx.ErrNoRows` as missing and unauthorized
+slugs without reaching PostgreSQL.
+
+Verification:
+
+- Visitor, member, moderator, and administrator authority maps to the exact
+  generated query parameters; invalid authority and canceled or missing
+  dependencies fail before any query
+- The 80-byte schema maximum is accepted; empty, 81-byte, uppercase,
+  slash-containing, malformed-hyphen, and embedded NUL slugs all return the
+  same no-row result without a database call
+- Query failures discard any partial fake row, and the new store function has
+  100% statement coverage under the race detector
+
+Risks / non-goals:
+
+- This unit does not add the HTTP area route or a topic query. It closes the
+  authority and input boundary those later units will call.
+
 ### 2026-09-01 20:22 CDT — Enforce visibility on direct area lookup
 
 Commit: current commit; hash assigned by Git after commit
