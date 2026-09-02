@@ -436,7 +436,10 @@ Requirements:
 predicate before ordering by `(display_order, id)`, treats nil and empty group
 arrays as no group authority, and returns full area rows only after PostgreSQL
 has removed restricted rows. Its booleans and group IDs are internal repository
-facts; browser parameters never bind them directly.
+facts; browser parameters never bind them directly. The exported store boundary
+first requires `AccessContext.Valid`, then derives `is_member` from canonical
+authentication and `is_staff` only from the closed moderator/administrator
+roles. Query failures discard any partial row slice.
 
 ## 8. OIDC implementation
 

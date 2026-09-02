@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:18 CDT — Derive visible-area query authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/areas.go`
+- `internal/store/areas_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the exported store boundary for visible-area listing. It rejects invalid
+access snapshots before database work, derives accepted-member state from
+canonical authentication, derives staff bypass only from the closed local
+moderator/administrator roles, and passes current verified local group IDs to
+the generated PostgreSQL predicate. Request fields cannot supply any of these
+facts. Query failure returns no partial rows.
+
+Verification:
+
+- Visitor, member, grouped moderator, and administrator cases bind the exact
+  expected internal SQL facts and preserve returned rows
+- Contradictory identity, missing/unknown roles, invalid groups, nil
+  dependencies, cancellation, and query failure all fail before returning
+  content; a query-supplied partial slice is discarded on error
+- The production boundary reaches 100% statement coverage and passes 50
+  repeated race-detector runs
+
+Risks / non-goals:
+
+- HTTP session construction still needs to populate role and local group facts
+  before pages consume this repository. This boundary deliberately accepts no
+  browser-supplied authorization fields.
+
 ### 2026-09-01 19:12 CDT — Centralize area-view actor validation
 
 Commit: current commit; hash assigned by Git after commit
