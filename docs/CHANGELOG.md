@@ -5,6 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 02:38 CDT — Add audited topic hide transitions
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/implementation-spec.md`
+- `internal/httpui/moderation_handler.go`
+- `internal/httpui/moderation_handler_test.go`
+- `internal/moderation/topic_transition.go`
+- `internal/moderation/topic_transition_test.go`
+- `internal/moderation/topic_transition_integration_test.go`
+
+Explanation:
+
+Added strict audited topic hide/restore to the existing serialized moderation
+mechanism. Hide admits only `open -> hidden`; restore admits only
+`hidden -> open`. A locked topic must be explicitly unlocked first, avoiding a
+hidden extra-state field or a restore operation that guesses and discards prior
+lock state.
+
+The public result type now honestly describes any admitted topic transition
+rather than only locking. Both transition families share one validated row-lock,
+guarded update, monotonic timestamp, audit, rollback, and no-retry mechanism;
+their action/state choices remain compile-time closed in the public wrappers.
+
+Verification:
+
+- Exact hide/restore state, action, actor, target, reason, request UUID, time,
+  result, commit, and rollback parameters
+- Locked-topic hide, open-topic restore, and repeated hide conflict without
+  mutation or duplicate audit
+- PostgreSQL 17 proves exact hide/restore audits, member invisibility while
+  hidden, moderator visibility, restored reads, and the existing forced-audit
+  rollback path
+- Moderation production package remains at 100% statement coverage
+
+Risks / non-goals:
+
+- Browser hide/restore controls are deliberately the next separate unit
+- Post hide/restore and redaction remain outside the alpha.1 minimum
+
 ### 2026-09-02 02:20 CDT — Wire staff topic lock controls
 
 Commit: current commit; hash assigned by Git after commit

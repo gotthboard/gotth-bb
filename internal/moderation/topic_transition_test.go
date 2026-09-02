@@ -32,7 +32,7 @@ func TestChangeTopicLockCommitsTypedTransitionAndAudit(t *testing.T) {
 			tx := &topicLockTestTx{topicID: 41, current: test.current, resulting: test.resulting, auditID: 71}
 			result, err := ChangeTopicLock(context.Background(), topicLockTestBeginner{tx: tx}, func() time.Time { return at },
 				policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, test.lock, "clear reason", requestID)
-			if err != nil || result != (TopicLockResult{TopicID: 41, State: policy.TopicState(test.resulting), AuditID: 71}) {
+			if err != nil || result != (TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.resulting), AuditID: 71}) {
 				t.Fatalf("ChangeTopicLock() = (%+v, %v)", result, err)
 			}
 			if !tx.committed || tx.rolledBack || tx.changeCalls != 1 || tx.actorID != 11 || tx.action != test.action ||
@@ -41,6 +41,56 @@ func TestChangeTopicLockCommitsTypedTransitionAndAudit(t *testing.T) {
 				t.Fatalf("topic moderation transaction = %+v", tx)
 			}
 		})
+	}
+}
+
+func TestChangeTopicVisibilityCommitsTypedTransitionAndAudit(t *testing.T) {
+	t.Parallel()
+
+	at := time.Date(2026, time.September, 2, 9, 0, 0, 123456789, time.UTC)
+	requestID := pgtype.UUID{Bytes: [16]byte{0x61}, Valid: true}
+	for _, test := range []struct {
+		name, current, resulting, action string
+		hide                             bool
+	}{
+		{name: "hide", current: "open", resulting: "hidden", action: "hide_topic", hide: true},
+		{name: "restore", current: "hidden", resulting: "open", action: "restore_topic"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tx := &topicLockTestTx{topicID: 41, current: test.current, resulting: test.resulting, auditID: 81}
+			result, err := ChangeTopicVisibility(context.Background(), topicLockTestBeginner{tx: tx}, func() time.Time { return at },
+				policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleAdministrator}, 41, test.hide, "visibility reason", requestID)
+			if err != nil || result != (TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.resulting), AuditID: 81}) {
+				t.Fatalf("ChangeTopicVisibility() = (%+v, %v)", result, err)
+			}
+			if !tx.committed || tx.rolledBack || tx.changeCalls != 1 || tx.actorID != 11 || tx.action != test.action ||
+				tx.reason != "visibility reason" || tx.previous != test.current || tx.resultingArg != test.resulting || tx.requestID != requestID ||
+				!tx.atTime.Equal(at.UTC().Truncate(time.Microsecond)) {
+				t.Fatalf("topic visibility transaction = %+v", tx)
+			}
+		})
+	}
+}
+
+func TestChangeTopicVisibilityRequiresExactCurrentState(t *testing.T) {
+	t.Parallel()
+
+	requestID := pgtype.UUID{Bytes: [16]byte{0x61}, Valid: true}
+	for _, test := range []struct {
+		current string
+		hide    bool
+	}{
+		{current: "locked", hide: true},
+		{current: "open"},
+	} {
+		tx := &topicLockTestTx{topicID: 41, current: test.current}
+		result, err := ChangeTopicVisibility(context.Background(), topicLockTestBeginner{tx: tx}, time.Now,
+			policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, test.hide, "reason", requestID)
+		if result != (TopicTransitionResult{}) || !errors.Is(err, ErrTopicModerationConflict) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
+			t.Fatalf("ChangeTopicVisibility(%q, %t) = (%+v, %v, tx %+v)", test.current, test.hide, result, err, tx)
+		}
 	}
 }
 
@@ -54,14 +104,14 @@ func TestChangeTopicLockDeniesAuthorityAndWrongState(t *testing.T) {
 		{Authenticated: true, UserID: 11, Role: policy.RoleAdministrator, MutedUntil: func() *time.Time { value := time.Now(); return &value }()},
 	} {
 		result, err := ChangeTopicLock(context.Background(), panicTopicLockBeginner{}, time.Now, actor, 41, true, "reason", requestID)
-		if result != (TopicLockResult{}) || !errors.Is(err, ErrTopicModerationDenied) {
+		if result != (TopicTransitionResult{}) || !errors.Is(err, ErrTopicModerationDenied) {
 			t.Fatalf("denied actor %+v = (%+v, %v)", actor, result, err)
 		}
 	}
 	tx := &topicLockTestTx{topicID: 41, current: "locked", resulting: "locked", auditID: 71}
 	result, err := ChangeTopicLock(context.Background(), topicLockTestBeginner{tx: tx}, time.Now,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, true, "reason", requestID)
-	if result != (TopicLockResult{}) || !errors.Is(err, ErrTopicModerationConflict) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
+	if result != (TopicTransitionResult{}) || !errors.Is(err, ErrTopicModerationConflict) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
 		t.Fatalf("wrong state = (%+v, %v, tx %+v)", result, err, tx)
 	}
 }
@@ -177,7 +227,7 @@ func TestChangeTopicLockFailsClosedAtTransactionStages(t *testing.T) {
 				beginner.err = errModerationTest
 			}
 			result, err := ChangeTopicLock(context.Background(), beginner, time.Now, actor, 41, true, "reason", requestID)
-			if err == nil || result != (TopicLockResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
+			if err == nil || result != (TopicTransitionResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
 				t.Fatalf("ChangeTopicLock(%q) = (%+v, %v), tx %+v", failure, result, err, tx)
 			}
 		})

@@ -22,7 +22,7 @@ var (
 	ErrTopicModerationConflict = errors.New("topic moderation state conflict")
 )
 
-type TopicLockResult struct {
+type TopicTransitionResult struct {
 	TopicID int64
 	State   policy.TopicState
 	AuditID int64
@@ -32,16 +32,19 @@ type transactionBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
+type topicTransition struct {
+	previous  policy.TopicState
+	resulting policy.TopicState
+	action    string
+}
+
 // ChangeTopicLock locks or unlocks one existing topic and appends exactly one
 // immutable audit row in the same transaction. Only active moderator or
 // administrator authority is admitted; wrong current states conflict without
 // mutation or audit.
 //
-// Complexity: for g actor-group IDs, r reason bytes, and delegated database
-// work D, local time is O(g+r), Omega(1), and auxiliary space is tight Theta(1).
-// Total time is O(g+r+D), Omega(1), without one tight bound because validation
-// may return early and database work varies. One transaction performs two
-// application statements plus begin/commit, no retry, and no detached work.
+// Complexity: this selects one fixed transition in tight Theta(1) time and
+// space, then retains changeTopicState's documented bound without extra I/O.
 func ChangeTopicLock(
 	ctx context.Context,
 	beginner transactionBeginner,
@@ -51,45 +54,91 @@ func ChangeTopicLock(
 	lock bool,
 	reason string,
 	requestID pgtype.UUID,
-) (TopicLockResult, error) {
+) (TopicTransitionResult, error) {
+	transition := topicTransition{previous: policy.TopicOpen, resulting: policy.TopicLocked, action: "lock_topic"}
+	if !lock {
+		transition = topicTransition{previous: policy.TopicLocked, resulting: policy.TopicOpen, action: "unlock_topic"}
+	}
+	return changeTopicState(ctx, beginner, clock, actor, topicID, reason, requestID, transition)
+}
+
+// ChangeTopicVisibility hides or restores one existing topic and appends the
+// matching immutable audit in the same transaction. The only transitions are
+// open to hidden and hidden to open; locked topics must be explicitly unlocked
+// before hiding so restore never guesses or discards lock state.
+//
+// Complexity: this selects one fixed transition in tight Theta(1) time and
+// space, then retains changeTopicState's documented bound without extra I/O.
+func ChangeTopicVisibility(
+	ctx context.Context,
+	beginner transactionBeginner,
+	clock func() time.Time,
+	actor policy.AccessContext,
+	topicID int64,
+	hide bool,
+	reason string,
+	requestID pgtype.UUID,
+) (TopicTransitionResult, error) {
+	transition := topicTransition{previous: policy.TopicOpen, resulting: policy.TopicHidden, action: "hide_topic"}
+	if !hide {
+		transition = topicTransition{previous: policy.TopicHidden, resulting: policy.TopicOpen, action: "restore_topic"}
+	}
+	return changeTopicState(ctx, beginner, clock, actor, topicID, reason, requestID, transition)
+}
+
+// changeTopicState owns the shared validated, serialized, audited topic-state
+// mechanism. Callers supply only compile-time closed transition values.
+//
+// Complexity: for g actor-group IDs, r reason bytes, and delegated database
+// work D, local time is O(g+r), Omega(1), and auxiliary space is tight Theta(1).
+// Total time is O(g+r+D), Omega(1), without one tight bound because validation
+// may return early and database work varies. One transaction performs two
+// application statements plus begin/commit, no retry, and no detached work.
+func changeTopicState(
+	ctx context.Context,
+	beginner transactionBeginner,
+	clock func() time.Time,
+	actor policy.AccessContext,
+	topicID int64,
+	reason string,
+	requestID pgtype.UUID,
+	transition topicTransition,
+) (TopicTransitionResult, error) {
 	if ctx == nil {
-		return TopicLockResult{}, fmt.Errorf("topic moderation context is required")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation context is required")
 	}
 	if beginner == nil {
-		return TopicLockResult{}, fmt.Errorf("topic moderation transaction beginner is required")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation transaction beginner is required")
 	}
 	if clock == nil {
-		return TopicLockResult{}, fmt.Errorf("topic moderation clock is required")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation clock is required")
 	}
 	if !actor.Valid() || !actor.Authenticated {
-		return TopicLockResult{}, fmt.Errorf("topic moderation actor is invalid")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation actor is invalid")
 	}
 	if actor.Suspended || actor.MutedUntil != nil || actor.Role != policy.RoleModerator && actor.Role != policy.RoleAdministrator {
-		return TopicLockResult{}, ErrTopicModerationDenied
+		return TopicTransitionResult{}, ErrTopicModerationDenied
 	}
 	if topicID <= 0 {
-		return TopicLockResult{}, fmt.Errorf("%w: target", ErrTopicModerationInput)
+		return TopicTransitionResult{}, fmt.Errorf("%w: target", ErrTopicModerationInput)
 	}
 	if !validReason(reason) {
-		return TopicLockResult{}, fmt.Errorf("%w: reason", ErrTopicModerationInput)
+		return TopicTransitionResult{}, fmt.Errorf("%w: reason", ErrTopicModerationInput)
 	}
 	if !requestID.Valid || requestID.Bytes == ([16]byte{}) {
-		return TopicLockResult{}, fmt.Errorf("topic moderation request ID is invalid")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation request ID is invalid")
 	}
 	if err := ctx.Err(); err != nil {
-		return TopicLockResult{}, fmt.Errorf("moderate topic: %w", err)
+		return TopicTransitionResult{}, fmt.Errorf("moderate topic: %w", err)
 	}
 	now := clock()
 	if now.IsZero() {
-		return TopicLockResult{}, fmt.Errorf("topic moderation clock returned a zero time")
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation clock returned a zero time")
 	}
 	atTime := pgtype.Timestamptz{Time: now.UTC().Truncate(time.Microsecond), Valid: true}
-	previous, resulting, action := string(policy.TopicOpen), string(policy.TopicLocked), "lock_topic"
-	if !lock {
-		previous, resulting, action = string(policy.TopicLocked), string(policy.TopicOpen), "unlock_topic"
-	}
+	previous, resulting := string(transition.previous), string(transition.resulting)
 
-	result := TopicLockResult{}
+	result := TopicTransitionResult{}
 	err := store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
 		current, err := queries.LockTopicForModeration(ctx, topicID)
 		if err != nil {
@@ -103,7 +152,7 @@ func ChangeTopicLock(
 		}
 		changed, err := queries.ChangeTopicStateAndAudit(ctx, db.ChangeTopicStateAndAuditParams{
 			ResultingState: resulting, AtTime: atTime, TopicID: topicID, PreviousState: previous,
-			ActorUserID: pgtype.Int8{Int64: actor.UserID, Valid: true}, ActionType: action,
+			ActorUserID: pgtype.Int8{Int64: actor.UserID, Valid: true}, ActionType: transition.action,
 			Reason: pgtype.Text{String: reason, Valid: true}, RequestID: requestID,
 		})
 		if err != nil {
@@ -112,11 +161,11 @@ func ChangeTopicLock(
 		if changed.TopicID != topicID || changed.State != resulting || !changed.UpdatedAt.Valid || changed.UpdatedAt.InfinityModifier != pgtype.Finite || changed.AuditID <= 0 {
 			return fmt.Errorf("topic moderation returned an invalid result")
 		}
-		result = TopicLockResult{TopicID: changed.TopicID, State: policy.TopicState(changed.State), AuditID: changed.AuditID}
+		result = TopicTransitionResult{TopicID: changed.TopicID, State: policy.TopicState(changed.State), AuditID: changed.AuditID}
 		return nil
 	})
 	if err != nil {
-		return TopicLockResult{}, fmt.Errorf("topic moderation transaction: %w", err)
+		return TopicTransitionResult{}, fmt.Errorf("topic moderation transaction: %w", err)
 	}
 	return result, nil
 }

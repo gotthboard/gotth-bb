@@ -171,7 +171,7 @@ func run(
 		func(deleteContext context.Context, access auth.AccessContext, postID int64, revision int32) (forumservice.DeleteResult, error) {
 			return forumservice.DeletePost(deleteContext, pool, time.Now, access, postID, revision)
 		},
-		func(moderationContext context.Context, access auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderationservice.TopicLockResult, error) {
+		func(moderationContext context.Context, access auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderationservice.TopicTransitionResult, error) {
 			return moderationservice.ChangeTopicLock(moderationContext, pool, time.Now, access, topicID, lock, reason, requestID)
 		},
 		configured.SessionCookieName,

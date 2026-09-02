@@ -899,6 +899,14 @@ server request identifier decoded as the audit UUID. The service transaction
 remains final authority. Success validates the committed result and navigates
 to the canonical topic URL; conflicts require a reload and never retry.
 
+Alpha topic hide/restore is likewise strict: only `open -> hidden` and
+`hidden -> open` are admitted. A locked topic must first be explicitly unlocked
+before hiding, so restoration never guesses at or silently discards prior lock
+state. Both directions require the same canonical reason and request UUID and
+use the same row-lock, guarded update, atomic audit, monotonic-time, and
+no-retry mechanism as lock/unlock. Browser hide/restore controls remain a
+separate bounded unit.
+
 ## 15. Migrations
 
 - Migration filenames are ordered, contiguous, and immutable after a database

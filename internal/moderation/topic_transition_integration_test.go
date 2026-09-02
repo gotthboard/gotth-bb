@@ -12,6 +12,8 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
 	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,7 +21,7 @@ import (
 
 const topicModerationTestDatabase = "gotth_bb_alpha1_topic_moderation_test"
 
-func TestTopicLockModerationOnPostgreSQL17(t *testing.T) {
+func TestTopicTransitionsOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
@@ -91,7 +93,7 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_topic_moderation_audit()`); err != n
 		t.Fatalf("create rejecting audit trigger: %v", err)
 	}
 	failed, failedErr := ChangeTopicLock(ctx, connection, time.Now, moderator, topic.TopicID, true, "Must roll back", pgtype.UUID{Bytes: [16]byte{0x50}, Valid: true})
-	if failed != (TopicLockResult{}) || failedErr == nil {
+	if failed != (TopicTransitionResult{}) || failedErr == nil {
 		t.Fatalf("ChangeTopicLock(audit failure) = (%+v, %v), want failure", failed, failedErr)
 	}
 	var state string
@@ -126,11 +128,11 @@ WHERE topic.id = $1`, topic.TopicID, locked.AuditID).Scan(
 		action != "lock_topic" || reason != "Lock for review" || previous != "open" || resulting != "locked" || !auditedAt.Equal(updatedAt) || auditCount != 1 {
 		t.Fatalf("persisted lock = (%q, %s, %d/%d, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, actorID, targetID, action, reason, previous, resulting, auditedAt, auditCount, err)
 	}
-	if repeated, repeatedErr := ChangeTopicLock(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat", pgtype.UUID{Bytes: [16]byte{0x52}, Valid: true}); repeated != (TopicLockResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
+	if repeated, repeatedErr := ChangeTopicLock(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat", pgtype.UUID{Bytes: [16]byte{0x52}, Valid: true}); repeated != (TopicTransitionResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
 		t.Fatalf("repeated lock = (%+v, %v), want conflict", repeated, repeatedErr)
 	}
 	member := policy.AccessContext{Authenticated: true, UserID: memberID, Role: policy.RoleMember}
-	if denied, deniedErr := ChangeTopicLock(ctx, connection, time.Now, member, topic.TopicID, false, "not allowed", pgtype.UUID{Bytes: [16]byte{0x53}, Valid: true}); denied != (TopicLockResult{}) || !errors.Is(deniedErr, ErrTopicModerationDenied) {
+	if denied, deniedErr := ChangeTopicLock(ctx, connection, time.Now, member, topic.TopicID, false, "not allowed", pgtype.UUID{Bytes: [16]byte{0x53}, Valid: true}); denied != (TopicTransitionResult{}) || !errors.Is(deniedErr, ErrTopicModerationDenied) {
 		t.Fatalf("member unlock = (%+v, %v), want denied", denied, deniedErr)
 	}
 	unlocked, err := ChangeTopicLock(ctx, connection, func() time.Time { return createdAt.Add(time.Hour) }, moderator, topic.TopicID, false, "Review complete", pgtype.UUID{Bytes: [16]byte{0x54}, Valid: true})
@@ -149,5 +151,53 @@ WHERE topic.id = $1`, topic.TopicID, unlocked.AuditID).Scan(
 	); err != nil || state != "open" || !updatedAt.Equal(createdAt.Add(time.Hour)) || actorID != moderatorID || targetID != topic.TopicID ||
 		action != "unlock_topic" || reason != "Review complete" || previous != "locked" || resulting != "open" || !auditedAt.Equal(updatedAt) || auditCount != 2 {
 		t.Fatalf("persisted unlock = (%q, %s, %d/%d, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, actorID, targetID, action, reason, previous, resulting, auditedAt, auditCount, err)
+	}
+	hiddenAt := createdAt.Add(2 * time.Hour)
+	hidden, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return hiddenAt }, moderator, topic.TopicID, true, "Remove from view", pgtype.UUID{Bytes: [16]byte{0x55}, Valid: true})
+	if err != nil || hidden.State != policy.TopicHidden || hidden.AuditID <= unlocked.AuditID {
+		t.Fatalf("ChangeTopicVisibility(hide) = (%+v, %v)", hidden, err)
+	}
+	queries := db.New(connection)
+	if page, pageErr := store.GetVisibleTopicPostPage(ctx, queries, topic.TopicID, 1, member); !errors.Is(pageErr, pgx.ErrNoRows) || len(page.Rows) != 0 {
+		t.Fatalf("member hidden-topic read = (%+v, %v), want no rows", page, pageErr)
+	}
+	if page, pageErr := store.GetVisibleTopicPostPage(ctx, queries, topic.TopicID, 1, moderator); pageErr != nil || len(page.Rows) == 0 {
+		t.Fatalf("moderator hidden-topic read = (%+v, %v)", page, pageErr)
+	}
+	if err := connection.QueryRow(ctx, `
+SELECT topic.state, topic.updated_at, action.actor_user_id, action.target_topic_id,
+       action.action_type, action.reason, action.previous_state->>'state',
+       action.resulting_state->>'state', action.created_at,
+       (SELECT count(*) FROM public.moderation_actions)
+FROM public.topics AS topic
+JOIN public.moderation_actions AS action ON action.id = $2
+WHERE topic.id = $1`, topic.TopicID, hidden.AuditID).Scan(
+		&state, &updatedAt, &actorID, &targetID, &action, &reason, &previous, &resulting, &auditedAt, &auditCount,
+	); err != nil || state != "hidden" || !updatedAt.Equal(hiddenAt) || actorID != moderatorID || targetID != topic.TopicID ||
+		action != "hide_topic" || reason != "Remove from view" || previous != "open" || resulting != "hidden" || !auditedAt.Equal(updatedAt) || auditCount != 3 {
+		t.Fatalf("persisted hide = (%q, %s, %d/%d, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, actorID, targetID, action, reason, previous, resulting, auditedAt, auditCount, err)
+	}
+	if repeated, repeatedErr := ChangeTopicVisibility(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat hide", pgtype.UUID{Bytes: [16]byte{0x56}, Valid: true}); repeated != (TopicTransitionResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
+		t.Fatalf("repeated hide = (%+v, %v), want conflict", repeated, repeatedErr)
+	}
+	restoredAt := createdAt.Add(3 * time.Hour)
+	restored, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return restoredAt }, moderator, topic.TopicID, false, "Return to view", pgtype.UUID{Bytes: [16]byte{0x57}, Valid: true})
+	if err != nil || restored.State != policy.TopicOpen || restored.AuditID <= hidden.AuditID {
+		t.Fatalf("ChangeTopicVisibility(restore) = (%+v, %v)", restored, err)
+	}
+	if err := connection.QueryRow(ctx, `
+SELECT topic.state, topic.updated_at, action.action_type, action.reason,
+       action.previous_state->>'state', action.resulting_state->>'state',
+       action.created_at, (SELECT count(*) FROM public.moderation_actions)
+FROM public.topics AS topic
+JOIN public.moderation_actions AS action ON action.id = $2
+WHERE topic.id = $1`, topic.TopicID, restored.AuditID).Scan(
+		&state, &updatedAt, &action, &reason, &previous, &resulting, &auditedAt, &auditCount,
+	); err != nil || state != "open" || !updatedAt.Equal(restoredAt) || action != "restore_topic" || reason != "Return to view" ||
+		previous != "hidden" || resulting != "open" || !auditedAt.Equal(updatedAt) || auditCount != 4 {
+		t.Fatalf("persisted restore = (%q, %s, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, action, reason, previous, resulting, auditedAt, auditCount, err)
+	}
+	if page, pageErr := store.GetVisibleTopicPostPage(ctx, queries, topic.TopicID, 1, member); pageErr != nil || len(page.Rows) == 0 {
+		t.Fatalf("member restored-topic read = (%+v, %v)", page, pageErr)
 	}
 }

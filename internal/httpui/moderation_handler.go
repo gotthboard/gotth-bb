@@ -17,7 +17,7 @@ import (
 
 const maximumModerationFormBytes = 8192
 
-type TopicLockChanger func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicLockResult, error)
+type TopicLockChanger func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error)
 
 // newModerationHandler constructs the authenticated topic lock/unlock browser
 // boundary. It verifies CSRF and bounded form syntax before deriving the

@@ -41,12 +41,12 @@ func TestModerationHandlerLocksAndUnlocksWithExactServerAuthority(t *testing.T) 
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			calls := 0
-			handler := newModerationTestHandler(t, func(ctx context.Context, actor auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderation.TopicLockResult, error) {
+			handler := newModerationTestHandler(t, func(ctx context.Context, actor auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderation.TopicTransitionResult, error) {
 				calls++
 				if ctx == nil || !reflect.DeepEqual(actor, wantActor) || topicID != 41 || lock != test.lock || reason != "Clear reason" || requestID != wantUUID {
 					t.Fatalf("topic lock call = (%v, %+v, %d, %t, %q, %+v)", ctx, actor, topicID, lock, reason, requestID)
 				}
-				return moderation.TopicLockResult{TopicID: 41, State: policy.TopicState(test.state), AuditID: 71}, nil
+				return moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.state), AuditID: 71}, nil
 			})
 			request := moderationTestRequest("/topics/41/"+test.suffix, url.Values{
 				"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Clear reason"},
@@ -96,9 +96,9 @@ func TestModerationHandlerFailsClosedBeforeMutation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			calls := 0
-			base, err := newModerationHandler(callbackTestURLBuilder(t), func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicLockResult, error) {
+			base, err := newModerationHandler(callbackTestURLBuilder(t), func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
 				calls++
-				return moderation.TopicLockResult{}, nil
+				return moderation.TopicTransitionResult{}, nil
 			})
 			if err != nil {
 				t.Fatalf("newModerationHandler() returned error: %v", err)
@@ -122,7 +122,7 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 
 	for _, test := range []struct {
 		name       string
-		result     moderation.TopicLockResult
+		result     moderation.TopicTransitionResult
 		err        error
 		wantStatus int
 		htmx       bool
@@ -132,14 +132,14 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 		{name: "conflict", err: moderation.ErrTopicModerationConflict, wantStatus: http.StatusConflict, htmx: true},
 		{name: "missing", err: pgx.ErrNoRows, wantStatus: http.StatusNotFound},
 		{name: "failure", err: errors.New("secret database failure"), wantStatus: http.StatusServiceUnavailable},
-		{name: "wrong topic", result: moderation.TopicLockResult{TopicID: 40, State: policy.TopicLocked, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
-		{name: "wrong state", result: moderation.TopicLockResult{TopicID: 41, State: policy.TopicOpen, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
-		{name: "missing audit", result: moderation.TopicLockResult{TopicID: 41, State: policy.TopicLocked}, wantStatus: http.StatusServiceUnavailable},
+		{name: "wrong topic", result: moderation.TopicTransitionResult{TopicID: 40, State: policy.TopicLocked, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
+		{name: "wrong state", result: moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicOpen, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
+		{name: "missing audit", result: moderation.TopicTransitionResult{TopicID: 41, State: policy.TopicLocked}, wantStatus: http.StatusServiceUnavailable},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			handler := newModerationTestHandler(t, func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicLockResult, error) {
+			handler := newModerationTestHandler(t, func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
 				return test.result, test.err
 			})
 			response := httptest.NewRecorder()
@@ -194,13 +194,13 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 			panic("edit")
 		},
 		func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) { panic("delete") },
-		func(_ context.Context, _ auth.AccessContext, _ int64, lock bool, _ string, _ pgtype.UUID) (moderation.TopicLockResult, error) {
+		func(_ context.Context, _ auth.AccessContext, _ int64, lock bool, _ string, _ pgtype.UUID) (moderation.TopicTransitionResult, error) {
 			changes++
 			state := policy.TopicLocked
 			if !lock {
 				state = policy.TopicOpen
 			}
-			return moderation.TopicLockResult{TopicID: 41, State: state, AuditID: 71}, nil
+			return moderation.TopicTransitionResult{TopicID: 41, State: state, AuditID: 71}, nil
 		},
 		"gotth_bb_session", true,
 	)
@@ -267,8 +267,8 @@ func TestModerationFormAndRequestIDBoundaries(t *testing.T) {
 func TestNewModerationHandlerRejectsMissingDependencies(t *testing.T) {
 	t.Parallel()
 
-	valid := TopicLockChanger(func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicLockResult, error) {
-		return moderation.TopicLockResult{}, nil
+	valid := TopicLockChanger(func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicTransitionResult, error) {
+		return moderation.TopicTransitionResult{}, nil
 	})
 	for _, test := range []struct {
 		builder URLBuilder
