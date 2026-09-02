@@ -69,19 +69,11 @@ func CanViewArea(actor AccessContext, policy AreaPolicy) bool {
 			return false
 		}
 	}
-	if !actor.Authenticated {
-		if actor.UserID != 0 || actor.Role != 0 || len(actor.GroupIDs) != 0 {
-			return false
-		}
-		return policy.Visibility == VisibilityPublic
-	}
-	if actor.UserID <= 0 || actor.Role != RoleMember && actor.Role != RoleModerator && actor.Role != RoleAdministrator {
+	if !actor.Valid() {
 		return false
 	}
-	for _, groupID := range actor.GroupIDs {
-		if groupID <= 0 {
-			return false
-		}
+	if !actor.Authenticated {
+		return policy.Visibility == VisibilityPublic
 	}
 	if actor.Role == RoleModerator || actor.Role == RoleAdministrator {
 		return true

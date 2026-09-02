@@ -5,6 +5,33 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:12 CDT — Centralize area-view actor validation
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/policy/area_view.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Changed `CanViewArea` to use `AccessContext.Valid` instead of carrying a second
+copy of anonymous/user/role/group structural checks. Visibility, staff bypass,
+group intersection, suspension, and mute behavior are unchanged. There is now
+one authority invariant for the next repository translation unit to consume.
+
+Verification:
+
+- The complete area-view matrix and malformed-authority suite remain green
+- Both production policy functions retain 100% statement coverage and pass 50
+  repeated race-detector runs
+
+Risks / non-goals:
+
+- This is a behavior-preserving mechanism consolidation; it does not add a new
+  permission or broaden any actor state.
+
 ### 2026-09-01 19:08 CDT — Validate access-context authority
 
 Commit: current commit; hash assigned by Git after commit
