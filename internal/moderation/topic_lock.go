@@ -17,6 +17,7 @@ import (
 )
 
 var (
+	ErrTopicModerationInput    = errors.New("invalid topic moderation input")
 	ErrTopicModerationDenied   = errors.New("topic moderation denied")
 	ErrTopicModerationConflict = errors.New("topic moderation state conflict")
 )
@@ -67,10 +68,10 @@ func ChangeTopicLock(
 		return TopicLockResult{}, ErrTopicModerationDenied
 	}
 	if topicID <= 0 {
-		return TopicLockResult{}, fmt.Errorf("topic moderation target is invalid")
+		return TopicLockResult{}, fmt.Errorf("%w: target", ErrTopicModerationInput)
 	}
 	if !validReason(reason) {
-		return TopicLockResult{}, fmt.Errorf("topic moderation reason is invalid")
+		return TopicLockResult{}, fmt.Errorf("%w: reason", ErrTopicModerationInput)
 	}
 	if !requestID.Valid || requestID.Bytes == ([16]byte{}) {
 		return TopicLockResult{}, fmt.Errorf("topic moderation request ID is invalid")

@@ -891,7 +891,13 @@ rejects every other current state as a conflict, then changes state and appends
 the typed `lock_topic` or `unlock_topic` audit row in one data-modifying
 statement. The effective update/audit time is nondecreasing across lock waits.
 Any update, audit, scan, or commit failure rolls back both records. Browser
-controls remain a separate bounded unit.
+controls appear only on an open/locked topic page for active moderator or
+administrator presentation authority. The exact POST-only lock/unlock routes
+require a current local session, Authentik revalidation, the session CSRF
+token, a bounded strict form containing only the canonical reason, and the
+server request identifier decoded as the audit UUID. The service transaction
+remains final authority. Success validates the committed result and navigates
+to the canonical topic URL; conflicts require a reload and never retry.
 
 ## 15. Migrations
 

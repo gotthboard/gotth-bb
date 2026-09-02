@@ -194,6 +194,57 @@ func TestTopicPostListHandlerRendersStatesAndLaterPagination(t *testing.T) {
 	}
 }
 
+func TestTopicPostListHandlerShowsLockControlOnlyToActiveStaff(t *testing.T) {
+	t.Parallel()
+
+	mute := time.Date(2026, time.September, 3, 0, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name, state, wantAction, wantLabel string
+		access                             auth.AccessContext
+	}{
+		{name: "moderator locks", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}, wantAction: `/bb/topics/42/lock`, wantLabel: "Lock topic"},
+		{name: "administrator unlocks", state: "locked", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleAdministrator}, wantAction: `/bb/topics/42/unlock`, wantLabel: "Unlock topic"},
+		{name: "member", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember}},
+		{name: "muted moderator", state: "open", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator, MutedUntil: &mute}},
+		{name: "hidden", state: "hidden", access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			page := topicPostTestPage(1)
+			page.Rows = page.Rows[:1]
+			page.Rows[0].TopicState = test.state
+			page.Rows[0].TotalVisiblePosts = 1
+			page.TotalPosts, page.TotalPages = 1, 1
+			handler, err := newTopicPostListHandler(areaTopicTestBuilder(t), store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+				return page, nil
+			})
+			if err != nil {
+				t.Fatalf("newTopicPostListHandler() returned error: %v", err)
+			}
+			request := topicPostTestRequest("/topics/42", "42", test.access)
+			request = request.WithContext(context.WithValue(request.Context(), csrfTokenContextKey{}, validCSRFTokenForTest(0x51)))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			body := response.Body.String()
+			if response.Code != http.StatusOK {
+				t.Fatalf("topic response = (%d, %q)", response.Code, body)
+			}
+			if test.wantAction == "" {
+				if strings.Contains(body, "Moderation reason") || strings.Contains(body, `/topics/42/lock`) || strings.Contains(body, `/topics/42/unlock`) {
+					t.Fatalf("unauthorized moderation control: %s", body)
+				}
+				return
+			}
+			for _, required := range []string{`action="` + test.wantAction + `"`, `hx-post="` + test.wantAction + `"`, `name="_csrf" value="` + validCSRFTokenForTest(0x51) + `"`, `name="reason"`, test.wantLabel} {
+				if !strings.Contains(body, required) {
+					t.Fatalf("moderation control lacks %q: %s", required, body)
+				}
+			}
+		})
+	}
+}
+
 func TestTopicPostListHandlerDoesNotNarrowTotalPageCount(t *testing.T) {
 	t.Parallel()
 

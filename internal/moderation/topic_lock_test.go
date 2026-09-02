@@ -141,6 +141,27 @@ func TestChangeTopicLockRejectsInvalidBoundaryBeforeTransaction(t *testing.T) {
 	}
 }
 
+func TestChangeTopicLockTypesUserInputFailures(t *testing.T) {
+	t.Parallel()
+
+	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}
+	requestID := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
+	for _, run := range []func() error{
+		func() error {
+			_, err := ChangeTopicLock(context.Background(), panicTopicLockBeginner{}, time.Now, actor, 0, true, "reason", requestID)
+			return err
+		},
+		func() error {
+			_, err := ChangeTopicLock(context.Background(), panicTopicLockBeginner{}, time.Now, actor, 1, true, " padded ", requestID)
+			return err
+		},
+	} {
+		if err := run(); !errors.Is(err, ErrTopicModerationInput) {
+			t.Fatalf("ChangeTopicLock input error = %v, want typed input failure", err)
+		}
+	}
+}
+
 func TestChangeTopicLockFailsClosedAtTransactionStages(t *testing.T) {
 	t.Parallel()
 

@@ -50,7 +50,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, sessionCookieName, secure,
+		nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -80,7 +80,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -111,7 +111,39 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, sessionCookieName, secure,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, sessionCookieName, secure,
+	)
+}
+
+// NewAuthenticatedModeratedForumHandler constructs the alpha browser boundary
+// with the complete forum surface plus staff topic lock/unlock controls.
+//
+// Complexity: construction and dispatch retain NewAuthenticatedHandler's
+// bounds; delegated publishing, editing, and moderation services retain their
+// own bounded contracts. No operation is retried or detached.
+func NewAuthenticatedModeratedForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
+	sessionCookieName string,
+	secure bool,
+) (http.Handler, error) {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil {
+		return nil, fmt.Errorf("browser moderated forum services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, sessionCookieName, secure,
 	)
 }
 
@@ -134,6 +166,7 @@ func newAuthenticatedHandler(
 	loadEditablePost EditablePostLoader,
 	editPost PostEditor,
 	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
@@ -247,6 +280,19 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct editing session boundary: %w", editingErr)
 		}
 	}
+	var authenticatedModerationHandler http.Handler
+	if changeTopicLock != nil {
+		moderationHandler, moderationErr := newModerationHandler(builder, changeTopicLock)
+		if moderationErr != nil {
+			return nil, fmt.Errorf("construct moderation routes: %w", moderationErr)
+		}
+		authenticatedModerationHandler, moderationErr = newSessionAuthenticationHandler(
+			moderationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if moderationErr != nil {
+			return nil, fmt.Errorf("construct moderation session boundary: %w", moderationErr)
+		}
+	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -270,6 +316,19 @@ func newAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedModerationHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
+				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
+				identifier, moderationPath := strings.CutSuffix(identifierAndSuffix, "/lock")
+				if !moderationPath {
+					identifier, moderationPath = strings.CutSuffix(identifierAndSuffix, "/unlock")
+				}
+				if topicPath && moderationPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseTopicID(identifier); identifierErr == nil {
+						authenticatedModerationHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedEditingHandler != nil && request.URL.RawPath == "" &&
 				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
 				identifierAndSuffix, postPath := strings.CutPrefix(request.URL.Path, "/posts/")

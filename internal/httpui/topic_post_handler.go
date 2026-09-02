@@ -194,6 +194,25 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			return
 		}
 		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
+		moderationControl := topicModerationView{}
+		if staff && authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil {
+			token := csrfTokenFromContext(request.Context())
+			action := ""
+			label := ""
+			if first.TopicState == "open" {
+				action, label = "lock", "Lock topic"
+			} else if first.TopicState == "locked" {
+				action, label = "unlock", "Unlock topic"
+			}
+			if action != "" && len(token) == sessionCookieEncodedBytes {
+				actionURL, actionErr := builder.Path("topics", identifier, action)
+				if actionErr != nil {
+					serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+					return
+				}
+				moderationControl = topicModerationView{ActionURL: actionURL, CSRFToken: token, SubmitLabel: label}
+			}
+		}
 		mayReply := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
 			(first.AreaPostingMode == "normal" || staff && first.AreaPostingMode == "read_only") &&
 			(first.TopicState == "open" || staff && (first.TopicState == "locked" || first.TopicState == "hidden"))
@@ -226,6 +245,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			Author: first.TopicAuthorDisplayName, Started: first.TopicCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"),
 			Posts: posts, Number: pageNumber, TotalPosts: loaded.TotalPosts,
 			PreviousURL: previousURL, NextURL: nextURL, ReplyForm: replyForm, ShowReply: replyForm.ActionURL != "",
+			Moderation: moderationControl, ShowModeration: moderationControl.ActionURL != "",
 		}
 		if renderErr := renderResponse(
 			response, request, http.StatusOK,

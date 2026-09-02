@@ -1,0 +1,189 @@
+package httpui
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+
+	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/moderation"
+	"git.dannyhunn.com/agents/gotth-bb/internal/observability"
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+)
+
+const maximumModerationFormBytes = 8192
+
+type TopicLockChanger func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.TopicLockResult, error)
+
+// newModerationHandler constructs the authenticated topic lock/unlock browser
+// boundary. It verifies CSRF and bounded form syntax before deriving the
+// server request UUID and delegating final authority to the locked service.
+//
+// Complexity: construction is tight Theta(1). For bounded form bytes
+// n <= 8,192 and delegated work D, request time and auxiliary space are
+// O(n+D), Omega(1), without a tighter bound because database and transport work
+// vary. One service call is made at most once; no request is retried or detached.
+func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Handler, error) {
+	if change == nil {
+		return nil, fmt.Errorf("topic lock changer is required")
+	}
+	loginURL, err := builder.Path("login")
+	if err != nil {
+		return nil, fmt.Errorf("build moderation login URL: %w", err)
+	}
+	revalidationURL, err := builder.Path("auth", "revalidate")
+	if err != nil {
+		return nil, fmt.Errorf("build moderation revalidation URL: %w", err)
+	}
+
+	authorized := func(request *http.Request) (auth.AccessContext, string) {
+		authentication := sessionAuthenticationFromContext(request.Context())
+		if !authentication.Access.Authenticated || authentication.SessionID <= 0 {
+			return auth.AccessContext{}, loginURL
+		}
+		if authentication.RequiresRevalidation {
+			return auth.AccessContext{}, revalidationURL
+		}
+		return authentication.Access, ""
+	}
+	serve := func(lock bool) http.HandlerFunc {
+		return func(response http.ResponseWriter, request *http.Request) {
+			response.Header().Set("Cache-Control", "no-store")
+			access, redirect := authorized(request)
+			if redirect != "" {
+				servePublishingRedirect(response, request, redirect)
+				return
+			}
+			topicID, parseErr := parseTopicID(chi.URLParam(request, "topicID"))
+			if request.URL.RawPath != "" || request.URL.RawQuery != "" || parseErr != nil {
+				http.Error(response, "page not found", http.StatusNotFound)
+				return
+			}
+			if csrfErr := validateCSRFRequest(request, maximumModerationFormBytes); csrfErr != nil {
+				http.Error(response, "request verification failed", http.StatusForbidden)
+				return
+			}
+			reason, formErr := parseModerationForm(request)
+			if formErr != nil {
+				http.Error(response, "invalid moderation form", http.StatusBadRequest)
+				return
+			}
+			requestID, requestIDErr := moderationRequestUUID(request.Context())
+			if requestIDErr != nil {
+				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			result, changeErr := change(request.Context(), access, topicID, lock, reason, requestID)
+			if changeErr != nil {
+				switch {
+				case errors.Is(changeErr, moderation.ErrTopicModerationInput):
+					http.Error(response, "invalid moderation reason", http.StatusUnprocessableEntity)
+				case errors.Is(changeErr, moderation.ErrTopicModerationDenied):
+					http.Error(response, "moderation denied", http.StatusForbidden)
+				case errors.Is(changeErr, moderation.ErrTopicModerationConflict):
+					http.Error(response, "topic state changed; reload and retry", http.StatusConflict)
+				case errors.Is(changeErr, pgx.ErrNoRows):
+					http.Error(response, "page not found", http.StatusNotFound)
+				default:
+					http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				}
+				return
+			}
+			expectedState := "locked"
+			if !lock {
+				expectedState = "open"
+			}
+			if result.TopicID != topicID || string(result.State) != expectedState || result.AuditID <= 0 {
+				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			location, buildErr := builder.Path("topics", strconv.FormatInt(topicID, 10))
+			if buildErr != nil {
+				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			servePublishingRedirect(response, request, location)
+		}
+	}
+
+	router := chi.NewRouter()
+	router.Use(captureRoutePattern)
+	router.Post("/topics/{topicID}/lock", serve(true))
+	router.Post("/topics/{topicID}/unlock", serve(false))
+	return recordRoutePattern(router), nil
+}
+
+// parseModerationForm reads one already-CSRF-bounded reason and rejects every
+// missing, duplicate, or unknown field.
+//
+// Complexity: for n body bytes and f fields, time and auxiliary space are
+// O(n+f), Omega(n), delegated to net/http form parsing.
+func parseModerationForm(request *http.Request) (string, error) {
+	if err := request.ParseForm(); err != nil {
+		return "", fmt.Errorf("parse moderation form: %w", err)
+	}
+	allowed := map[string]bool{"_csrf": true, "reason": true}
+	for key, values := range request.PostForm {
+		if !allowed[key] || len(values) != 1 {
+			return "", fmt.Errorf("moderation form field is missing, duplicated, or unknown")
+		}
+	}
+	if len(request.PostForm["reason"]) != 1 {
+		return "", fmt.Errorf("moderation form field is missing, duplicated, or unknown")
+	}
+	return request.PostForm.Get("reason"), nil
+}
+
+// moderationRequestUUID converts the fixed lowercase request identifier from
+// the server middleware into the exact 128-bit database UUID value.
+//
+// Complexity: context lookup is O(d) for context depth d; validation and decode
+// are tight Theta(1) over exactly 32 hexadecimal bytes, with tight Theta(1)
+// auxiliary space.
+func moderationRequestUUID(ctx context.Context) (pgtype.UUID, error) {
+	if ctx == nil {
+		return pgtype.UUID{}, fmt.Errorf("moderation request context is required")
+	}
+	requestID, ok := observability.RequestID(ctx)
+	if !ok {
+		return pgtype.UUID{}, fmt.Errorf("moderation request ID is unavailable")
+	}
+	return decodeModerationRequestID(requestID)
+}
+
+// decodeModerationRequestID admits only the request middleware's canonical
+// lowercase hexadecimal format before decoding its exact 128 bits.
+//
+// Complexity: time and auxiliary space are tight Theta(1) over the fixed
+// 32-byte input and 16-byte output.
+func decodeModerationRequestID(requestID string) (pgtype.UUID, error) {
+	if len(requestID) != 32 {
+		return pgtype.UUID{}, fmt.Errorf("moderation request ID is unavailable")
+	}
+	for index := 0; index < len(requestID); index++ {
+		character := requestID[index]
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return pgtype.UUID{}, fmt.Errorf("moderation request ID is invalid")
+		}
+	}
+	var decoded [16]byte
+	for index := range decoded {
+		high, low := requestID[index*2], requestID[index*2+1]
+		if high >= 'a' {
+			high = high - 'a' + 10
+		} else {
+			high -= '0'
+		}
+		if low >= 'a' {
+			low = low - 'a' + 10
+		} else {
+			low -= '0'
+		}
+		decoded[index] = high<<4 | low
+	}
+	return pgtype.UUID{Bytes: decoded, Valid: true}, nil
+}

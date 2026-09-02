@@ -5,6 +5,58 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 02:20 CDT — Wire staff topic lock controls
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/implementation-spec.md`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/moderation_handler.go`
+- `internal/httpui/moderation_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/view.go`
+- `internal/moderation/topic_lock.go`
+- `internal/moderation/topic_lock_test.go`
+
+Explanation:
+
+Wired the admitted topic lock/unlock transaction into the alpha browser. An
+active moderator or administrator sees one state-specific reason form on open
+or locked topic pages. Members, suspended/muted staff, and topics in other
+states receive no control.
+
+Only canonical POST routes reach the authenticated moderation handler. It
+requires current Authentik revalidation, rejects path/query deviations,
+verifies CSRF before bounded strict form parsing, and converts the middleware's
+fixed lowercase 128-bit request identifier into the audit UUID. The locked
+service remains final authority; success validates the returned topic/state/
+audit identifiers and redirects to the builder-owned topic URL without retry.
+
+Verification:
+
+- Exact ordinary/HTMX lock and unlock redirects, access snapshot, reason,
+  action, target, and decoded request UUID
+- Session lookup only for canonical moderation paths; stale sessions redirect
+  through Authentik revalidation before mutation
+- CSRF, form size/shape, missing request ID, typed service errors, conflict,
+  missing topic, unavailable service, and malformed result failures
+- Topic-page controls for active staff only, with exact state-specific action
+
+Risks / non-goals:
+
+- This unit exposes only topic lock/unlock; hide/restore and account suspension
+  remain separate A1-08 transitions
+- Validation/conflict responses are bounded error responses rather than an
+  inline reason-preserving moderation editor
+
 ### 2026-09-02 01:57 CDT — Serialize audited topic lock transitions
 
 Commit: current commit; hash assigned by Git after commit

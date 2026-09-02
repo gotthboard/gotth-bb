@@ -18,8 +18,10 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	forumservice "git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
+	moderationservice "git.dannyhunn.com/agents/gotth-bb/internal/moderation"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -140,7 +142,7 @@ func run(
 		return fmt.Errorf("construct authentication service returned no service")
 	}
 	queries := db.New(pool)
-	applicationHandler, err := httpui.NewAuthenticatedForumHandler(
+	applicationHandler, err := httpui.NewAuthenticatedModeratedForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
@@ -168,6 +170,9 @@ func run(
 		},
 		func(deleteContext context.Context, access auth.AccessContext, postID int64, revision int32) (forumservice.DeleteResult, error) {
 			return forumservice.DeletePost(deleteContext, pool, time.Now, access, postID, revision)
+		},
+		func(moderationContext context.Context, access auth.AccessContext, topicID int64, lock bool, reason string, requestID pgtype.UUID) (moderationservice.TopicLockResult, error) {
+			return moderationservice.ChangeTopicLock(moderationContext, pool, time.Now, access, topicID, lock, reason, requestID)
 		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
