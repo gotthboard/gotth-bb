@@ -16,6 +16,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -31,8 +32,10 @@ type closeFailingListener struct {
 }
 
 type fakeDatabasePool struct {
-	mutex  sync.Mutex
-	closes int
+	mutex      sync.Mutex
+	closes     int
+	queryCalls int
+	queryArgs  []any
 }
 
 func (pool *fakeDatabasePool) Close() {
@@ -47,13 +50,58 @@ func (pool *fakeDatabasePool) closeCount() int {
 	return pool.closes
 }
 
+func (pool *fakeDatabasePool) areaQuerySnapshot() (int, []any) {
+	pool.mutex.Lock()
+	defer pool.mutex.Unlock()
+	return pool.queryCalls, append([]any(nil), pool.queryArgs...)
+}
+
 func (*fakeDatabasePool) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
 	panic("database execution is not expected")
 }
 
-func (*fakeDatabasePool) Query(context.Context, string, ...any) (pgx.Rows, error) {
-	panic("database query is not expected")
+func (pool *fakeDatabasePool) Query(_ context.Context, query string, args ...any) (pgx.Rows, error) {
+	if !strings.Contains(query, "FROM public.areas AS a") {
+		panic("unexpected database query")
+	}
+	pool.mutex.Lock()
+	defer pool.mutex.Unlock()
+	pool.queryCalls++
+	pool.queryArgs = append([]any(nil), args...)
+	return &fakeAreaRows{}, nil
 }
+
+type fakeAreaRows struct {
+	pgx.Rows
+	yielded bool
+}
+
+func (*fakeAreaRows) Close() {}
+
+func (rows *fakeAreaRows) Next() bool {
+	if rows.yielded {
+		return false
+	}
+	rows.yielded = true
+	return true
+}
+
+func (*fakeAreaRows) Scan(destinations ...any) error {
+	*(destinations[0].(*int64)) = 7
+	*(destinations[1].(*string)) = "public"
+	*(destinations[2].(*string)) = "Public area"
+	*(destinations[3].(*string)) = "Visible to everyone"
+	*(destinations[4].(*int32)) = 1
+	*(destinations[5].(*string)) = "public"
+	*(destinations[6].(*string)) = "normal"
+	*(destinations[7].(*int64)) = 3
+	*(destinations[8].(*int64)) = 3
+	*(destinations[9].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Valid: true}
+	*(destinations[10].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Valid: true}
+	return nil
+}
+
+func (*fakeAreaRows) Err() error { return nil }
 
 func (*fakeDatabasePool) QueryRow(context.Context, string, ...any) pgx.Row {
 	panic("database query is not expected")
@@ -155,6 +203,24 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "https://auth.example/authorize?state=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" ||
 		len(cookies) != 1 || cookies[0].Name != "gotth_bb_session_oidc_state" || cookies[0].Path != "/bb/" || cookies[0].Secure {
 		t.Fatalf("GET /login = (status %d, location %q)", response.StatusCode, response.Header.Get("Location"))
+	}
+	rootResponse, err := client.Get("http://" + listener.Addr().String() + "/")
+	if err != nil {
+		t.Fatalf("GET / returned error: %v", err)
+	}
+	rootBody := new(bytes.Buffer)
+	_, readErr := rootBody.ReadFrom(rootResponse.Body)
+	_ = rootResponse.Body.Close()
+	queryCalls, queryArgs := pool.areaQuerySnapshot()
+	var groupIDs []int64
+	groupsOK := false
+	if len(queryArgs) == 3 {
+		groupIDs, groupsOK = queryArgs[2].([]int64)
+	}
+	if readErr != nil || rootResponse.StatusCode != http.StatusOK || !strings.Contains(rootBody.String(), "Public area") ||
+		queryCalls != 1 || len(queryArgs) != 3 || queryArgs[0] != false || queryArgs[1] != false || !groupsOK || len(groupIDs) != 0 {
+		t.Fatalf("GET / = (status %d, body %q, query calls %d, args %#v, read %v)",
+			rootResponse.StatusCode, rootBody.String(), queryCalls, queryArgs, readErr)
 	}
 	cancel()
 	if err := <-result; err != nil {

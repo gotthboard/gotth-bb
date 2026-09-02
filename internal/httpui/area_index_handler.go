@@ -9,7 +9,8 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 )
 
-type areaIndexLister func(context.Context, auth.AccessContext) ([]db.Area, error)
+// AreaIndexLister returns only areas visible to one canonical request authority.
+type AreaIndexLister func(context.Context, auth.AccessContext) ([]db.Area, error)
 
 // newAreaIndexHandler loads the visible areas for the exact server-owned
 // request authority and renders either the complete root page or its HTMX
@@ -24,7 +25,7 @@ type areaIndexLister func(context.Context, auth.AccessContext) ([]db.Area, error
 // costs vary. Auxiliary space is O(A(L)+r+A(R)), Omega(1), including one typed
 // view-model projection and the buffered renderer. No operation is retried or
 // detached.
-func newAreaIndexHandler(view pageView, list areaIndexLister) (http.Handler, error) {
+func newAreaIndexHandler(view pageView, list AreaIndexLister) (http.Handler, error) {
 	if list == nil {
 		return nil, fmt.Errorf("area index lister is required")
 	}

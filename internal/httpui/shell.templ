@@ -34,14 +34,6 @@ templ document(view pageView, content templ.Component) {
 	</html>
 }
 
-templ areaIndexPage(view pageView) {
-	@areaIndexPageWithAreas(view, nil)
-}
-
-templ areaIndexContent(view pageView) {
-	@areaIndexContentWithAreas(view, nil)
-}
-
 templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem) {
 	@document(view, areaIndexContentWithAreas(view, areas))
 }

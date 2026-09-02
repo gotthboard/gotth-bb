@@ -31,11 +31,17 @@ type AuthenticationService interface {
 // fixed handler state. Each request performs a bounded path-prefix dispatch;
 // delegated route, OIDC, PostgreSQL, cookie, CSRF, template, and transport costs
 // retain their documented bounds. No operation is retried or detached.
-func NewAuthenticatedHandler(builder URLBuilder, service AuthenticationService, sessionCookieName string, secure bool) (http.Handler, error) {
+func NewAuthenticatedHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	sessionCookieName string,
+	secure bool,
+) (http.Handler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("browser authentication service is required")
 	}
-	publicHandler, err := NewHandler(builder)
+	publicHandler, err := NewHandler(builder, listAreas)
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
 	}

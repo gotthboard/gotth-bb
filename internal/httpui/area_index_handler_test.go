@@ -69,7 +69,7 @@ func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) 
 	secret := "do-not-leak-area-store-failure"
 	for _, test := range []struct {
 		name       string
-		list       areaIndexLister
+		list       AreaIndexLister
 		wantStatus int
 		wantText   string
 	}{
@@ -105,7 +105,7 @@ func TestNewAreaIndexHandlerRejectsMissingLister(t *testing.T) {
 func TestAreaIndexHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 	t.Parallel()
 
-	for _, list := range []areaIndexLister{
+	for _, list := range []AreaIndexLister{
 		func(context.Context, auth.AccessContext) ([]db.Area, error) { return []db.Area{}, nil },
 		func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, errors.New("store failed") },
 	} {

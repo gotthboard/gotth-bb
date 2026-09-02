@@ -13,12 +13,17 @@ import (
 // reach these routes; every rendered browser URL adds it back through builder.
 //
 // Complexity: construction uses tight Theta(1) time and auxiliary space for a
-// fixed route/view table. Chi owns request matching; template/static/transport
-// costs are delegated to their documented boundaries.
-func NewHandler(builder URLBuilder) (http.Handler, error) {
+// fixed route/view table. Chi owns request matching; visible-area,
+// template/static, and transport costs are delegated to their documented
+// boundaries.
+func NewHandler(builder URLBuilder, listAreas AreaIndexLister) (http.Handler, error) {
 	rootView, err := newPageView(builder, "Discussion areas")
 	if err != nil {
 		return nil, fmt.Errorf("construct public shell view: %w", err)
+	}
+	rootHandler, err := newAreaIndexHandler(rootView, listAreas)
+	if err != nil {
+		return nil, fmt.Errorf("construct area index route: %w", err)
 	}
 	notFoundView := rootView
 	notFoundView.Title = "Page not found"
@@ -26,11 +31,7 @@ func NewHandler(builder URLBuilder) (http.Handler, error) {
 
 	router := chi.NewRouter()
 	router.Use(captureRoutePattern)
-	router.Get("/", func(response http.ResponseWriter, request *http.Request) {
-		if err := renderResponse(response, request, http.StatusOK, areaIndexPage(rootView), areaIndexContent(rootView)); err != nil {
-			panic(err)
-		}
-	})
+	router.Get("/", rootHandler.ServeHTTP)
 	router.Get("/health/live", serveLiveness)
 	router.Get("/health/ready", serveNotReady)
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)

@@ -18,6 +18,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -137,9 +138,13 @@ func run(
 	if authenticationService == nil {
 		return fmt.Errorf("construct authentication service returned no service")
 	}
+	areaQueries := db.New(pool)
 	applicationHandler, err := httpui.NewAuthenticatedHandler(
 		urlBuilder,
 		authenticationService,
+		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
+			return store.ListVisibleAreas(areaContext, areaQueries, access)
+		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:10 CDT — Wire the visible-area index
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Replaced the process root's static empty-area shell with the admitted
+visible-area handler. The root still crosses the session boundary first, then
+passes its exact canonical authority through `store.ListVisibleAreas` and the
+generated PostgreSQL query. One generated query wrapper is constructed at
+startup and reused. Health, static, login, callback, unknown, logout, and
+revalidation routing retain their existing boundaries.
+
+Verification:
+
+- The authenticated router proves infrastructure and unknown paths perform no
+  session or area lookup, while `/` authenticates once, passes the resulting
+  member authority once, and renders the returned area
+- The process lifecycle test serves a real anonymous root request, proves the
+  exact visitor query facts `(is_staff=false, is_member=false, groups=[])`, and
+  renders the database row through the running HTTP server
+- Missing area-list authority fails handler construction; HTTP and process
+  packages pass the race detector
+
+Risks / non-goals:
+
+- Area cards are not links until the area/topic read route exists. Readiness,
+  administration, and deployment remain separate units.
+
 ### 2026-09-01 19:54 CDT — Render visible discussion areas
 
 Commit: current commit; hash assigned by Git after commit

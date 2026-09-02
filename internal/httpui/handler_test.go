@@ -160,11 +160,14 @@ func TestRouterReturnsFullAndHTMXNotFoundPagesAndStandardsCompliantMethodError(t
 	}
 }
 
-func TestNewHandlerRejectsUninitializedURLBuilder(t *testing.T) {
+func TestNewHandlerRejectsInvalidDependencies(t *testing.T) {
 	t.Parallel()
 
-	if got, err := NewHandler(URLBuilder{}); err == nil || got != nil {
+	if got, err := NewHandler(URLBuilder{}, emptyAreaIndexLister); err == nil || got != nil {
 		t.Fatalf("NewHandler(zero builder) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := NewHandler(callbackTestURLBuilder(t), nil); err == nil || got != nil {
+		t.Fatalf("NewHandler(nil lister) = (%v, %v), want (nil, error)", got, err)
 	}
 }
 
@@ -193,7 +196,7 @@ func newTestHandler(t *testing.T, basePath string) http.Handler {
 	if err != nil {
 		t.Fatalf("NewURLBuilder() returned error: %v", err)
 	}
-	handler, err := NewHandler(builder)
+	handler, err := NewHandler(builder, emptyAreaIndexLister)
 	if err != nil {
 		t.Fatalf("NewHandler() returned error: %v", err)
 	}
