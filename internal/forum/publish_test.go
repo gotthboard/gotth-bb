@@ -14,6 +14,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestInvalidPublishingInputExposesOnlyStableClassAndField(t *testing.T) {
+	t.Parallel()
+
+	err := InvalidPublishingInput{Field: "markdown"}
+	if err.Error() != "invalid forum publishing markdown" || !errors.Is(err, ErrInvalidPublishingInput) {
+		t.Fatalf("InvalidPublishingInput = (%q, class %t)", err.Error(), errors.Is(err, ErrInvalidPublishingInput))
+	}
+}
+
 func TestCreateTopicCommitsAuthorizedRenderedFirstPost(t *testing.T) {
 	t.Parallel()
 

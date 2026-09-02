@@ -15,6 +15,7 @@ Affected files:
 - `cmd/forum/main_test.go`
 - `docs/implementation-spec.md`
 - `internal/forum/publish.go`
+- `internal/forum/publish_test.go`
 - `internal/httpui/area_topic_handler.go`
 - `internal/httpui/authenticated_handler.go`
 - `internal/httpui/publishing_handler.go`
