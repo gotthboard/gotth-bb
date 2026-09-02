@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 20:53 CDT — Bound visible area topic pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/topic_pages.go`
+- `internal/store/topic_pages_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the store boundary that resolves visible area metadata, rechecks the same
+canonical authority in the topic-summary query, and returns one conventional
+topic page. The contract fixes page size at 25 and accepted pages at 1 through
+10,000. Invalid and empty later pages share the no-row result used by missing
+or inaccessible areas. Exact filtered totals and returned row counts are
+validated before presentation can consume them.
+
+Verification:
+
+- Visitor, member, moderator, and administrator facts reach both queries
+  exactly; page 2 binds offset 25 and limit 25
+- Empty page 1, the accepted maximum page, zero/negative/excessive pages,
+  canceled context, area/topic failures, and empty later pages are covered
+- Oversized, impossible-total, inconsistent-total, and incomplete query results
+  fail closed; the production function has 100% statement coverage under the
+  race detector
+
+Risks / non-goals:
+
+- Area metadata and topic rows use two individually access-filtered statements,
+  not a repeatable-read snapshot. A concurrent access-rule change cannot expose
+  topic rows because the second query rechecks authority, but a page may fail
+  closed or briefly combine metadata observed immediately before that change.
+- HTTP query parsing and rendering remain separate units.
+
 ### 2026-09-01 20:43 CDT — Query access-filtered topic summaries
 
 Commit: current commit; hash assigned by Git after commit

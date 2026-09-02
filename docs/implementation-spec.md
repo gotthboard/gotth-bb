@@ -659,6 +659,13 @@ Internal routes are shown without the external `/bb` prefix.
 | `GET` | `/health/live` | Liveness | Edge/operator |
 | `GET` | `/health/ready` | Readiness | Edge/operator |
 
+Area topic lists use conventional one-based `page` query parameters. An absent
+parameter means page 1; the only accepted spelling is an unsigned base-10
+integer without signs or leading zeros, in the closed range 1 through 10,000.
+Each page contains at most 25 topics. Malformed, overflowed, zero, excessive,
+or empty later pages use the same `404` response as a missing or inaccessible
+area. PostgreSQL receives only the resulting bounded offset and fixed limit.
+
 Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
 bounded.
