@@ -26,6 +26,17 @@ func TestValidateAcceptsExactReleaseIdentity(t *testing.T) {
 	}
 }
 
+func TestValidateExposesExactReleaseIdentity(t *testing.T) {
+	t.Parallel()
+
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	got, err := Validate("1.0.0-alpha.1", commit)
+	want := Info{Version: "1.0.0-alpha.1", Commit: commit}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("Validate() = (%+v, %v), want (%+v, nil)", got, err, want)
+	}
+}
+
 func TestValidateRejectsUntraceableIdentity(t *testing.T) {
 	t.Parallel()
 

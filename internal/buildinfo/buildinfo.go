@@ -36,6 +36,15 @@ func Current() (Info, error) {
 	return validate(version, commit)
 }
 
+// Validate returns a bounded release identity for tooling that must reject an
+// invalid version/commit pair before invoking the linker.
+//
+// Complexity: for v <= 64 version bytes and c <= 40 commit bytes, time and
+// auxiliary space are O(v+c), Omega(1), through semantic-version parsing.
+func Validate(version, commit string) (Info, error) {
+	return validate(version, commit)
+}
+
 // validate accepts the explicit development sentinel or a canonical semantic
 // release version paired with an exact lowercase full Git object name.
 //

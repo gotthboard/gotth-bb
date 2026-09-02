@@ -30,6 +30,26 @@ drift, then runs formatting, vet, race, and coverage tests. Node and npm must
 match `.node-version` and `package.json`; no global templ, sqlc, or Tailwind
 installation is used.
 
+A release archive is built only from a clean exact native commit. The target
+directory must not already exist; packaging does not overwrite prior evidence.
+
+```sh
+RELEASE_VERSION=1.0.0-alpha.1 \
+RELEASE_COMMIT="$(git rev-parse HEAD)" \
+RELEASE_GOOS="$(go env GOOS)" \
+RELEASE_GOARCH="$(go env GOARCH)" \
+RELEASE_OUTPUT="$PWD/dist/1.0.0-alpha.1" \
+make release
+```
+
+`make release` first runs the full verification contract, then builds the
+forum, migration, and operator executables with the same linker identity. It
+executes the migration and operator binaries' database-free `version` checks
+and emits one normalized `.tar.gz` plus `SHA256SUMS`. The archive also contains
+exact release metadata and the read-only Go module dependency manifest. Release
+packaging is native only so both executable identity checks run before the
+artifact is admitted.
+
 Apply the release's embedded forward migrations with `DATABASE_URL` already
 present in the process environment:
 
@@ -40,6 +60,11 @@ go run -mod=readonly ./cmd/migrate
 The migration command reads no HTTP or OIDC configuration, does not create a
 connection pool, and does not provide a fake down-migration path. Do not place
 database credentials directly in shell history or log the process environment.
+Its release identity can be inspected without loading database configuration:
+
+```sh
+gotth-bb-migrate version
+```
 
 After the intended administrator has completed one successful Authentik login
 and therefore has an existing local `(issuer, subject)` identity, grant the

@@ -1,16 +1,93 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"io/fs"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
+	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
 	"github.com/jackc/pgx/v5"
 )
+
+type migrationFailingWriter struct{}
+
+func (migrationFailingWriter) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}
+
+func TestCommandReportsDatabaseFreeReleaseIdentity(t *testing.T) {
+	t.Parallel()
+
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	var output bytes.Buffer
+	err := command(context.Background(), []string{"version"}, &output, func() (buildinfo.Info, error) {
+		return buildinfo.Info{Version: "1.0.0-alpha.1", Commit: commit}, nil
+	}, func(string) (string, bool) {
+		t.Fatal("version command loaded database configuration")
+		return "", false
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("command(version) error = %v", err)
+	}
+	if got, want := output.String(), "gotth-bb version=1.0.0-alpha.1 commit="+commit+"\n"; got != want {
+		t.Fatalf("command(version) output = %q, want %q", got, want)
+	}
+}
+
+func TestCommandRejectsInvalidVersionBoundaries(t *testing.T) {
+	t.Parallel()
+
+	identityFailure := errors.New("identity failed")
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		args     []string
+		output   io.Writer
+		identity releaseIdentityLoader
+		want     string
+	}{
+		{name: "nil context", args: []string{"version"}, output: io.Discard, identity: buildinfo.Current, want: "context is required"},
+		{name: "nil arguments", ctx: context.Background(), output: io.Discard, identity: buildinfo.Current, want: "arguments are required"},
+		{name: "nil output", ctx: context.Background(), args: []string{"version"}, identity: buildinfo.Current, want: "output is required"},
+		{name: "nil identity", ctx: context.Background(), args: []string{"version"}, output: io.Discard, want: "identity loader is required"},
+		{name: "canceled", ctx: canceled, args: []string{"version"}, output: io.Discard, identity: buildinfo.Current, want: "command canceled"},
+		{name: "unknown argument", ctx: context.Background(), args: []string{"apply"}, output: io.Discard, identity: buildinfo.Current, want: "accepts only"},
+		{name: "extra argument", ctx: context.Background(), args: []string{"version", "extra"}, output: io.Discard, identity: buildinfo.Current, want: "accepts only"},
+		{name: "identity failure", ctx: context.Background(), args: []string{"version"}, output: io.Discard, identity: func() (buildinfo.Info, error) { return buildinfo.Info{}, identityFailure }, want: "load release identity"},
+		{name: "output failure", ctx: context.Background(), args: []string{"version"}, output: migrationFailingWriter{}, identity: buildinfo.Current, want: "write release identity"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := command(test.ctx, test.args, test.output, test.identity, nil, nil, nil)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("command() error = %v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestCommandDelegatesArgumentFreeMigration(t *testing.T) {
+	t.Parallel()
+
+	called := false
+	err := command(context.Background(), []string{}, io.Discard, buildinfo.Current, mapLookup(map[string]string{
+		"DATABASE_URL": "postgres://migrator@127.0.0.1/forum",
+	}), fstest.MapFS{"000001_test.sql": {Data: []byte("SELECT 1;\n")}}, func(context.Context, *pgx.ConnConfig, fs.FS) error {
+		called = true
+		return nil
+	})
+	if err != nil || !called {
+		t.Fatalf("command() = %v, runner called = %v", err, called)
+	}
+}
 
 func TestRunAppliesEmbeddedReleaseWithDatabaseConfiguration(t *testing.T) {
 	t.Parallel()

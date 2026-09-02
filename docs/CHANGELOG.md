@@ -5,6 +5,64 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 08:00 CDT — Add deterministic release packaging
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `Makefile`
+- `README.md`
+- `cmd/package/main.go`
+- `cmd/package/main_test.go`
+- `cmd/migrate/main.go`
+- `cmd/migrate/main_test.go`
+- `docs/release-operations.md`
+- `internal/buildinfo/buildinfo.go`
+- `internal/buildinfo/buildinfo_test.go`
+- `internal/releaseartifact/artifact.go`
+- `internal/releaseartifact/artifact_test.go`
+
+Explanation:
+
+Added one fail-closed native release-packaging boundary. It accepts only a
+canonical release identity for the exact clean `HEAD`, runs the complete
+verification prerequisite, builds the forum, migration, and operator binaries
+with identical linker values, and executes the migration and operator
+identities before admitting output. Repository identity and cleanliness are
+rechecked after the builds so a concurrent source change blocks admission.
+
+The archive is streamed with normalized ordering, modes, ownership, and time
+metadata. It includes exact release/toolchain metadata plus a read-only module
+dependency manifest. A private staging directory is atomically renamed only
+after the archive and external SHA-256 manifest are complete; an existing
+output is never overwritten.
+
+Verification:
+
+- Byte-identical archive and digest from two independent staging/output paths
+- Exact archive member ordering, modes, zero ownership, zero gzip timestamp,
+  fixed tar timestamps, release metadata, dependency manifest, and checksum
+- Invalid, development, mismatched-commit, dirty-worktree, foreign-platform,
+  malformed toolchain/manifest, failed-build, and wrong-identity rejection
+- Exact pinned-Go requirement, isolated Go environment, and database-free
+  migration/operator identity checks
+- Duplicate/missing/empty/unknown command arguments, cancellation, committed
+  output-write failure, and exact subprocess directory/environment behavior
+- Full repository generation, formatting, vet, race, and coverage verification
+
+Risks / non-goals:
+
+- Packaging is deliberately native-only so the operator identity is executed;
+  cross-compilation without target execution is not admitted
+- The artifact is not yet tagged, published, signed, deployed, or recorded as
+  known-good
+- Synthetic filesystem exhaustion and every possible close/fsync failure are
+  not unit-injected; real packaging and repeat-digest verification cover the
+  filesystem success path
+- Target host, Caddy, PostgreSQL, Authentik, secrets, backups, monitoring, and
+  deployment approval remain separate operational inputs
+
 ### 2026-09-02 04:20 CDT — Add fail-closed release identity
 
 Commit: current commit; hash assigned by Git after commit

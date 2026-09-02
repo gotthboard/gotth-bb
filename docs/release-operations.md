@@ -80,15 +80,16 @@ commit into the package-private `internal/buildinfo.version` and
 Go linker `-X` flags. The pair is accepted together or rejected together;
 ordinary developer builds report the explicit `development`/`unknown`
 sentinels. The forum validates the pair before binding its listener and writes
-it in the structured `service starting` record. The matching operator binary
-reports the same database-free identity with:
+it in the structured `service starting` record. The matching migration and
+operator binaries report the same database-free identity with:
 
 ```sh
+gotth-bb-migrate version
 gotth-bb-operator version
 ```
 
-An artifact whose operator identity differs from its release record or whose
-forum startup identity differs from the operator output is not deployable.
+An artifact whose migration/operator identities differ from its release record
+or whose forum startup identity differs from those outputs is not deployable.
 
 Each deployed release record contains:
 
@@ -111,8 +112,35 @@ The release pipeline produces:
 - Pinned HTMX and compiled/versioned Tailwind/static assets.
 - Software bill of materials or dependency manifest.
 - Checksums/digests.
-- Version information exposed through the database-free operator `version`
-  command and structured forum startup log, not a public sensitive endpoint.
+- Version information exposed through the database-free migration/operator
+  `version` commands and structured forum startup log, not a public sensitive
+  endpoint.
+
+The repository's `make release` target requires explicit `RELEASE_VERSION`,
+`RELEASE_COMMIT`, `RELEASE_GOOS`, `RELEASE_GOARCH`, and `RELEASE_OUTPUT`
+environment values. It runs `make verify` first. The packaging command then:
+
+1. Rejects an invalid release identity, foreign platform, existing output,
+   dirty worktree, or commit that differs from `HEAD`.
+2. Disables workspace discovery, per-user Go configuration, ambient build
+   flags, CGO, toolchain switching, and FIPS source substitution; the native
+   architecture is built at its documented baseline.
+3. Builds `gotth-bb`, `gotth-bb-migrate`, and `gotth-bb-operator` with
+   `-trimpath`, VCS stamping disabled, and one exact linker identity.
+4. Executes the built migration and operator binaries' `version` commands and
+   requires the exact requested version/commit result from both before
+   packaging.
+5. Writes a lexically ordered tar archive with fixed modes, zero owner/group,
+   and no gzip timestamp, then emits the archive digest in `SHA256SUMS`.
+6. Rechecks the exact `HEAD` and clean worktree after all builds, then renames a
+   private staging directory into the requested output only after identity
+   validation, archive writing, and checksum writing succeed.
+
+Archive contents are rooted at
+`gotth-bb-VERSION-GOOS-GOARCH/` and include the three binaries,
+`DEPENDENCIES.txt`, and `RELEASE.txt`. The release metadata contains no build
+timestamp or host path. The same clean commit built twice with the same pinned
+toolchain and platform must produce byte-identical archive and checksum files.
 
 Builds run from a clean checkout. A dirty worktree, generated-code drift, test
 failure, or secret finding blocks artifact publication.
