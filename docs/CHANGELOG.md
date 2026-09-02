@@ -5,6 +5,62 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 23:05 CDT — Render bounded sanitized Markdown
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `go.mod`
+- `go.sum`
+- `internal/render/markdown.go`
+- `internal/render/markdown_test.go`
+
+Explanation:
+
+Added the fixed A1-07 Markdown rendering boundary. It accepts only nonblank
+UTF-8 source from 1 through the schema's 65,536-byte maximum, renders plain
+CommonMark with Goldmark v1.8.5, preserves Goldmark's default raw-HTML and
+dangerous-link protections, and then applies the existing narrow Bluemonday
+policy. Sanitized output must remain nonblank and within the schema's 262,144-
+byte rendered limit.
+
+The private `RenderedMarkdown` type cannot be forged outside the render
+package. Its zero value renders empty but cannot produce persistence values; a
+valid value returns sanitized HTML together with the exact immutable renderer
+version `goldmark-v1.8.5-bluemonday-v1.0.27-p1`, or converts without allocation
+to the existing opaque `TrustedHTML` presentation type. Plain CommonMark is
+deliberate: no tables, task lists, heading IDs, automatic linkifier, raw HTML,
+or runtime extension was admitted.
+
+Verification:
+
+- Paragraphs, emphasis, strong text, ordered/unordered lists, block quotes,
+  inline/fenced code, links, and basic emoji survive the documented pipeline
+- Raw HTML remains non-executable, JavaScript/data links lose their links, and
+  safe text is preserved; every surviving relative/HTTP/HTTPS link receives
+  the fixed `nofollow noreferrer` policy
+- Empty, whitespace-only, invalid UTF-8, source-overflow, raw-HTML-only, and
+  rendered-output-overflow inputs fail before persistence
+- Maximum-size source, zero-value safety, persistence/version pairing,
+  presentation equivalence, and 64 concurrent conversions pass under the race
+  detector
+- Full `make verify` passes. Persistence, trusted conversion, and validity
+  functions have 100% statement coverage; RenderMarkdown is 88.9%
+
+Risks / non-goals:
+
+- The sole uncovered RenderMarkdown branch handles Goldmark returning an error
+  while writing to `bytes.Buffer`. The real plain-CommonMark renderer and an
+  in-memory buffer provide no injectable failure; replacing either solely to
+  manufacture coverage would add fake abstraction
+- The renderer is not yet wired to topic/reply forms or transactions. This unit
+  establishes the exact persistence values those write paths must consume
+- Rendering and sanitization are linear in bounded source/intermediate/output
+  bytes and allocate the Goldmark AST plus render and sanitizer buffers. No
+  I/O, retry, cache mutation, runtime extension, or detached work occurs
+
 ### 2026-09-01 22:50 CDT — Render bounded visible topic post pages
 
 Commit: current commit; hash assigned by Git after commit

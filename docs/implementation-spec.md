@@ -759,13 +759,19 @@ rendered core pages for root-relative application links that omit `/bb`.
 
 ## 13. Markdown rendering
 
-- Canonical input is bounded UTF-8 Markdown source.
-- Raw HTML input is disabled initially.
+- Canonical input is nonblank UTF-8 Markdown source from 1 through 65,536
+  bytes. Sanitized rendered HTML must be nonblank and no larger than 262,144
+  bytes before persistence.
+- Alpha.1 uses Goldmark v1.8.5 in plain CommonMark mode. Raw HTML and dangerous
+  links retain Goldmark's default disabled behavior; no GFM tables, task lists,
+  automatic heading IDs, linkifier, or runtime extension is enabled.
 - Link schemes are restricted to an allowlist.
 - Rendered HTML passes through a narrow sanitizer allowlist even when the parser
   claims safe output.
-- External links use the documented rel policy.
-- Rendered output carries a renderer version for deterministic rebuilding.
+- Every surviving link receives `nofollow noreferrer`, avoiding a second
+  browser-versus-Go external-URL classification policy.
+- Rendered output carries the exact renderer version
+  `goldmark-v1.8.5-bluemonday-v1.0.27-p1` for deterministic rebuilding.
 - Templates receive rendered content through one explicit trusted-HTML type;
   arbitrary strings cannot opt out of escaping.
 

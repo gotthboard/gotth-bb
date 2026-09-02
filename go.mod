@@ -9,6 +9,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/microcosm-cc/bluemonday v1.0.27
+	github.com/yuin/goldmark v1.8.5
 	golang.org/x/net v0.52.0
 	golang.org/x/oauth2 v0.36.0
 )
