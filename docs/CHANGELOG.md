@@ -5,6 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:55 CDT — Query atomic visible topic post pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/topic_posts.sql`
+- `internal/store/db/topic_posts.sql.go`
+- `internal/store/db/topic_posts_test.go`
+- `internal/store/db/topics_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the generated PostgreSQL query for one authorized topic and one bounded
+page of its nondeleted posts. Topic text, owning-area breadcrumb fields, post
+content, author labels, and the exact visible-post count share one statement and
+snapshot. A left join emits one nullable post row only when page 1 addresses a
+visible topic with no visible posts; applying a later offset removes that
+sentinel and yields the normal missing-page result.
+
+The complete area predicate is evaluated before topic fields leave PostgreSQL.
+Hidden topics require staff authority, deleted topics remain absent for every
+ordinary reader, deleted posts never enter rows or counts, and group IDs have no
+effect without verified member authority.
+
+Verification:
+
+- Generated binding tests preserve context, exact typed parameter order, all
+  nullable scan fields, close behavior, and query/scan/rows failures
+- PostgreSQL 17 proves first/second/empty-later pages, ascending immutable post
+  order, window totals, soft-deleted post exclusion, and the authorized-empty
+  page-1 sentinel
+- PostgreSQL 17 covers visitor, member, matching/nonmatching group, moderator
+  authority, hidden/deleted/missing topics, and attempted group injection
+
+Risks / non-goals:
+
+- The generated method accepts raw pagination values; the store boundary will
+  derive and enforce the fixed 25-row limit and maximum offset
+- Rendering persisted sanitized HTML and the HTTP topic route remain later
+  A1-06 units
+
 ### 2026-09-01 21:52 CDT — Specify bounded topic read pages
 
 Commit: current commit; hash assigned by Git after commit

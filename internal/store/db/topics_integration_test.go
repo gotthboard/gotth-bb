@@ -15,7 +15,7 @@ import (
 
 const topicListTestDatabase = "gotth_bb_alpha1_topic_list_test"
 
-func TestVisibleTopicListOnPostgreSQL17(t *testing.T) {
+func TestVisibleForumReadsOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
@@ -102,6 +102,12 @@ func TestVisibleTopicListOnPostgreSQL17(t *testing.T) {
 	insertTopicListFixture(t, ctx, connection, 106, 1501, areaIDs["public"], authorID, "Deleted", "open", 0, createdAt, createdAt.Add(10*time.Hour), nil, &deletedAt)
 	insertTopicListFixture(t, ctx, connection, 201, 2001, areaIDs["members"], authorID, "Members topic", "open", 0, createdAt, createdAt.Add(time.Hour), nil, nil)
 	insertTopicListFixture(t, ctx, connection, 301, 3001, areaIDs["matching"], authorID, "Group topic", "open", 0, createdAt, createdAt.Add(time.Hour), nil, nil)
+	postDeletedAt := createdAt.Add(12 * time.Hour)
+	for _, postID := range []int64{1002, 1301} {
+		if _, err := connection.Exec(ctx, `UPDATE public.posts SET deleted_at = $1, deleted_by = $2, deletion_reason = 'integration test' WHERE id = $3`, postDeletedAt, ownerID, postID); err != nil {
+			t.Fatalf("soft-delete post %d: %v", postID, err)
+		}
+	}
 
 	queries := New(connection)
 	visitorPage, err := queries.ListVisibleTopicsByAreaSlug(ctx, ListVisibleTopicsByAreaSlugParams{AreaSlug: "public", PageLimit: 2})
@@ -151,6 +157,56 @@ func TestVisibleTopicListOnPostgreSQL17(t *testing.T) {
 				if topics[index].TopicID != test.wantIDs[index] {
 					t.Fatalf("topic %d ID = %d, want %d", index, topics[index].TopicID, test.wantIDs[index])
 				}
+			}
+		})
+	}
+
+	firstPostPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 101, PageLimit: 1})
+	if err != nil || len(firstPostPage) != 1 || !firstPostPage[0].PostID.Valid || firstPostPage[0].PostID.Int64 != 1001 ||
+		firstPostPage[0].PostNumber.Int32 != 1 || firstPostPage[0].TotalVisiblePosts != 2 || firstPostPage[0].AreaSlug != "public" ||
+		firstPostPage[0].TopicTitle != "Pinned" || firstPostPage[0].TopicState != "locked" || firstPostPage[0].TopicAuthorDisplayName != "Topic Author" ||
+		firstPostPage[0].PostAuthorDisplayName.String != "Topic Author" || firstPostPage[0].RenderedHtml.String != "<p>source</p>" {
+		t.Fatalf("first visible post page = (%+v, %v)", firstPostPage, err)
+	}
+	secondPostPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 101, PageLimit: 1, PageOffset: 1})
+	if err != nil || len(secondPostPage) != 1 || secondPostPage[0].PostID.Int64 != 1003 || secondPostPage[0].PostNumber.Int32 != 3 || secondPostPage[0].TotalVisiblePosts != 2 {
+		t.Fatalf("second visible post page = (%+v, %v)", secondPostPage, err)
+	}
+	emptyLaterPostPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 101, PageLimit: 1, PageOffset: 2})
+	if err != nil || len(emptyLaterPostPage) != 0 {
+		t.Fatalf("empty later post page = (%+v, %v)", emptyLaterPostPage, err)
+	}
+	emptyTopicPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 104, PageLimit: 25})
+	if err != nil || len(emptyTopicPage) != 1 || emptyTopicPage[0].PostID.Valid || emptyTopicPage[0].PostNumber.Valid ||
+		emptyTopicPage[0].RenderedHtml.Valid || emptyTopicPage[0].PostAuthorDisplayName.Valid || emptyTopicPage[0].TotalVisiblePosts != 0 {
+		t.Fatalf("authorized empty topic page = (%+v, %v)", emptyTopicPage, err)
+	}
+	offsetEmptyTopicPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 104, PageLimit: 25, PageOffset: 25})
+	if err != nil || len(offsetEmptyTopicPage) != 0 {
+		t.Fatalf("offset empty topic page = (%+v, %v)", offsetEmptyTopicPage, err)
+	}
+
+	for _, test := range []struct {
+		name       string
+		parameters GetVisibleTopicPostPageParams
+		wantRows   int
+	}{
+		{name: "visitor cannot read hidden", parameters: GetVisibleTopicPostPageParams{TopicID: 102, PageLimit: 25}},
+		{name: "staff reads hidden", parameters: GetVisibleTopicPostPageParams{TopicID: 102, IsStaff: true, PageLimit: 25}, wantRows: 1},
+		{name: "visitor cannot read members", parameters: GetVisibleTopicPostPageParams{TopicID: 201, PageLimit: 25}},
+		{name: "member reads members", parameters: GetVisibleTopicPostPageParams{TopicID: 201, IsMember: true, PageLimit: 25}, wantRows: 1},
+		{name: "nonmember cannot inject group", parameters: GetVisibleTopicPostPageParams{TopicID: 301, GroupIds: []int64{matchingGroupID}, PageLimit: 25}},
+		{name: "wrong group cannot read", parameters: GetVisibleTopicPostPageParams{TopicID: 301, IsMember: true, GroupIds: []int64{otherGroupID}, PageLimit: 25}},
+		{name: "matching group reads", parameters: GetVisibleTopicPostPageParams{TopicID: 301, IsMember: true, GroupIds: []int64{matchingGroupID}, PageLimit: 25}, wantRows: 1},
+		{name: "staff reads restricted", parameters: GetVisibleTopicPostPageParams{TopicID: 301, IsStaff: true, PageLimit: 25}, wantRows: 1},
+		{name: "deleted topic is missing", parameters: GetVisibleTopicPostPageParams{TopicID: 106, IsStaff: true, PageLimit: 25}},
+		{name: "missing topic", parameters: GetVisibleTopicPostPageParams{TopicID: 999, IsStaff: true, PageLimit: 25}},
+	} {
+		test := test
+		t.Run("post page/"+test.name, func(t *testing.T) {
+			page, pageErr := queries.GetVisibleTopicPostPage(ctx, test.parameters)
+			if pageErr != nil || len(page) != test.wantRows {
+				t.Fatalf("GetVisibleTopicPostPage() = (%+v, %v), want %d rows", page, pageErr, test.wantRows)
 			}
 		})
 	}
