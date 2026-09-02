@@ -15,8 +15,14 @@ import (
 // Complexity: construction uses tight Theta(1) time and auxiliary space for a
 // fixed route/view table. Chi owns request matching; visible-area,
 // template/static, and transport costs are delegated to their documented
-// boundaries.
-func NewHandler(builder URLBuilder, listAreas AreaIndexLister) (http.Handler, error) {
+// boundaries. The root and area-topic handlers receive the same validated URL
+// authority and caller-supplied access-aware stores.
+func NewHandler(
+	builder URLBuilder,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+) (http.Handler, error) {
 	rootView, err := newPageView(builder, "Discussion areas")
 	if err != nil {
 		return nil, fmt.Errorf("construct public shell view: %w", err)
@@ -25,6 +31,10 @@ func NewHandler(builder URLBuilder, listAreas AreaIndexLister) (http.Handler, er
 	if err != nil {
 		return nil, fmt.Errorf("construct area index route: %w", err)
 	}
+	areaTopicHandler, err := newAreaTopicListHandler(builder, maximumTopicPage, loadAreaTopics)
+	if err != nil {
+		return nil, fmt.Errorf("construct area topic route: %w", err)
+	}
 	notFoundView := rootView
 	notFoundView.Title = "Page not found"
 	notFoundView.CanonicalURL = ""
@@ -32,6 +42,7 @@ func NewHandler(builder URLBuilder, listAreas AreaIndexLister) (http.Handler, er
 	router := chi.NewRouter()
 	router.Use(captureRoutePattern)
 	router.Get("/", rootHandler.ServeHTTP)
+	router.Get("/areas/{slug}", areaTopicHandler.ServeHTTP)
 	router.Get("/health/live", serveLiveness)
 	router.Get("/health/ready", serveNotReady)
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
@@ -24,24 +25,30 @@ type AuthenticationService interface {
 
 // NewAuthenticatedHandler activates the login, callback, authenticated shell,
 // and local logout boundaries around the public router. Only the exact forum
-// root and logout route perform session lookup; infrastructure and unknown
+// root, a one-segment GET area route, revalidation, and logout perform session
+// lookup; infrastructure, malformed area paths, wrong methods, and unknown
 // paths remain usable when the session store is unavailable.
 //
 // Complexity: construction is tight Theta(1) time and auxiliary space around
-// fixed handler state. Each request performs a bounded path-prefix dispatch;
-// delegated route, OIDC, PostgreSQL, cookie, CSRF, template, and transport costs
-// retain their documented bounds. No operation is retried or detached.
+// fixed handler state. For path bytes p and delegated handler cost D, request
+// dispatch is O(p+D) time and Omega(1); local auxiliary space is tight
+// Theta(1), plus space owned by the delegated handler. Only the area
+// prefix/segment checks scan p. OIDC, PostgreSQL, cookie, CSRF, template, and
+// transport costs retain their documented bounds. No operation is retried or
+// detached.
 func NewAuthenticatedHandler(
 	builder URLBuilder,
 	service AuthenticationService,
 	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("browser authentication service is required")
 	}
-	publicHandler, err := NewHandler(builder, listAreas)
+	publicHandler, err := NewHandler(builder, listAreas, loadAreaTopics, maximumTopicPage)
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
 	}
@@ -133,6 +140,13 @@ func NewAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if request.Method == http.MethodGet {
+				slug, areaPath := strings.CutPrefix(request.URL.Path, "/areas/")
+				if areaPath && slug != "" && !strings.ContainsRune(slug, '/') {
+					authenticatedPublicHandler.ServeHTTP(response, request)
+					return
+				}
+			}
 			publicHandler.ServeHTTP(response, request)
 		}
 	}), nil

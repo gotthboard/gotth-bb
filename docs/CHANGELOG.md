@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:26 CDT — Wire visible area topic routes
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `internal/httpui/area_topic_handler.go`
+- `internal/httpui/area_topic_handler_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/authenticated_handler_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Activated `GET /areas/{slug}` in the application router and connected it to the
+access-filtered PostgreSQL topic-page store. Exact one-segment area requests now
+pass the complete server-owned session access context, including group IDs, to
+the topic loader. Malformed area paths, nested paths, wrong methods,
+infrastructure routes, unknown routes, and escaped non-canonical paths remain
+outside the session and topic-store lookup boundaries so unavailable identity
+or persistence state cannot break unrelated public HTTP behavior.
+
+Verification:
+
+- Public routing binds the exact slug and route pattern and supplies visitor
+  authority to the topic loader
+- Authenticated routing preserves member identity, role, and group IDs through
+  the session boundary and renders the selected area
+- Missing, empty, nested, and wrong-method area paths neither authenticate nor
+  invoke the topic loader
+- Encoded separators are rejected as non-canonical paths before storage even
+  though Chi deliberately matches routes against `URL.RawPath`
+- Constructor failures cover missing area/topic stores, invalid page bounds,
+  missing authentication service, and invalid cookie configuration
+
+Risks / non-goals:
+
+- Area-index cards are not links yet; direct area URLs are now usable
+- Topic detail pages, topic creation, replies, moderation, and deployment remain
+  separate alpha units
+
 ### 2026-09-01 21:24 CDT — Render visible area topic pages
 
 Commit: current commit; hash assigned by Git after commit

@@ -156,6 +156,7 @@ func TestAreaTopicListHandlerCollapsesMissingAndRedactsFailures(t *testing.T) {
 	}{
 		{name: "invalid query", target: "/areas/public?page=01", loader: panicAreaTopicPageLoader, wantStatus: http.StatusNotFound, wantText: "does not exist or is not visible"},
 		{name: "missing slug", target: "/areas/public", loader: panicAreaTopicPageLoader, wantStatus: http.StatusNotFound, wantText: "does not exist or is not visible"},
+		{name: "escaped path", target: "/areas/public%2Fnested", loader: panicAreaTopicPageLoader, wantStatus: http.StatusNotFound, wantText: "does not exist or is not visible"},
 		{name: "missing", target: "/areas/public", loader: func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
 			return store.VisibleAreaTopicPage{}, pgx.ErrNoRows
 		}, wantStatus: http.StatusNotFound, wantText: "does not exist or is not visible"},
@@ -177,6 +178,8 @@ func TestAreaTopicListHandlerCollapsesMissingAndRedactsFailures(t *testing.T) {
 			slug := "public"
 			if test.name == "missing slug" {
 				slug = ""
+			} else if test.name == "escaped path" {
+				slug = "public%2Fnested"
 			}
 			handler.ServeHTTP(response, areaTopicTestRequest(test.target, slug, auth.AccessContext{}))
 			if response.Code != test.wantStatus || !strings.Contains(response.Body.String(), test.wantText) || strings.Contains(response.Body.String(), secret) {

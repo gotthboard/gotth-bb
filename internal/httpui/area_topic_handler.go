@@ -19,8 +19,9 @@ import (
 type AreaTopicPageLoader func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error)
 
 // newAreaTopicListHandler parses the canonical page query, passes only the
-// server-owned request authority to the loader, projects persistence rows into
-// narrow presentation values, and renders complete or HTMX area-topic pages.
+// server-owned request authority to the loader, rejects non-canonical escaped
+// paths before storage, projects persistence rows into narrow presentation
+// values, and renders complete or HTMX area-topic pages.
 // Missing/invisible input shares one 404; store or malformed-result failures
 // discard all partial data and render one redacted 503.
 //
@@ -58,7 +59,7 @@ func newAreaTopicListHandler(builder URLBuilder, maximumPage int32, load AreaTop
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		slug := chi.URLParam(request, "slug")
 		pageNumber, parseErr := parseTopicPageQuery(request.URL.RawQuery, maximumPage)
-		if slug == "" || parseErr != nil {
+		if request.URL.RawPath != "" || slug == "" || parseErr != nil {
 			serveError(response, request, http.StatusNotFound, notFoundView, "Page not found", "The requested page does not exist or is not visible to you.")
 			return
 		}

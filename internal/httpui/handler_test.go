@@ -1,6 +1,7 @@
 package httpui
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store"
+	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"golang.org/x/net/html"
 )
 
@@ -90,6 +94,35 @@ func TestPublicShellUsesAlternatePrefixForEveryApplicationURL(t *testing.T) {
 	}
 }
 
+func TestPublicAreaTopicRouteBindsSlugAndPattern(t *testing.T) {
+	t.Parallel()
+
+	builder := callbackTestURLBuilder(t)
+	calls := 0
+	handler, err := NewHandler(builder, emptyAreaIndexLister, func(_ context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
+		calls++
+		if access.Authenticated || access.UserID != 0 || len(access.GroupIDs) != 0 || slug != "public" || page != 1 {
+			t.Fatalf("area topic call = (access %+v, slug %q, page %d)", access, slug, page)
+		}
+		return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Number: 1}, nil
+	}, 10000)
+	if err != nil {
+		t.Fatalf("NewHandler() returned error: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/areas/public", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || calls != 1 || request.Pattern != "GET /areas/{slug}" || !strings.Contains(response.Body.String(), "Public") {
+		t.Fatalf("area route = (status %d, calls %d, pattern %q, body %q)", response.Code, calls, request.Pattern, response.Body.String())
+	}
+	escapedRequest := httptest.NewRequest(http.MethodGet, "/areas/public%2Fnested", nil)
+	escapedResponse := httptest.NewRecorder()
+	handler.ServeHTTP(escapedResponse, escapedRequest)
+	if escapedResponse.Code != http.StatusNotFound || calls != 1 {
+		t.Fatalf("escaped area route = (status %d, calls %d, body %q)", escapedResponse.Code, calls, escapedResponse.Body.String())
+	}
+}
+
 func TestHealthAndStaticRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -163,11 +196,17 @@ func TestRouterReturnsFullAndHTMXNotFoundPagesAndStandardsCompliantMethodError(t
 func TestNewHandlerRejectsInvalidDependencies(t *testing.T) {
 	t.Parallel()
 
-	if got, err := NewHandler(URLBuilder{}, emptyAreaIndexLister); err == nil || got != nil {
+	if got, err := NewHandler(URLBuilder{}, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000); err == nil || got != nil {
 		t.Fatalf("NewHandler(zero builder) = (%v, %v), want (nil, error)", got, err)
 	}
-	if got, err := NewHandler(callbackTestURLBuilder(t), nil); err == nil || got != nil {
+	if got, err := NewHandler(callbackTestURLBuilder(t), nil, panicAreaTopicPageLoader, 10000); err == nil || got != nil {
 		t.Fatalf("NewHandler(nil lister) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, nil, 10000); err == nil || got != nil {
+		t.Fatalf("NewHandler(nil topic loader) = (%v, %v), want (nil, error)", got, err)
+	}
+	if got, err := NewHandler(callbackTestURLBuilder(t), emptyAreaIndexLister, panicAreaTopicPageLoader, 0); err == nil || got != nil {
+		t.Fatalf("NewHandler(invalid topic maximum) = (%v, %v), want (nil, error)", got, err)
 	}
 }
 
@@ -196,7 +235,7 @@ func newTestHandler(t *testing.T, basePath string) http.Handler {
 	if err != nil {
 		t.Fatalf("NewURLBuilder() returned error: %v", err)
 	}
-	handler, err := NewHandler(builder, emptyAreaIndexLister)
+	handler, err := NewHandler(builder, emptyAreaIndexLister, panicAreaTopicPageLoader, 10000)
 	if err != nil {
 		t.Fatalf("NewHandler() returned error: %v", err)
 	}

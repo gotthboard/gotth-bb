@@ -145,6 +145,10 @@ func run(
 		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
 			return store.ListVisibleAreas(areaContext, areaQueries, access)
 		},
+		func(topicContext context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
+			return store.GetVisibleAreaTopicPage(topicContext, areaQueries, slug, page, access)
+		},
+		store.MaximumTopicPage,
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)
