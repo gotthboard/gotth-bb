@@ -7,7 +7,162 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const addAreaGroupForAdministration = `-- name: AddAreaGroupForAdministration :exec
+INSERT INTO public.area_groups (area_id, group_id, added_by, created_at)
+VALUES ($1, $2, $3, $4)
+`
+
+type AddAreaGroupForAdministrationParams struct {
+	AreaID      int64
+	GroupID     int64
+	ActorUserID int64
+	AtTime      pgtype.Timestamptz
+}
+
+func (q *Queries) AddAreaGroupForAdministration(ctx context.Context, arg AddAreaGroupForAdministrationParams) error {
+	_, err := q.db.Exec(ctx, addAreaGroupForAdministration,
+		arg.AreaID,
+		arg.GroupID,
+		arg.ActorUserID,
+		arg.AtTime,
+	)
+	return err
+}
+
+const countExistingForumGroups = `-- name: CountExistingForumGroups :one
+SELECT count(*)
+FROM public.forum_groups
+WHERE id = ANY($1::bigint[])
+`
+
+func (q *Queries) CountExistingForumGroups(ctx context.Context, groupIds []int64) (int64, error) {
+	row := q.db.QueryRow(ctx, countExistingForumGroups, groupIds)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createAreaAdministrationAudit = `-- name: CreateAreaAdministrationAudit :one
+INSERT INTO public.moderation_actions (
+    actor_kind,
+    actor_user_id,
+    target_type,
+    target_area_id,
+    action_type,
+    reason,
+    previous_state,
+    resulting_state,
+    request_id,
+    created_at
+)
+VALUES (
+    'forum_user',
+    $1,
+    'area',
+    $2,
+    $3,
+    $4,
+    $5::jsonb,
+    $6::jsonb,
+    $7,
+    $8
+)
+RETURNING id
+`
+
+type CreateAreaAdministrationAuditParams struct {
+	ActorUserID    pgtype.Int8
+	AreaID         pgtype.Int8
+	ActionType     string
+	Reason         pgtype.Text
+	PreviousState  []byte
+	ResultingState []byte
+	RequestID      pgtype.UUID
+	AtTime         pgtype.Timestamptz
+}
+
+func (q *Queries) CreateAreaAdministrationAudit(ctx context.Context, arg CreateAreaAdministrationAuditParams) (int64, error) {
+	row := q.db.QueryRow(ctx, createAreaAdministrationAudit,
+		arg.ActorUserID,
+		arg.AreaID,
+		arg.ActionType,
+		arg.Reason,
+		arg.PreviousState,
+		arg.ResultingState,
+		arg.RequestID,
+		arg.AtTime,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const createAreaForAdministration = `-- name: CreateAreaForAdministration :one
+INSERT INTO public.areas (
+    slug, name, description, display_order, visibility, posting_mode,
+    created_by, updated_by, created_at, updated_at
+)
+VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, $7,
+    $8, $8
+)
+RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at
+`
+
+type CreateAreaForAdministrationParams struct {
+	Slug         string
+	Name         string
+	Description  string
+	DisplayOrder int32
+	Visibility   string
+	PostingMode  string
+	ActorUserID  int64
+	AtTime       pgtype.Timestamptz
+}
+
+func (q *Queries) CreateAreaForAdministration(ctx context.Context, arg CreateAreaForAdministrationParams) (Area, error) {
+	row := q.db.QueryRow(ctx, createAreaForAdministration,
+		arg.Slug,
+		arg.Name,
+		arg.Description,
+		arg.DisplayOrder,
+		arg.Visibility,
+		arg.PostingMode,
+		arg.ActorUserID,
+		arg.AtTime,
+	)
+	var i Area
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DisplayOrder,
+		&i.Visibility,
+		&i.PostingMode,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteAreaGroupsForAdministration = `-- name: DeleteAreaGroupsForAdministration :exec
+DELETE FROM public.area_groups
+WHERE area_id = $1
+`
+
+func (q *Queries) DeleteAreaGroupsForAdministration(ctx context.Context, areaID int64) error {
+	_, err := q.db.Exec(ctx, deleteAreaGroupsForAdministration, areaID)
+	return err
+}
 
 const getVisibleAreaBySlug = `-- name: GetVisibleAreaBySlug :one
 SELECT
@@ -74,6 +229,111 @@ func (q *Queries) GetVisibleAreaBySlug(ctx context.Context, arg GetVisibleAreaBy
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listAreasForAdministration = `-- name: ListAreasForAdministration :many
+SELECT
+    a.id,
+    a.slug,
+    a.name,
+    a.description,
+    a.display_order,
+    a.visibility,
+    a.posting_mode,
+    a.created_by,
+    a.updated_by,
+    a.created_at,
+    a.updated_at,
+    COALESCE(
+        ARRAY(
+            SELECT ag.group_id
+            FROM public.area_groups AS ag
+            WHERE ag.area_id = a.id
+            ORDER BY ag.group_id
+        ),
+        ARRAY[]::bigint[]
+    )::bigint[] AS group_ids
+FROM public.areas AS a
+ORDER BY a.display_order, a.id
+`
+
+type ListAreasForAdministrationRow struct {
+	ID           int64
+	Slug         string
+	Name         string
+	Description  string
+	DisplayOrder int32
+	Visibility   string
+	PostingMode  string
+	CreatedBy    int64
+	UpdatedBy    int64
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	GroupIds     []int64
+}
+
+func (q *Queries) ListAreasForAdministration(ctx context.Context) ([]ListAreasForAdministrationRow, error) {
+	rows, err := q.db.Query(ctx, listAreasForAdministration)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAreasForAdministrationRow{}
+	for rows.Next() {
+		var i ListAreasForAdministrationRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.DisplayOrder,
+			&i.Visibility,
+			&i.PostingMode,
+			&i.CreatedBy,
+			&i.UpdatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.GroupIds,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listForumGroupsForAreaAdministration = `-- name: ListForumGroupsForAreaAdministration :many
+SELECT id, name
+FROM public.forum_groups
+ORDER BY lower(name), id
+`
+
+type ListForumGroupsForAreaAdministrationRow struct {
+	ID   int64
+	Name string
+}
+
+func (q *Queries) ListForumGroupsForAreaAdministration(ctx context.Context) ([]ListForumGroupsForAreaAdministrationRow, error) {
+	rows, err := q.db.Query(ctx, listForumGroupsForAreaAdministration)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListForumGroupsForAreaAdministrationRow{}
+	for rows.Next() {
+		var i ListForumGroupsForAreaAdministrationRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listVisibleAreas = `-- name: ListVisibleAreas :many
@@ -147,4 +407,118 @@ func (q *Queries) ListVisibleAreas(ctx context.Context, arg ListVisibleAreasPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockAreaForAdministration = `-- name: LockAreaForAdministration :one
+SELECT
+    a.id,
+    a.slug,
+    a.name,
+    a.description,
+    a.display_order,
+    a.visibility,
+    a.posting_mode,
+    a.created_by,
+    a.updated_by,
+    a.created_at,
+    a.updated_at,
+    COALESCE(
+        ARRAY(
+            SELECT ag.group_id
+            FROM public.area_groups AS ag
+            WHERE ag.area_id = a.id
+            ORDER BY ag.group_id
+        ),
+        ARRAY[]::bigint[]
+    )::bigint[] AS group_ids
+FROM public.areas AS a
+WHERE a.id = $1
+FOR UPDATE OF a
+`
+
+type LockAreaForAdministrationRow struct {
+	ID           int64
+	Slug         string
+	Name         string
+	Description  string
+	DisplayOrder int32
+	Visibility   string
+	PostingMode  string
+	CreatedBy    int64
+	UpdatedBy    int64
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+	GroupIds     []int64
+}
+
+func (q *Queries) LockAreaForAdministration(ctx context.Context, areaID int64) (LockAreaForAdministrationRow, error) {
+	row := q.db.QueryRow(ctx, lockAreaForAdministration, areaID)
+	var i LockAreaForAdministrationRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DisplayOrder,
+		&i.Visibility,
+		&i.PostingMode,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GroupIds,
+	)
+	return i, err
+}
+
+const updateAreaForAdministration = `-- name: UpdateAreaForAdministration :one
+UPDATE public.areas
+SET name = $1,
+    description = $2,
+    display_order = $3,
+    visibility = $4,
+    posting_mode = $5,
+    updated_by = $6,
+    updated_at = GREATEST($7::timestamptz, updated_at)
+WHERE id = $8
+RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at
+`
+
+type UpdateAreaForAdministrationParams struct {
+	Name         string
+	Description  string
+	DisplayOrder int32
+	Visibility   string
+	PostingMode  string
+	ActorUserID  int64
+	AtTime       pgtype.Timestamptz
+	AreaID       int64
+}
+
+func (q *Queries) UpdateAreaForAdministration(ctx context.Context, arg UpdateAreaForAdministrationParams) (Area, error) {
+	row := q.db.QueryRow(ctx, updateAreaForAdministration,
+		arg.Name,
+		arg.Description,
+		arg.DisplayOrder,
+		arg.Visibility,
+		arg.PostingMode,
+		arg.ActorUserID,
+		arg.AtTime,
+		arg.AreaID,
+	)
+	var i Area
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DisplayOrder,
+		&i.Visibility,
+		&i.PostingMode,
+		&i.CreatedBy,
+		&i.UpdatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

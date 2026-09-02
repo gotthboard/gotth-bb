@@ -53,7 +53,8 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -83,7 +84,8 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -114,7 +116,8 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil,
+		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
 
@@ -142,6 +145,9 @@ func NewAuthenticatedModeratedForumHandler(
 	changeTopicVisibility TopicVisibilityChanger,
 	loadModerationUser ModerationUserStatusLoader,
 	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -150,13 +156,14 @@ func NewAuthenticatedModeratedForumHandler(
 	secure bool,
 	checkReadiness ReadinessChecker,
 ) (http.Handler, error) {
-	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil || registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil || loadAreaAdministration == nil || createArea == nil || updateArea == nil || registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
 		return nil, fmt.Errorf("browser moderated forum services are required")
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea,
+		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
 }
@@ -186,6 +193,9 @@ func newAuthenticatedHandler(
 	changeTopicVisibility TopicVisibilityChanger,
 	loadModerationUser ModerationUserStatusLoader,
 	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -363,6 +373,22 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct user moderation session boundary: %w", moderationErr)
 		}
 	}
+	var authenticatedAreaAdministrationHandler http.Handler
+	if loadAreaAdministration != nil || createArea != nil || updateArea != nil {
+		if loadAreaAdministration == nil || createArea == nil || updateArea == nil {
+			return nil, fmt.Errorf("browser area administration services are incomplete")
+		}
+		areaAdministrationHandler, administrationErr := newAreaAdministrationHandler(builder, loadAreaAdministration, createArea, updateArea)
+		if administrationErr != nil {
+			return nil, fmt.Errorf("construct area administration routes: %w", administrationErr)
+		}
+		authenticatedAreaAdministrationHandler, administrationErr = newSessionAuthenticationHandler(
+			areaAdministrationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if administrationErr != nil {
+			return nil, fmt.Errorf("construct area administration session boundary: %w", administrationErr)
+		}
+	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -397,9 +423,24 @@ func newAuthenticatedHandler(
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
+		case "/admin/areas":
+			if authenticatedAreaAdministrationHandler != nil {
+				authenticatedAreaAdministrationHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedAreaAdministrationHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
+				identifier, areaPath := strings.CutPrefix(request.URL.Path, "/admin/areas/")
+				if areaPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseCanonicalPositiveID(identifier); identifierErr == nil {
+						authenticatedAreaAdministrationHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedUserModerationHandler != nil && request.URL.RawPath == "" &&
 				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
 				identifierAndSuffix, userPath := strings.CutPrefix(request.URL.Path, "/moderation/users/")

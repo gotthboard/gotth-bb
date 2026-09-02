@@ -12,7 +12,7 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "d9885fe579594b2122500e7147b24669b23a75689683a1e808a69183b99c4a93"
+	const stylesheetSHA256 = "48b7cfc575316424079ce4a4df6fffea3db5f7cfeda25761bc11dedd4528caf5"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}

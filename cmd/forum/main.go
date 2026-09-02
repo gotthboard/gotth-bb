@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	administrationservice "git.dannyhunn.com/agents/gotth-bb/internal/administration"
 	"git.dannyhunn.com/agents/gotth-bb/internal/app"
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
@@ -232,6 +233,15 @@ func run(
 		},
 		func(moderationContext context.Context, access auth.AccessContext, userID int64, suspend bool, reason string, requestID pgtype.UUID) (moderationservice.UserSuspensionResult, error) {
 			return moderationservice.ChangeUserSuspension(moderationContext, pool, time.Now, access, userID, suspend, reason, requestID)
+		},
+		func(administrationContext context.Context, access auth.AccessContext) (administrationservice.AreaManagementPage, error) {
+			return administrationservice.LoadAreaManagement(administrationContext, queries, access)
+		},
+		func(administrationContext context.Context, access auth.AccessContext, input administrationservice.AreaInput, requestID pgtype.UUID) (administrationservice.AreaMutationResult, error) {
+			return administrationservice.CreateArea(administrationContext, pool, time.Now, access, input, requestID)
+		},
+		func(administrationContext context.Context, access auth.AccessContext, areaID int64, input administrationservice.AreaInput, requestID pgtype.UUID) (administrationservice.AreaMutationResult, error) {
+			return administrationservice.UpdateArea(administrationContext, pool, time.Now, access, areaID, input, requestID)
 		},
 		configured.RegistrationURL,
 		configured.RegistrationEnabled,

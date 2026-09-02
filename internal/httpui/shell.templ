@@ -1,5 +1,12 @@
 package httpui
 
+import (
+	"slices"
+	"strconv"
+
+	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+)
+
 templ document(view pageView, content templ.Component) {
 	<!doctype html>
 	<html lang="en" class="h-full bg-slate-950">
@@ -20,6 +27,9 @@ templ document(view pageView, content templ.Component) {
 					<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ view.SiteName }</a>
 					<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
 						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+						if sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator {
+							<a href={ view.AdminURL } class="rounded-sm font-medium text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Manage areas</a>
+						}
 						if sessionAuthenticationFromContext(ctx).Access.Authenticated {
 							<form method="post" action={ view.LogoutURL }>
 								<input type="hidden" name="_csrf" value={ csrfTokenFromContext(ctx) }/>
@@ -39,6 +49,115 @@ templ document(view pageView, content templ.Component) {
 			<script src={ view.HTMXURL } defer></script>
 		</body>
 	</html>
+}
+
+templ areaAdministrationPage(view pageView, page areaAdministrationPageView) {
+	@document(view, areaAdministrationContent(view, page))
+}
+
+templ areaAdministrationContent(view pageView, page areaAdministrationPageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-600">/</span>
+			<span aria-current="page" class="text-slate-400">Manage areas</span>
+		</nav>
+		<section aria-labelledby="area-administration-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Administration</p>
+			<h1 id="area-administration-title" class="text-3xl font-bold tracking-tight text-white">Manage discussion areas</h1>
+			<p class="mt-4 text-slate-300">Create the places where topics and replies live. Area slugs cannot be changed after creation.</p>
+			if page.FormError != "" {
+				<p role="alert" class="mt-6 rounded-md border border-rose-900/70 bg-rose-950/40 p-3 text-rose-200">{ page.FormError }</p>
+			}
+			<div class="mt-8 rounded-lg border border-cyan-900/70 bg-slate-950/60 p-5">
+				<h2 class="text-xl font-semibold text-white">Create area</h2>
+				@areaAdministrationForm(page.ActionURL, page.CSRFToken, areaAdministrationFormView{DisplayOrder: "0", Visibility: "public", PostingMode: "normal"}, page.Groups)
+			</div>
+		</section>
+		<section aria-labelledby="existing-areas-title" class="mt-8">
+			<h2 id="existing-areas-title" class="text-2xl font-bold text-white">Existing areas</h2>
+			if len(page.Areas) == 0 {
+				<p class="mt-4 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">No areas exist yet.</p>
+			} else {
+				<div class="mt-4 grid gap-6">
+					for _, area := range page.Areas {
+						<section class="rounded-xl border border-slate-800 bg-slate-900 p-6">
+							<h3 class="text-xl font-semibold text-white">{ area.Name }</h3>
+							<p class="mt-1 text-sm text-slate-400">/{ area.Slug }</p>
+							@areaAdministrationForm(area.ActionURL, page.CSRFToken, area, page.Groups)
+						</section>
+					}
+				</div>
+			}
+		</section>
+	</main>
+}
+
+templ areaAdministrationForm(actionURL string, csrfToken string, area areaAdministrationFormView, groups []areaAdministrationGroupView) {
+	<form method="post" action={ actionURL } class="mt-6 grid gap-5">
+		<input type="hidden" name="_csrf" value={ csrfToken }/>
+		if area.Editing {
+			<input type="hidden" name="revision" value={ area.Revision }/>
+		}
+		<label class="grid gap-2 font-semibold text-slate-200">
+			Slug
+			<input name="slug" value={ area.Slug } required maxlength="80" pattern="[a-z0-9]+(-[a-z0-9]+)*" readonly?={ area.Editing } class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white read-only:text-slate-400"/>
+		</label>
+		<label class="grid gap-2 font-semibold text-slate-200">
+			Name
+			<input name="name" value={ area.Name } required maxlength="120" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+		</label>
+		<label class="grid gap-2 font-semibold text-slate-200">
+			Description
+			<textarea name="description" maxlength="4000" rows="3" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white">{ area.Description }</textarea>
+		</label>
+		<div class="grid gap-5 sm:grid-cols-3">
+			<label class="grid gap-2 font-semibold text-slate-200">
+				Display order
+				<input name="display_order" value={ area.DisplayOrder } type="number" min="0" max="2147483647" required class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+			</label>
+			<label class="grid gap-2 font-semibold text-slate-200">
+				Visibility
+				<select name="visibility" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+					<option value="public" selected?={ area.Visibility == "" || area.Visibility == "public" }>Public</option>
+					<option value="authenticated" selected?={ area.Visibility == "authenticated" }>Signed-in members</option>
+					if len(groups) > 0 {
+						<option value="groups" selected?={ area.Visibility == "groups" }>Selected groups</option>
+					}
+				</select>
+			</label>
+			<label class="grid gap-2 font-semibold text-slate-200">
+				Posting mode
+				<select name="posting_mode" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+					<option value="normal" selected?={ area.PostingMode == "" || area.PostingMode == "normal" }>Normal</option>
+					<option value="read_only" selected?={ area.PostingMode == "read_only" }>Read only</option>
+					<option value="archived" selected?={ area.PostingMode == "archived" }>Archived</option>
+				</select>
+			</label>
+		</div>
+		if len(groups) > 0 {
+			<fieldset class="grid gap-2 rounded-md border border-slate-700 p-4">
+				<legend class="px-2 font-semibold text-slate-200">Groups (only for Selected groups visibility)</legend>
+				for _, group := range groups {
+					<label class="flex items-center gap-2 text-slate-300">
+						<input type="checkbox" name="group_id" value={ strconv.FormatInt(group.ID, 10) } checked?={ slices.Contains(area.GroupIDs, group.ID) }/>
+						{ group.Name }
+					</label>
+				}
+			</fieldset>
+		}
+		<label class="grid gap-2 font-semibold text-slate-200">
+			Audit reason
+			<input name="reason" value={ area.Reason } required maxlength="2000" autocomplete="off" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+		</label>
+		<button type="submit" class="w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">
+			if area.Editing {
+				Save area
+			} else {
+				Create area
+			}
+		</button>
+	</form>
 }
 
 templ administratorSetupPage(view pageView, setup administratorSetupView) {

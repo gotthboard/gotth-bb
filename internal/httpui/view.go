@@ -16,6 +16,7 @@ type pageView struct {
 	LoginURL      string
 	RegisterURL   string
 	LogoutURL     string
+	AdminURL      string
 	StylesheetURL string
 	HTMXURL       string
 }
@@ -23,6 +24,34 @@ type pageView struct {
 type administratorSetupView struct {
 	ActionURL string
 	CSRFToken string
+}
+
+type areaAdministrationPageView struct {
+	ActionURL string
+	CSRFToken string
+	Areas     []areaAdministrationFormView
+	Groups    []areaAdministrationGroupView
+	FormError string
+}
+
+type areaAdministrationFormView struct {
+	ID           int64
+	ActionURL    string
+	Slug         string
+	Name         string
+	Description  string
+	DisplayOrder string
+	Visibility   string
+	PostingMode  string
+	GroupIDs     []int64
+	Reason       string
+	Revision     string
+	Editing      bool
+}
+
+type areaAdministrationGroupView struct {
+	ID   int64
+	Name string
 }
 
 type areaIndexItem struct {
@@ -159,6 +188,10 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build logout URL: %w", err)
 	}
+	adminURL, err := builder.Path("admin", "areas")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build area administration URL: %w", err)
+	}
 	canonicalURL, err := builder.Absolute(canonicalSegments...)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
@@ -171,6 +204,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		LoginURL:      loginURL,
 		RegisterURL:   registerURL,
 		LogoutURL:     logoutURL,
+		AdminURL:      adminURL,
 		StylesheetURL: stylesheetURL,
 		HTMXURL:       htmxURL,
 	}, nil
