@@ -127,8 +127,11 @@ func ChangeTopicLock(
 // valid reason. Auxiliary space is tight Theta(1); standard-library scans do
 // not construct a normalized copy.
 func validReason(reason string) bool {
+	if len(reason) == 0 || len(reason) > 2_000 || !utf8.ValidString(reason) {
+		return false
+	}
 	trimmed := strings.TrimSpace(reason)
-	return len(reason) <= 2_000 && utf8.ValidString(reason) && trimmed != "" && trimmed == reason &&
+	return trimmed != "" && trimmed == reason &&
 		strings.IndexFunc(reason, func(value rune) bool {
 			return unicode.IsControl(value) || value == '\u2028' || value == '\u2029'
 		}) < 0
