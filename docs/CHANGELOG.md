@@ -5,6 +5,40 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:08 CDT — Validate access-context authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/policy/access_context.go`
+- `internal/policy/access_context_test.go`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added `AccessContext.Valid` as the structural authority gate before access facts
+reach repositories. Canonical anonymous state carries no synthetic user, role,
+or groups. Authenticated state requires a positive local user, one closed local
+role, and positive local group IDs. Suspension, mute, and validation time remain
+facts for operation-specific policy instead of making an otherwise coherent
+identity snapshot structurally malformed.
+
+Verification:
+
+- Canonical visitor, member, grouped/suspended member, moderator, and
+  administrator snapshots admit
+- Contradictory anonymous state, missing/nonpositive users, missing/unknown
+  roles, and zero/negative group IDs deny
+- The production method reaches 100% statement coverage and passes 50 repeated
+  race-detector runs; the entire policy package remains at 100%
+
+Risks / non-goals:
+
+- Repository translation is the next unit. Request fields still must never
+  construct or override an `AccessContext` directly.
+
 ### 2026-09-01 19:03 CDT — Enforce area-list visibility in PostgreSQL
 
 Commit: current commit; hash assigned by Git after commit

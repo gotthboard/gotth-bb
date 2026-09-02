@@ -195,6 +195,11 @@ type AccessContext struct {
 Anonymous context uses `Authenticated=false` and no synthetic user ID. Role
 ordering may support explicit comparisons, but callers shall use named methods
 instead of magic numeric checks.
+`AccessContext.Valid` is the single structural authority check before a snapshot
+is translated into repository facts: anonymous state has no user, role, or
+groups; authenticated state has a positive local user, one known local role,
+and only positive local group IDs. Suspension, mute, and validation time remain
+operation-specific facts rather than structural invalidity.
 
 ### 5.2 Area policy
 
