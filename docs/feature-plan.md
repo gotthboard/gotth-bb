@@ -130,14 +130,17 @@ Exit evidence:
 
 ### A1-04: Authentik OIDC and session core
 
-Requirements: ID-001 through ID-009.
+Requirements: ID-001 through ID-013.
 
 Deliverables:
 
 - OIDC discovery and provider validation.
 - State, nonce, PKCE, callback, and one-time login-attempt storage.
 - Just-in-time local account/profile upsert without OIDC authorization claims.
-- Explicit audited first-administrator operator grant.
+- Exact-subject, reauthenticated, CSRF-protected first-run administrator claim
+  with atomic session revocation and the operator command retained as fallback.
+- Dedicated Authentik email-verified enrollment flow and board-only access
+  group, gated on explicit sibling-application bindings.
 - Opaque server-side session, rotation, expiration, revocation, logout.
 
 Exit evidence:
@@ -145,6 +148,10 @@ Exit evidence:
 - Controlled issuer tests cover success, state mismatch, nonce mismatch,
   invalid signature, wrong issuer/audience, expired attempt, replay, and
   attempted privilege injection through unapproved claims.
+- Concurrent browser/operator bootstrap evidence proves exactly one immutable
+  audit, one administrator, and permanent closure after success.
+- Enrollment evidence proves a new Authentik user joins only the board access
+  group and receives only the local member role on first login.
 - Logs and browser state contain no token leaks.
 
 ### A1-05: area access model
@@ -224,7 +231,7 @@ Deliverables:
 
 - Immutable release artifact tagged `1.0.0-alpha.1`.
 - Caddy `bb.alhstudios.com` site, runtime service, PostgreSQL, and Authentik
-  client configured in the alpha environment.
+  client/enrollment flow configured in the alpha environment.
 - Migration, smoke-test, and rollback commands.
 - Deployment record containing release commit and migration state.
 

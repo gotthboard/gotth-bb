@@ -178,14 +178,51 @@ expose hard-coded paths.
    role/group assignment, and creates a new server-side session.
 6. The old anonymous/login cookie state is rotated away.
 
-### 6.2 Local account state
+### 6.2 First-run administrator
+
+The browser setup route is enabled only when the deployment supplies one exact
+OIDC subject. A fresh install may direct an anonymous browser through the normal
+OIDC login with `/setup` as the validated return path. The resulting local
+member may view and submit setup only when its stored `(issuer, subject)` equals
+the configured issuer and subject and the session has passed the ordinary
+freshness check. Email, username, display name, registration order, and OIDC
+role/group claims are never bootstrap authority.
+
+The setup mutation requires the session-derived CSRF token and generated
+request ID. One transaction locks the governance singleton, proves there is no
+historical administrator-bootstrap audit and no active administrator, locks the
+exact current session and designated identity, changes that user from member to
+administrator, writes an immutable self-bootstrap audit, and revokes the
+elevating session. After commit the browser cookie is expired and the user
+authenticates again. Concurrent setup or operator attempts serialize at the
+same governance lock; exactly one can commit. The existing operator executable
+remains a non-browser fallback and obeys the same permanent-close test.
+
+### 6.3 Authentik enrollment
+
+The board owns no registration form or password. `GET /register` redirects to
+one validated same-origin Authentik enrollment flow and supplies only the
+board's absolute `/login` URL as its post-enrollment return. The deployment
+blueprint creates users inactive, requires verified email before activation,
+places new users in the dedicated `gotth-bb-users` group, and signs them into
+Authentik only after verification. The board application is bound to that
+group; the OIDC callback still creates only a local member.
+
+"Board-only" describes application access, not a separate Authentik identity
+store. Before enrollment is enabled, every other application in the shared
+Authentik directory must have an explicit binding that excludes the board
+group. Authentik's default access for an application with no bindings is open
+to all users, so an unbound sibling application blocks activation. Deployments
+requiring hard identity-store isolation use a separate identity authority.
+
+### 6.4 Local account state
 
 The forum stores display information for rendering and forum state for
 operation. Authentik-sourced fields are distinguished from forum-owned fields.
 A forum suspension never modifies Authentik. An Authentik disable does not
 delete authored content.
 
-### 6.3 Identity and local-authorization freshness
+### 6.5 Identity and local-authorization freshness
 
 Version 1.0 does not store Authentik administrative credentials or user refresh
 tokens. Approved profile claims are refreshed at successful authentication.
@@ -209,7 +246,7 @@ reauthorization. The exact Authentik revalidation window is an owner decision
 and no code may claim immediate disable propagation unless the deployed
 integration actually provides and verifies it.
 
-### 6.4 Logout
+### 6.6 Logout
 
 Local logout revokes the server-side session and expires the cookie. Optional
 RP-initiated Authentik logout is a separate redirect after local revocation; a

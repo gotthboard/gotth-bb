@@ -113,6 +113,8 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
+| `BOOTSTRAP_ADMIN_SUBJECT` | Yes | Exact verified OIDC subject allowed to claim first-run administration |
+| `REGISTRATION_URL` | Yes | Exact same-origin Authentik enrollment-flow URL |
 | `SESSION_COOKIE_NAME` | No | Defaults to `gotth_bb_session` |
 | `SESSION_MAX_AGE` | Yes | Absolute authenticated-session lifetime |
 | `SESSION_IDLE_TIMEOUT` | Yes | Idle session expiry |
@@ -156,6 +158,15 @@ Rules:
   separate provider-specific path.
 - OIDC callback is computed as `PUBLIC_BASE_URL + /auth/callback`; it is not a
   separate free-form setting.
+- `BOOTSTRAP_ADMIN_SUBJECT` is 1 through 512 valid UTF-8 characters without
+  controls. It is compared only with the verified subject stored for the
+  current local account and is never rendered, logged, or accepted from a
+  browser.
+- `REGISTRATION_URL` must share the exact scheme and authority of
+  `OIDC_ISSUER_URL`, use HTTPS in production, have the canonical
+  `/if/flow/<flow_slug>/` path, and contain no credentials, query, or fragment.
+  The registration handler appends the application-owned absolute `/login`
+  return URL; browser input cannot select the enrollment authority or return.
 - OIDC claims never assign forum roles or local group membership.
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.
@@ -628,23 +639,50 @@ timestamp and receives a fresh absolute expiry of that timestamp plus the
 configured session maximum age; it does not inherit the old session's remaining
 lifetime after successful fresh OIDC verification.
 
-The first administrator is granted only through an explicit operator command
-against an already provisioned `(issuer, subject)` identity. The command
-requires database/operator authority, rejects a missing or ambiguous identity,
-locks the singleton governance row, requires that zero active administrators
-exist, and commits the local role change with an immutable
-`actor_kind=operator` audit event. Concurrent or later bootstrap attempts fail.
-After the governance lock and zero-count check, one generated statement row-
-locks the exact active target user, changes only its role/update timestamp, and
-inserts the operator audit event from the previous/resulting role values. A
-missing or currently suspended target returns no row and the transaction fails.
-The exported governance operation returns user and audit IDs only after commit,
-never retries an unknown outcome, and is callable only by the separate operator
-executable rather than any browser or OIDC path.
-Normal administrator-role/suspension transitions lock the same row and reject
-any result with zero active administrators. OIDC claims do not bootstrap or
-restore local privileges, and the command never invents a forum-user actor for
-the first grant.
+The first administrator can be granted through the exact-subject browser setup
+or the explicit operator fallback. Both operations lock the same governance
+singleton and require both zero historical `bootstrap_administrator` audit rows
+and zero active administrators. This makes the bootstrap permanently one-time,
+including after later account suspension or database repair. Concurrent browser
+and operator attempts serialize; exactly one may commit.
+
+`GET /setup` and `POST /setup/administrator` are no-store routes. When setup is
+open, anonymous GET redirects through `/login?return=/setup`; an authenticated
+but stale session redirects through revalidation. Only a current local member
+whose stored issuer and subject match `OIDC_ISSUER_URL` and
+`BOOTSTRAP_ADMIN_SUBJECT` receives the confirmation form. POST requires the
+session-derived CSRF value, a fresh session, and a generated request ID. The
+transaction rechecks the exact positive session ID, user ID, issuer, subject,
+active account state, bootstrap history, and administrator count under locks;
+then changes the role, writes one `actor_kind=forum_user` audit with actor and
+target equal to that user, and revokes the elevating session before commit.
+After success the handler expires the cookie and redirects through a fresh OIDC
+login. Failure commits none of those writes and exposes no configured identity.
+
+The operator fallback targets an already provisioned `(issuer, subject)`, emits
+`actor_kind=operator`, obeys the same history/administrator closure checks, and
+never invents a forum-user actor. Both exported operations return IDs only after
+commit and never retry an unknown outcome. Normal administrator-role and
+suspension transitions lock the same governance row and reject a result with
+zero active administrators. OIDC claims do not bootstrap or restore local
+privileges.
+
+### 8.4 Authentik self-registration
+
+`GET /register` performs no local account mutation. It redirects to the exact
+configured Authentik enrollment flow with the absolute local `/login` endpoint
+as the sole `next` value. The Authentik blueprint uses prompt, user-write, email
+verification, and user-login stages; the user-write stage creates an inactive
+external user directly in `gotth-bb-users`, and email verification activates
+the account. The board application has an `any`-mode binding to that group.
+
+Enrollment activation is an operational gate: inventory every sibling
+Authentik application and require at least one explicit enabled access binding
+that excludes `gotth-bb-users`. An unbound sibling application blocks claiming
+site-only registration because Authentik grants it to all users by default.
+The enrollment blueprint is applied only after the designated first
+administrator has completed setup. The OIDC callback remains the sole local
+account creation path and always creates `RoleMember`.
 
 ## 9. Session implementation
 
@@ -695,8 +733,11 @@ Internal routes are shown relative to the configured external base URL.
 | --- | --- | --- | --- |
 | `GET` | `/` | Area index | Visitor |
 | `GET` | `/login` | Start Authentik login | Visitor |
+| `GET` | `/register` | Redirect to the fixed Authentik enrollment flow | Visitor |
 | `GET` | `/auth/callback` | OIDC callback | Login attempt |
 | `GET` | `/auth/revalidate` | Start session-bound Authentik revalidation | Member session |
+| `GET` | `/setup` | First-administrator confirmation | Designated fresh member session |
+| `POST` | `/setup/administrator` | Claim first administration and revoke elevating session | Designated fresh member session |
 | `POST` | `/logout` | Revoke local session | Member |
 | `GET` | `/areas/{slug}` | Area topic list | Area viewer |
 | `GET` | `/topics/{id}` | Topic and posts | Area viewer |
@@ -789,12 +830,13 @@ Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
 bounded.
 
-The browser router activates `/login`, `/auth/callback`, `/auth/revalidate`,
-and `/logout` as exact paths. Session lookup wraps only exact routes that can
+The browser router activates `/login`, `/register`, `/auth/callback`,
+`/auth/revalidate`, `/setup`, `/setup/administrator`, and `/logout` as exact
+paths. Session lookup wraps only exact routes that can
 consume identity: `/`; one-segment `GET /areas/{slug}`; canonical
 positive-decimal one-segment `GET /topics/{id}`; the exact publishing,
 preview, edit, delete, topic-moderation, account-status, suspend, and reinstate
-routes listed above; revalidation; and logout. Every numeric identifier must
+routes listed above; setup; revalidation; and logout. Every numeric identifier must
 pass the canonical parser before session lookup. Noncanonical escaped paths,
 malformed or nested paths, wrong methods, health, static, and unknown paths go
 directly to the public router and cannot become unavailable merely because the

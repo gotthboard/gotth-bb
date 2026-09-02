@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.2 |
+| Document version | 0.3 |
 | Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -72,10 +72,10 @@ areas. Every role grant and content-changing moderator action is audited.
 
 ### 4.4 Administrator
 
-A member granted the forum-local administrator role through the explicit
-bootstrap/operator procedure or by an existing administrator. An administrator
-manages areas, access rules, local roles and groups, local account state, and
-site settings. Administrative changes are audited.
+A member granted the forum-local administrator role through the exact-subject
+first-run procedure, the operator fallback, or by an existing administrator.
+An administrator manages areas, access rules, local roles and groups, local
+account state, and site settings. Administrative changes are audited.
 
 ### 4.5 Identity authority
 
@@ -109,6 +109,24 @@ claims never grant moderator, administrator, or area-access privileges.
   the configured maximum session-validation interval.
 - **ID-009:** The forum shall not store passwords, recovery codes, or Authentik
   administrative credentials.
+- **ID-010:** A fresh deployment may expose one first-run administrator claim
+  only to the freshly reauthenticated local account whose verified issuer and
+  subject match the immutable deployment configuration. The claim shall be
+  CSRF-protected, serialized with administrator governance, audited, revoke the
+  elevating session, and close permanently after the first successful
+  bootstrap. The first arbitrary registrant shall never become administrator.
+- **ID-011:** The forum shall delegate self-registration to one configured
+  Authentik enrollment flow. Successful enrollment shall create an Authentik
+  identity eligible only for the board application and shall still create only
+  an ordinary local `member` on first OIDC login.
+- **ID-012:** A deployment shall not advertise registration as board-only while
+  another application in the shared Authentik directory remains accessible to
+  all users. Every other application must explicitly exclude the board
+  enrollment group, or the board must use a separately isolated identity
+  authority.
+- **ID-013:** Registration and first-run administration shall be independent.
+  Enabling registration shall not grant, imply, or restore any forum-local
+  role, group membership, area permission, or administrative authority.
 
 ### 5.2 Area access model
 
