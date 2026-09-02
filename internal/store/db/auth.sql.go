@@ -52,7 +52,13 @@ SELECT
     session.validated_at,
     session.expires_at,
     forum_user.role,
-    forum_user.muted_until
+    forum_user.muted_until,
+    ARRAY(
+        SELECT membership.group_id
+        FROM public.forum_group_members AS membership
+        WHERE membership.user_id = forum_user.id
+        ORDER BY membership.group_id
+    )::bigint[] AS group_ids
 FROM public.sessions AS session
 JOIN public.users AS forum_user ON forum_user.id = session.user_id
 WHERE session.token_hash = $1
@@ -81,6 +87,7 @@ type GetActiveSessionRow struct {
 	ExpiresAt   pgtype.Timestamptz
 	Role        string
 	MutedUntil  pgtype.Timestamptz
+	GroupIds    []int64
 }
 
 func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionParams) (GetActiveSessionRow, error) {
@@ -95,6 +102,7 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.ExpiresAt,
 		&i.Role,
 		&i.MutedUntil,
+		&i.GroupIds,
 	)
 	return i, err
 }

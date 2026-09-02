@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:24 CDT — Load current session group authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/queries/auth.sql`
+- `internal/store/db/auth.sql.go`
+- `internal/store/db/auth_active_session_test.go`
+- `internal/auth/initial_session_integration_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Extended the active-session query with the authenticated user's current local
+group IDs. A correlated indexed subquery keeps the session row singular,
+returns an empty non-null array for users without memberships, and orders IDs
+by the membership primary-key component so authorization snapshots are
+deterministic. Forum role, mute state, and memberships now come from one
+PostgreSQL statement and one MVCC snapshot; no browser value can supply them.
+
+Verification:
+
+- The generated binding test proves exact token/time arguments, every scanned
+  authority field, empty-safe array typing, and the required membership filter
+  and order clauses
+- PostgreSQL 17 passed ten complete initial-session integrations after two
+  memberships were inserted in reverse ID order; every lookup returned the
+  exact ascending IDs
+- The full repository generation, formatting, vet, race-detector, and coverage
+  gate passes
+
+Risks / non-goals:
+
+- The query allocates one `bigint[]` proportional to the user's current local
+  membership count, using the existing `(user_id, group_id)` index. Projecting
+  and structurally validating that array into `AccessContext` is the next
+  separate unit.
+
 ### 2026-09-01 19:24 CDT — Enforce topic-creation area policy
 
 Commit: current commit; hash assigned by Git after commit

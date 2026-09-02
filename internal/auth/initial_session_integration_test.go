@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -214,7 +215,7 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	secondTokenHash := sha256.Sum256([]byte(second.token))
 	if got, err := rotationQueries.GetActiveSession(ctx, db.GetActiveSessionParams{
 		TokenHash: secondTokenHash[:], ObservedAt: rotationObservedAt, IdleCutoff: rotationIdleCutoff,
-	}); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	}); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("old rotated GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 	if got, err := rotationQueries.GetActiveSession(ctx, db.GetActiveSessionParams{
@@ -364,10 +365,30 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	}
 	activeSession, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute))
 	if err != nil || activeSession.SessionID <= 0 || activeSession.UserID <= 0 ||
-		activeSession.Role != "member" ||
+		activeSession.Role != "member" || activeSession.GroupIds == nil || len(activeSession.GroupIds) != 0 ||
 		!activeSession.IssuedAt.Time.Equal(serviceTime) || !activeSession.LastSeenAt.Time.Equal(serviceTime) ||
 		!activeSession.ValidatedAt.Time.Equal(serviceTime) || !activeSession.ExpiresAt.Time.Equal(serviceExpiresAt) {
 		t.Fatalf("GetActiveSession() = (%+v, %v)", activeSession, err)
+	}
+	var firstGroupID, secondGroupID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by)
+VALUES ('Session authority first', $1) RETURNING id`, activeSession.UserID).Scan(&firstGroupID); err != nil {
+		t.Fatalf("insert first session-authority group: %v", err)
+	}
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by)
+VALUES ('Session authority second', $1) RETURNING id`, activeSession.UserID).Scan(&secondGroupID); err != nil {
+		t.Fatalf("insert second session-authority group: %v", err)
+	}
+	if firstGroupID >= secondGroupID {
+		t.Fatalf("session-authority group IDs = (%d, %d), want insertion order", firstGroupID, secondGroupID)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.forum_group_members (group_id, user_id, granted_by)
+VALUES ($1, $3, $3), ($2, $3, $3)`, secondGroupID, firstGroupID, activeSession.UserID); err != nil {
+		t.Fatalf("insert session-authority memberships: %v", err)
+	}
+	activeSession, err = authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute))
+	if err != nil || !reflect.DeepEqual(activeSession.GroupIds, []int64{firstGroupID, secondGroupID}) {
+		t.Fatalf("GetActiveSession() group IDs = (%v, %v), want [%d %d]", activeSession.GroupIds, err, firstGroupID, secondGroupID)
 	}
 	touchParams := db.TouchSessionParams{
 		ObservedAt: pgtype.Timestamptz{Time: authenticatedAt, Valid: true},
@@ -395,14 +416,14 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET last_seen_at = $1 WHERE id = $2", idleCutoff, activeSession.SessionID); err != nil {
 		t.Fatalf("set exact idle boundary: %v", err)
 	}
-	if got, err := authenticate(idleBoundaryAt, idleCutoff); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	if got, err := authenticate(idleBoundaryAt, idleCutoff); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("idle-boundary GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET last_seen_at = $1, expires_at = $2 WHERE id = $3",
 		serviceTime, authenticatedAt, activeSession.SessionID); err != nil {
 		t.Fatalf("set exact absolute boundary: %v", err)
 	}
-	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("expiry-boundary GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 	if _, err := connections[0].Exec(ctx, "UPDATE public.sessions SET expires_at = $1 WHERE id = $2", serviceExpiresAt, activeSession.SessionID); err != nil {
@@ -412,7 +433,7 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 		serviceTime, activeSession.UserID); err != nil {
 		t.Fatalf("suspend active user: %v", err)
 	}
-	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("suspended GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 	if _, err := connections[0].Exec(ctx, "UPDATE public.users SET suspended_until = $1 WHERE id = $2", authenticatedAt, activeSession.UserID); err != nil {
@@ -442,7 +463,7 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	if revoked, err := service.RevokeSession(ctx, serviceToken); err != nil || revoked {
 		t.Fatalf("repeated Service.RevokeSession() = (%t, %v), want false/nil", revoked, err)
 	}
-	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	if got, err := authenticate(authenticatedAt, authenticatedAt.Add(-30*time.Minute)); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("revoked GetActiveSession() = (%+v, %v), want zero/no rows", got, err)
 	}
 	if touched, err := service.queries.TouchSession(ctx, db.TouchSessionParams{
@@ -493,7 +514,7 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 	revalidationIdleCutoff := pgtype.Timestamptz{Time: revalidationAt.Add(-30 * time.Minute), Valid: true}
 	if got, err := service.queries.GetActiveSession(ctx, db.GetActiveSessionParams{
 		TokenHash: revalidationOldHash[:], ObservedAt: revalidationObservedAt, IdleCutoff: revalidationIdleCutoff,
-	}); !errors.Is(err, pgx.ErrNoRows) || got != (db.GetActiveSessionRow{}) {
+	}); !errors.Is(err, pgx.ErrNoRows) || !reflect.DeepEqual(got, db.GetActiveSessionRow{}) {
 		t.Fatalf("service old revalidated session = (%+v, %v), want zero/no rows", got, err)
 	}
 	if got, err := service.queries.GetActiveSession(ctx, db.GetActiveSessionParams{
