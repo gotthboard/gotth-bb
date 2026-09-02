@@ -176,6 +176,10 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 								<div>
 									<h2 id={ post.Anchor + "-author" } class="font-semibold text-white">{ post.Author }</h2>
 									<p class="mt-1 text-sm text-slate-400">
+										if post.AuthorStatusURL != "" {
+											<a href={ post.AuthorStatusURL } hx-get={ post.AuthorStatusURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200 hover:text-cyan-100">Account status</a>
+											<span> · </span>
+										}
 										Posted { post.Created }
 										if post.Edited != "" {
 											<span> · { post.Edited }</span>
@@ -221,6 +225,50 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 
 templ publishingFormPage(view pageView, form publishingFormView) {
 	@document(view, publishingFormContent(view, form))
+}
+
+templ moderationUserPage(view pageView, user moderationUserView) {
+	@document(view, moderationUserContent(view, user))
+}
+
+templ moderationUserContent(view pageView, user moderationUserView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-3xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-600">/</span>
+			<span aria-current="page" class="text-slate-400">Account status</span>
+		</nav>
+		<section aria-labelledby="account-status-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Local account</p>
+			<h1 id="account-status-title" class="text-3xl font-bold tracking-tight text-white">{ user.DisplayName }</h1>
+			<dl class="mt-8 grid gap-4 sm:grid-cols-2">
+				<div><dt class="text-sm text-slate-400">Role</dt><dd class="font-semibold text-white">{ user.RoleLabel }</dd></div>
+				<div><dt class="text-sm text-slate-400">Status</dt><dd class="font-semibold text-white">{ user.StatusLabel }</dd></div>
+				<div><dt class="text-sm text-slate-400">Joined</dt><dd class="text-slate-200">{ user.CreatedAt }</dd></div>
+				<div><dt class="text-sm text-slate-400">Last local login</dt><dd class="text-slate-200">{ user.LastLoginAt }</dd></div>
+				if user.SuspendedAt != "" {
+					<div><dt class="text-sm text-slate-400">Suspended at</dt><dd class="text-slate-200">{ user.SuspendedAt }</dd></div>
+				}
+				if user.SuspendedUntil != "" {
+					<div><dt class="text-sm text-slate-400">Suspended until</dt><dd class="text-slate-200">{ user.SuspendedUntil }</dd></div>
+				}
+				if user.MutedUntil != "" {
+					<div><dt class="text-sm text-slate-400">Muted until</dt><dd class="text-slate-200">{ user.MutedUntil }</dd></div>
+				}
+				if user.SuspensionReason != "" {
+					<div class="sm:col-span-2"><dt class="text-sm text-slate-400">Suspension reason</dt><dd class="break-words text-slate-200">{ user.SuspensionReason }</dd></div>
+				}
+			</dl>
+			<form method="post" action={ user.ActionURL } hx-post={ user.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-8 grid gap-3 rounded-lg border border-amber-800/70 bg-amber-950/20 p-4">
+				<input type="hidden" name="_csrf" value={ user.CSRFToken }/>
+				<label class="grid gap-2 font-semibold text-amber-100">
+					Moderation reason
+					<input type="text" name="reason" required maxlength="500" autocomplete="off" class="rounded-md border border-amber-800 bg-slate-950 px-3 py-2 text-white"/>
+				</label>
+				<button type="submit" class="w-fit rounded-md border border-amber-700 px-4 py-2 font-semibold text-amber-100 hover:border-amber-500">{ user.SubmitLabel }</button>
+			</form>
+		</section>
+	</main>
 }
 
 templ publishingFormContent(view pageView, form publishingFormView) {

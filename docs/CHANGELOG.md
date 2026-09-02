@@ -5,6 +5,62 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 04:00 CDT — Wire browser account suspension controls
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/implementation-spec.md`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/moderation_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/user_id.go`
+- `internal/httpui/user_moderation_handler.go`
+- `internal/httpui/user_moderation_handler_test.go`
+- `internal/httpui/view.go`
+
+Explanation:
+
+Added exact authenticated account-status, suspend, and reinstate browser routes
+and wired them to the privacy-bounded read model and audited transaction.
+Active staff receive non-self account-status links beside post authors. The
+page exposes only local moderation state and one strict reason form for the
+target's effective current state.
+
+Both reads and writes require a current session and Authentik revalidation.
+Writes verify CSRF before bounded strict form parsing, use the server request
+identifier as the audit UUID, validate the committed result, and redirect
+through the `/bb`-aware URL builder. The store/service transaction remains the
+final authority for role hierarchy, self-action denial, and administrator
+continuity.
+
+Verification:
+
+- Exact route, canonical-ID, wrong-method, query, authentication,
+  revalidation, CSRF, strict-form, typed-error, malformed-result, and redirect
+  behavior
+- Full-page and HTMX active/suspended status rendering without email or
+  identity-provider disclosure
+- Staff-only, non-self post-author account links with service-side privacy
+  enforcement retained
+- Response-write failure propagation and complete presentation-state closure
+
+Risks / non-goals:
+
+- A moderator can see an account-status link for a staff-authored post, but the
+  privacy-bounded read returns the same `404` as a missing account; expanding
+  every topic row with author role solely to suppress that harmless link is not
+  justified
+- This is not an account directory, report queue, or general user-management
+  interface
+- No deployment or release state is changed
+
 ### 2026-09-02 03:42 CDT — Add the local account-status read model
 
 Commit: current commit; hash assigned by Git after commit

@@ -12,6 +12,8 @@ import (
 
 const maxLogoutFormBytes = 4096
 
+type userModerationLinksContextKey struct{}
+
 // AuthenticationService is the exact initial-login and local-session surface
 // consumed by the browser router.
 type AuthenticationService interface {
@@ -50,7 +52,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -80,7 +82,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
@@ -111,13 +113,13 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, sessionCookieName, secure,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, sessionCookieName, secure,
 	)
 }
 
 // NewAuthenticatedModeratedForumHandler constructs the alpha browser boundary
-// with the complete forum surface plus staff topic lock/unlock and hide/restore
-// controls.
+// with the complete forum surface plus staff topic lock/unlock, hide/restore,
+// account-status, and account suspend/reinstate controls.
 //
 // Complexity: construction and dispatch retain NewAuthenticatedHandler's
 // bounds; delegated publishing, editing, and moderation services retain their
@@ -137,15 +139,18 @@ func NewAuthenticatedModeratedForumHandler(
 	deletePost PostDeleter,
 	changeTopicLock TopicLockChanger,
 	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
-	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil {
+	if createTopic == nil || createReply == nil || loadEditablePost == nil || editPost == nil || deletePost == nil || changeTopicLock == nil || changeTopicVisibility == nil || loadModerationUser == nil || changeUserSuspension == nil {
 		return nil, fmt.Errorf("browser moderated forum services are required")
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility, sessionCookieName, secure,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
+		loadModerationUser, changeUserSuspension, sessionCookieName, secure,
 	)
 }
 
@@ -154,8 +159,9 @@ func NewAuthenticatedModeratedForumHandler(
 //
 // Complexity: construction is tight Theta(1). For path bytes p and delegated
 // work D, dispatch is O(p+D) time and tight Theta(1) local auxiliary space;
-// canonical moderation-path recognition scans p at most four times and reply
-// recognition scans p at most twice. No request is retried.
+// canonical topic-moderation path recognition scans p at most four times,
+// account-moderation recognition scans p at most twice, and reply recognition
+// scans p at most twice. No request is retried.
 func newAuthenticatedHandler(
 	builder URLBuilder,
 	service AuthenticationService,
@@ -171,6 +177,8 @@ func newAuthenticatedHandler(
 	deletePost PostDeleter,
 	changeTopicLock TopicLockChanger,
 	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
@@ -180,6 +188,12 @@ func newAuthenticatedHandler(
 	publicHandler, err := NewHandler(builder, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage)
 	if err != nil {
 		return nil, fmt.Errorf("construct public browser routes: %w", err)
+	}
+	if loadModerationUser != nil && changeUserSuspension != nil {
+		basePublicHandler := publicHandler
+		publicHandler = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			basePublicHandler.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), userModerationLinksContextKey{}, true)))
+		})
 	}
 	loginHandler, err := newLoginStartHandler(
 		service.BeginInitialLogin, initialLoginStateCookieSuffix, sessionCookieName, builder, secure,
@@ -300,6 +314,22 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct moderation session boundary: %w", moderationErr)
 		}
 	}
+	var authenticatedUserModerationHandler http.Handler
+	if loadModerationUser != nil || changeUserSuspension != nil {
+		if loadModerationUser == nil || changeUserSuspension == nil {
+			return nil, fmt.Errorf("browser user moderation services are incomplete")
+		}
+		userModerationHandler, moderationErr := newUserModerationHandler(builder, loadModerationUser, changeUserSuspension)
+		if moderationErr != nil {
+			return nil, fmt.Errorf("construct user moderation routes: %w", moderationErr)
+		}
+		authenticatedUserModerationHandler, moderationErr = newSessionAuthenticationHandler(
+			userModerationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if moderationErr != nil {
+			return nil, fmt.Errorf("construct user moderation session boundary: %w", moderationErr)
+		}
+	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -323,6 +353,26 @@ func newAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedUserModerationHandler != nil && request.URL.RawPath == "" &&
+				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
+				identifierAndSuffix, userPath := strings.CutPrefix(request.URL.Path, "/moderation/users/")
+				identifier := identifierAndSuffix
+				validAction := request.Method == http.MethodGet
+				if request.Method == http.MethodPost {
+					validAction = false
+					for _, suffix := range [...]string{"/suspend", "/reinstate"} {
+						if identifier, validAction = strings.CutSuffix(identifierAndSuffix, suffix); validAction {
+							break
+						}
+					}
+				}
+				if userPath && validAction && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseUserID(identifier); identifierErr == nil {
+						authenticatedUserModerationHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedModerationHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
 				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
 				identifier, moderationPath := "", false

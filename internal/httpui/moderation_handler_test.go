@@ -245,7 +245,7 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	}
 	if missing, missingErr := NewAuthenticatedModeratedForumHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
+		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		"gotth_bb_session", true,
 	); missingErr == nil || missing != nil {
 		t.Fatalf("NewAuthenticatedModeratedForumHandler(missing) = (%v, %v)", missing, missingErr)
@@ -278,6 +278,12 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 				state = policy.TopicOpen
 			}
 			return moderation.TopicTransitionResult{TopicID: 41, State: state, AuditID: 72}, nil
+		},
+		func(context.Context, auth.AccessContext, int64) (store.ModerationUserStatus, error) {
+			panic("load user moderation")
+		},
+		func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.UserSuspensionResult, error) {
+			panic("change user suspension")
 		},
 		"gotth_bb_session", true,
 	)

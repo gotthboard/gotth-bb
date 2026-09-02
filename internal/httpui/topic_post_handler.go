@@ -136,6 +136,10 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 		if viewErr == nil && int64(pageNumber) < loaded.TotalPages && pageNumber < maximumPage {
 			nextURL, viewErr = builder.PathWithQuery(segments, url.Values{"page": {strconv.FormatInt(int64(pageNumber+1), 10)}})
 		}
+		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
+		moderationLinks, _ := request.Context().Value(userModerationLinksContextKey{}).(bool)
+		activeStaffLinks := moderationLinks && staff && authentication.Access.Authenticated &&
+			!authentication.Access.Suspended && authentication.Access.MutedUntil == nil
 		posts := make([]topicPostItem, 0, len(loaded.Rows))
 		if loaded.TotalPosts > 0 {
 			for _, row := range loaded.Rows {
@@ -165,6 +169,14 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 					Created: row.PostCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"), Edited: edited,
 					Body: contentrender.SanitizeHTML(row.RenderedHtml.String),
 				})
+				if activeStaffLinks && row.PostAuthorID.Int64 != authentication.Access.UserID {
+					statusURL, statusErr := builder.Path("moderation", "users", strconv.FormatInt(row.PostAuthorID.Int64, 10))
+					if statusErr != nil {
+						viewErr = statusErr
+						break
+					}
+					posts[len(posts)-1].AuthorStatusURL = statusURL
+				}
 				if authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
 					row.PostAuthorID.Int64 == authentication.Access.UserID {
 					if int64(row.Revision.Int32) < maximumEditFormRevision {
@@ -193,7 +205,6 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
 			return
 		}
-		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
 		var moderationControls []topicModerationView
 		if staff && authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil {
 			token := csrfTokenFromContext(request.Context())

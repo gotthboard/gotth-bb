@@ -69,17 +69,33 @@ type topicModerationView struct {
 }
 
 type topicPostItem struct {
-	Anchor    string
-	Permalink string
-	Number    int32
-	Author    string
-	Created   string
-	Edited    string
-	EditURL   string
-	DeleteURL string
-	CSRFToken string
-	Revision  string
-	Body      contentrender.TrustedHTML
+	Anchor          string
+	Permalink       string
+	Number          int32
+	Author          string
+	AuthorStatusURL string
+	Created         string
+	Edited          string
+	EditURL         string
+	DeleteURL       string
+	CSRFToken       string
+	Revision        string
+	Body            contentrender.TrustedHTML
+}
+
+type moderationUserView struct {
+	DisplayName      string
+	RoleLabel        string
+	StatusLabel      string
+	SuspensionReason string
+	SuspendedAt      string
+	SuspendedUntil   string
+	MutedUntil       string
+	CreatedAt        string
+	LastLoginAt      string
+	ActionURL        string
+	CSRFToken        string
+	SubmitLabel      string
 }
 
 type publishingFormView struct {

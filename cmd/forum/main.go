@@ -177,6 +177,12 @@ func run(
 		func(moderationContext context.Context, access auth.AccessContext, topicID int64, hide bool, reason string, requestID pgtype.UUID) (moderationservice.TopicTransitionResult, error) {
 			return moderationservice.ChangeTopicVisibility(moderationContext, pool, time.Now, access, topicID, hide, reason, requestID)
 		},
+		func(moderationContext context.Context, access auth.AccessContext, userID int64) (store.ModerationUserStatus, error) {
+			return store.GetModerationUserStatus(moderationContext, queries, access, userID, time.Now())
+		},
+		func(moderationContext context.Context, access auth.AccessContext, userID int64, suspend bool, reason string, requestID pgtype.UUID) (moderationservice.UserSuspensionResult, error) {
+			return moderationservice.ChangeUserSuspension(moderationContext, pool, time.Now, access, userID, suspend, reason, requestID)
+		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

@@ -710,6 +710,9 @@ Internal routes are shown without the external `/bb` prefix.
 | `POST` | `/reports` | Create report | Member |
 | `GET` | `/moderation/reports` | Moderation queue | Moderator |
 | `POST` | `/moderation/actions` | Moderation transition | Moderator |
+| `GET` | `/moderation/users/{id}` | Local account status | Moderator |
+| `POST` | `/moderation/users/{id}/suspend` | Suspend local account | Moderator |
+| `POST` | `/moderation/users/{id}/reinstate` | Reinstate local account | Moderator |
 | `GET` | `/admin/areas` | Area management | Administrator |
 | `POST` | `/admin/areas` | Create area | Administrator |
 | `POST` | `/admin/areas/{id}` | Change area | Administrator |
@@ -942,9 +945,20 @@ may read only another member; active administrators may read any other local
 account. Self, unauthorized, malformed, and missing targets share one no-row
 result. SQL applies the role/target filter before returning the fixed-width
 row, and the store boundary independently closes role, timestamps, suspension
-consistency, and effective observation-time status before presentation. The
-browser page and mutation controls consume this read model in the next bounded
-unit.
+consistency, and effective observation-time status before presentation.
+
+The exact account-status browser route requires a current local session and
+Authentik revalidation and rechecks the typed read model's structural
+presentation invariants before rendering. Active staff receive non-self
+account-status links beside post authors; the privacy-bounded query remains
+final authority, so a moderator
+cannot use a link or direct route to inspect another staff account. The page
+contains exactly one bounded reason form for the target's current effective
+state. Exact POST-only suspend/reinstate routes verify session CSRF before
+strict form parsing, use the server request identifier as the audit UUID, map
+typed service failures without target disclosure, validate the committed
+result, and navigate to the builder-owned account-status URL. The transaction
+remains final authority if target or actor state changes after rendering.
 
 ## 15. Migrations
 
