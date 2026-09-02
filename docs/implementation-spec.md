@@ -787,16 +787,17 @@ Use POST for browser mutations. Method override tricks are not required in
 version 1.0. Route bodies, path IDs, query lengths, and pagination sizes are
 bounded.
 
-The browser router activates `/login`, `/auth/callback`, and `/logout` as exact
-paths. Session lookup wraps only exact routes that can consume identity; in the
-current shell those are `/`, one-segment `GET /areas/{slug}` requests,
-canonical positive-decimal one-segment `GET /topics/{id}` requests, and
-`/logout`. Topic IDs must pass the canonical parser before session lookup.
-Noncanonical escaped paths,
-malformed/nested read paths, wrong methods, health, static, and unknown paths go
+The browser router activates `/login`, `/auth/callback`, `/auth/revalidate`,
+and `/logout` as exact paths. Session lookup wraps only exact routes that can
+consume identity: `/`; one-segment `GET /areas/{slug}`; canonical
+positive-decimal one-segment `GET /topics/{id}`; the exact publishing,
+preview, edit, delete, topic-moderation, account-status, suspend, and reinstate
+routes listed above; revalidation; and logout. Every numeric identifier must
+pass the canonical parser before session lookup. Noncanonical escaped paths,
+malformed or nested paths, wrong methods, health, static, and unknown paths go
 directly to the public router and cannot become unavailable merely because the
-session store is unavailable. No broader `/areas/` or `/topics/` prefix receives
-session authority.
+session store is unavailable. No broader `/areas/`, `/topics/`, `/posts/`, or
+`/moderation/` prefix receives session authority.
 
 ## 11. Full-page and HTMX responses
 
