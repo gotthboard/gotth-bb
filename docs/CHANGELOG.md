@@ -5,6 +5,51 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 09:25 CDT — Add release and load-time footer
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `docs/release-operations.md`
+- `internal/httpui/footer_load_times.go`
+- `internal/httpui/footer_load_times_test.go`
+- `internal/httpui/render.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+
+Changed:
+
+- Replaced the generic footer sentence on complete pages with Forgejo-style
+  software evidence: product name, validated release version, elapsed page
+  time, and elapsed Templ render time.
+- Defined page time as the interval from the browser-handler boundary to footer
+  rendering, and template time as the interval from the selected component's
+  render entry to the same footer instant. Neither value falsely claims to
+  include closing markup or response transport.
+- Kept HTMX fragments footer-free and exposed the semantic version only; the
+  full commit remains confined to operator output and structured startup logs.
+- Used a request-scoped immutable timing value with one shared footer timestamp,
+  monotonic-capable clock arithmetic, and zero clamping for a defective clock.
+
+Verification:
+
+- Focused `internal/httpui` and `cmd/forum` tests pass under the race detector.
+- Every function in the new footer load-time boundary has 100% statement
+  coverage, including invalid dependencies, invalid version text, negative
+  durations, full-page output, and HTMX fragment behavior.
+- Full repository verification is run again after this generated-template
+  change is committed, because the generation-drift gate correctly rejects an
+  expected uncommitted generated-file delta.
+
+Not included:
+
+- This commit is not pushed or deployed. It does not resume the stopped
+  administrator bootstrap, release merge, or tag work.
+
 ### 2026-09-02 08:30 CDT — Wire fail-closed database readiness
 
 Commit: current commit; hash assigned by Git after commit

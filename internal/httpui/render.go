@@ -27,12 +27,15 @@ func renderResponse(response http.ResponseWriter, request *http.Request, status 
 		return fmt.Errorf("HTMX fragment component is required")
 	}
 	selected := page
+	renderContext := request.Context()
 	if selectResponseMode(response, request) == responseModeFragment {
 		selected = fragment
+	} else {
+		renderContext = withFooterTemplateStart(renderContext)
 	}
 	buffer := templ.GetBuffer()
 	defer templ.ReleaseBuffer(buffer)
-	if err := selected.Render(request.Context(), buffer); err != nil {
+	if err := selected.Render(renderContext, buffer); err != nil {
 		return fmt.Errorf("render HTML response: %w", err)
 	}
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")

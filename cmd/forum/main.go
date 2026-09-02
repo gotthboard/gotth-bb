@@ -208,6 +208,10 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct authenticated HTTP routes: %w", err)
 	}
+	applicationHandler, err = httpui.NewFooterLoadTimesHandler(applicationHandler, release.Version, time.Now)
+	if err != nil {
+		return fmt.Errorf("construct footer load-time boundary: %w", err)
+	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	handler, err := app.NewHTTPHandler(applicationHandler, logger, rand.Reader, time.Now)
 	if err != nil {

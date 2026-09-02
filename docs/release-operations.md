@@ -114,9 +114,10 @@ The release pipeline produces:
 - Pinned HTMX and compiled/versioned Tailwind/static assets.
 - Software bill of materials or dependency manifest.
 - Checksums/digests.
-- Version information exposed through the database-free migration/operator
-  `version` commands and structured forum startup log, not a public sensitive
-  endpoint.
+- The validated semantic version is shown in the public page footer. The full
+  commit remains available through the database-free migration/operator
+  `version` commands and structured forum startup log; it is not exposed by a
+  public commit endpoint.
 
 The repository's `make release` target requires explicit `RELEASE_VERSION`,
 `RELEASE_COMMIT`, `RELEASE_GOOS`, `RELEASE_GOARCH`, and `RELEASE_OUTPUT`
@@ -276,6 +277,8 @@ must not duplicate migrations, seed users, or moderation data.
 Every deployed prerelease verifies:
 
 - `/` serves the public index through the dedicated Caddy site.
+- Complete pages show the validated release version and bounded page/template
+  render durations; HTMX fragments do not duplicate the page footer.
 - Public index behavior matches site policy.
 - Authentik login begins with the correct callback and returns successfully.
 - Eligible member local provisioning succeeds.
