@@ -266,55 +266,68 @@ templ areaTopicListPage(view pageView, area areaTopicListView) {
 }
 
 templ areaTopicListContent(view pageView, area areaTopicListView) {
-	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
-		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
-			<span aria-hidden="true" class="px-2 text-slate-600">/</span>
-			<span aria-current="page" class="text-slate-400">{ area.Name }</span>
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-3 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 shadow-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-800 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">Board index</a>
+			<span aria-hidden="true" class="px-2 text-slate-400">›</span>
+			<span aria-current="page">{ area.Name }</span>
 		</nav>
-		<section aria-labelledby="area-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
-			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Discussion area</p>
-			<h1 id="area-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">{ area.Name }</h1>
-			if area.Description != "" {
-				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">{ area.Description }</p>
-			}
+		<div class="mb-3 flex flex-wrap items-end justify-between gap-3">
+			<div>
+				<h1 id="area-title" class="text-2xl font-bold tracking-tight text-slate-950">{ area.Name }</h1>
+				if area.Description != "" {
+					<p class="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{ area.Description }</p>
+				}
+			</div>
 			if area.NewTopicURL != "" {
-				<a href={ area.NewTopicURL } hx-get={ area.NewTopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="mt-6 inline-flex rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">New topic</a>
+				<a href={ area.NewTopicURL } hx-get={ area.NewTopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="inline-flex rounded border border-blue-950 bg-gradient-to-b from-blue-600 to-blue-800 px-4 py-2 text-sm font-bold text-white shadow-sm hover:from-blue-500 hover:to-blue-700">New topic</a>
 			}
+		</div>
+		<section aria-labelledby="area-title" class="overflow-hidden rounded border border-slate-400 bg-white shadow-sm">
+			<div class="hidden grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] gap-3 border-b border-blue-950 bg-gradient-to-b from-blue-700 to-blue-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white md:grid" aria-hidden="true">
+				<span>Topics</span><span class="text-center">Replies</span><span>Last activity</span>
+			</div>
 			if len(area.Topics) == 0 {
-				<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
+				<div role="status" aria-live="polite" class="m-4 rounded border border-dashed border-slate-400 bg-slate-50 p-5 text-slate-700">
 					No topics have been published in this area yet.
 				</div>
 			} else {
-				<p class="mt-4 text-sm text-slate-400">Page { area.Number } · { area.TotalTopics } topics available to you</p>
-				<ul class="mt-8 grid gap-4">
+				<p class="border-b border-slate-300 bg-slate-200 px-4 py-2 text-xs text-slate-700">Page { area.Number } · { area.TotalTopics } topics available to you</p>
+				<ul class="divide-y divide-slate-300">
 					for _, topic := range area.Topics {
-						<li class="rounded-lg border border-slate-700 bg-slate-950/60 p-6">
-							<div class="flex flex-wrap items-center gap-3 text-sm">
-								if topic.Pinned {
-									<span class="rounded-sm border border-slate-700 px-2 py-2 font-semibold text-cyan-300">Pinned</span>
-								}
-								<span class="text-slate-400">{ topic.StateLabel }</span>
+						<li class="grid gap-3 bg-slate-50 px-4 py-4 even:bg-slate-100 md:grid-cols-[minmax(0,1fr)_7rem_minmax(12rem,0.55fr)] md:items-center">
+							<div class="flex min-w-0 gap-3">
+								<span aria-hidden="true" class="mt-1 flex size-9 shrink-0 items-center justify-center rounded-full border border-blue-300 bg-blue-100 text-blue-800">●</span>
+								<div class="min-w-0">
+									<div class="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+										if topic.Pinned {
+											<span class="rounded border border-amber-400 bg-amber-100 px-1.5 py-0.5 text-amber-900">Pinned</span>
+										}
+										<span>{ topic.StateLabel }</span>
+									</div>
+									<h2 class="mt-1 font-bold">
+										<a href={ topic.URL } hx-get={ topic.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-blue-800 hover:text-blue-950 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">{ topic.Title }</a>
+									</h2>
+									<p class="mt-1 text-xs text-slate-600">Started by { topic.Author }</p>
+								</div>
 							</div>
-							<h2 class="mt-4 text-xl font-semibold text-white">
-								<a href={ topic.URL } hx-get={ topic.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ topic.Title }</a>
-							</h2>
-							<p class="mt-2 text-sm text-slate-400">Started by { topic.Author } · { topic.ReplyLabel } · Last activity { topic.LastActivity }</p>
+							<p class="text-sm text-slate-700 md:text-center"><span class="font-semibold md:sr-only">Replies: </span>{ topic.ReplyLabel }</p>
+							<p class="text-sm text-slate-600"><span class="font-semibold md:sr-only">Last activity: </span>{ topic.LastActivity }</p>
 						</li>
 					}
 				</ul>
-				if area.PreviousURL != "" || area.NextURL != "" {
-					<nav aria-label="Topic pages" class="mt-8 flex flex-wrap items-center gap-4">
-						if area.PreviousURL != "" {
-							<a href={ area.PreviousURL } hx-get={ area.PreviousURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Previous</a>
-						}
-						if area.NextURL != "" {
-							<a href={ area.NextURL } hx-get={ area.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Next</a>
-						}
-					</nav>
-				}
 			}
 		</section>
+		if area.PreviousURL != "" || area.NextURL != "" {
+			<nav aria-label="Topic pages" class="mt-4 flex flex-wrap items-center gap-2">
+				if area.PreviousURL != "" {
+					<a href={ area.PreviousURL } hx-get={ area.PreviousURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">Previous</a>
+				}
+				if area.NextURL != "" {
+					<a href={ area.NextURL } hx-get={ area.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded border border-slate-400 bg-white px-3 py-2 text-sm font-semibold text-blue-800 shadow-sm hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">Next</a>
+				}
+			</nav>
+		}
 	</main>
 }
 
