@@ -15,6 +15,12 @@ SET parent_post_id = CASE WHEN post.id = topic.first_post_id THEN NULL ELSE topi
 FROM public.topics AS topic
 WHERE topic.id = post.topic_id;
 
+-- The alpha.1 posts consistency trigger is deferred. Flush its events before
+-- altering posts again; PostgreSQL rejects ALTER TABLE while those events are
+-- pending, even though this backfill does not change topic identity/counters.
+SET CONSTRAINTS posts_validate_topic_state IMMEDIATE;
+SET CONSTRAINTS posts_validate_topic_state DEFERRED;
+
 ALTER TABLE public.posts
     ALTER COLUMN thread_path SET NOT NULL,
     ADD CONSTRAINT posts_topic_id_id_unique UNIQUE (topic_id, id),
