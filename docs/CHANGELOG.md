@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 14:24 CDT — Keep in-session mutations inside HTMX
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `internal/httpui/browser_navigation.go`
+- `internal/httpui/browser_navigation_test.go`
+- publishing, editing, moderation, user-moderation, and area-administration
+  handlers and tests
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+
+Explanation:
+
+Successful in-session HTMX mutations no longer use `HX-Redirect`, which caused
+a full browser navigation. Topic and reply publication, post editing and soft
+deletion, topic moderation, user suspension, and area administration now
+return a same-origin `HX-Location` instruction that fetches the canonical page,
+replaces only the server-rendered `#main-content` region, and pushes the
+canonical URL. The ordinary `303` fallback remains unchanged.
+
+Authentication, revalidation, and other session-boundary transitions still use
+browser-level redirects deliberately. Preview buttons declare their own HTMX
+endpoint, and area-administration navigation and forms now participate in the
+same bounded main-region swap contract.
+
+Verification:
+
+- Exact response headers distinguish in-session mutation navigation from
+  session-boundary navigation
+- History restoration continues to receive a full-document `303` fallback
+- All affected mutations retain their existing authorization, CSRF,
+  validation, conflict, and ordinary HTML behavior
+
+Risks / non-goals:
+
+- A successful mutation performs one additional same-origin `GET`; this is the
+  deliberate cost of rebuilding counts, pagination, permissions, and controls
+  from current server authority without duplicating presentation logic
+- OIDC login, revalidation, and logout remain real navigations
+
 ### 2026-09-02 13:34 CDT — Add audited discussion-area administration
 
 Commit: current commit; hash assigned by Git after commit

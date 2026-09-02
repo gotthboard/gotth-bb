@@ -70,8 +70,9 @@ func TestModerationHandlerLocksAndUnlocksWithExactServerAuthority(t *testing.T) 
 				t.Fatalf("moderation response = (status %d, calls %d, headers %v, body %q)", response.Code, calls, response.Header(), response.Body.String())
 			}
 			if test.htmx {
-				if response.Header().Get("HX-Redirect") != "/bb/topics/41" || response.Header().Get("Location") != "" {
-					t.Fatalf("HTMX moderation redirect headers = %v", response.Header())
+				wantLocation := `{"path":"/bb/topics/41","target":"#main-content","swap":"outerHTML"}`
+				if response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+					t.Fatalf("HTMX moderation navigation headers = %v", response.Header())
 				}
 			} else if response.Header().Get("Location") != "/bb/topics/41" || response.Header().Get("HX-Redirect") != "" {
 				t.Fatalf("ordinary moderation redirect headers = %v", response.Header())
@@ -124,8 +125,9 @@ func TestModerationHandlerHidesAndRestoresWithExactServerAuthority(t *testing.T)
 				t.Fatalf("visibility response = (status %d, calls %d, headers %v, body %q)", response.Code, calls, response.Header(), response.Body.String())
 			}
 			if test.htmx {
-				if response.Header().Get("HX-Redirect") != "/bb/topics/41" || response.Header().Get("Location") != "" {
-					t.Fatalf("HTMX visibility redirect headers = %v", response.Header())
+				wantLocation := `{"path":"/bb/topics/41","target":"#main-content","swap":"outerHTML"}`
+				if response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+					t.Fatalf("HTMX visibility navigation headers = %v", response.Header())
 				}
 			} else if response.Header().Get("Location") != "/bb/topics/41" || response.Header().Get("HX-Redirect") != "" {
 				t.Fatalf("ordinary visibility redirect headers = %v", response.Header())

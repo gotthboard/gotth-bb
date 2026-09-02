@@ -137,8 +137,11 @@ component as explicitly typed trusted markup.
 5. The policy function evaluates the current actor and locked state.
 6. The service performs the mutation and appends any required audit event.
 7. The transaction commits once.
-8. The response uses POST/Redirect/GET for full pages or a documented HTMX
-   response for targeted interaction.
+8. The response uses POST/Redirect/GET for ordinary forms. Successful HTMX
+   mutations issue a same-origin `HX-Location` GET that swaps only the
+   server-rendered `#main-content` region and updates browser history; login,
+   revalidation, and other session-boundary transitions deliberately retain
+   browser-level redirects.
 
 Retries are not automatic for mutations unless the operation has an explicit
 idempotency key or the failure is known to occur before commit.
@@ -389,7 +392,9 @@ approximate.
 ## 11. Rendering and client behavior
 
 Templ renders semantic HTML. HTMX swaps documented fragments and sends the same
-session and CSRF protections as normal forms. JavaScript is not an
+session and CSRF protections as normal forms. Successful in-session mutations
+replace the authoritative server-rendered main region without reloading the
+document. Ordinary HTML routes remain the fallback, and JavaScript is not an
 authorization boundary.
 
 Tailwind output is compiled at build time. No Tailwind runtime or arbitrary

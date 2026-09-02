@@ -76,7 +76,7 @@ func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoade
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		userID, validTarget := parseTarget(request)
@@ -139,7 +139,7 @@ func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoade
 			response.Header().Set("Cache-Control", "no-store")
 			access, redirect := authorized(request)
 			if redirect != "" {
-				servePublishingRedirect(response, request, redirect)
+				serveSessionRedirect(response, request, redirect)
 				return
 			}
 			userID, validTarget := parseTarget(request)
@@ -188,7 +188,7 @@ func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoade
 				serveError(response, request, http.StatusServiceUnavailable, "Account moderation unavailable", "Account moderation is temporarily unavailable.")
 				return
 			}
-			servePublishingRedirect(response, request, location)
+			serveMutationNavigation(response, request, location)
 		}
 	}
 	router := chi.NewRouter()

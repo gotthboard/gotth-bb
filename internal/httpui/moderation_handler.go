@@ -73,7 +73,7 @@ func newModerationHandler(builder URLBuilder, changeLock TopicLockChanger, chang
 			response.Header().Set("Cache-Control", "no-store")
 			access, redirect := authorized(request)
 			if redirect != "" {
-				servePublishingRedirect(response, request, redirect)
+				serveSessionRedirect(response, request, redirect)
 				return
 			}
 			topicID, parseErr := parseTopicID(chi.URLParam(request, "topicID"))
@@ -120,7 +120,7 @@ func newModerationHandler(builder URLBuilder, changeLock TopicLockChanger, chang
 				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				return
 			}
-			servePublishingRedirect(response, request, location)
+			serveMutationNavigation(response, request, location)
 		}
 	}
 

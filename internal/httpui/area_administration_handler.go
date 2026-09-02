@@ -91,7 +91,7 @@ func newAreaAdministrationHandler(builder URLBuilder, load AreaAdministrationLoa
 		response.Header().Set("Cache-Control", "no-store")
 		actor, redirect, allowed := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		if !allowed {
@@ -109,7 +109,7 @@ func newAreaAdministrationHandler(builder URLBuilder, load AreaAdministrationLoa
 			response.Header().Set("Cache-Control", "no-store")
 			actor, redirect, allowed := authorized(request)
 			if redirect != "" {
-				servePublishingRedirect(response, request, redirect)
+				serveSessionRedirect(response, request, redirect)
 				return
 			}
 			if !allowed {
@@ -169,7 +169,7 @@ func newAreaAdministrationHandler(builder URLBuilder, load AreaAdministrationLoa
 				serveError(response, request, http.StatusServiceUnavailable, "Area administration unavailable", "Area administration is temporarily unavailable.")
 				return
 			}
-			servePublishingRedirect(response, request, adminURL)
+			serveMutationNavigation(response, request, adminURL)
 		}
 	}
 	router.Post("/admin/areas", mutate(false))

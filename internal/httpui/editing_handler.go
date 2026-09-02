@@ -127,7 +127,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		postID, parseErr := parsePostID(chi.URLParam(request, "postID"))
@@ -150,7 +150,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		postID, parseErr := parsePostID(chi.URLParam(request, "postID"))
@@ -189,7 +189,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		postID, parseErr := parsePostID(chi.URLParam(request, "postID"))
@@ -244,13 +244,13 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 			http.Error(response, "editing unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		servePublishingRedirect(response, request, location)
+		serveMutationNavigation(response, request, location)
 	})
 	router.Post("/posts/{postID}/delete", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		postID, parseErr := parsePostID(chi.URLParam(request, "postID"))
@@ -285,7 +285,7 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 			http.Error(response, "editing unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		servePublishingRedirect(response, request, location)
+		serveMutationNavigation(response, request, location)
 	})
 	return recordRoutePattern(router), nil
 }

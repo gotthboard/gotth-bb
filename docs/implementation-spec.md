@@ -792,11 +792,14 @@ Publishing validation returns `422` with the exact submitted title/Markdown
 escaped back into the full page or HTMX fragment and a field-specific message.
 Authorization, missing-target, malformed-form, CSRF, and storage failures do
 not echo submitted source. Successful ordinary forms use `303` to the
-builder-owned topic/post URL. Successful HTMX forms use `204` plus
-`HX-Redirect` to the same URL so XHR redirect following cannot leave browser
-history on the submitted form. Eligible area/topic pages expose the actions;
-the locked transaction policy remains authoritative if state changes after
-rendering.
+builder-owned topic/post URL. Successful HTMX mutations use `204` plus a
+same-origin `HX-Location` object containing the canonical path,
+`target: "#main-content"`, and `swap: "outerHTML"`. HTMX then performs one
+authoritative `GET`, swaps only the main region, and pushes the canonical URL
+without reloading the document. Login, revalidation, and other session-boundary
+transitions deliberately retain `HX-Redirect`. Eligible area/topic pages
+expose the actions; the locked transaction policy remains authoritative if
+state changes after rendering.
 
 Both publishing forms offer a progressive-enhancement preview action. Preview
 uses the same bounded draft validation and sanitized server renderer as final
@@ -892,8 +895,10 @@ session store is unavailable. No broader `/areas/`, `/topics/`, `/posts/`, or
   `private, no-store`; release-versioned CSS and JavaScript are immutable for
   one year.
 - Full-page successful form submission uses a `303` redirect.
-- HTMX success may return a fragment plus `HX-Redirect` or documented swap
-  headers.
+- Successful in-session HTMX mutations return a fragment directly or a
+  same-origin `HX-Location` navigation targeting `#main-content`; browser-level
+  `HX-Redirect` is reserved for authentication, revalidation, and other
+  session-boundary transitions.
 - Validation returns `422` with the form and field errors for both modes.
 - Authentication required returns a safe login redirect for full pages and an
   equivalent explicit HTMX redirect.

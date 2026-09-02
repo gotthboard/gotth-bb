@@ -323,7 +323,7 @@ func TestPublishingHandlerCreatesReplyAndRedirectsToExactPostPage(t *testing.T) 
 	}
 }
 
-func TestPublishingHandlerUsesExplicitHTMXRedirect(t *testing.T) {
+func TestPublishingHandlerUsesHTMXLocationWithoutDocumentReload(t *testing.T) {
 	t.Parallel()
 
 	handler := newPublishingTestHandler(t, func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
@@ -334,8 +334,9 @@ func TestPublishingHandlerUsesExplicitHTMXRedirect(t *testing.T) {
 	request.Header.Set("HX-Request", "true")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent || response.Header().Get("HX-Redirect") != "/bb/topics/41" || response.Header().Get("Location") != "" || response.Body.Len() != 0 {
-		t.Fatalf("HTMX redirect = (status %d HX-Redirect %q Location %q body %q)", response.Code, response.Header().Get("HX-Redirect"), response.Header().Get("Location"), response.Body.String())
+	wantLocation := `{"path":"/bb/topics/41","target":"#main-content","swap":"outerHTML"}`
+	if response.Code != http.StatusNoContent || response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" || response.Body.Len() != 0 {
+		t.Fatalf("HTMX navigation = (status %d HX-Location %q HX-Redirect %q Location %q body %q)", response.Code, response.Header().Get("HX-Location"), response.Header().Get("HX-Redirect"), response.Header().Get("Location"), response.Body.String())
 	}
 }
 

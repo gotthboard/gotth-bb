@@ -53,7 +53,7 @@ func TestAreaAdministrationGETRequiresFreshAdministratorAndRendersForms(t *testi
 				t.Fatalf("GET response = (%d, %q, %q)", response.Code, response.Header().Get("Location"), response.Body.String())
 			}
 			if test.wantStatus == http.StatusOK {
-				for _, want := range []string{"Manage discussion areas", "Create area", "General", `/bb/admin/areas/3`, `name="revision"`, "2026-09-02T12:00:00Z", "Members"} {
+				for _, want := range []string{"Manage discussion areas", "Create area", "General", `/bb/admin/areas/3`, `name="revision"`, "2026-09-02T12:00:00Z", "Members", `hx-post="/bb/admin/areas"`, `hx-post="/bb/admin/areas/3"`, `hx-target="#main-content"`} {
 					if !strings.Contains(response.Body.String(), want) {
 						t.Fatalf("GET body missing %q: %q", want, response.Body.String())
 					}
@@ -146,20 +146,30 @@ func TestAreaAdministrationPOSTCreatesAndUpdatesWithExactAuthority(t *testing.T)
 	createForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "slug": {"general"}, "name": {"General"}, "description": {"Discuss anything"}, "display_order": {"4"}, "visibility": {"public"}, "posting_mode": {"normal"}, "reason": {"Create general discussion"}}
 	updateForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "slug": {"general"}, "name": {"General updated"}, "description": {"Discuss anything"}, "display_order": {"5"}, "visibility": {"groups"}, "posting_mode": {"read_only"}, "group_id": {"7", "2"}, "reason": {"Restrict area"}, "revision": {"2026-09-02T12:00:00Z"}}
 	for _, test := range []struct {
-		target string
-		form   url.Values
+		target, name string
+		form         url.Values
 	}{
-		{target: "/admin/areas", form: createForm},
-		{target: "/admin/areas/3", form: updateForm},
+		{target: "/admin/areas", name: "create", form: createForm},
+		{target: "/admin/areas/3", name: "update", form: updateForm},
 	} {
-		request := areaAdministrationTestRequest(http.MethodPost, test.target, test.form, admin)
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/admin/areas" {
-			t.Fatalf("POST %q = (%d, %q, %q)", test.target, response.Code, response.Header().Get("Location"), response.Body.String())
+		for _, fragment := range []bool{false, true} {
+			request := areaAdministrationTestRequest(http.MethodPost, test.target, test.form, admin)
+			if fragment {
+				request.Header.Set("HX-Request", "true")
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if fragment {
+				wantLocation := `{"path":"/bb/admin/areas","target":"#main-content","swap":"outerHTML"}`
+				if response.Code != http.StatusNoContent || response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+					t.Fatalf("HTMX %s = (%d, headers %v, body %q)", test.name, response.Code, response.Header(), response.Body.String())
+				}
+			} else if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/admin/areas" || response.Header().Get("HX-Location") != "" {
+				t.Fatalf("ordinary %s = (%d, headers %v, body %q)", test.name, response.Code, response.Header(), response.Body.String())
+			}
 		}
 	}
-	if creates != 1 || updates != 1 {
+	if creates != 2 || updates != 2 {
 		t.Fatalf("mutation calls = (%d, %d)", creates, updates)
 	}
 }

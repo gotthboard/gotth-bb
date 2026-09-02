@@ -119,8 +119,9 @@ func TestUserModerationHandlerChangesExactStateAndRedirects(t *testing.T) {
 				t.Fatalf("mutation response = (%d, calls %d, headers %v, body %q)", response.Code, calls, response.Header(), response.Body.String())
 			}
 			if test.htmx {
-				if response.Header().Get("HX-Redirect") != "/bb/moderation/users/41" || response.Header().Get("Location") != "" {
-					t.Fatalf("HTMX redirect headers = %v", response.Header())
+				wantLocation := `{"path":"/bb/moderation/users/41","target":"#main-content","swap":"outerHTML"}`
+				if response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+					t.Fatalf("HTMX navigation headers = %v", response.Header())
 				}
 			} else if response.Header().Get("Location") != "/bb/moderation/users/41" || response.Header().Get("HX-Redirect") != "" {
 				t.Fatalf("ordinary redirect headers = %v", response.Header())

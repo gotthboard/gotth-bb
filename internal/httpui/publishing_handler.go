@@ -91,7 +91,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	router.Get("/topics/new", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		if _, redirect := authorized(request); redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		areaSlug, parseErr := parseNewTopicArea(request.URL.RawQuery)
@@ -118,7 +118,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		response.Header().Set("Cache-Control", "no-store")
 		_, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		if request.URL.RawPath != "" || request.URL.RawQuery != "" {
@@ -158,7 +158,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		if request.URL.RawPath != "" || request.URL.RawQuery != "" {
@@ -200,13 +200,13 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 			return
 		}
-		servePublishingRedirect(response, request, location)
+		serveMutationNavigation(response, request, location)
 	})
 	router.Post("/topics/{topicID}/replies/preview", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
 		_, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		topicID, identifierErr := parseTopicID(chi.URLParam(request, "topicID"))
@@ -258,7 +258,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		response.Header().Set("Cache-Control", "no-store")
 		access, redirect := authorized(request)
 		if redirect != "" {
-			servePublishingRedirect(response, request, redirect)
+			serveSessionRedirect(response, request, redirect)
 			return
 		}
 		topicID, identifierErr := parseTopicID(chi.URLParam(request, "topicID"))
@@ -319,26 +319,9 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 			return
 		}
-		servePublishingRedirect(response, request, location)
+		serveMutationNavigation(response, request, location)
 	})
 	return recordRoutePattern(router), nil
-}
-
-// servePublishingRedirect performs a normal post/redirect/get transition for
-// ordinary forms and an explicit HTMX navigation for fragment requests. The
-// latter prevents XHR redirect following from swapping content while leaving
-// the browser URL on the submitted form.
-//
-// Complexity: time and auxiliary space are tight Theta(1) over one bounded,
-// builder-owned location; no external authority is accepted here.
-func servePublishingRedirect(response http.ResponseWriter, request *http.Request, location string) {
-	if selectResponseMode(response, request) == responseModeFragment {
-		response.Header().Set("HX-Redirect", location)
-		response.WriteHeader(http.StatusNoContent)
-		return
-	}
-	response.Header().Set("Location", location)
-	response.WriteHeader(http.StatusSeeOther)
 }
 
 // parseNewTopicArea accepts only one canonical area query.

@@ -179,8 +179,9 @@ func TestEditingHandlerAppliesAndRedirectsToExactPost(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if fragment {
-			if response.Code != http.StatusNoContent || response.Header().Get("HX-Redirect") != "/bb/topics/41?page=2#post-91" {
-				t.Fatalf("HTMX edit redirect = (%d, %q)", response.Code, response.Header().Get("HX-Redirect"))
+			wantLocation := `{"path":"/bb/topics/41?page=2#post-91","target":"#main-content","swap":"outerHTML"}`
+			if response.Code != http.StatusNoContent || response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+				t.Fatalf("HTMX edit navigation = (%d, headers %v)", response.Code, response.Header())
 			}
 		} else if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/topics/41?page=2#post-91" {
 			t.Fatalf("edit redirect = (%d, %q)", response.Code, response.Header().Get("Location"))
@@ -349,8 +350,9 @@ func TestEditingHandlerSoftDeletesAndRedirectsToTopic(t *testing.T) {
 		response := httptest.NewRecorder()
 		newEditingTestHandler(t, nil, nil, deletePost).ServeHTTP(response, request)
 		if fragment {
-			if response.Code != http.StatusNoContent || response.Header().Get("HX-Redirect") != "/bb/topics/41" {
-				t.Fatalf("HTMX delete redirect = (%d, %q)", response.Code, response.Header().Get("HX-Redirect"))
+			wantLocation := `{"path":"/bb/topics/41","target":"#main-content","swap":"outerHTML"}`
+			if response.Code != http.StatusNoContent || response.Header().Get("HX-Location") != wantLocation || response.Header().Get("HX-Redirect") != "" || response.Header().Get("Location") != "" {
+				t.Fatalf("HTMX delete navigation = (%d, headers %v)", response.Code, response.Header())
 			}
 		} else if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/bb/topics/41" {
 			t.Fatalf("delete redirect = (%d, %q)", response.Code, response.Header().Get("Location"))

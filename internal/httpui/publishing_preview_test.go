@@ -19,8 +19,11 @@ func TestPublishingFormsExposeProgressivePreviewActions(t *testing.T) {
 	request := publishingTestRequest(http.MethodGet, "/topics/new?area=news", "", true)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `formaction="/bb/topics/preview"`) {
-		t.Fatalf("new-topic preview action = (%d, %q)", response.Code, response.Body.String())
+	body := response.Body.String()
+	for _, want := range []string{`formaction="/bb/topics/preview"`, `hx-post="/bb/topics/preview"`, `hx-target="#main-content"`, `hx-swap="outerHTML"`, `hx-get="/bb/areas/news"`, `hx-push-url="true"`} {
+		if response.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("new-topic form missing %q = (%d, %q)", want, response.Code, body)
+		}
 	}
 }
 
