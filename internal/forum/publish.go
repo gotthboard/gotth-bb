@@ -53,6 +53,61 @@ type PublishResult struct {
 	PostNumber int32
 }
 
+// RenderTopicDraft applies the exact bounded field validation and sanitized
+// Markdown renderer used before topic publication. The opaque result may be
+// presented as a preview or persisted only through its guarded methods.
+//
+// Complexity: for bounded field bytes n and Markdown bytes m, time is
+// O(n+m+R(m)), Omega(1), and auxiliary/returned space is O(m+R(m)), Omega(1),
+// where R is the renderer's documented work. There is no I/O or retained
+// mutable state.
+func RenderTopicDraft(areaSlug, title, markdownSource string) (render.RenderedMarkdown, error) {
+	if err := validateTopicDraftFields(areaSlug, title); err != nil {
+		return render.RenderedMarkdown{}, err
+	}
+	return renderPublishingDraft(markdownSource)
+}
+
+// validateTopicDraftFields applies the non-body topic validation shared by
+// preview and publication while retaining publication's cancellation boundary
+// before Markdown rendering.
+//
+// Complexity: for bounded slug/title bytes n, time is O(n), Omega(1), and
+// auxiliary space is tight Theta(1).
+func validateTopicDraftFields(areaSlug, title string) error {
+	if !policy.ValidAreaSlug(areaSlug) {
+		return InvalidPublishingInput{Field: "area"}
+	}
+	if !validTopicTitle(title) {
+		return InvalidPublishingInput{Field: "title"}
+	}
+	return nil
+}
+
+// RenderReplyDraft applies the exact bounded sanitized Markdown renderer used
+// before reply publication.
+//
+// Complexity: for bounded Markdown bytes m, time is O(m+R(m)), Omega(1), and
+// auxiliary/returned space is O(m+R(m)), Omega(1), where R is the renderer's
+// documented work. There is no I/O or retained mutable state.
+func RenderReplyDraft(markdownSource string) (render.RenderedMarkdown, error) {
+	return renderPublishingDraft(markdownSource)
+}
+
+// renderPublishingDraft owns the one shared renderer-to-validation-error
+// mapping used by preview and both publication paths.
+//
+// Complexity: for bounded Markdown bytes m, time is O(m+R(m)), Omega(1), and
+// auxiliary/returned space is O(m+R(m)), Omega(1), where R is the renderer's
+// documented work.
+func renderPublishingDraft(markdownSource string) (render.RenderedMarkdown, error) {
+	rendered, err := render.RenderMarkdown(markdownSource)
+	if err != nil {
+		return render.RenderedMarkdown{}, InvalidPublishingInput{Field: "markdown"}
+	}
+	return rendered, nil
+}
+
 // CreateTopic validates and renders one first post before locking the current
 // area policy. It authorizes against that locked policy and commits the topic,
 // first post, counters, and timestamps as one transaction.
@@ -85,18 +140,15 @@ func CreateTopic(
 	if !actor.Valid() || !actor.Authenticated {
 		return PublishResult{}, fmt.Errorf("create topic actor is invalid")
 	}
-	if !policy.ValidAreaSlug(areaSlug) {
-		return PublishResult{}, InvalidPublishingInput{Field: "area"}
-	}
-	if !validTopicTitle(title) {
-		return PublishResult{}, InvalidPublishingInput{Field: "title"}
+	if err := validateTopicDraftFields(areaSlug, title); err != nil {
+		return PublishResult{}, err
 	}
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create topic: %w", err)
 	}
-	rendered, err := render.RenderMarkdown(markdownSource)
+	rendered, err := renderPublishingDraft(markdownSource)
 	if err != nil {
-		return PublishResult{}, InvalidPublishingInput{Field: "markdown"}
+		return PublishResult{}, err
 	}
 	renderedHTML, rendererVersion, err := rendered.PersistenceValues()
 	if err != nil {
@@ -179,9 +231,9 @@ func CreateReply(
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create reply: %w", err)
 	}
-	rendered, err := render.RenderMarkdown(markdownSource)
+	rendered, err := renderPublishingDraft(markdownSource)
 	if err != nil {
-		return PublishResult{}, InvalidPublishingInput{Field: "markdown"}
+		return PublishResult{}, err
 	}
 	renderedHTML, rendererVersion, err := rendered.PersistenceValues()
 	if err != nil {

@@ -663,7 +663,9 @@ Internal routes are shown without the external `/bb` prefix.
 | `GET` | `/areas/{slug}` | Area topic list | Area viewer |
 | `GET` | `/topics/{id}` | Topic and posts | Area viewer |
 | `GET` | `/topics/new` | New-topic form | Eligible member |
+| `POST` | `/topics/preview` | Preview new-topic draft | Member session |
 | `POST` | `/topics` | Create topic | Eligible member |
+| `POST` | `/topics/{id}/replies/preview` | Preview reply draft | Member session |
 | `POST` | `/topics/{id}/replies` | Create reply | Eligible member |
 | `GET` | `/posts/{id}/edit` | Edit form | Author/staff |
 | `POST` | `/posts/{id}/edit` | Apply edit | Author/staff |
@@ -695,6 +697,21 @@ builder-owned topic/post URL. Successful HTMX forms use `204` plus
 history on the submitted form. Eligible area/topic pages expose the actions;
 the locked transaction policy remains authoritative if state changes after
 rendering.
+
+Both publishing forms offer a progressive-enhancement preview action. Preview
+uses the same bounded draft validation and sanitized server renderer as final
+publication, performs no PostgreSQL operation, and returns the original escaped
+source plus only opaque trusted sanitized HTML. Ordinary preview returns a full
+`200` form page; HTMX preview returns the equivalent `200` form fragment.
+Invalid drafts return the same `422` field errors and escaped source as final
+publication. Preview routes share the exact authentication, revalidation,
+canonical-path, CSRF-first, form-bound, and strict-field rules of their final
+publication routes; they never create durable preview state or weaken the
+transaction's final authorization decision.
+Preview is only a local transform of submitted text: it does not probe target
+existence or grant target access. Action links are shown from eligible pages,
+while a direct member preview remains harmless and final publication still
+decides current target existence and authority under lock.
 
 Area topic lists use conventional one-based `page` query parameters. An absent
 parameter means page 1; the only accepted spelling is an unsigned base-10

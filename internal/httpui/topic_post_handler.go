@@ -177,7 +177,11 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 		replyForm := publishingFormView{}
 		if mayReply {
 			replyAction, replyErr := builder.Path("topics", identifier, "replies")
+			replyPreview := ""
 			cancelURL := ""
+			if replyErr == nil {
+				replyPreview, replyErr = builder.Path("topics", identifier, "replies", "preview")
+			}
 			if replyErr == nil {
 				cancelURL, replyErr = builder.PathWithQuery(segments, currentQuery)
 			}
@@ -188,7 +192,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			}
 			if len(token) == sessionCookieEncodedBytes {
 				replyForm = publishingFormView{
-					Heading: "Reply", ActionURL: replyAction, CancelURL: cancelURL,
+					Heading: "Reply", ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL,
 					CSRFToken: token, Reply: true,
 				}
 			}

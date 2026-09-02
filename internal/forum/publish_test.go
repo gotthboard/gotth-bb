@@ -195,6 +195,23 @@ func TestPublishingRejectsInvalidConfigurationCancellationAndClock(t *testing.T)
 	}
 }
 
+func TestCreateTopicPreservesFieldAndCancellationOrdering(t *testing.T) {
+	t.Parallel()
+
+	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, fieldErr := CreateTopic(canceled, panicPublishBeginner{}, time.Now, actor, "bad area", "Title", "body")
+	var invalid InvalidPublishingInput
+	if !errors.As(fieldErr, &invalid) || invalid.Field != "area" {
+		t.Fatalf("invalid field before cancellation = (%v, %+v)", fieldErr, invalid)
+	}
+	_, cancellationErr := CreateTopic(canceled, panicPublishBeginner{}, time.Now, actor, "news", "Title", " ")
+	if !errors.Is(cancellationErr, context.Canceled) || errors.As(cancellationErr, &invalid) {
+		t.Fatalf("cancellation before Markdown render = %v", cancellationErr)
+	}
+}
+
 func TestCreateTopicFailsClosedAtTransactionStages(t *testing.T) {
 	t.Parallel()
 

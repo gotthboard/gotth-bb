@@ -27,10 +27,11 @@ type ReplyPublisher func(context.Context, auth.AccessContext, int64, string) (fo
 // publication redirects only to builder-owned canonical paths.
 //
 // Complexity: construction is tight Theta(1) time and space. For a bounded
-// form body n <= 262,144, delegated publishing work P, and response bytes r,
-// request time is O(n+P+r), Omega(1), and auxiliary space is O(n+r), Omega(1),
-// without a tighter bound because PostgreSQL and writer work vary. Each
-// publisher is invoked at most once; no request is retried or detached.
+// form body n <= 262,144, delegated publication or rendering work D, and
+// response bytes r, request time is O(n+D+r), Omega(1), and auxiliary space is
+// O(n+r), Omega(1), without a tighter bound because PostgreSQL, rendering, and
+// writer work vary. Each delegated operation runs at most once; no request is
+// retried or detached.
 func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, createReply ReplyPublisher) (http.Handler, error) {
 	if createTopic == nil {
 		return nil, fmt.Errorf("topic publisher is required")
@@ -41,6 +42,10 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	topicAction, err := builder.Path("topics")
 	if err != nil {
 		return nil, fmt.Errorf("build topic publishing action: %w", err)
+	}
+	topicPreviewAction, err := builder.Path("topics", "preview")
+	if err != nil {
+		return nil, fmt.Errorf("build topic preview action: %w", err)
 	}
 	loginURL, err := builder.Path("login")
 	if err != nil {
@@ -105,9 +110,49 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			return
 		}
 		renderForm(response, request, http.StatusOK, publishingFormView{
-			Heading: "New topic", ActionURL: topicAction, CancelURL: cancelURL,
+			Heading: "New topic", ActionURL: topicAction, PreviewURL: topicPreviewAction, CancelURL: cancelURL,
 			CSRFToken: token, AreaSlug: areaSlug,
 		})
+	})
+	router.Post("/topics/preview", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		_, redirect := authorized(request)
+		if redirect != "" {
+			servePublishingRedirect(response, request, redirect)
+			return
+		}
+		if request.URL.RawPath != "" || request.URL.RawQuery != "" {
+			serveFailure(response, http.StatusBadRequest, "invalid preview request")
+			return
+		}
+		if err := validateCSRFRequest(request, maximumPublishingFormBytes); err != nil {
+			serveFailure(response, http.StatusForbidden, "request verification failed")
+			return
+		}
+		form, parseErr := parsePublishingForm(request, false)
+		if parseErr != nil {
+			serveFailure(response, http.StatusBadRequest, "invalid preview form")
+			return
+		}
+		cancelURL, buildErr := builder.Path("areas", form.AreaSlug)
+		if buildErr != nil {
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
+		form.CSRFToken = csrfTokenFromContext(request.Context())
+		rendered, previewErr := forum.RenderTopicDraft(form.AreaSlug, form.Title, form.Markdown)
+		if previewErr != nil {
+			if invalid, validation := publishingValidation(previewErr); validation {
+				applyPublishingValidation(&form, invalid)
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				return
+			}
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		form.PreviewBody, form.ShowPreview = rendered.TrustedHTML(), true
+		renderForm(response, request, http.StatusOK, form)
 	})
 	router.Post("/topics", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
@@ -137,7 +182,7 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		result, publishErr := createTopic(request.Context(), access, form.AreaSlug, form.Title, form.Markdown)
 		if publishErr != nil {
 			if invalid, validation := publishingValidation(publishErr); validation {
-				form.Heading, form.ActionURL, form.CancelURL = "New topic", topicAction, cancelURL
+				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
 				form.CSRFToken = csrfTokenFromContext(request.Context())
 				applyPublishingValidation(&form, invalid)
 				renderForm(response, request, http.StatusUnprocessableEntity, form)
@@ -156,6 +201,58 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 			return
 		}
 		servePublishingRedirect(response, request, location)
+	})
+	router.Post("/topics/{topicID}/replies/preview", func(response http.ResponseWriter, request *http.Request) {
+		response.Header().Set("Cache-Control", "no-store")
+		_, redirect := authorized(request)
+		if redirect != "" {
+			servePublishingRedirect(response, request, redirect)
+			return
+		}
+		topicID, identifierErr := parseTopicID(chi.URLParam(request, "topicID"))
+		if request.URL.RawPath != "" || request.URL.RawQuery != "" || identifierErr != nil {
+			serveFailure(response, http.StatusNotFound, "page not found")
+			return
+		}
+		if err := validateCSRFRequest(request, maximumPublishingFormBytes); err != nil {
+			serveFailure(response, http.StatusForbidden, "request verification failed")
+			return
+		}
+		form, parseErr := parsePublishingForm(request, true)
+		if parseErr != nil {
+			serveFailure(response, http.StatusBadRequest, "invalid preview form")
+			return
+		}
+		topicIdentifier := strconv.FormatInt(topicID, 10)
+		topicURL, buildErr := builder.Path("topics", topicIdentifier)
+		if buildErr != nil {
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		previewURL, buildErr := builder.Path("topics", topicIdentifier, "replies", "preview")
+		if buildErr != nil {
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		actionURL, buildErr := builder.Path("topics", topicIdentifier, "replies")
+		if buildErr != nil {
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL, form.Reply = "Reply", actionURL, previewURL, topicURL, true
+		form.CSRFToken = csrfTokenFromContext(request.Context())
+		rendered, previewErr := forum.RenderReplyDraft(form.Markdown)
+		if previewErr != nil {
+			if invalid, validation := publishingValidation(previewErr); validation {
+				applyPublishingValidation(&form, invalid)
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				return
+			}
+			serveFailure(response, http.StatusServiceUnavailable, "preview unavailable")
+			return
+		}
+		form.PreviewBody, form.ShowPreview = rendered.TrustedHTML(), true
+		renderForm(response, request, http.StatusOK, form)
 	})
 	router.Post("/topics/{topicID}/replies", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
@@ -192,7 +289,12 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 					serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
 					return
 				}
-				form.Heading, form.ActionURL, form.CancelURL, form.Reply = "Reply", actionURL, topicURL, true
+				previewURL, previewErr := builder.Path("topics", topicIdentifier, "replies", "preview")
+				if previewErr != nil {
+					serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
+					return
+				}
+				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL, form.Reply = "Reply", actionURL, previewURL, topicURL, true
 				form.CSRFToken = csrfTokenFromContext(request.Context())
 				applyPublishingValidation(&form, invalid)
 				renderForm(response, request, http.StatusUnprocessableEntity, form)

@@ -5,7 +5,64 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
-### 2026-09-02 00:25 CDT — Wire authenticated topic and reply forms
+### 2026-09-02 00:22 CDT — Preview sanitized publishing drafts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/forum/preview_test.go`
+- `internal/forum/publish.go`
+- `internal/forum/publish_test.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/publishing_handler.go`
+- `internal/httpui/publishing_handler_test.go`
+- `internal/httpui/publishing_preview_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/view.go`
+
+Explanation:
+
+Added progressive-enhancement preview actions to new-topic and reply forms.
+Both ordinary and HTMX requests pass through the same canonical route,
+authentication/revalidation, 262,144-byte wire bound, CSRF-first, and strict
+field boundary as publication. The server then applies the exact shared topic
+or reply draft validator and production Markdown sanitizer without opening a
+database transaction. The response preserves escaped source and exposes only
+the renderer's opaque trusted HTML.
+
+Preview success returns `200` as a complete page or equivalent HTMX fragment.
+Invalid fields return the same `422` presentation used by publication. Preview
+has no token, database row, cache, or authority effect; final publication still
+revalidates and authorizes inside its locked transaction.
+
+The form audit also fixed malformed `aria-invalid="{true false}"` output caused
+by using `templ.KV` as a scalar attribute. Invalid controls now carry a literal
+`aria-invalid="true"`; valid controls omit the attribute.
+
+Verification:
+
+- Topic and reply preview use the same validated sanitized renderer values as
+  publication
+- Full pages and HTMX fragments preserve escaped drafts and display sanitized
+  output without script elements
+- Invalid Markdown returns field-specific `422` output without publication
+- CSRF failure happens before draft rendering or source reflection
+- Canonical production routing reaches both preview endpoints
+
+Risks / non-goals:
+
+- Preview deliberately renders once for inspection and publication renders
+  again; no preview result is trusted as later authorization or persistence
+- Edit/revision-conflict handling and author soft delete remain separate A1-07
+  units
+
+### 2026-09-02 00:03 CDT — Wire authenticated topic and reply forms
 
 Commit: current commit; hash assigned by Git after commit
 
@@ -69,7 +126,7 @@ Verification:
 
 Risks / non-goals:
 
-- Markdown preview, edit, and delete remain separate A1-07 units
+- Edit and delete remain separate A1-07 units
 - The 262,144-byte wire body is read and retained once for CSRF verification,
   then restored. CSRF extraction and strict handler parsing each scan that
   bounded body and allocate their own decoded form values; decoded Markdown

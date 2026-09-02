@@ -69,12 +69,29 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 		t.Fatalf("malformed reply = (status %d auth calls %d)", malformedResponse.Code, service.authenticateCalls)
 	}
 	form := url.Values{"_csrf": {csrfToken}, "area": {"news"}, "title": {"Title"}, "markdown": {"body"}}
+	previewRequest := httptest.NewRequest(http.MethodPost, "/topics/preview", strings.NewReader(form.Encode()))
+	previewRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	previewRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	previewResponse := httptest.NewRecorder()
+	handler.ServeHTTP(previewResponse, previewRequest)
+	if previewResponse.Code != http.StatusOK || service.authenticateCalls != 2 || topicCalls != 0 {
+		t.Fatalf("authenticated preview = (status %d auth calls %d topic calls %d body %q)", previewResponse.Code, service.authenticateCalls, topicCalls, previewResponse.Body.String())
+	}
+	replyPreviewForm := url.Values{"_csrf": {csrfToken}, "markdown": {"reply body"}}
+	replyPreviewRequest := httptest.NewRequest(http.MethodPost, "/topics/41/replies/preview", strings.NewReader(replyPreviewForm.Encode()))
+	replyPreviewRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	replyPreviewRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
+	replyPreviewResponse := httptest.NewRecorder()
+	handler.ServeHTTP(replyPreviewResponse, replyPreviewRequest)
+	if replyPreviewResponse.Code != http.StatusOK || service.authenticateCalls != 3 || topicCalls != 0 {
+		t.Fatalf("authenticated reply preview = (status %d auth calls %d topic calls %d body %q)", replyPreviewResponse.Code, service.authenticateCalls, topicCalls, replyPreviewResponse.Body.String())
+	}
 	postRequest := httptest.NewRequest(http.MethodPost, "/topics", strings.NewReader(form.Encode()))
 	postRequest.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	postRequest.AddCookie(&http.Cookie{Name: "gotth_bb_session", Value: sessionToken})
 	postResponse := httptest.NewRecorder()
 	handler.ServeHTTP(postResponse, postRequest)
-	if postResponse.Code != http.StatusSeeOther || service.authenticateCalls != 2 || topicCalls != 1 {
+	if postResponse.Code != http.StatusSeeOther || service.authenticateCalls != 4 || topicCalls != 1 {
 		t.Fatalf("authenticated POST = (status %d auth calls %d topic calls %d body %q)", postResponse.Code, service.authenticateCalls, topicCalls, postResponse.Body.String())
 	}
 }
@@ -186,6 +203,7 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	topicResponse := httptest.NewRecorder()
 	topicHandler.ServeHTTP(topicResponse, topicRequest)
 	if topicResponse.Code != http.StatusOK || !strings.Contains(topicResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
+		!strings.Contains(topicResponse.Body.String(), `formaction="/bb/topics/42/replies/preview"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="_csrf" value="`+validCSRFTokenForTest(0x51)+`"`) {
 		t.Fatalf("eligible topic page = (%d, %q)", topicResponse.Code, topicResponse.Body.String())
 	}

@@ -211,7 +211,7 @@ func newAuthenticatedHandler(
 		case "/logout":
 			request.Pattern = request.Method + " /logout"
 			authenticatedLogoutHandler.ServeHTTP(response, request)
-		case "/topics/new", "/topics":
+		case "/topics/new", "/topics", "/topics/preview":
 			if authenticatedPublishingHandler != nil {
 				authenticatedPublishingHandler.ServeHTTP(response, request)
 				return
@@ -223,6 +223,9 @@ func newAuthenticatedHandler(
 			if authenticatedPublishingHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
 				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
 				identifier, replyPath := strings.CutSuffix(identifierAndSuffix, "/replies")
+				if !replyPath {
+					identifier, replyPath = strings.CutSuffix(identifierAndSuffix, "/replies/preview")
+				}
 				if topicPath && replyPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
 					if _, identifierErr := parseTopicID(identifier); identifierErr == nil {
 						authenticatedPublishingHandler.ServeHTTP(response, request)

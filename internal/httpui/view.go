@@ -74,6 +74,7 @@ type topicPostItem struct {
 type publishingFormView struct {
 	Heading       string
 	ActionURL     string
+	PreviewURL    string
 	CancelURL     string
 	CSRFToken     string
 	AreaSlug      string
@@ -83,6 +84,8 @@ type publishingFormView struct {
 	MarkdownError string
 	FormError     string
 	Reply         bool
+	PreviewBody   contentrender.TrustedHTML
+	ShowPreview   bool
 }
 
 // newPageView resolves every application-owned shell URL through one validated
