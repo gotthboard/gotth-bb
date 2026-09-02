@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 01:57 CDT — Serialize audited topic lock transitions
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/implementation-spec.md`
+- `internal/moderation/topic_lock.go`
+- `internal/moderation/topic_lock_test.go`
+- `internal/moderation/topic_lock_integration_test.go`
+- `internal/store/db/moderation.sql.go`
+- `internal/store/db/moderation_test.go`
+- `internal/store/db/publishing_test.go`
+- `internal/store/queries/moderation.sql`
+
+Explanation:
+
+Added the first A1-08 moderation transaction: strict topic lock/unlock with an
+immutable audit. Only an active moderator or administrator may request the
+closed `open -> locked` or `locked -> open` transition, with a required
+canonical single-line reason and nonzero server request UUID.
+
+The service locks the undeleted topic before validating current state. One
+guarded data-modifying statement then changes the state and appends the exact
+typed audit row. The topic and audit use the same nondecreasing effective time;
+any query, result-validation, audit, or commit failure rolls back both.
+
+Verification:
+
+- Lock and unlock parameter/action/state matrices
+- Member, suspended staff, muted staff, malformed authority/target/reason/UUID,
+  wrong state, and every transaction failure
+- Generated bindings pin row lock, update guard, monotonic timestamp, actor and
+  target kinds, previous/resulting JSON, audit join, arguments, and scans
+- PostgreSQL 17 proves audit-insert failure rolls back the topic update,
+  open/locked/open state, exact actor/target/action/reason/state/time audit
+  values, no duplicate audit on conflict, and member denial
+
+Risks / non-goals:
+
+- This unit admits the audited service/SQL transaction only; browser controls
+  are next
+- Hide/restore and suspend/reinstate remain separate A1-08 transitions
+
 ### 2026-09-02 01:45 CDT — Soft-delete author-owned posts
 
 Commit: current commit; hash assigned by Git after commit

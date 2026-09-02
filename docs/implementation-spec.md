@@ -882,6 +882,17 @@ Examples:
 Idempotent repetition returns the current state without duplicating the audit
 event only when the action contract explicitly defines it as idempotent.
 
+Alpha topic lock/unlock is a strict transition rather than an idempotent setter:
+`open -> locked` and `locked -> open` are the only admitted pairs. An active
+moderator or administrator supplies a nonblank, single-line UTF-8 reason of at
+most 2,000 bytes without leading or trailing whitespace, and the
+server-generated request UUID. One transaction locks the undeleted topic,
+rejects every other current state as a conflict, then changes state and appends
+the typed `lock_topic` or `unlock_topic` audit row in one data-modifying
+statement. The effective update/audit time is nondecreasing across lock waits.
+Any update, audit, scan, or commit failure rolls back both records. Browser
+controls remain a separate bounded unit.
+
 ## 15. Migrations
 
 - Migration filenames are ordered, contiguous, and immutable after a database
