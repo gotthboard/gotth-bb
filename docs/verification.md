@@ -143,6 +143,8 @@ Automated tests cover:
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.
+- Local logout success and stale-CSRF recovery, including proof that a stale
+  request neither revokes the session nor expires its cookie.
 - Logout when Authentik logout succeeds, fails, or is unavailable.
 - Authentik disable at the documented revalidation boundary.
 - Token, code, cookie, verifier, and secret redaction in logs.

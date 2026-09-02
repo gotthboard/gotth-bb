@@ -772,6 +772,14 @@ Internal routes are shown relative to the configured external base URL.
 | `GET` | `/health/live` | Liveness | Edge/operator |
 | `GET` | `/health/ready` | Readiness | Edge/operator |
 
+`POST /logout` validates CSRF before reading or revoking the session token. A
+verification failure performs no revocation, expires no cookie, and returns an
+empty `303` to the application root with the fixed
+`logout=verification-failed` query. The root renders that marker only for an
+authenticated session as an explicit notice that logout failed and the user
+remains logged in. The marker carries no authority and is never interpreted as
+evidence of a completed logout.
+
 The new-topic form requires exactly one canonical `area=<slug>` query on
 `GET /topics/new`; the slug is preserved as a hidden field but is never treated
 as authority. Topic and reply forms are URL-encoded and capped at 262,144 wire

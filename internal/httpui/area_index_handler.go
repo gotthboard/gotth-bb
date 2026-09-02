@@ -47,6 +47,7 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		authentication := sessionAuthenticationFromContext(request.Context())
+		logoutVerificationFailed := authentication.Access.Authenticated && request.URL.RawQuery == logoutVerificationFailureQuery
 		areas, err := list(request.Context(), authentication.Access)
 		if err != nil {
 			serveUnavailable(response, request)
@@ -69,8 +70,8 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 			response,
 			request,
 			http.StatusOK,
-			areaIndexPageWithAreas(view, items),
-			areaIndexContentWithAreas(view, items),
+			areaIndexPageWithAreas(view, items, logoutVerificationFailed),
+			areaIndexContentWithAreas(view, items, logoutVerificationFailed),
 		); renderErr != nil {
 			panic(renderErr)
 		}

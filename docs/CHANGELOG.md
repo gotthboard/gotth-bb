@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 12:43 CDT — Recover stale logout at the area index
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/CHANGELOG.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/verification.md`
+- `internal/httpui/area_index_handler.go`
+- `internal/httpui/area_index_handler_test.go`
+- `internal/httpui/logout_handler.go`
+- `internal/httpui/logout_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+
+Explanation:
+
+A logout form left open across session rotation previously failed closed with
+an unstyled plain-text 403. CSRF validation remains authoritative, but the
+failure now performs no revocation or cookie mutation and returns an empty 303
+to one builder-owned area-index URL. The authenticated index recognizes only
+the fixed application marker and states that logout failed, the session
+remains active, and the user must retry.
+
+Verification:
+
+- Focused handler tests prove stale CSRF redirects to the configured base path,
+  never calls revocation, never expires the cookie, and exposes no validator
+  error.
+- Area-index tests prove the notice appears only for the exact marker and an
+  authenticated session; anonymous and unrelated queries do not render it.
+- Generated templates, formatting, vet, race, coverage, and full repository
+  verification pass before admission.
+
+Risks / non-goals:
+
+- CSRF policy, successful logout ordering, session lifetime, Authentik logout,
+  and every non-logout failure response are unchanged.
+- The fixed query marker is informational and deliberately grants no authority.
+
 ### 2026-09-02 11:50 CDT — Containerize the alpha application runtime
 
 Commit: current commit; hash assigned by Git after commit

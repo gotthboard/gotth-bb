@@ -73,17 +73,22 @@ templ footer(view pageView, loadTimes footerLoadTimesView) {
 	</footer>
 }
 
-templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem) {
-	@document(view, areaIndexContentWithAreas(view, areas))
+templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem, logoutVerificationFailed bool) {
+	@document(view, areaIndexContentWithAreas(view, areas, logoutVerificationFailed))
 }
 
-templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem) {
+templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerificationFailed bool) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-6 text-sm text-slate-400">
 			<ol>
 				<li><span aria-current="page">Areas</span></li>
 			</ol>
 		</nav>
+		if logoutVerificationFailed {
+			<div role="alert" class="mb-6 rounded-lg border border-amber-800/70 bg-amber-950/20 p-4 text-amber-100">
+				Logout failed because the page was stale. You are still logged in. Please try again.
+			</div>
+		}
 		<section aria-labelledby="areas-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
 			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Community index</p>
 			<h1 id="areas-title" class="text-3xl font-bold tracking-tight text-white sm:text-4xl">Discussion areas</h1>

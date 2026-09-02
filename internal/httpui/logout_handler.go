@@ -12,11 +12,14 @@ import (
 type sessionRevoker func(context.Context, string) (bool, error)
 type csrfValidator func(*http.Request) error
 
+const logoutVerificationFailureQuery = "logout=verification-failed"
+
 // newLogoutHandler constructs the exact authenticated POST boundary for local
 // logout. It requires CSRF validation before reading the credential for one
 // server-side revocation, and expires browser state only after that operation
 // succeeds or reports an idempotent no-op. Revalidation staleness never blocks
-// logout. Failures are generic and non-cacheable.
+// logout. A stale verification token redirects to one fixed recovery marker
+// without changing session state. Other failures are generic and non-cacheable.
 //
 // Complexity: construction scans n cookie-name and p path bytes in O(n+p),
 // Omega(1), and tight Theta(n+p) for valid input. For bounded Cookie-header
@@ -45,6 +48,7 @@ func newLogoutHandler(
 	if err != nil {
 		return nil, fmt.Errorf("logout URL builder is invalid: %w", err)
 	}
+	verificationFailurePath := returnPath + "?" + logoutVerificationFailureQuery
 	expiredCookie := http.Cookie{
 		Name:     cookieName,
 		Path:     returnPath,
@@ -71,7 +75,8 @@ func newLogoutHandler(
 			return
 		}
 		if err := validateCSRF(request); err != nil {
-			http.Error(response, "request verification failed", http.StatusForbidden)
+			response.Header().Set("Location", verificationFailurePath)
+			response.WriteHeader(http.StatusSeeOther)
 			return
 		}
 		cookies := request.CookiesNamed(cookieName)

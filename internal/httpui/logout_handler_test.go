@@ -67,18 +67,19 @@ func TestLogoutHandlerRejectsBeforeRevocation(t *testing.T) {
 	t.Parallel()
 
 	for _, test := range []struct {
-		name       string
-		method     string
-		auth       bool
-		csrfError  error
-		cookie     string
-		wantStatus int
-		wantAllow  string
-		wantCSRF   int
+		name         string
+		method       string
+		auth         bool
+		csrfError    error
+		cookie       string
+		wantStatus   int
+		wantAllow    string
+		wantLocation string
+		wantCSRF     int
 	}{
 		{name: "method", method: http.MethodGet, auth: true, cookie: "session=token", wantStatus: http.StatusMethodNotAllowed, wantAllow: http.MethodPost},
 		{name: "anonymous", method: http.MethodPost, cookie: "session=token", wantStatus: http.StatusUnauthorized},
-		{name: "CSRF", method: http.MethodPost, auth: true, csrfError: errors.New("bad CSRF"), cookie: "session=token", wantStatus: http.StatusForbidden, wantCSRF: 1},
+		{name: "CSRF", method: http.MethodPost, auth: true, csrfError: errors.New("bad CSRF"), cookie: "session=token", wantStatus: http.StatusSeeOther, wantLocation: "/bb/?logout=verification-failed", wantCSRF: 1},
 		{name: "missing cookie", method: http.MethodPost, auth: true, wantStatus: http.StatusBadRequest, wantCSRF: 1},
 		{name: "duplicate cookie", method: http.MethodPost, auth: true, cookie: "session=one; session=two", wantStatus: http.StatusBadRequest, wantCSRF: 1},
 		{name: "quoted cookie", method: http.MethodPost, auth: true, cookie: `session="token"`, wantStatus: http.StatusBadRequest, wantCSRF: 1},
@@ -100,7 +101,8 @@ func TestLogoutHandlerRejectsBeforeRevocation(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			if response.Code != test.wantStatus || response.Header().Get("Allow") != test.wantAllow || csrfCalls != test.wantCSRF ||
-				response.Header().Get("Set-Cookie") != "" || response.Header().Get("Location") != "" {
+				response.Header().Get("Set-Cookie") != "" || response.Header().Get("Location") != test.wantLocation ||
+				(test.csrfError != nil && response.Body.Len() != 0) {
 				t.Fatalf("response = (status %d, allow %q, headers %v, CSRF calls %d)", response.Code, response.Header().Get("Allow"), response.Header(), csrfCalls)
 			}
 		})

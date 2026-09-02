@@ -254,6 +254,12 @@ Local logout revokes the server-side session and expires the cookie. Optional
 RP-initiated Authentik logout is a separate redirect after local revocation; a
 failure at Authentik cannot resurrect the local session.
 
+A logout request with stale CSRF state performs no revocation and expires no
+cookie. It redirects to the application root with one fixed, application-owned
+failure marker; the authenticated area index renders an explicit notice that
+the user remains logged in and must retry. The marker is never interpreted as
+proof that logout occurred.
+
 ## 7. Authorization architecture
 
 ### 7.1 Access context
