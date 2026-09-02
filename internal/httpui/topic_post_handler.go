@@ -87,6 +87,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 		}
 		invalid := loaded.Number != pageNumber || loaded.TotalPosts < 0 || loaded.TotalPages != expectedPages ||
 			first.AreaID <= 0 || !policy.ValidAreaSlug(first.AreaSlug) || first.AreaName == "" || first.TopicID != topicID ||
+			(first.AreaPostingMode != "normal" && first.AreaPostingMode != "read_only" && first.AreaPostingMode != "archived") ||
 			first.TopicTitle == "" || first.TopicAuthorDisplayName == "" || !first.TopicCreatedAt.Valid ||
 			len(loaded.Rows) > int(store.PostPageSize) ||
 			(loaded.TotalPosts == 0 && (pageNumber != 1 || len(loaded.Rows) != 1 || first.PostID.Valid || first.PostNumber.Valid ||
@@ -169,12 +170,35 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
 			return
 		}
+		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
+		mayReply := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
+			(first.AreaPostingMode == "normal" || staff && first.AreaPostingMode == "read_only") &&
+			(first.TopicState == "open" || staff && (first.TopicState == "locked" || first.TopicState == "hidden"))
+		replyForm := publishingFormView{}
+		if mayReply {
+			replyAction, replyErr := builder.Path("topics", identifier, "replies")
+			cancelURL := ""
+			if replyErr == nil {
+				cancelURL, replyErr = builder.PathWithQuery(segments, currentQuery)
+			}
+			token := csrfTokenFromContext(request.Context())
+			if replyErr != nil {
+				serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+				return
+			}
+			if len(token) == sessionCookieEncodedBytes {
+				replyForm = publishingFormView{
+					Heading: "Reply", ActionURL: replyAction, CancelURL: cancelURL,
+					CSRFToken: token, Reply: true,
+				}
+			}
+		}
 		presentation := topicPostPageView{
 			AreaName: first.AreaName, AreaURL: areaURL, Title: first.TopicTitle,
 			StateLabel: stateLabel, Pinned: first.TopicPinnedAt.Valid,
 			Author: first.TopicAuthorDisplayName, Started: first.TopicCreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"),
 			Posts: posts, Number: pageNumber, TotalPosts: loaded.TotalPosts,
-			PreviousURL: previousURL, NextURL: nextURL,
+			PreviousURL: previousURL, NextURL: nextURL, ReplyForm: replyForm, ShowReply: replyForm.ActionURL != "",
 		}
 		if renderErr := renderResponse(
 			response, request, http.StatusOK,
@@ -192,7 +216,8 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 // Complexity: time and auxiliary space are tight Theta(1).
 func sameTopicPostPresentationMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 	return row.AreaID == first.AreaID && row.AreaSlug == first.AreaSlug && row.AreaName == first.AreaName &&
-		row.AreaDescription == first.AreaDescription && row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
+		row.AreaDescription == first.AreaDescription && row.AreaPostingMode == first.AreaPostingMode &&
+		row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
 		row.TopicState == first.TopicState && row.TopicPinnedAt == first.TopicPinnedAt && row.TopicCreatedAt == first.TopicCreatedAt &&
 		row.TopicAuthorDisplayName == first.TopicAuthorDisplayName
 }

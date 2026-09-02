@@ -282,7 +282,7 @@ func validVisibleTopicPostRows(firstPost, lastPost int64) []db.GetVisibleTopicPo
 	rows := make([]db.GetVisibleTopicPostPageRow, 0, lastPost-firstPost+1)
 	for postNumber := firstPost; postNumber <= lastPost; postNumber++ {
 		rows = append(rows, db.GetVisibleTopicPostPageRow{
-			AreaID: 3, AreaSlug: "public", AreaName: "Public", AreaDescription: "Open area",
+			AreaID: 3, AreaSlug: "public", AreaName: "Public", AreaDescription: "Open area", AreaPostingMode: "normal",
 			TopicID: 9, TopicTitle: "Welcome", TopicState: "open", TopicCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, TopicAuthorDisplayName: "Starter",
 			PostID: pgtype.Int8{Int64: 100 + postNumber, Valid: true}, PostNumber: pgtype.Int4{Int32: int32(postNumber), Valid: true},
 			RenderedHtml: pgtype.Text{String: "<p>Post</p>", Valid: true}, RendererVersion: pgtype.Text{String: "test-v1", Valid: true},

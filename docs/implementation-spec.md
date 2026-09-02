@@ -678,6 +678,24 @@ Internal routes are shown without the external `/bb` prefix.
 | `GET` | `/health/live` | Liveness | Edge/operator |
 | `GET` | `/health/ready` | Readiness | Edge/operator |
 
+The new-topic form requires exactly one canonical `area=<slug>` query on
+`GET /topics/new`; the slug is preserved as a hidden field but is never treated
+as authority. Topic and reply forms are URL-encoded and capped at 262,144 wire
+bytes so percent-encoding can carry the 65,536-byte decoded Markdown maximum.
+CSRF verification consumes and restores the bounded bytes before any form
+parsing or publisher call. Parsing then rejects missing, duplicated, or unknown
+fields. Only the server-owned session snapshot reaches the publishing service.
+
+Publishing validation returns `422` with the exact submitted title/Markdown
+escaped back into the full page or HTMX fragment and a field-specific message.
+Authorization, missing-target, malformed-form, CSRF, and storage failures do
+not echo submitted source. Successful ordinary forms use `303` to the
+builder-owned topic/post URL. Successful HTMX forms use `204` plus
+`HX-Redirect` to the same URL so XHR redirect following cannot leave browser
+history on the submitted form. Eligible area/topic pages expose the actions;
+the locked transaction policy remains authoritative if state changes after
+rendering.
+
 Area topic lists use conventional one-based `page` query parameters. An absent
 parameter means page 1; the only accepted spelling is an unsigned base-10
 integer without signs or leading zeros, in the closed range 1 through 10,000.

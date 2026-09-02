@@ -48,6 +48,61 @@ func NewAuthenticatedHandler(
 	sessionCookieName string,
 	secure bool,
 ) (http.Handler, error) {
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		nil, nil, sessionCookieName, secure,
+	)
+}
+
+// NewAuthenticatedPublishingHandler constructs the complete alpha browser
+// boundary with authenticated topic/reply publication added to the existing
+// read, login, revalidation, and logout routes.
+//
+// Complexity: construction and dispatch retain NewAuthenticatedHandler's
+// bounds; the publishing delegates add only their documented bounded form,
+// rendering, transaction, and response costs. No operation is retried or
+// detached.
+func NewAuthenticatedPublishingHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	sessionCookieName string,
+	secure bool,
+) (http.Handler, error) {
+	if createTopic == nil || createReply == nil {
+		return nil, fmt.Errorf("browser publishing services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, sessionCookieName, secure,
+	)
+}
+
+// newAuthenticatedHandler owns the common browser construction and exact-path
+// session dispatch for the read-only and publishing-enabled variants.
+//
+// Complexity: construction is tight Theta(1). For path bytes p and delegated
+// work D, dispatch is O(p+D) time and tight Theta(1) local auxiliary space;
+// canonical reply-path recognition scans p once. No request is retried.
+func newAuthenticatedHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	sessionCookieName string,
+	secure bool,
+) (http.Handler, error) {
 	if service == nil {
 		return nil, fmt.Errorf("browser authentication service is required")
 	}
@@ -126,6 +181,22 @@ func NewAuthenticatedHandler(
 	if err != nil {
 		return nil, fmt.Errorf("construct revalidation session boundary: %w", err)
 	}
+	var authenticatedPublishingHandler http.Handler
+	if createTopic != nil || createReply != nil {
+		if createTopic == nil || createReply == nil {
+			return nil, fmt.Errorf("browser publishing services are incomplete")
+		}
+		publishingHandler, publishingErr := newPublishingHandler(builder, createTopic, createReply)
+		if publishingErr != nil {
+			return nil, fmt.Errorf("construct publishing routes: %w", publishingErr)
+		}
+		authenticatedPublishingHandler, publishingErr = newSessionAuthenticationHandler(
+			publishingHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if publishingErr != nil {
+			return nil, fmt.Errorf("construct publishing session boundary: %w", publishingErr)
+		}
+	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -140,9 +211,25 @@ func NewAuthenticatedHandler(
 		case "/logout":
 			request.Pattern = request.Method + " /logout"
 			authenticatedLogoutHandler.ServeHTTP(response, request)
+		case "/topics/new", "/topics":
+			if authenticatedPublishingHandler != nil {
+				authenticatedPublishingHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedPublishingHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
+				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
+				identifier, replyPath := strings.CutSuffix(identifierAndSuffix, "/replies")
+				if topicPath && replyPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseTopicID(identifier); identifierErr == nil {
+						authenticatedPublishingHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if request.Method == http.MethodGet && request.URL.RawPath == "" {
 				slug, areaPath := strings.CutPrefix(request.URL.Path, "/areas/")
 				if areaPath && slug != "" && !strings.ContainsRune(slug, '/') {

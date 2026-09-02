@@ -31,6 +31,7 @@ type areaTopicListView struct {
 	TotalTopics int64
 	PreviousURL string
 	NextURL     string
+	NewTopicURL string
 }
 
 type areaTopicListItem struct {
@@ -56,6 +57,8 @@ type topicPostPageView struct {
 	TotalPosts  int64
 	PreviousURL string
 	NextURL     string
+	ReplyForm   publishingFormView
+	ShowReply   bool
 }
 
 type topicPostItem struct {
@@ -66,6 +69,20 @@ type topicPostItem struct {
 	Created   string
 	Edited    string
 	Body      contentrender.TrustedHTML
+}
+
+type publishingFormView struct {
+	Heading       string
+	ActionURL     string
+	CancelURL     string
+	CSRFToken     string
+	AreaSlug      string
+	Title         string
+	Markdown      string
+	TitleError    string
+	MarkdownError string
+	FormError     string
+	Reply         bool
 }
 
 // newPageView resolves every application-owned shell URL through one validated

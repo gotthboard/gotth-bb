@@ -18,6 +18,7 @@ WITH visible_topic AS (
         area.slug AS area_slug,
         area.name AS area_name,
         area.description AS area_description,
+        area.posting_mode AS area_posting_mode,
         topic.id AS topic_id,
         topic.title AS topic_title,
         topic.state AS topic_state,
@@ -55,6 +56,7 @@ SELECT
     visible_topic.area_slug,
     visible_topic.area_name,
     visible_topic.area_description,
+    visible_topic.area_posting_mode,
     visible_topic.topic_id,
     visible_topic.topic_title,
     visible_topic.topic_state,
@@ -94,6 +96,7 @@ type GetVisibleTopicPostPageRow struct {
 	AreaSlug               string
 	AreaName               string
 	AreaDescription        string
+	AreaPostingMode        string
 	TopicID                int64
 	TopicTitle             string
 	TopicState             string
@@ -133,6 +136,7 @@ func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTop
 			&i.AreaSlug,
 			&i.AreaName,
 			&i.AreaDescription,
+			&i.AreaPostingMode,
 			&i.TopicID,
 			&i.TopicTitle,
 			&i.TopicState,

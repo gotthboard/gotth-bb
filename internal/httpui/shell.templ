@@ -89,6 +89,9 @@ templ areaTopicListContent(view pageView, area areaTopicListView) {
 			if area.Description != "" {
 				<p class="mt-4 max-w-2xl text-base leading-7 text-slate-300">{ area.Description }</p>
 			}
+			if area.NewTopicURL != "" {
+				<a href={ area.NewTopicURL } hx-get={ area.NewTopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="mt-6 inline-flex rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">New topic</a>
+			}
 			if len(area.Topics) == 0 {
 				<div role="status" aria-live="polite" class="mt-8 rounded-lg border border-dashed border-slate-700 bg-slate-950/60 p-6 text-slate-300">
 					No topics have been published in this area yet.
@@ -189,7 +192,53 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 				}
 			</nav>
 		}
+		if topic.ShowReply {
+			@publishingFormSection(topic.ReplyForm)
+		}
 	</main>
+}
+
+templ publishingFormPage(view pageView, form publishingFormView) {
+	@document(view, publishingFormContent(view, form))
+}
+
+templ publishingFormContent(view pageView, form publishingFormView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-3xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		@publishingFormSection(form)
+	</main>
+}
+
+templ publishingFormSection(form publishingFormView) {
+		<section aria-labelledby="publishing-title" class="mt-8 rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<h1 id="publishing-title" class="text-3xl font-bold tracking-tight text-white">{ form.Heading }</h1>
+			if form.FormError != "" {
+				<p role="alert" class="mt-4 rounded-md border border-rose-900/70 bg-rose-950/40 p-3 text-rose-200">{ form.FormError }</p>
+			}
+			<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-8 grid gap-6">
+				<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
+				if !form.Reply {
+					<input type="hidden" name="area" value={ form.AreaSlug }/>
+					<label class="grid gap-2 font-semibold text-slate-200">
+						Topic title
+						<input name="title" value={ form.Title } required maxlength="200" aria-invalid={ templ.KV("true", form.TitleError != "") } class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+					</label>
+					if form.TitleError != "" {
+						<p role="alert" class="text-sm text-rose-300">{ form.TitleError }</p>
+					}
+				}
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Markdown body
+					<textarea name="markdown" required maxlength="65536" rows="14" aria-invalid={ templ.KV("true", form.MarkdownError != "") } class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white">{ form.Markdown }</textarea>
+				</label>
+				if form.MarkdownError != "" {
+					<p role="alert" class="text-sm text-rose-300">{ form.MarkdownError }</p>
+				}
+				<div class="flex flex-wrap gap-4">
+					<button type="submit" class="rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">Publish</button>
+					<a href={ form.CancelURL } class="rounded-md border border-slate-700 px-4 py-2 font-semibold text-slate-200">Cancel</a>
+				</div>
+			</form>
+		</section>
 }
 
 templ errorPage(view pageView, status int, heading, message string) {

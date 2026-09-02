@@ -119,6 +119,7 @@ func newAreaTopicListHandler(builder URLBuilder, maximumPage int32, load AreaTop
 		view, viewErr := newPageView(builder, loaded.Area.Name, segments...)
 		previousURL := ""
 		nextURL := ""
+		newTopicURL := ""
 		if viewErr == nil && pageNumber > 1 {
 			view.CanonicalURL, viewErr = builder.AbsoluteWithQuery(segments, url.Values{"page": {strconv.FormatInt(int64(pageNumber), 10)}})
 		}
@@ -133,13 +134,19 @@ func newAreaTopicListHandler(builder URLBuilder, maximumPage int32, load AreaTop
 		if viewErr == nil && int64(pageNumber) < loaded.TotalPages && pageNumber < maximumPage {
 			nextURL, viewErr = builder.PathWithQuery(segments, url.Values{"page": {strconv.FormatInt(int64(pageNumber+1), 10)}})
 		}
+		staff := authentication.Access.Role == auth.RoleModerator || authentication.Access.Role == auth.RoleAdministrator
+		mayCreate := authentication.Access.Authenticated && !authentication.Access.Suspended && authentication.Access.MutedUntil == nil &&
+			(loaded.Area.PostingMode == "normal" || staff && loaded.Area.PostingMode == "read_only")
+		if viewErr == nil && mayCreate {
+			newTopicURL, viewErr = builder.PathWithQuery([]string{"topics", "new"}, url.Values{"area": {slug}})
+		}
 		if invalid || viewErr != nil {
 			serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Area unavailable", "This discussion area is temporarily unavailable.")
 			return
 		}
 		presentation := areaTopicListView{
 			Name: loaded.Area.Name, Description: loaded.Area.Description, Topics: items,
-			Number: pageNumber, TotalTopics: loaded.TotalTopics, PreviousURL: previousURL, NextURL: nextURL,
+			Number: pageNumber, TotalTopics: loaded.TotalTopics, PreviousURL: previousURL, NextURL: nextURL, NewTopicURL: newTopicURL,
 		}
 		if renderErr := renderResponse(
 			response, request, http.StatusOK,

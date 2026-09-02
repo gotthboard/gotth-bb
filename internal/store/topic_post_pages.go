@@ -78,6 +78,7 @@ func GetVisibleTopicPostPage(
 	}
 	first := rows[0]
 	validMetadata := first.AreaID > 0 && policy.ValidAreaSlug(first.AreaSlug) && first.AreaName != "" &&
+		validPostingMode(first.AreaPostingMode) &&
 		first.TopicID == topicID && first.TopicTitle != "" && validVisibleTopicState(first.TopicState) &&
 		first.TopicCreatedAt.Valid && first.TopicCreatedAt.InfinityModifier == pgtype.Finite && first.TopicAuthorDisplayName != "" &&
 		(!first.TopicPinnedAt.Valid || first.TopicPinnedAt.InfinityModifier == pgtype.Finite && !first.TopicPinnedAt.Time.Before(first.TopicCreatedAt.Time)) &&
@@ -122,13 +123,21 @@ func validVisibleTopicState(state string) bool {
 	return state == "open" || state == "locked" || state == "archived" || state == "hidden"
 }
 
+// validPostingMode accepts only the area publishing modes closed by schema.
+//
+// Complexity: time and auxiliary space are tight Theta(1).
+func validPostingMode(mode string) bool {
+	return mode == string(policy.PostingNormal) || mode == string(policy.PostingReadOnly) || mode == string(policy.PostingArchived)
+}
+
 // sameVisibleTopicMetadata proves that repeated window rows describe exactly
 // one authorized topic and breadcrumb authority.
 //
 // Complexity: time and auxiliary space are tight Theta(1).
 func sameVisibleTopicMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 	return row.AreaID == first.AreaID && row.AreaSlug == first.AreaSlug && row.AreaName == first.AreaName &&
-		row.AreaDescription == first.AreaDescription && row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
+		row.AreaDescription == first.AreaDescription && row.AreaPostingMode == first.AreaPostingMode &&
+		row.TopicID == first.TopicID && row.TopicTitle == first.TopicTitle &&
 		row.TopicState == first.TopicState && row.TopicPinnedAt == first.TopicPinnedAt && row.TopicCreatedAt == first.TopicCreatedAt &&
 		row.TopicAuthorDisplayName == first.TopicAuthorDisplayName
 }

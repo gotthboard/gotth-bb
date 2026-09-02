@@ -139,22 +139,23 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 	*(destinations[1].(*string)) = "public"
 	*(destinations[2].(*string)) = "Public area"
 	*(destinations[3].(*string)) = "Visible to everyone"
-	*(destinations[4].(*int64)) = 42
-	*(destinations[5].(*string)) = "First topic"
-	*(destinations[6].(*string)) = "open"
-	*(destinations[7].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[8].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[9].(*string)) = "Starter"
-	*(destinations[10].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
-	*(destinations[11].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[12].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
-	*(destinations[13].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
-	*(destinations[14].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[15].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[4].(*string)) = "normal"
+	*(destinations[5].(*int64)) = 42
+	*(destinations[6].(*string)) = "First topic"
+	*(destinations[7].(*string)) = "open"
+	*(destinations[8].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[9].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[10].(*string)) = "Starter"
+	*(destinations[11].(*pgtype.Int8)) = pgtype.Int8{Int64: 101, Valid: true}
+	*(destinations[12].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
+	*(destinations[13].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
+	*(destinations[14].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
+	*(destinations[15].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
 	*(destinations[16].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[18].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
-	*(destinations[19].(*int64)) = 1
+	*(destinations[17].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[18].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[19].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[20].(*int64)) = 1
 	return nil
 }
 

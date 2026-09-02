@@ -16,6 +16,7 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/app"
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	forumservice "git.dannyhunn.com/agents/gotth-bb/internal/forum"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
@@ -139,7 +140,7 @@ func run(
 		return fmt.Errorf("construct authentication service returned no service")
 	}
 	queries := db.New(pool)
-	applicationHandler, err := httpui.NewAuthenticatedHandler(
+	applicationHandler, err := httpui.NewAuthenticatedPublishingHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]db.Area, error) {
@@ -153,6 +154,12 @@ func run(
 			return store.GetVisibleTopicPostPage(postContext, queries, topicID, page, access)
 		},
 		store.MaximumPostPage,
+		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
+			return forumservice.CreateTopic(publishContext, pool, time.Now, access, areaSlug, title, markdown)
+		},
+		func(publishContext context.Context, access auth.AccessContext, topicID int64, markdown string) (forumservice.PublishResult, error) {
+			return forumservice.CreateReply(publishContext, pool, time.Now, access, topicID, markdown)
+		},
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 	)

@@ -5,6 +5,69 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 00:25 CDT — Wire authenticated topic and reply forms
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `docs/implementation-spec.md`
+- `internal/forum/publish.go`
+- `internal/httpui/area_topic_handler.go`
+- `internal/httpui/authenticated_handler.go`
+- `internal/httpui/publishing_handler.go`
+- `internal/httpui/publishing_handler_test.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/topic_post_handler.go`
+- `internal/httpui/topic_post_handler_test.go`
+- `internal/httpui/view.go`
+- `internal/store/db/topic_posts.sql.go`
+- `internal/store/db/topic_posts_test.go`
+- `internal/store/queries/topic_posts.sql`
+- `internal/store/topic_post_pages.go`
+- `internal/store/topic_post_pages_test.go`
+
+Explanation:
+
+Activated authenticated topic and reply publication in the process router.
+Eligible area pages link to a canonical new-topic form; eligible topic pages
+render an inline reply form. The read query now carries the owning area's
+closed posting mode so the presentation hides actions for anonymous, muted,
+suspended, read-only-member, locked-member, and archived states. The locked
+service policy still decides every mutation.
+
+Forms use one 262,144-byte URL-encoded bound, verify the session-derived CSRF
+token before parsing, reject unknown/missing/duplicate fields, and pass only
+the server-owned access snapshot to the publisher. Typed validation errors
+render `422` with the exact submitted source safely escaped and a field-specific
+message. Other failure classes echo no source or database diagnostic.
+
+Ordinary success uses canonical `303` redirects. HTMX success uses an explicit
+same-origin `HX-Redirect`; an initial cold UX check caught that relying on XHR
+to follow `303` could swap the destination while leaving the address bar on the
+form.
+
+Verification:
+
+- Full-page and HTMX validation preserve and escape submitted title/Markdown
+- Topic page calculation redirects reply 26 to `?page=2#post-<id>`
+- Malformed/noncanonical reply paths bypass session lookup and mutation
+- CSRF, strict form grammar, authorization, missing targets, invalid service
+  results, storage failures, and canonical redirects are covered under race
+- Readable pages expose actions only for the tested eligible role/state matrix
+
+Risks / non-goals:
+
+- Markdown preview, edit, and delete remain separate A1-07 units
+- The 262,144-byte wire buffer is allocated once for CSRF verification and then
+  parsed by `net/http`; decoded Markdown remains capped by the service at
+  65,536 bytes
+
 ### 2026-09-01 23:48 CDT — Serialize authorized topic and reply publication
 
 Commit: current commit; hash assigned by Git after commit

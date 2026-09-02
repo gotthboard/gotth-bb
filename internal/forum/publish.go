@@ -17,7 +17,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var ErrPublishingDenied = errors.New("forum publishing denied")
+var (
+	ErrInvalidPublishingInput = errors.New("invalid forum publishing input")
+	ErrPublishingDenied       = errors.New("forum publishing denied")
+)
+
+// InvalidPublishingInput identifies one safe form field without retaining or
+// exposing submitted bytes.
+type InvalidPublishingInput struct {
+	Field string
+}
+
+// Error returns one bounded field-only diagnostic.
+//
+// Complexity: time and returned space are tight Theta(1); Field is one of the
+// fixed service-owned names.
+func (invalid InvalidPublishingInput) Error() string {
+	return "invalid forum publishing " + invalid.Field
+}
+
+// Unwrap exposes only the stable validation class for errors.Is.
+//
+// Complexity: time and auxiliary space are tight Theta(1).
+func (invalid InvalidPublishingInput) Unwrap() error {
+	return ErrInvalidPublishingInput
+}
 
 type transactionBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
@@ -62,17 +86,17 @@ func CreateTopic(
 		return PublishResult{}, fmt.Errorf("create topic actor is invalid")
 	}
 	if !policy.ValidAreaSlug(areaSlug) {
-		return PublishResult{}, fmt.Errorf("create topic area slug is invalid")
+		return PublishResult{}, InvalidPublishingInput{Field: "area"}
 	}
 	if !validTopicTitle(title) {
-		return PublishResult{}, fmt.Errorf("create topic title is invalid")
+		return PublishResult{}, InvalidPublishingInput{Field: "title"}
 	}
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create topic: %w", err)
 	}
 	rendered, err := render.RenderMarkdown(markdownSource)
 	if err != nil {
-		return PublishResult{}, fmt.Errorf("create topic body: %w", err)
+		return PublishResult{}, InvalidPublishingInput{Field: "markdown"}
 	}
 	renderedHTML, rendererVersion, err := rendered.PersistenceValues()
 	if err != nil {
@@ -150,14 +174,14 @@ func CreateReply(
 		return PublishResult{}, fmt.Errorf("create reply actor is invalid")
 	}
 	if topicID <= 0 {
-		return PublishResult{}, fmt.Errorf("create reply topic ID is invalid")
+		return PublishResult{}, InvalidPublishingInput{Field: "topic"}
 	}
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create reply: %w", err)
 	}
 	rendered, err := render.RenderMarkdown(markdownSource)
 	if err != nil {
-		return PublishResult{}, fmt.Errorf("create reply body: %w", err)
+		return PublishResult{}, InvalidPublishingInput{Field: "markdown"}
 	}
 	renderedHTML, rendererVersion, err := rendered.PersistenceValues()
 	if err != nil {

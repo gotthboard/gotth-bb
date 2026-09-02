@@ -15,7 +15,7 @@ func TestGetVisibleTopicPostPageBindsAccessAndPaginationAndScansRows(t *testing.
 	t.Parallel()
 
 	want := []GetVisibleTopicPostPageRow{{
-		AreaID: 3, AreaSlug: "members", AreaName: "Members", AreaDescription: "Private",
+		AreaID: 3, AreaSlug: "members", AreaName: "Members", AreaDescription: "Private", AreaPostingMode: "normal",
 		TopicID: 9, TopicTitle: "Welcome", TopicState: "locked", TopicPinnedAt: pgtype.Timestamptz{Valid: true},
 		TopicCreatedAt: pgtype.Timestamptz{Valid: true}, TopicAuthorDisplayName: "Starter",
 		PostID: pgtype.Int8{Int64: 17, Valid: true}, PostNumber: pgtype.Int4{Int32: 2, Valid: true},
@@ -126,22 +126,23 @@ func (rows *topicPostRows) Scan(destinations ...any) error {
 	*(destinations[1].(*string)) = item.AreaSlug
 	*(destinations[2].(*string)) = item.AreaName
 	*(destinations[3].(*string)) = item.AreaDescription
-	*(destinations[4].(*int64)) = item.TopicID
-	*(destinations[5].(*string)) = item.TopicTitle
-	*(destinations[6].(*string)) = item.TopicState
-	*(destinations[7].(*pgtype.Timestamptz)) = item.TopicPinnedAt
-	*(destinations[8].(*pgtype.Timestamptz)) = item.TopicCreatedAt
-	*(destinations[9].(*string)) = item.TopicAuthorDisplayName
-	*(destinations[10].(*pgtype.Int8)) = item.PostID
-	*(destinations[11].(*pgtype.Int4)) = item.PostNumber
-	*(destinations[12].(*pgtype.Text)) = item.RenderedHtml
-	*(destinations[13].(*pgtype.Text)) = item.RendererVersion
-	*(destinations[14].(*pgtype.Int4)) = item.Revision
-	*(destinations[15].(*pgtype.Timestamptz)) = item.PostCreatedAt
-	*(destinations[16].(*pgtype.Timestamptz)) = item.PostUpdatedAt
-	*(destinations[17].(*pgtype.Timestamptz)) = item.PostEditedAt
-	*(destinations[18].(*pgtype.Text)) = item.PostAuthorDisplayName
-	*(destinations[19].(*int64)) = item.TotalVisiblePosts
+	*(destinations[4].(*string)) = item.AreaPostingMode
+	*(destinations[5].(*int64)) = item.TopicID
+	*(destinations[6].(*string)) = item.TopicTitle
+	*(destinations[7].(*string)) = item.TopicState
+	*(destinations[8].(*pgtype.Timestamptz)) = item.TopicPinnedAt
+	*(destinations[9].(*pgtype.Timestamptz)) = item.TopicCreatedAt
+	*(destinations[10].(*string)) = item.TopicAuthorDisplayName
+	*(destinations[11].(*pgtype.Int8)) = item.PostID
+	*(destinations[12].(*pgtype.Int4)) = item.PostNumber
+	*(destinations[13].(*pgtype.Text)) = item.RenderedHtml
+	*(destinations[14].(*pgtype.Text)) = item.RendererVersion
+	*(destinations[15].(*pgtype.Int4)) = item.Revision
+	*(destinations[16].(*pgtype.Timestamptz)) = item.PostCreatedAt
+	*(destinations[17].(*pgtype.Timestamptz)) = item.PostUpdatedAt
+	*(destinations[18].(*pgtype.Timestamptz)) = item.PostEditedAt
+	*(destinations[19].(*pgtype.Text)) = item.PostAuthorDisplayName
+	*(destinations[20].(*int64)) = item.TotalVisiblePosts
 	return nil
 }
 
