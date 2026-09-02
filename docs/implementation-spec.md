@@ -296,8 +296,12 @@ limits. Suspensions do not delete the row.
 One seeded singleton row exists solely as a transaction lock for
 administrator-continuity decisions. Its key is a boolean primary key constrained
 to `true`, so the schema permits at most one row; the initial migration inserts
-that row. The runtime role has no UPDATE or DELETE privilege on it, and
-readiness fails if exact cardinality one is not observed or no active
+that row. PostgreSQL locking clauses require UPDATE privilege on at least one
+selected column. The runtime role therefore receives only column-level
+`UPDATE(singleton)` through `deploy/postgresql/runtime-grants.sql`; it has no
+table-wide UPDATE, no UPDATE on `created_at`, and no DELETE privilege. The key
+constraint admits only `true`, so this privilege cannot encode mutable state.
+Readiness fails if exact cardinality one is not observed or no active
 administrator exists. Bootstrap and every role or suspension transition that
 can change the active-administrator set lock this row with `SELECT ... FOR
 UPDATE` before evaluating state. An active

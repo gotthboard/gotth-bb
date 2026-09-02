@@ -5,6 +5,65 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 11:22 CDT — Repair restricted-role administrator claim
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `cmd/forum/main.go`
+- `cmd/forum/main_test.go`
+- `cmd/package/main_test.go`
+- `deploy/postgresql/runtime-grants.sql`
+- `docs/CHANGELOG.md`
+- `docs/implementation-spec.md`
+- `docs/release-operations.md`
+- `docs/verification.md`
+- `internal/governance/runtime_privileges_integration_test.go`
+- `internal/releaseartifact/artifact.go`
+- `internal/releaseartifact/artifact_test.go`
+- `README.md`
+
+Explanation:
+
+The deployed browser claim reached the governance singleton lock but
+PostgreSQL 17 rejected `SELECT ... FOR UPDATE`: the restricted runtime role had
+SELECT only, while every PostgreSQL locking clause also requires UPDATE on at
+least one selected column. The deployment contract now grants only
+`UPDATE(singleton)`. The constrained boolean primary key remains fixed at true,
+and the runtime role retains no table-wide UPDATE, no UPDATE on `created_at`,
+and no DELETE privilege.
+
+A restricted-role integration now proves the production failure before the
+grant, the atomic role/audit/session result after the grant, and the remaining
+denials. Claim failures also emit an operator-visible structured error without
+logging identity or session inputs. Native release archives carry the runtime
+grant SQL from the exact packaged commit so deployment does not depend on a
+separate source checkout.
+
+Verification:
+
+- Expected-red restricted-role integration failed because the grant contract
+  did not exist.
+- Expected-red logging unit tests failed because the logging wrapper did not
+  exist.
+- Expected-red packaging tests proved the release archive omitted the runtime
+  grant contract.
+- `go test -mod=readonly ./cmd/forum ./cmd/package ./internal/governance ./internal/releaseartifact -count=1`
+- `go test -mod=readonly -race ./cmd/forum ./cmd/package ./internal/governance ./internal/releaseartifact -count=50`
+- `make verify`
+- The logging wrapper has 100% statement coverage.
+- PostgreSQL 17.10 restricted-role integration passed 50 repetitions, proving
+  the expected SQLSTATE `42501` before the grant and the atomic claim plus
+  retained denials after it.
+
+Risks / non-goals:
+
+- Registration, Authentik application bindings, area management, and forum
+  provisioning are unchanged.
+- Performance evidence is N/A: this adds one idempotent deployment GRANT and
+  preserves the existing single-row request transaction.
+
 ### 2026-09-02 10:20 CDT — First-run administration and gated registration
 
 Commit: current commit; hash assigned by Git after commit

@@ -46,9 +46,10 @@ make release
 forum, migration, and operator executables with the same linker identity. It
 executes the migration and operator binaries' database-free `version` checks
 and emits one normalized `.tar.gz` plus `SHA256SUMS`. The archive also contains
-exact release metadata and the read-only Go module dependency manifest. Release
-packaging is native only so both executable identity checks run before the
-artifact is admitted.
+exact release metadata, the read-only Go module dependency manifest, and the
+runtime PostgreSQL grant contract from that exact commit. Release packaging is
+native only so both executable identity checks run before the artifact is
+admitted.
 
 Apply the release's embedded forward migrations with `DATABASE_URL` already
 present in the process environment:
@@ -56,6 +57,17 @@ present in the process environment:
 ```sh
 go run -mod=readonly ./cmd/migrate
 ```
+
+The migration owner must then grant the runtime role only the column-level
+privilege PostgreSQL requires for the governance singleton lock:
+
+```sh
+psql --set=ON_ERROR_STOP=1 --set=runtime_role=gotth_bb_runtime \
+  --file=deploy/postgresql/runtime-grants.sql "$DATABASE_URL"
+```
+
+The grant is idempotent. It does not give the runtime role table-wide UPDATE or
+DELETE access to `governance_state`.
 
 The migration command reads no HTTP or OIDC configuration, does not create a
 connection pool, and does not provide a fake down-migration path. Do not place

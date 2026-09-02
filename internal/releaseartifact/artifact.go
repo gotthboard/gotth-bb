@@ -23,7 +23,10 @@ import (
 	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
 )
 
-const linkerPackage = "git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
+const (
+	linkerPackage         = "git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
+	maxRuntimeGrantsBytes = 16 << 10
+)
 
 // Runner executes one bounded repository command and returns its standard
 // output. Implementations must not return unbounded or secret-bearing error
@@ -58,10 +61,10 @@ type archiveEntry struct {
 // executables with one linker identity, executes the database-free identity
 // check, and atomically admits a normalized tar.gz plus SHA256SUMS directory.
 //
-// Complexity: for source/build work b, dependency-manifest bytes d, executable
-// bytes n, and compressed output bytes z, time is O(b+d+n+z), Omega(n), and
-// auxiliary memory is O(d), Omega(1); executable contents are streamed once
-// rather than retained in memory.
+// Complexity: for source/build work b, dependency-manifest bytes d, runtime
+// grant bytes g, executable bytes n, and compressed output bytes z, time is
+// O(b+d+g+n+z), Omega(n), and auxiliary memory is O(d+g), Omega(1); executable
+// contents are streamed once rather than retained in memory.
 func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 	if ctx == nil {
 		return Result{}, fmt.Errorf("release context is required")
@@ -119,6 +122,17 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, fmt.Errorf("release build canceled: %w", err)
+	}
+	runtimeGrants, err := run(ctx, configured.RepositoryDirectory, nil, "git", "show", configured.Commit+":deploy/postgresql/runtime-grants.sql")
+	if err != nil {
+		return Result{}, fmt.Errorf("load runtime grants: %w", err)
+	}
+	runtimeGrants, err = canonicalRuntimeGrants(runtimeGrants)
+	if err != nil {
+		return Result{}, err
+	}
 
 	parent := filepath.Dir(configured.OutputDirectory)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -144,7 +158,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{name: "gotth-bb-migrate", command: "./cmd/migrate"},
 		{name: "gotth-bb-operator", command: "./cmd/operator"},
 	}
-	entries := make([]archiveEntry, 0, len(binaries)+2)
+	entries := make([]archiveEntry, 0, len(binaries)+3)
 	root := fmt.Sprintf("gotth-bb-%s-%s-%s", release.Version, configured.GOOS, configured.GOARCH)
 	for _, binary := range binaries {
 		if err := ctx.Err(); err != nil {
@@ -173,6 +187,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 	entries = append(entries,
 		archiveEntry{name: root + "/DEPENDENCIES.txt", mode: 0o644, data: dependencies},
 		archiveEntry{name: root + "/RELEASE.txt", mode: 0o644, data: []byte(metadata)},
+		archiveEntry{name: root + "/deploy/postgresql/runtime-grants.sql", mode: 0o644, data: runtimeGrants},
 	)
 	sort.Slice(entries, func(left, right int) bool { return entries[left].name < entries[right].name })
 	archiveName := root + ".tar.gz"
@@ -271,6 +286,16 @@ func canonicalManifest(manifest []byte) ([]byte, error) {
 		}
 	}
 	return manifest, nil
+}
+
+func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
+	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
+		return nil, fmt.Errorf("runtime grants are invalid")
+	}
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 1 {
+		return nil, fmt.Errorf("runtime grants are invalid")
+	}
+	return grants, nil
 }
 
 func writeArchive(path, root string, entries []archiveEntry) (string, error) {

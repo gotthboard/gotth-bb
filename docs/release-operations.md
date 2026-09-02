@@ -206,6 +206,11 @@ notes, screenshots, or repository files.
   17.10 (`postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d`).
 - The forum uses a dedicated database role with only required privileges.
 - Migration privileges are separated from runtime privileges where practical.
+- After migrations, the migration owner applies
+  `deploy/postgresql/runtime-grants.sql` with the exact runtime role as psql's
+  `runtime_role` variable. This grants only `UPDATE(singleton)` on
+  `governance_state`, which PostgreSQL requires for `SELECT ... FOR UPDATE`;
+  table-wide UPDATE, UPDATE on `created_at`, and DELETE remain denied.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -429,6 +434,8 @@ artifact digest, and migration result for review.
       `bb.alhstudios.com` site.
 - [ ] PostgreSQL database, runtime role, migration role, and backup location
       created.
+- [ ] Restricted runtime grants applied and the governance singleton lock
+      exercised through the runtime role.
 - [ ] Authentik client, callback, approved claims, and test identities configured.
 - [ ] First local administrator granted by the audited operator command.
 - [ ] Runtime secrets installed outside the repository.

@@ -132,6 +132,8 @@ func packageRunner() releaseartifact.Runner {
 			return []byte(packageTestCommit + "\n"), nil
 		case name == "git" && len(args) > 0 && args[0] == "status":
 			return nil, nil
+		case name == "git" && len(args) > 0 && args[0] == "show":
+			return []byte("GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n"), nil
 		case name == "go" && len(args) > 0 && args[0] == "env":
 			return []byte("go1.26.6-test\n"), nil
 		case name == "go" && len(args) > 4 && args[0] == "list" && args[3] == "-f":

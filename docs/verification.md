@@ -136,8 +136,10 @@ Automated tests cover:
   demotion, and suspension transactions; the completeness oracle is at least
   one unsuspended administrator-role row after every committed transition.
 - Fresh migration proves exact `governance_state` cardinality one. A missing
-  row makes readiness fail, and the runtime database role cannot update or
-  delete it.
+  row makes readiness fail. A PostgreSQL 17.10 restricted-role integration
+  proves the lock fails before the deployment grant, succeeds after the grant,
+  and the runtime role still lacks table-wide UPDATE, UPDATE on `created_at`,
+  and DELETE.
 - Successful session rotation and old-token rejection.
 - Idle and absolute expiry.
 - Revoked and locally suspended sessions.

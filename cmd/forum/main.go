@@ -40,6 +40,30 @@ type databasePool interface {
 type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
 
+// newLoggedInitialAdministratorClaimer preserves the exact claim result while
+// recording an operator-visible failure cause. It deliberately logs no user,
+// session, issuer, subject, or request input.
+//
+// Complexity: construction is tight Theta(1) time and auxiliary space. For
+// delegated claim cost D and failure-log cost L, invocation time is O(D+L),
+// Omega(D), with no tighter Theta bound because database and log I/O vary;
+// local auxiliary space is tight Theta(1) beyond delegated allocations.
+func newLoggedInitialAdministratorClaimer(logger *slog.Logger, claim httpui.InitialAdministratorClaimer) (httpui.InitialAdministratorClaimer, error) {
+	if logger == nil {
+		return nil, fmt.Errorf("administrator claim logger is required")
+	}
+	if claim == nil {
+		return nil, fmt.Errorf("administrator claim service is required")
+	}
+	return func(ctx context.Context, authentication auth.SessionAuthentication, requestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+		result, err := claim(ctx, authentication, requestID)
+		if err != nil {
+			logger.ErrorContext(ctx, "initial administrator claim failed", "error", err)
+		}
+		return result, err
+	}, nil
+}
+
 // main binds process signals to the tested service runner and reports only a
 // bounded top-level error before returning a nonzero process status.
 //
@@ -114,6 +138,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	release, err := buildinfo.Current()
 	if err != nil {
 		return fmt.Errorf("load release identity: %w", err)
@@ -161,6 +186,12 @@ func run(
 		return fmt.Errorf("construct readiness checker: %w", err)
 	}
 	queries := db.New(pool)
+	claimInitialAdministrator, err := newLoggedInitialAdministratorClaimer(logger, func(setupContext context.Context, authentication auth.SessionAuthentication, requestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+		return governance.ClaimInitialAdministrator(setupContext, pool, time.Now, authentication.Access.UserID, authentication.SessionID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject, requestID)
+	})
+	if err != nil {
+		return fmt.Errorf("construct administrator claim service: %w", err)
+	}
 	applicationHandler, err := httpui.NewAuthenticatedModeratedForumHandler(
 		urlBuilder,
 		authenticationService,
@@ -207,9 +238,7 @@ func run(
 		func(setupContext context.Context, authentication auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {
 			return governance.LoadInitialAdministratorSetup(setupContext, queries, time.Now, authentication.Access.UserID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject)
 		},
-		func(setupContext context.Context, authentication auth.SessionAuthentication, requestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
-			return governance.ClaimInitialAdministrator(setupContext, pool, time.Now, authentication.Access.UserID, authentication.SessionID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject, requestID)
-		},
+		claimInitialAdministrator,
 		configured.SessionCookieName,
 		configured.PublicBaseURL.Scheme == "https",
 		readinessChecker.Check,
@@ -221,7 +250,6 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct footer load-time boundary: %w", err)
 	}
-	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	handler, err := app.NewHTTPHandler(applicationHandler, logger, rand.Reader, time.Now)
 	if err != nil {
 		return fmt.Errorf("construct HTTP handler: %w", err)

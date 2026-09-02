@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +17,7 @@ import (
 
 	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
 	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
 	"git.dannyhunn.com/agents/gotth-bb/internal/httpui"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"git.dannyhunn.com/agents/gotth-bb/migrations"
@@ -23,6 +26,68 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+func TestNewLoggedInitialAdministratorClaimerReportsOnlyFailures(t *testing.T) {
+	t.Parallel()
+	authentication := auth.SessionAuthentication{
+		SessionID: 91,
+		Access:    auth.AccessContext{Authenticated: true, UserID: 41, Role: auth.RoleMember},
+	}
+	requestID := pgtype.UUID{Bytes: [16]byte{0x61}, Valid: true}
+	wantResult := governance.InitialAdministratorClaimResult{UserID: 41, AuditID: 73, RevokedSessionID: 91}
+	cause := errors.New("database lock failed")
+	for _, test := range []struct {
+		name      string
+		claimErr  error
+		wantError bool
+		wantLog   bool
+	}{
+		{name: "success"},
+		{name: "failure", claimErr: cause, wantError: true, wantLog: true},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewJSONHandler(&logs, nil))
+			calls := 0
+			claimer, err := newLoggedInitialAdministratorClaimer(logger, func(_ context.Context, gotAuthentication auth.SessionAuthentication, gotRequestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+				calls++
+				if !reflect.DeepEqual(gotAuthentication, authentication) || gotRequestID != requestID {
+					t.Fatalf("claim input = (%+v, %+v)", gotAuthentication, gotRequestID)
+				}
+				return wantResult, test.claimErr
+			})
+			if err != nil {
+				t.Fatalf("newLoggedInitialAdministratorClaimer() returned error: %v", err)
+			}
+			gotResult, gotErr := claimer(context.Background(), authentication, requestID)
+			if gotResult != wantResult || calls != 1 || errors.Is(gotErr, cause) != test.wantError {
+				t.Fatalf("claim result = (%+v, %v, calls %d)", gotResult, gotErr, calls)
+			}
+			logged := logs.String()
+			if strings.Contains(logged, "database lock failed") != test.wantLog || strings.Contains(logged, `"user_id"`) || strings.Contains(logged, `"session_id"`) {
+				t.Fatalf("claim log = %q", logged)
+			}
+			if test.wantLog && !strings.Contains(logged, `"msg":"initial administrator claim failed"`) {
+				t.Fatalf("claim failure log = %q", logged)
+			}
+		})
+	}
+}
+
+func TestNewLoggedInitialAdministratorClaimerRejectsMissingDependencies(t *testing.T) {
+	t.Parallel()
+	valid := func(context.Context, auth.SessionAuthentication, pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+		return governance.InitialAdministratorClaimResult{}, nil
+	}
+	if claimer, err := newLoggedInitialAdministratorClaimer(nil, valid); err == nil || claimer != nil {
+		t.Fatalf("nil logger = (%v, %v)", claimer, err)
+	}
+	if claimer, err := newLoggedInitialAdministratorClaimer(slog.Default(), nil); err == nil || claimer != nil {
+		t.Fatalf("nil claimer = (%v, %v)", claimer, err)
+	}
+}
 
 type notifyingListener struct {
 	net.Listener

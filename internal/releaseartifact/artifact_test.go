@@ -21,6 +21,8 @@ import (
 
 const testCommit = "0123456789abcdef0123456789abcdef01234567"
 
+const testRuntimeGrants = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n"
+
 type boundedFailWriter struct {
 	remaining int
 }
@@ -85,6 +87,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/",
 		root + "/DEPENDENCIES.txt",
 		root + "/RELEASE.txt",
+		root + "/deploy/postgresql/runtime-grants.sql",
 		root + "/gotth-bb",
 		root + "/gotth-bb-migrate",
 		root + "/gotth-bb-operator",
@@ -99,6 +102,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"go env GOVERSION",
 		"go list -mod=readonly -m -f {{.GoVersion}}",
 		"go list -mod=readonly -m all",
+		"git show " + testCommit + ":deploy/postgresql/runtime-grants.sql",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb ./cmd/forum",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-migrate ./cmd/migrate",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-operator ./cmd/operator",
@@ -181,6 +185,8 @@ func TestBuildRejectsRepositoryAndToolFailures(t *testing.T) {
 		{name: "wrong toolchain", run: replaceRequiredVersion([]byte("1.25.0\n")), want: "toolchain does not match"},
 		{name: "dependencies command", run: failDependencies(), want: "resolve dependency manifest"},
 		{name: "malformed dependencies", run: replaceDependencies([]byte("module\r\n")), want: "dependency manifest is invalid"},
+		{name: "runtime grants command", run: failCommand("git", "show"), want: "load runtime grants"},
+		{name: "malformed runtime grants", run: replaceCommand("git", "show", []byte("GRANT UPDATE;\x00\n")), want: "runtime grants are invalid"},
 		{name: "forum build", run: failBuild("./cmd/forum"), want: "build gotth-bb"},
 		{name: "migration build", run: failBuild("./cmd/migrate"), want: "build gotth-bb-migrate"},
 		{name: "operator build", run: failBuild("./cmd/operator"), want: "build gotth-bb-operator"},
@@ -331,6 +337,29 @@ func TestCommandTextAndManifestBoundaries(t *testing.T) {
 	}
 }
 
+func TestCanonicalRuntimeGrantsRejectsMalformedData(t *testing.T) {
+	t.Parallel()
+
+	invalid := [][]byte{
+		nil,
+		[]byte(`GRANT TO :"runtime_role";`),
+		[]byte("GRANT TO role;\n"),
+		[]byte("GRANT TO :\"runtime_role\";\r\n"),
+		[]byte("GRANT TO :\"runtime_role\";\x00\n"),
+		[]byte("GRANT TO :\"runtime_role\"; GRANT TO :\"runtime_role\";\n"),
+		bytes.Repeat([]byte{'x'}, maxRuntimeGrantsBytes+1),
+	}
+	for _, grants := range invalid {
+		if _, err := canonicalRuntimeGrants(grants); err == nil {
+			t.Fatalf("canonicalRuntimeGrants(%q) returned nil error", grants)
+		}
+	}
+	got, err := canonicalRuntimeGrants([]byte(testRuntimeGrants))
+	if err != nil || string(got) != testRuntimeGrants {
+		t.Fatalf("canonicalRuntimeGrants() = (%q, %v)", got, err)
+	}
+}
+
 func TestWriteEntryRejectsMissingAndNonregularSources(t *testing.T) {
 	t.Parallel()
 
@@ -439,6 +468,8 @@ func successfulRunner(t *testing.T, calls *[]string) Runner {
 			return []byte("1.26.6\n"), nil
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "all"}):
 			return []byte("git.dannyhunn.com/agents/gotth-bb\nexample.invalid/dependency v1.2.3\n"), nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
+			return []byte(testRuntimeGrants), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			return nil, nil
 		case (filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator") && reflect.DeepEqual(args, []string{"version"}):
@@ -461,7 +492,7 @@ func readArchive(t *testing.T, compressed []byte) []string {
 		t.Fatalf("gzip header = %+v", gzipReader.Header)
 	}
 	tarReader := tar.NewReader(gzipReader)
-	names := make([]string, 0, 6)
+	names := make([]string, 0, 7)
 	for {
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
@@ -479,6 +510,9 @@ func readArchive(t *testing.T, compressed []byte) []string {
 		}
 		if strings.HasSuffix(header.Name, "RELEASE.txt") && !strings.Contains(string(content), "go_version=go1.26.6-test\n") {
 			t.Fatalf("release metadata = %q", content)
+		}
+		if strings.HasSuffix(header.Name, "runtime-grants.sql") && string(content) != testRuntimeGrants {
+			t.Fatalf("runtime grants = %q, want %q", content, testRuntimeGrants)
 		}
 		names = append(names, header.Name)
 	}
@@ -597,6 +631,8 @@ func successfulRunnerForOverride() Runner {
 			return []byte(testCommit + "\n"), nil
 		case name == "git" && len(args) > 0 && args[0] == "status":
 			return nil, nil
+		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
+			return []byte(testRuntimeGrants), nil
 		case name == "go" && len(args) > 0 && args[0] == "env":
 			return []byte("go1.26.6-test\n"), nil
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "-f", "{{.GoVersion}}"}):
