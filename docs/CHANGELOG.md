@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:08 CDT — Build canonical absolute query URLs
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/httpui/url_builder.go`
+- `internal/httpui/url_builder_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Extended the validated URL builder with application-owned absolute URLs that
+include deterministic query values. Path segments retain segment-safe escaping,
+query keys retain stable encoding, and neither can replace the configured
+public origin or `/bb` prefix. This closes the canonical-link primitive needed
+by numbered topic pages.
+
+Verification:
+
+- Empty and numbered page queries, sorted/escaped multi-key queries, and the
+  configured prefix produce exact expected absolute URLs
+- Ambiguous segments, a zero-value builder, and a deliberately corrupted
+  builder fail closed
+- The production method has 100% statement coverage under the race detector
+
+Risks / non-goals:
+
+- This method builds only trusted application-owned query values. It is not an
+  untrusted return-URL validator and does not replace that separate boundary.
+
 ### 2026-09-01 21:00 CDT — Parse canonical topic-page queries
 
 Commit: current commit; hash assigned by Git after commit

@@ -87,6 +87,29 @@ func (builder URLBuilder) Absolute(segments ...string) (string, error) {
 	return absolute.String(), nil
 }
 
+// AbsoluteWithQuery builds a canonical browser URL from individually escaped
+// path segments and application-owned query values. Neither input can replace
+// the validated public origin or configured path prefix.
+//
+// Complexity: for k segments containing n bytes, q query keys, and v query
+// bytes, time is O(k+n+v+q*log(q)), Omega(1); auxiliary space is O(k+n+v+q).
+// PathWithQuery owns segment validation and deterministic query encoding.
+func (builder URLBuilder) AbsoluteWithQuery(segments []string, query url.Values) (string, error) {
+	browserURL, err := builder.PathWithQuery(segments, query)
+	if err != nil {
+		return "", err
+	}
+	relative, err := url.Parse(browserURL)
+	if err != nil {
+		return "", fmt.Errorf("parse constructed browser URL: %w", err)
+	}
+	absolute := builder.publicBaseURL
+	absolute.Path = relative.Path
+	absolute.RawPath = relative.RawPath
+	absolute.RawQuery = relative.RawQuery
+	return absolute.String(), nil
+}
+
 // PathWithQuery builds a browser-facing path and encodes query keys and values
 // without allowing either to alter the path, fragment, or public authority.
 //

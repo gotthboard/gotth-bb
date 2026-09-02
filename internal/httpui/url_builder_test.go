@@ -154,6 +154,43 @@ func TestURLBuilderPathWithQuery(t *testing.T) {
 	}
 }
 
+func TestURLBuilderAbsoluteWithQuery(t *testing.T) {
+	t.Parallel()
+
+	builder, err := NewURLBuilder(url.URL{Scheme: "https", Host: "forum.example.test", Path: "/bb"}, "/bb")
+	if err != nil {
+		t.Fatalf("NewURLBuilder() returned error: %v", err)
+	}
+	for _, test := range []struct {
+		name     string
+		segments []string
+		query    url.Values
+		want     string
+	}{
+		{name: "empty", segments: []string{"areas", "public"}, want: "https://forum.example.test/bb/areas/public"},
+		{name: "page", segments: []string{"areas", "members"}, query: url.Values{"page": {"2"}}, want: "https://forum.example.test/bb/areas/members?page=2"},
+		{name: "sorted and escaped", segments: []string{"search"}, query: url.Values{"q": {"staff & ops"}, "area": {"news/general"}}, want: "https://forum.example.test/bb/search?area=news%2Fgeneral&q=staff+%26+ops"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := builder.AbsoluteWithQuery(test.segments, test.query)
+			if err != nil || got != test.want {
+				t.Fatalf("AbsoluteWithQuery() = (%q, %v), want (%q, nil)", got, err, test.want)
+			}
+		})
+	}
+	if got, err := builder.AbsoluteWithQuery([]string{"areas", ".."}, url.Values{"page": {"2"}}); err == nil {
+		t.Fatalf("AbsoluteWithQuery() = %q, want error", got)
+	}
+	if got, err := (URLBuilder{}).AbsoluteWithQuery(nil, url.Values{"page": {"2"}}); err == nil {
+		t.Fatalf("zero-value AbsoluteWithQuery() = %q, want error", got)
+	}
+	if got, err := (URLBuilder{basePath: "/\x00", initialized: true}).AbsoluteWithQuery(nil, url.Values{"page": {"2"}}); err == nil {
+		t.Fatalf("AbsoluteWithQuery() from corrupted builder = %q, want error", got)
+	}
+}
+
 func TestURLBuilderCookiePathUsesNarrowApplicationRoot(t *testing.T) {
 	t.Parallel()
 
