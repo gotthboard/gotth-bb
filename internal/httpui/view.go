@@ -131,7 +131,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build home URL: %w", err)
 	}
-	stylesheetURL, err := builder.Path("static", "app-1.0.0-alpha.1.css")
+	stylesheetURL, err := builder.Path("static", appStylesheetFilename)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build stylesheet URL: %w", err)
 	}

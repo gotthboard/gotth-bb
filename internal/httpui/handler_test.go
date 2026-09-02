@@ -56,7 +56,7 @@ func TestPublicShellRendersCompletePageFragmentAndHistoryPage(t *testing.T) {
 			if test.wantPage {
 				for _, required := range []string{
 					`rel="canonical" href="https://forum.example.test/bb/"`,
-					`href="/bb/static/app-1.0.0-alpha.1.css"`,
+					`href="/bb/static/` + appStylesheetFilename + `"`,
 					`src="/bb/static/htmx-2.0.10.min.js"`,
 					`name="htmx-config"`,
 				} {
@@ -170,9 +170,9 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 	}{
 		{name: "liveness", method: http.MethodGet, path: "/health/live", wantStatus: http.StatusOK, wantType: "text/plain; charset=utf-8", bodyContains: "ok\n"},
 		{name: "readiness", method: http.MethodGet, path: "/health/ready", wantStatus: http.StatusServiceUnavailable, wantType: "text/plain; charset=utf-8", bodyContains: "not ready\n"},
-		{name: "stylesheet", method: http.MethodGet, path: "/static/app-1.0.0-alpha.1.css", wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "focus"},
+		{name: "stylesheet", method: http.MethodGet, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "focus"},
 		{name: "HTMX", method: http.MethodGet, path: "/static/htmx-2.0.10.min.js", wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "htmx"},
-		{name: "stylesheet HEAD", method: http.MethodHead, path: "/static/app-1.0.0-alpha.1.css", wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
+		{name: "stylesheet HEAD", method: http.MethodHead, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 	}
 	for _, test := range tests {
 		test := test

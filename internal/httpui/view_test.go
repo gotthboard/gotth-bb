@@ -19,7 +19,7 @@ func TestNewPageViewBuildsEveryApplicationURL(t *testing.T) {
 	if view.SiteName != "GOTTH Board" || view.Title != "Topic" {
 		t.Fatalf("page identity = (%q, %q)", view.SiteName, view.Title)
 	}
-	if view.HomeURL != "/community/board/" || view.StylesheetURL != "/community/board/static/app-1.0.0-alpha.1.css" || view.HTMXURL != "/community/board/static/htmx-2.0.10.min.js" {
+	if view.HomeURL != "/community/board/" || view.StylesheetURL != "/community/board/static/"+appStylesheetFilename || view.HTMXURL != "/community/board/static/htmx-2.0.10.min.js" {
 		t.Fatalf("application URLs = (%q, %q, %q)", view.HomeURL, view.StylesheetURL, view.HTMXURL)
 	}
 	if view.CanonicalURL != "https://forum.example.test/community/board/topics/01JTEST" {

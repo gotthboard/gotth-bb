@@ -113,7 +113,8 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		wantStatus int
 	}{
 		{target: "/health/live", wantStatus: http.StatusOK},
-		{target: "/static/app-1.0.0-alpha.1.css", wantStatus: http.StatusOK},
+		{target: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK},
+		{target: "/static/app-1.0.0-alpha.1.css", wantStatus: http.StatusNotFound},
 		{target: "/health/missing", wantStatus: http.StatusNotFound},
 		{target: "/static/missing", wantStatus: http.StatusNotFound},
 		{target: "/missing", wantStatus: http.StatusNotFound},

@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-02 09:45 CDT — Content-address immutable stylesheet
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/CHANGELOG.md`
+- `internal/httpui/authenticated_handler_test.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/handler_test.go`
+- `internal/httpui/static.go`
+- `internal/httpui/static/app-1.0.0-alpha.1.css`
+- `internal/httpui/static/app-80dba8a1dd9606fb3bf670ab954b18af2a81944e4ed2f2429755ee75fa579716.css`
+- `internal/httpui/static_test.go`
+- `internal/httpui/view.go`
+- `internal/httpui/view_test.go`
+- `package.json`
+
+Changed:
+
+- Replaced the release-versioned stylesheet URL with a full SHA-256
+  content-addressed URL. This preserves the one-year immutable cache contract
+  when CSS bytes change without a release-version change.
+- Centralized the stylesheet filename across routing and page-view generation,
+  and made the embedded-byte test prove that the filename digest matches the
+  generated CSS digest.
+- Removed the prior stylesheet route and covered its fail-closed 404 behavior
+  through the authenticated handler boundary.
+
+Verification:
+
+- Focused `internal/httpui` and `cmd/forum` tests pass under the race detector.
+- Full repository verification is run after this generated-asset change is
+  committed, because the generation-drift gate compares generated output with
+  the committed baseline.
+
 ### 2026-09-02 09:25 CDT — Add release and load-time footer
 
 Commit: current commit; hash assigned by Git after commit

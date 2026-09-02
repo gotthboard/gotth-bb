@@ -79,7 +79,7 @@ func newHandler(
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)
 	htmx := staticAssetHandler("text/javascript; charset=utf-8", htmxScript)
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
-		router.Method(method, "/static/app-1.0.0-alpha.1.css", stylesheet)
+		router.Method(method, "/static/"+appStylesheetFilename, stylesheet)
 		router.Method(method, "/static/htmx-2.0.10.min.js", htmx)
 	}
 	router.NotFound(func(response http.ResponseWriter, request *http.Request) {

@@ -12,13 +12,18 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
+	const stylesheetSHA256 = "80dba8a1dd9606fb3bf670ab954b18af2a81944e4ed2f2429755ee75fa579716"
+	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
+		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
+	}
+
 	tests := []struct {
 		name       string
 		content    []byte
 		wantSHA256 string
 		contains   string
 	}{
-		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: "80dba8a1dd9606fb3bf670ab954b18af2a81944e4ed2f2429755ee75fa579716", contains: ".focus\\:not-sr-only"},
+		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
 	}
 	for _, test := range tests {
