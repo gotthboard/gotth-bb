@@ -435,6 +435,30 @@ func TestPublishingHandlerRedirectsUnauthenticatedHTMXToLogin(t *testing.T) {
 	}
 }
 
+func TestPublishingHandlerRevalidatesStaleSessionBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	handler := newPublishingTestHandler(t, nil, nil)
+	for _, fragment := range []bool{false, true} {
+		request := publishingTestRequest(http.MethodPost, "/topics", "", true)
+		authentication := sessionAuthenticationFromContext(request.Context())
+		authentication.RequiresRevalidation = true
+		request = request.WithContext(context.WithValue(request.Context(), sessionAuthenticationContextKey{}, authentication))
+		if fragment {
+			request.Header.Set("HX-Request", "true")
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		wantStatus, wantHeader := http.StatusSeeOther, "Location"
+		if fragment {
+			wantStatus, wantHeader = http.StatusNoContent, "HX-Redirect"
+		}
+		if response.Code != wantStatus || response.Header().Get(wantHeader) != "/bb/auth/revalidate" {
+			t.Fatalf("stale session fragment=%t = (status %d %s %q)", fragment, response.Code, wantHeader, response.Header().Get(wantHeader))
+		}
+	}
+}
+
 func TestPublishingHandlerRejectsMalformedNewTopicQueries(t *testing.T) {
 	t.Parallel()
 

@@ -48,6 +48,11 @@ the server-owned access snapshot to the publisher. Typed validation errors
 render `422` with the exact submitted source safely escaped and a field-specific
 message. Other failure classes echo no source or database diagnostic.
 
+Anonymous requests enter the initial Authentik login flow, while authenticated
+sessions past their revalidation interval enter the session-bound Authentik
+revalidation flow. Both transitions happen before form parsing or mutation and
+use explicit HTMX redirects when applicable.
+
 Ordinary success uses canonical `303` redirects. HTMX success uses an explicit
 same-origin `HX-Redirect`; an initial cold UX check caught that relying on XHR
 to follow `303` could swap the destination while leaving the address bar on the

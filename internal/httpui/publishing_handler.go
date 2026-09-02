@@ -46,6 +46,10 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	if err != nil {
 		return nil, fmt.Errorf("build publishing login URL: %w", err)
 	}
+	revalidationURL, err := builder.Path("auth", "revalidate")
+	if err != nil {
+		return nil, fmt.Errorf("build publishing revalidation URL: %w", err)
+	}
 	baseView, err := newPageView(builder, "Publish")
 	if err != nil {
 		return nil, fmt.Errorf("construct publishing view: %w", err)
@@ -62,9 +66,15 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	serveFailure := func(response http.ResponseWriter, status int, message string) {
 		http.Error(response, message, status)
 	}
-	authorized := func(request *http.Request) (auth.AccessContext, bool) {
+	authorized := func(request *http.Request) (auth.AccessContext, string) {
 		authentication := sessionAuthenticationFromContext(request.Context())
-		return authentication.Access, authentication.Access.Authenticated && authentication.SessionID > 0
+		if !authentication.Access.Authenticated || authentication.SessionID <= 0 {
+			return auth.AccessContext{}, loginURL
+		}
+		if authentication.RequiresRevalidation {
+			return auth.AccessContext{}, revalidationURL
+		}
+		return authentication.Access, ""
 	}
 	csrfToken := func(request *http.Request) (string, bool) {
 		token := csrfTokenFromContext(request.Context())
@@ -75,8 +85,8 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	router.Use(captureRoutePattern)
 	router.Get("/topics/new", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
-		if _, ok := authorized(request); !ok {
-			servePublishingRedirect(response, request, loginURL)
+		if _, redirect := authorized(request); redirect != "" {
+			servePublishingRedirect(response, request, redirect)
 			return
 		}
 		areaSlug, parseErr := parseNewTopicArea(request.URL.RawQuery)
@@ -101,9 +111,9 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	})
 	router.Post("/topics", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
-		access, ok := authorized(request)
-		if !ok {
-			servePublishingRedirect(response, request, loginURL)
+		access, redirect := authorized(request)
+		if redirect != "" {
+			servePublishingRedirect(response, request, redirect)
 			return
 		}
 		if request.URL.RawPath != "" || request.URL.RawQuery != "" {
@@ -149,9 +159,9 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 	})
 	router.Post("/topics/{topicID}/replies", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
-		access, ok := authorized(request)
-		if !ok {
-			servePublishingRedirect(response, request, loginURL)
+		access, redirect := authorized(request)
+		if redirect != "" {
+			servePublishingRedirect(response, request, redirect)
 			return
 		}
 		topicID, identifierErr := parseTopicID(chi.URLParam(request, "topicID"))
