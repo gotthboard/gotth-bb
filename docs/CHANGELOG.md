@@ -54,8 +54,8 @@ Risks / non-goals:
 
 - This unit exposes only topic lock/unlock; hide/restore and account suspension
   remain separate A1-08 transitions
-- Validation/conflict responses are bounded error responses rather than an
-  inline reason-preserving moderation editor
+- Validation/conflict responses preserve the full-page/HTMX `main-content`
+  contract but do not preserve the submitted reason in an inline editor
 
 ### 2026-09-02 01:57 CDT — Serialize audited topic lock transitions
 

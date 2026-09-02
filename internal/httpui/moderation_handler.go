@@ -24,9 +24,10 @@ type TopicLockChanger func(context.Context, auth.AccessContext, int64, bool, str
 // server request UUID and delegating final authority to the locked service.
 //
 // Complexity: construction is tight Theta(1). For bounded form bytes
-// n <= 8,192 and delegated work D, request time and auxiliary space are
-// O(n+D), Omega(1), without a tighter bound because database and transport work
-// vary. One service call is made at most once; no request is retried or detached.
+// n <= 8,192, delegated work D, and response bytes r, request time is
+// O(n+D+r), Omega(1), and auxiliary space is O(n+r), Omega(1), without a tight
+// bound because database and transport work vary. One service call is made at
+// most once; no request is retried or detached.
 func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Handler, error) {
 	if change == nil {
 		return nil, fmt.Errorf("topic lock changer is required")
@@ -38,6 +39,22 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 	revalidationURL, err := builder.Path("auth", "revalidate")
 	if err != nil {
 		return nil, fmt.Errorf("build moderation revalidation URL: %w", err)
+	}
+	errorView, err := newPageView(builder, "Moderation")
+	if err != nil {
+		return nil, fmt.Errorf("construct moderation error view: %w", err)
+	}
+	errorView.CanonicalURL = ""
+	serveError := func(response http.ResponseWriter, request *http.Request, status int, heading, message string) {
+		view := errorView
+		view.Title = heading
+		if renderErr := renderResponse(
+			response, request, status,
+			errorPage(view, status, heading, message),
+			errorContent(view, status, heading, message),
+		); renderErr != nil {
+			panic(renderErr)
+		}
 	}
 
 	authorized := func(request *http.Request) (auth.AccessContext, string) {
@@ -60,36 +77,36 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 			}
 			topicID, parseErr := parseTopicID(chi.URLParam(request, "topicID"))
 			if request.URL.RawPath != "" || request.URL.RawQuery != "" || parseErr != nil {
-				http.Error(response, "page not found", http.StatusNotFound)
+				serveError(response, request, http.StatusNotFound, "Page not found", "The requested topic does not exist.")
 				return
 			}
 			if csrfErr := validateCSRFRequest(request, maximumModerationFormBytes); csrfErr != nil {
-				http.Error(response, "request verification failed", http.StatusForbidden)
+				serveError(response, request, http.StatusForbidden, "Request verification failed", "Reload the topic and try again.")
 				return
 			}
 			reason, formErr := parseModerationForm(request)
 			if formErr != nil {
-				http.Error(response, "invalid moderation form", http.StatusBadRequest)
+				serveError(response, request, http.StatusBadRequest, "Invalid moderation form", "Reload the topic and submit the form again.")
 				return
 			}
 			requestID, requestIDErr := moderationRequestUUID(request.Context())
 			if requestIDErr != nil {
-				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				return
 			}
 			result, changeErr := change(request.Context(), access, topicID, lock, reason, requestID)
 			if changeErr != nil {
 				switch {
 				case errors.Is(changeErr, moderation.ErrTopicModerationInput):
-					http.Error(response, "invalid moderation reason", http.StatusUnprocessableEntity)
+					serveError(response, request, http.StatusUnprocessableEntity, "Invalid moderation reason", "Enter a single-line reason without surrounding whitespace.")
 				case errors.Is(changeErr, moderation.ErrTopicModerationDenied):
-					http.Error(response, "moderation denied", http.StatusForbidden)
+					serveError(response, request, http.StatusForbidden, "Moderation denied", "Your current account cannot perform this action.")
 				case errors.Is(changeErr, moderation.ErrTopicModerationConflict):
-					http.Error(response, "topic state changed; reload and retry", http.StatusConflict)
+					serveError(response, request, http.StatusConflict, "Topic state changed", "Reload the topic before trying another moderation action.")
 				case errors.Is(changeErr, pgx.ErrNoRows):
-					http.Error(response, "page not found", http.StatusNotFound)
+					serveError(response, request, http.StatusNotFound, "Page not found", "The requested topic does not exist.")
 				default:
-					http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+					serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				}
 				return
 			}
@@ -98,12 +115,12 @@ func newModerationHandler(builder URLBuilder, change TopicLockChanger) (http.Han
 				expectedState = "open"
 			}
 			if result.TopicID != topicID || string(result.State) != expectedState || result.AuditID <= 0 {
-				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				return
 			}
 			location, buildErr := builder.Path("topics", strconv.FormatInt(topicID, 10))
 			if buildErr != nil {
-				http.Error(response, "moderation unavailable", http.StatusServiceUnavailable)
+				serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 				return
 			}
 			servePublishingRedirect(response, request, location)

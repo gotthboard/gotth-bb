@@ -125,10 +125,11 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 		result     moderation.TopicLockResult
 		err        error
 		wantStatus int
+		htmx       bool
 	}{
 		{name: "input", err: moderation.ErrTopicModerationInput, wantStatus: http.StatusUnprocessableEntity},
 		{name: "denied", err: moderation.ErrTopicModerationDenied, wantStatus: http.StatusForbidden},
-		{name: "conflict", err: moderation.ErrTopicModerationConflict, wantStatus: http.StatusConflict},
+		{name: "conflict", err: moderation.ErrTopicModerationConflict, wantStatus: http.StatusConflict, htmx: true},
 		{name: "missing", err: pgx.ErrNoRows, wantStatus: http.StatusNotFound},
 		{name: "failure", err: errors.New("secret database failure"), wantStatus: http.StatusServiceUnavailable},
 		{name: "wrong topic", result: moderation.TopicLockResult{TopicID: 40, State: policy.TopicLocked, AuditID: 71}, wantStatus: http.StatusServiceUnavailable},
@@ -142,11 +143,18 @@ func TestModerationHandlerMapsServiceFailuresAndInvalidResults(t *testing.T) {
 				return test.result, test.err
 			})
 			response := httptest.NewRecorder()
-			handler.ServeHTTP(response, moderationTestRequest("/topics/41/lock", validModerationForm(), auth.SessionAuthentication{
+			request := moderationTestRequest("/topics/41/lock", validModerationForm(), auth.SessionAuthentication{
 				SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator},
-			}))
+			})
+			if test.htmx {
+				request.Header.Set("HX-Request", "true")
+			}
+			handler.ServeHTTP(response, request)
 			if response.Code != test.wantStatus || strings.Contains(response.Body.String(), "secret") {
 				t.Fatalf("service failure = (status %d, body %q)", response.Code, response.Body.String())
+			}
+			if test.htmx && (!strings.Contains(response.Body.String(), `<main id="main-content"`) || strings.Contains(response.Body.String(), "<!doctype html>")) {
+				t.Fatalf("HTMX failure broke main-content contract: %q", response.Body.String())
 			}
 		})
 	}
