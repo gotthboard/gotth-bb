@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 22:06 CDT — Bound visible topic post pages
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/store/topic_post_pages.go`
+- `internal/store/topic_post_pages_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Added the store boundary that owns topic/post pagination and authority
+derivation. It accepts only a positive topic ID, pages 1 through 10,000, and a
+canonical access snapshot; derives staff/member/group query parameters; fixes
+the limit at 25; and caps the offset at 249,975. Missing topics, invalid input,
+and empty later pages retain the same no-row result.
+
+The boundary validates every repeated topic/breadcrumb field, exact window
+total, expected page length, strict post-number ordering, positive stable IDs,
+required renderer/author/revision fields, finite ordered timestamps, and the
+all-null authorized-empty sentinel before presentation receives persisted HTML.
+The generated row slice and group slice are reused without copies.
+
+Verification:
+
+- Visitor, member, moderator, and administrator inputs derive only the intended
+  SQL authority facts and preserve exact group IDs
+- Page 2, the maximum page/offset, authorized empty page 1, invalid IDs/pages,
+  empty later pages, cancellation, malformed authority, and query failures are
+  covered
+- Oversized, incomplete, inconsistent, unordered, nonfinite, nullable, unknown-
+  state, hidden-without-staff, and malformed-sentinel row sets fail closed
+- Every production function in this unit has 100% statement coverage under the
+  race detector
+
+Risks / non-goals:
+
+- Persisted rendered HTML is structurally validated but is not yet converted to
+  the explicit trusted-HTML presentation type; that remains the next read unit
+- The store deliberately does not retry PostgreSQL failures or copy result rows
+
 ### 2026-09-01 21:55 CDT — Query atomic visible topic post pages
 
 Commit: current commit; hash assigned by Git after commit
