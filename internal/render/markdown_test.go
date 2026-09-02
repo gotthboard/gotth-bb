@@ -13,6 +13,7 @@ func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
 
 	source := "Hello *careful* **world** 👋\n\n" +
 		"- one\n- two\n\n" +
+		"1. first\n2. second\n\n" +
 		"> quote\n\n" +
 		"`inline`\n\n" +
 		"```go\nif x < y {}\n```\n\n" +
@@ -28,6 +29,7 @@ func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
 	for _, required := range []string{
 		`<p>Hello <em>careful</em> <strong>world</strong> 👋</p>`,
 		"<ul>", "<li>one</li>", "<li>two</li>", "<blockquote>", "<p>quote</p>",
+		"<ol>", "<li>first</li>", "<li>second</li>",
 		"<p><code>inline</code></p>", "<pre><code>if x &lt; y {}\n</code></pre>",
 		`<a href="/bb/topics/1" rel="nofollow noreferrer">local</a>`,
 		`<a href="https://example.org/read" rel="nofollow noreferrer">external</a>`,
