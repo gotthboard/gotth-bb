@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
 	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -18,26 +19,17 @@ const (
 	sessionLastSeenWriteInterval = 5 * time.Minute
 )
 
-// Role is the closed local forum role ordering. Authorization callers use the
-// named constants rather than database strings or numeric literals.
-type Role uint8
+// Role is the canonical closed local forum role ordering.
+type Role = policy.Role
 
 const (
-	RoleMember Role = iota + 1
-	RoleModerator
-	RoleAdministrator
+	RoleMember        = policy.RoleMember
+	RoleModerator     = policy.RoleModerator
+	RoleAdministrator = policy.RoleAdministrator
 )
 
-// AccessContext contains only current local facts used by authorization.
-type AccessContext struct {
-	Authenticated bool
-	UserID        int64
-	Role          Role
-	GroupIDs      []int64
-	Suspended     bool
-	MutedUntil    *time.Time
-	ValidatedAt   time.Time
-}
+// AccessContext is the canonical policy authority snapshot.
+type AccessContext = policy.AccessContext
 
 // SessionAuthentication carries the local access facts plus the freshness
 // decision that protected HTTP routes must enforce.

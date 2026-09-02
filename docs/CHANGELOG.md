@@ -5,6 +5,35 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 19:46 CDT — Canonicalize session access authority
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/auth/session_authentication.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Removed authentication's duplicate definitions of `Role` and `AccessContext`.
+The authentication package now aliases the canonical policy types and named
+role constants, so a session snapshot can reach authorization and repository
+boundaries without field-by-field conversion or a second invariant that can
+drift. Existing `auth` package names remain valid for callers.
+
+Verification:
+
+- Authentication, HTTP, store, and policy packages pass the race detector with
+  the shared types
+- Existing session, visibility, publishing, and repository matrices compile
+  against and exercise the same canonical authority definition
+
+Risks / non-goals:
+
+- This is a behavior-preserving type consolidation. It does not add an HTTP
+  area read or change any permission.
+
 ### 2026-09-01 19:32 CDT — Project session groups into access authority
 
 Commit: current commit; hash assigned by Git after commit
