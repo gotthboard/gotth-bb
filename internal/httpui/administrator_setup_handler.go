@@ -16,6 +16,11 @@ import (
 
 const maximumAdministratorSetupFormBytes = 4096
 
+const (
+	administratorSetupRequestPath = "/setup"
+	administratorClaimRequestPath = "/setup/administrator"
+)
+
 type InitialAdministratorSetupLoader func(context.Context, auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error)
 type InitialAdministratorClaimer func(context.Context, auth.SessionAuthentication, pgtype.UUID) (governance.InitialAdministratorClaimResult, error)
 
@@ -117,7 +122,7 @@ func newAdministratorSetupHandler(
 		}
 		authentication := sessionAuthenticationFromContext(request.Context())
 		switch request.URL.Path {
-		case setupURL:
+		case administratorSetupRequestPath:
 			if request.Method != http.MethodGet {
 				response.Header().Set("Allow", http.MethodGet)
 				serveError(response, request, http.StatusMethodNotAllowed, "Method not allowed", "Use the setup confirmation page.")
@@ -148,7 +153,7 @@ func newAdministratorSetupHandler(
 			if renderErr := renderResponse(response, request, http.StatusOK, administratorSetupPage(view, setup), administratorSetupContent(view, setup)); renderErr != nil {
 				panic(renderErr)
 			}
-		case claimURL:
+		case administratorClaimRequestPath:
 			if request.Method != http.MethodPost {
 				response.Header().Set("Allow", http.MethodPost)
 				serveError(response, request, http.StatusMethodNotAllowed, "Method not allowed", "Submit the administrator setup form.")

@@ -78,7 +78,7 @@ func TestAdministratorSetupGETRequiresOpenFreshExactIdentity(t *testing.T) {
 			if err != nil {
 				t.Fatalf("newAdministratorSetupHandler() returned error: %v", err)
 			}
-			request := setupRequest(http.MethodGet, "/bb/setup", nil, test.authentication)
+			request := setupRequest(http.MethodGet, "/setup", nil, test.authentication)
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			if response.Code != test.wantStatus || response.Header().Get("Location") != test.wantLocation || loads != 1 {
@@ -110,7 +110,7 @@ func TestAdministratorSetupPOSTClaimsOnceExpiresSessionAndRequiresFreshLogin(t *
 	}
 	handler = withModerationTestRequestID(t, handler)
 	form := url.Values{"_csrf": {csrf}}
-	request := setupRequest(http.MethodPost, "/bb/setup/administrator", strings.NewReader(form.Encode()), authentication)
+	request := setupRequest(http.MethodPost, "/setup/administrator", strings.NewReader(form.Encode()), authentication)
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
