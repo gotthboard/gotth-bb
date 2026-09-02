@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-01 21:40 CDT — Link visible discussion areas
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/policy/area_slug.go`
+- `internal/policy/area_slug_test.go`
+- `internal/store/areas.go`
+- `internal/httpui/area_index_handler.go`
+- `internal/httpui/area_index_handler_test.go`
+- `internal/httpui/handler.go`
+- `internal/httpui/view.go`
+- `internal/httpui/shell.templ`
+- `internal/httpui/shell_templ.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Turned every access-filtered area name on the community index into a canonical,
+prefix-aware link to `GET /areas/{slug}` with progressive HTMX navigation. The
+database slug grammar now has one allocation-free domain validator shared by
+storage lookup and browser projection, preventing schema-invalid rows from
+becoming dead or ambiguous links. Malformed rows discard the complete result
+and return the same redacted unavailable page as a store failure.
+
+Verification:
+
+- Complete and HTMX index responses render exact `/bb/areas/<slug>` `href` and
+  `hx-get` attributes with main-content replacement and history updates
+- Area name and description escaping remains intact; hidden visibility and
+  posting-mode fields remain absent
+- Empty results, store failures, invalid slugs, missing names, missing listers,
+  invalid URL builders, and committed-write failures retain fail-closed behavior
+- The shared validator accepts the schema maximum and canonical lowercase ASCII
+  grammar while rejecting overflow, separators, Unicode, controls, spaces,
+  uppercase, and malformed hyphens
+
+Risks / non-goals:
+
+- Topic links currently lead to the admitted topic-list route; topic detail
+  pages and all publishing operations remain separate alpha units
+- This change does not alter area visibility, ordering, or administration
+
 ### 2026-09-01 21:26 CDT — Wire visible area topic routes
 
 Commit: current commit; hash assigned by Git after commit

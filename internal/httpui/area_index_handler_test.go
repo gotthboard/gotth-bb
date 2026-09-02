@@ -18,7 +18,7 @@ import (
 func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testing.T) {
 	t.Parallel()
 
-	view := areaIndexTestView(t)
+	builder, view := areaIndexTestBuilderAndView(t)
 	wantAccess := auth.AccessContext{
 		Authenticated: true, UserID: 42, Role: auth.RoleMember, GroupIDs: []int64{3, 11},
 		ValidatedAt: time.Date(2026, time.September, 2, 1, 0, 0, 0, time.UTC),
@@ -33,7 +33,7 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 			t.Parallel()
 
 			calls := 0
-			handler, err := newAreaIndexHandler(view, func(ctx context.Context, access auth.AccessContext) ([]db.Area, error) {
+			handler, err := newAreaIndexHandler(builder, view, func(ctx context.Context, access auth.AccessContext) ([]db.Area, error) {
 				calls++
 				if ctx == nil || !reflect.DeepEqual(access, wantAccess) {
 					t.Fatalf("area list authority = %+v", access)
@@ -52,7 +52,10 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 			if response.Code != http.StatusOK || calls != 1 ||
 				!strings.Contains(body, "Announcements &amp; News") || !strings.Contains(body, "Durable &lt;updates&gt;") ||
 				!strings.Contains(body, "Member discussion") || strings.Contains(body, "ready for its first discussion area") ||
-				strings.Contains(body, "announcements") || strings.Contains(body, "read_only") || strings.Contains(body, "groups") {
+				!strings.Contains(body, `href="/bb/areas/announcements"`) || !strings.Contains(body, `hx-get="/bb/areas/announcements"`) ||
+				!strings.Contains(body, `href="/bb/areas/members"`) || !strings.Contains(body, `hx-target="#main-content"`) ||
+				!strings.Contains(body, `hx-swap="outerHTML"`) || !strings.Contains(body, `hx-push-url="true"`) ||
+				strings.Contains(body, "read_only") || strings.Contains(body, "groups") {
 				t.Fatalf("area index response = (status %d, calls %d, body %q)", response.Code, calls, body)
 			}
 			if gotPage := strings.HasPrefix(body, "<!doctype html>"); gotPage != (hxRequest == "") {
@@ -65,7 +68,7 @@ func TestAreaIndexHandlerListsOnlyStoreReturnedAreasForPageAndFragment(t *testin
 func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) {
 	t.Parallel()
 
-	view := areaIndexTestView(t)
+	builder, view := areaIndexTestBuilderAndView(t)
 	secret := "do-not-leak-area-store-failure"
 	for _, test := range []struct {
 		name       string
@@ -77,11 +80,17 @@ func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) 
 		{name: "failure", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
 			return []db.Area{{Name: secret}}, errors.New(secret)
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
+		{name: "malformed row", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
+			return []db.Area{{ID: 1, Slug: "with/slash", Name: secret}}, nil
+		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
+		{name: "missing name", list: func(context.Context, auth.AccessContext) ([]db.Area, error) {
+			return []db.Area{{ID: 1, Slug: "public"}}, nil
+		}, wantStatus: http.StatusServiceUnavailable, wantText: "Discussion areas are temporarily unavailable"},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			handler, err := newAreaIndexHandler(view, test.list)
+			handler, err := newAreaIndexHandler(builder, view, test.list)
 			if err != nil {
 				t.Fatalf("newAreaIndexHandler() returned error: %v", err)
 			}
@@ -97,19 +106,24 @@ func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) 
 func TestNewAreaIndexHandlerRejectsMissingLister(t *testing.T) {
 	t.Parallel()
 
-	if got, err := newAreaIndexHandler(areaIndexTestView(t), nil); err == nil || got != nil {
+	builder, view := areaIndexTestBuilderAndView(t)
+	if got, err := newAreaIndexHandler(builder, view, nil); err == nil || got != nil {
 		t.Fatalf("newAreaIndexHandler(nil) = (%v, %v), want nil/error", got, err)
+	}
+	if got, err := newAreaIndexHandler(URLBuilder{}, view, func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, nil }); err == nil || got != nil {
+		t.Fatalf("newAreaIndexHandler(zero builder) = (%v, %v), want nil/error", got, err)
 	}
 }
 
 func TestAreaIndexHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 	t.Parallel()
 
+	builder, view := areaIndexTestBuilderAndView(t)
 	for _, list := range []AreaIndexLister{
 		func(context.Context, auth.AccessContext) ([]db.Area, error) { return []db.Area{}, nil },
 		func(context.Context, auth.AccessContext) ([]db.Area, error) { return nil, errors.New("store failed") },
 	} {
-		handler, err := newAreaIndexHandler(areaIndexTestView(t), list)
+		handler, err := newAreaIndexHandler(builder, view, list)
 		if err != nil {
 			t.Fatalf("newAreaIndexHandler() returned error: %v", err)
 		}
@@ -123,7 +137,7 @@ func TestAreaIndexHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 	}
 }
 
-func areaIndexTestView(t *testing.T) pageView {
+func areaIndexTestBuilderAndView(t *testing.T) (URLBuilder, pageView) {
 	t.Helper()
 	publicBase, err := url.Parse("https://forum.example.test/bb")
 	if err != nil {
@@ -137,5 +151,5 @@ func areaIndexTestView(t *testing.T) pageView {
 	if err != nil {
 		t.Fatalf("newPageView() returned error: %v", err)
 	}
-	return view
+	return builder, view
 }

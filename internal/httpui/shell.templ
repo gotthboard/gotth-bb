@@ -58,7 +58,9 @@ templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem) {
 				<ul class="mt-8 grid gap-4">
 					for _, area := range areas {
 						<li class="rounded-lg border border-slate-700 bg-slate-950/60 p-6">
-							<h2 class="text-xl font-semibold text-white">{ area.Name }</h2>
+							<h2 class="text-xl font-semibold">
+								<a href={ area.URL } hx-get={ area.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">{ area.Name }</a>
+							</h2>
 							if area.Description != "" {
 								<p class="mt-2 leading-7 text-slate-300">{ area.Description }</p>
 							}

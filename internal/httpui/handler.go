@@ -27,7 +27,7 @@ func NewHandler(
 	if err != nil {
 		return nil, fmt.Errorf("construct public shell view: %w", err)
 	}
-	rootHandler, err := newAreaIndexHandler(rootView, listAreas)
+	rootHandler, err := newAreaIndexHandler(builder, rootView, listAreas)
 	if err != nil {
 		return nil, fmt.Errorf("construct area index route: %w", err)
 	}

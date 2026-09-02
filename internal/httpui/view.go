@@ -16,6 +16,7 @@ type pageView struct {
 type areaIndexItem struct {
 	Name        string
 	Description string
+	URL         string
 }
 
 type areaTopicListView struct {

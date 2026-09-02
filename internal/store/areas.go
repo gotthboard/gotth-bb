@@ -74,17 +74,7 @@ func GetVisibleAreaBySlug(ctx context.Context, querier visibleAreaBySlugQuerier,
 	if err := ctx.Err(); err != nil {
 		return db.Area{}, fmt.Errorf("get visible area by slug: %w", err)
 	}
-	validSlug := len(slug) >= 1 && len(slug) <= 80
-	for index := 0; validSlug && index < len(slug); index++ {
-		character := slug[index]
-		if (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') {
-			continue
-		}
-		if character != '-' || index == 0 || index == len(slug)-1 || slug[index-1] == '-' {
-			validSlug = false
-		}
-	}
-	if !validSlug {
+	if !policy.ValidAreaSlug(slug) {
 		return db.Area{}, fmt.Errorf("query visible area by slug: %w", pgx.ErrNoRows)
 	}
 	area, err := querier.GetVisibleAreaBySlug(ctx, db.GetVisibleAreaBySlugParams{
