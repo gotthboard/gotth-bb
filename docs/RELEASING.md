@@ -1,7 +1,7 @@
 # Release Policy
 
-`gotth-bb` versions independently under Semantic Versioning. A version number in
-another GOTTH repository creates no release obligation here.
+`gotth-bb` versions independently under Semantic Versioning. A version number
+in another GOTTH repository creates no release obligation here.
 
 If this repository contains a Go module, release tags use the Go-compatible
 `vMAJOR.MINOR.PATCH` form, including any SemVer prerelease suffix. Historical
@@ -20,7 +20,8 @@ For an admitted release:
 4. Create and push a new annotated tag on canonical Forgejo. Never move or
    replace an existing tag.
 5. Verify exact head and tag parity at
-   `github.com/gotthboard/gotth-bb` through the existing one-way push mirror.
+   `github.com/gotthboard/gotth-bb` through the existing one-way push
+   mirror.
 6. Build any artifacts from the exact public GitHub clone, publish checksums,
    and create the GitHub release for that already-mirrored tag.
 

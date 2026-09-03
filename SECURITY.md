@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-1.0.0-alpha.2 application; existing tags predate the GitHub module identity. No version currently carries a
-separate long-term security-support promise. Once releases exist, supported
+1.0.0-alpha.2 application; existing tags predate the GitHub module identity.
+No version currently carries a separate long-term security-support promise.
+Once releases exist, supported
 versions will be listed here and in the changelog.
 
 ## Reporting a vulnerability
