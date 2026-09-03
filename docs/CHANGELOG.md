@@ -15,6 +15,7 @@ Affected files:
 - `CONTRIBUTING.md`
 - `SECURITY.md`
 - `docs/distribution.md`
+- `docs/distribution-verification.md`
 - `docs/RELEASING.md`
 - `go.mod` and repository-owned Go import references
 
