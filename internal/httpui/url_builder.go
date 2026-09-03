@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/config"
 )
 
 // URLBuilder owns the canonical browser-facing path prefix.

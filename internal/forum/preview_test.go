@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/render"
+	"github.com/gotthboard/gotth-bb/internal/render"
 )
 
 func TestRenderTopicDraftUsesPublicationValidationAndRenderer(t *testing.T) {

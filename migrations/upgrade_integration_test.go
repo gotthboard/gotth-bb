@@ -11,7 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
+	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/jackc/pgx/v5"
 )
 

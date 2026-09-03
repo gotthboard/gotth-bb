@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/config"
 )
 
 func TestNewSessionCookieBuildsExactPathScopedCredential(t *testing.T) {

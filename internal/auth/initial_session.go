@@ -7,8 +7,8 @@ import (
 	"io"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

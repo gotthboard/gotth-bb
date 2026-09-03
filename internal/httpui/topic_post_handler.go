@@ -8,13 +8,13 @@ import (
 	"net/url"
 	"strconv"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/forum"
-	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
-	contentrender "git.dannyhunn.com/agents/gotth-bb/internal/render"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/forum"
+	"github.com/gotthboard/gotth-bb/internal/policy"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 )
 

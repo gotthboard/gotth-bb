@@ -3,7 +3,7 @@ package httpui
 import (
 	"context"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
 type sessionAuthenticationContextKey struct{}

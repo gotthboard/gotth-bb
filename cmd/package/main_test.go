@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/releaseartifact"
+	"github.com/gotthboard/gotth-bb/internal/releaseartifact"
 )
 
 const packageTestCommit = "0123456789abcdef0123456789abcdef01234567"
@@ -145,7 +145,7 @@ func packageRunner() releaseartifact.Runner {
 		case name == "go" && len(args) > 4 && args[0] == "list" && args[3] == "-f":
 			return []byte("1.26.6\n"), nil
 		case name == "go" && len(args) > 0 && args[0] == "list":
-			return []byte("git.dannyhunn.com/agents/gotth-bb\n"), nil
+			return []byte("github.com/gotthboard/gotth-bb\n"), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			outputIndex := -1
 			for index, argument := range args {

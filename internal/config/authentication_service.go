@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
 // NewAuthenticationService crosses the retained OIDC client-secret boundary

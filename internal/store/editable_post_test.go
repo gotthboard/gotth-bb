@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 )
 

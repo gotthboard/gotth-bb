@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-03 00:42 CDT — Establish GitHub public distribution
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `README.md`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `docs/distribution.md`
+- `docs/RELEASING.md`
+- `go.mod` and repository-owned Go import references
+
+Explanation:
+
+Declare GitHub as the public distribution endpoint while retaining Forgejo as
+canonical development. Move the Go module identity and exact self-imports to
+the public GitHub path without changing application behavior or existing tags.
+
+Verification:
+
+- exact old-import search
+- `go mod tidy` drift check
+- `go vet -mod=readonly ./...`
+- `go test -mod=readonly ./...`
+- public GitHub clean-clone and import verification
+
+Risks / non-goals:
+
+- No license is selected.
+- No existing tag is changed and no new release is created.
+- Mirror direction, repository ownership, and account type are unchanged.
+
 ### 2026-09-02 17:12 CDT — Add the alpha.2 dark forum theme
 
 Commit: current commit; hash assigned by Git after commit

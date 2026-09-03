@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 )
 
 func TestRevokeSessionHashesExactCredentialAndReturnsOutcome(t *testing.T) {

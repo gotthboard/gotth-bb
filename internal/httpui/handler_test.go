@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"golang.org/x/net/html"
 )
 

@@ -481,7 +481,7 @@ func successfulRunner(t *testing.T, calls *[]string) Runner {
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "-f", "{{.GoVersion}}"}):
 			return []byte("1.26.6\n"), nil
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "all"}):
-			return []byte("git.dannyhunn.com/agents/gotth-bb\nexample.invalid/dependency v1.2.3\n"), nil
+			return []byte("github.com/gotthboard/gotth-bb\nexample.invalid/dependency v1.2.3\n"), nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
 			return []byte(testRuntimeGrants), nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/Containerfile"}):
@@ -699,7 +699,7 @@ func successfulRunnerForOverride() Runner {
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "-f", "{{.GoVersion}}"}):
 			return []byte("1.26.6\n"), nil
 		case name == "go" && len(args) > 0 && args[0] == "list":
-			return []byte("git.dannyhunn.com/agents/gotth-bb\n"), nil
+			return []byte("github.com/gotthboard/gotth-bb\n"), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			outputIndex := indexOf(args, "-o")
 			if outputIndex < 0 || outputIndex+1 >= len(args) {

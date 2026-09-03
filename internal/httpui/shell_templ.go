@@ -12,7 +12,7 @@ import (
 	"slices"
 	"strconv"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
 func document(view pageView, content templ.Component) templ.Component {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/governance"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 

@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/moderation"
-	"git.dannyhunn.com/agents/gotth-bb/internal/observability"
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/moderation"
+	"github.com/gotthboard/gotth-bb/internal/observability"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

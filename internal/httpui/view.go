@@ -3,7 +3,7 @@ package httpui
 import (
 	"fmt"
 
-	contentrender "git.dannyhunn.com/agents/gotth-bb/internal/render"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 )
 
 const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"409","swap":true,"error":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`

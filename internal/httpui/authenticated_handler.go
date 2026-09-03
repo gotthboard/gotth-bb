@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
 const maxLogoutFormBytes = 4096

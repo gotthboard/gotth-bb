@@ -9,10 +9,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
-	"git.dannyhunn.com/agents/gotth-bb/internal/migration"
-	"git.dannyhunn.com/agents/gotth-bb/migrations"
+	"github.com/gotthboard/gotth-bb/internal/buildinfo"
+	"github.com/gotthboard/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/migration"
+	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
 

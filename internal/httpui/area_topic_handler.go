@@ -8,9 +8,9 @@ import (
 	"net/url"
 	"strconv"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 

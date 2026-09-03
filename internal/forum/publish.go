@@ -9,10 +9,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
-	"git.dannyhunn.com/agents/gotth-bb/internal/render"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
+	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/render"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

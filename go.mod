@@ -1,4 +1,4 @@
-module git.dannyhunn.com/agents/gotth-bb
+module github.com/gotthboard/gotth-bb
 
 go 1.26.6
 

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/config"
 )
 
 const (

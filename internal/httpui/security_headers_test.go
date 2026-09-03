@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/observability"
+	"github.com/gotthboard/gotth-bb/internal/observability"
 )
 
 func TestBrowserSecurityHeadersSetsFixedPolicyBeforeHandler(t *testing.T) {

@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
-	"git.dannyhunn.com/agents/gotth-bb/internal/governance"
+	"github.com/gotthboard/gotth-bb/internal/buildinfo"
+	"github.com/gotthboard/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/governance"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

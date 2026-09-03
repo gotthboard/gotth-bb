@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/observability"
+	"github.com/gotthboard/gotth-bb/internal/observability"
 )
 
 // NewHTTPHandler assembles the request-ID, access-log, and recovery boundaries

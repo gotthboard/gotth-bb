@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/config"
 )
 
 type sessionAuthenticator func(context.Context, string) (auth.SessionAuthentication, error)

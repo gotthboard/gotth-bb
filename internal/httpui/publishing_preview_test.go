@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/forum"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/forum"
 )
 
 func TestPublishingFormsExposeProgressivePreviewActions(t *testing.T) {

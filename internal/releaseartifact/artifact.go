@@ -20,11 +20,11 @@ import (
 	"strings"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
+	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 )
 
 const (
-	linkerPackage          = "git.dannyhunn.com/agents/gotth-bb/internal/buildinfo"
+	linkerPackage          = "github.com/gotthboard/gotth-bb/internal/buildinfo"
 	maxRuntimeGrantsBytes  = 16 << 10
 	maxDeploymentFileBytes = 64 << 10
 )

@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store"
-	"git.dannyhunn.com/agents/gotth-bb/internal/store/db"
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )

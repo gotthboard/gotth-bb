@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/policy"
 )
 
 func TestDeletePostCommitsAuthorizedExpectedRevision(t *testing.T) {

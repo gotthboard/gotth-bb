@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
 func TestSessionAuthenticationFromContextReturnsStoredSnapshot(t *testing.T) {

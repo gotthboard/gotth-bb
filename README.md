@@ -1,5 +1,10 @@
 # GOTTH Board
 
+> **Distribution:** GitHub is the public clone, and future release endpoint.
+> Forgejo remains canonical development and the issue/contribution location.
+> See [the distribution contract](docs/distribution.md).
+
+
 A self-hosted bulletin board and forum built with the GOTTH stack and
 PostgreSQL.
 
@@ -123,3 +128,19 @@ The HTTP shell renders base-path-safe forum pages, serves versioned embedded
 assets, exposes liveness, and reports ready only when the live database matches
 the embedded migration release, contains exactly one governance singleton, and
 has at least one active administrator.
+
+## Installation, compatibility, and support
+
+The application is at 1.0.0-alpha.2. Existing alpha tags predate the GitHub module identity; no tag is moved or replaced.
+
+No post-migration version has been tagged. To inspect the current source
+before the first admitted release:
+
+```sh
+git clone https://github.com/gotthboard/gotth-bb.git
+```
+
+The repository has no selected license and no long-term support promise.
+Versioning, release admission, security reporting, and contribution details are
+in [the release policy](docs/RELEASING.md), [security policy](SECURITY.md), and
+[contribution guide](CONTRIBUTING.md).

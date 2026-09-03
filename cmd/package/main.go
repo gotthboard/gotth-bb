@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
-	"git.dannyhunn.com/agents/gotth-bb/internal/releaseartifact"
+	"github.com/gotthboard/gotth-bb/internal/releaseartifact"
 )
 
 func main() {
