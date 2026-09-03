@@ -1,6 +1,6 @@
 # GitHub Distribution Verification
 
-Status: candidate verification complete
+Status: complete
 
 ## Identity and scope
 
@@ -27,8 +27,14 @@ commit; graph SHA-256:
 `11b6adc0817ed113fe6266d3855c0afd56dce9367c71482436a40bb2f3b5827b`.
 Subsequent commits before this record changed documentation only.
 
-Two cold Judge passes review the completed candidate tree before this evidence
-is committed. No performance benchmark applies because executable paths and
+A fresh public GitHub `main` clone resolved
+`e63ddcf26fbdec8e201035268093f570d7862edd`, produced no `go mod tidy`
+drift, passed `go test -mod=readonly ./...`, and passed the complete
+`make verify` gate under the exact task-local Node/npm toolchain.
+
+Two cold Judge passes reviewed the completed candidate before promotion. This
+completion update changes evidence only and receives two fresh cold passes
+before commit. No performance benchmark applies because executable paths and
 data flow are unchanged.
 
 No license was selected. New release publication remains blocked. GitHub
