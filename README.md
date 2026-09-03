@@ -1,6 +1,6 @@
 # GOTTH Board
 
-> **Distribution:** GitHub is the public clone, and future release endpoint.
+> **Distribution:** GitHub is the public clone and future release endpoint.
 > Forgejo remains canonical development and the issue/contribution location.
 > See [the distribution contract](docs/distribution.md).
 
@@ -131,7 +131,8 @@ has at least one active administrator.
 
 ## Installation, compatibility, and support
 
-The application is at 1.0.0-alpha.2. Existing alpha tags predate the GitHub module identity; no tag is moved or replaced.
+The application is at 1.0.0-alpha.2. Existing alpha tags predate the GitHub
+module identity; no tag is moved or replaced.
 
 No post-migration version has been tagged. To inspect the current source
 before the first admitted release:

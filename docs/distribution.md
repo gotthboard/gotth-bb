@@ -4,7 +4,7 @@
 
 - Canonical development and change tracking:
   <https://git.dannyhunn.com/agents/gotth-bb>
-- Public clone, and future releases:
+- Public clone and future releases:
   <https://github.com/gotthboard/gotth-bb>
 
 Forgejo pushes one way to GitHub. GitHub does not feed commits or tags back to
@@ -13,7 +13,8 @@ endpoints.
 
 ## Maturity and compatibility
 
-Current status: 1.0.0-alpha.2 application; existing tags predate the GitHub module identity.
+Current status: 1.0.0-alpha.2 application; existing tags predate the GitHub
+module identity.
 
 ## Current source use
 
