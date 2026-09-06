@@ -332,9 +332,19 @@ the user surface may still change.
 
 Requirements: MOD-001 through MOD-004, MOD-007, MOD-008.
 
-- Report creation with duplicate/abuse limits.
-- Queue, assignment, resolution, moderator notes, and complete transitions.
-- Hide, restore, redact, pin, unpin, move, warn, mute, suspend, reinstate.
+- Authenticated active members may report one visible topic, undeleted visible
+  post, or non-self visible post author with a canonical 1-2,000 byte reason.
+  One reporter may hold at most 25 active reports and only one active report
+  for the same target.
+- The staff queue returns at most 25 active reports per page, ordered open
+  before in-review and then oldest first. Staff self-claim an open report;
+  moderators may finish only their own claims while administrators may finish
+  any claim. Notes are append-only. Resolve and dismiss are irreversible
+  terminal transitions in this release and require a resolution reason.
+- Topic pin/unpin and move, post hide/restore and irreversible redaction, and
+  user warn/mute complete the already implemented lock/unlock, topic
+  hide/restore, and suspend/reinstate surface. Every successful mutation and
+  report-processing step appends exactly one immutable audit row atomically.
 
 ### AN-02: search and recent activity
 

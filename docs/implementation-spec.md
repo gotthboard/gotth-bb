@@ -489,7 +489,37 @@ read.
 ### 6.11 Reports and audit
 
 `reports` identifies exactly one supported target type and target ID, records a
-bounded reason, workflow status, assignment, and resolution.
+bounded reason, workflow status, assignment, and resolution. Report submission
+locks the reporter row, rejects a twenty-sixth active report, and relies on the
+partial unique indexes to reject a duplicate active report for one target.
+Topic and post targets must pass the ordinary access predicate in SQL. A user
+target is admitted only when it is not the reporter and has authored a visible,
+undeleted post, so the endpoint cannot become an account-enumeration oracle.
+
+The active moderation queue is bounded to 25 rows per page and orders `open`
+before `in_review`, then by `(created_at, id)` ascending. It does not return post
+bodies. Assignment is self-claim only: `open -> in_review` sets `assigned_to`
+to the current staff actor. A moderator may resolve or dismiss only its own
+claim; an administrator may finish any in-review report. Terminal states are
+irreversible in this release. Resolution and dismissal require a canonical
+reason. `report_notes` are append-only, bounded staff notes; adding one is an
+audited report action and never changes report state.
+
+`user_warnings` are append-only bounded warning records. Warning a user inserts
+the warning and its audit atomically. Muting is a strict transition from no
+effective mute to a server-approved expiry of one hour, one day, seven days, or
+thirty days. A later or active mute conflicts; expiry clears effective mute
+without deleting history. Moderators may warn or mute members; administrators
+may act on any other local account. Neither role may act on itself.
+
+Topic pinning is the strict `NULL <-> timestamp` transition. Moving locks the
+topic and both source/destination areas, requires a different non-archived
+destination visible to staff, and changes only `area_id`; stable topic and post
+identifiers remain unchanged. Post hide/restore uses the existing soft-delete
+fields and preserves structural tombstones. Redaction is irreversible: it
+scrubs canonical Markdown and rendered HTML to a fixed tombstone, records who
+redacted it and why, advances revision/edit timestamps, and audits metadata
+without copying removed content into the audit log.
 
 `moderation_actions` includes:
 
@@ -789,7 +819,11 @@ Internal routes are shown relative to the configured external base URL.
 | `POST` | `/posts/{id}/delete` | Author soft delete | Author |
 | `POST` | `/reports` | Create report | Member |
 | `GET` | `/moderation/reports` | Moderation queue | Moderator |
-| `POST` | `/moderation/actions` | Moderation transition | Moderator |
+| `POST` | `/moderation/reports/{id}/claim` | Self-claim open report | Moderator |
+| `POST` | `/moderation/reports/{id}/notes` | Append report note | Assigned moderator |
+| `POST` | `/moderation/reports/{id}/resolve` | Resolve report | Assigned moderator |
+| `POST` | `/moderation/reports/{id}/dismiss` | Dismiss report | Assigned moderator |
+| `POST` | `/moderation/actions` | Content/account moderation transition | Moderator |
 | `GET` | `/moderation/users/{id}` | Local account status | Moderator |
 | `POST` | `/moderation/users/{id}/suspend` | Suspend local account | Moderator |
 | `POST` | `/moderation/users/{id}/reinstate` | Reinstate local account | Moderator |
@@ -1137,6 +1171,14 @@ strict form parsing, use the server request identifier as the audit UUID, map
 typed service failures without target disclosure, validate the committed
 result, and navigate to the builder-owned account-status URL. The transaction
 remains final authority if target or actor state changes after rendering.
+
+AN-01 report submission and moderation routes use the same current-session,
+revalidation, CSRF, bounded strict-form, server request-UUID, no-retry, and
+validated-result boundaries. Submission admits active authenticated users even
+when muted, because a publishing restriction must not suppress safety reports;
+suspended sessions remain ineligible. Queue reads and all processing require an
+active persisted moderator or administrator. The transaction, not the rendered
+control, is final authority after concurrent actor, target, or report changes.
 
 ## 15. Migrations
 

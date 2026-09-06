@@ -5,6 +5,34 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 17:36 CDT — Define AN-01 reports and moderation contracts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/architecture.md`
+- `docs/feature-plan.md`
+- `docs/implementation-spec.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Close the previously vague reports and remaining moderation behavior before
+implementation. Define bounded submission and queue behavior, self-claim
+assignment, append-only notes and warnings, strict report terminal states,
+closed mute durations, stable topic movement, and irreversible post redaction.
+
+Verification:
+
+- documentation whitespace and terminology scans
+- focused review against the PRD, schema, route, transaction, and audit contracts
+
+Risks / non-goals:
+
+- no application, schema, deployment, public API, or release behavior changes in
+  this documentation-only slice
+
 ### 2026-09-06 00:54 CDT — Route vulnerability reports through GitHub
 
 Commit: current commit; hash assigned by Git after commit

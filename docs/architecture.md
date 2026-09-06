@@ -333,7 +333,9 @@ identity access, or content history.
 - `posts`: topic, author, stable number, Markdown source, sanitized rendering,
   revision, and soft-deletion state.
 - `topic_reads`: per-user last-read position.
-- `reports`: reporter, target, reason, state, assignment, resolution.
+- `reports`: reporter, exactly one target, reason, state, assignment, resolution.
+- `report_notes`: append-only staff notes attached to one report.
+- `user_warnings`: append-only warnings attached to one local account.
 - `moderation_actions`: append-only audit record.
 - `rate_limit_events` or equivalent bounded counters when in-process limiting
   is insufficient.
@@ -384,6 +386,11 @@ silently break referential or audit integrity.
   one transaction.
 - Moderation mutation: lock target, transition state, append audit event in one
   transaction.
+- Report submission: lock the reporter, enforce the active-report cap, prove
+  target visibility in SQL, and insert one active report in one transaction.
+- Report processing: lock the report, enforce self-claim and strict terminal
+  transitions, then append the audit event in the same transaction as the
+  assignment, note, resolution, or dismissal.
 
 Database constraints remain authoritative. Application checks improve errors
 but do not replace uniqueness, foreign keys, check constraints, and transaction
