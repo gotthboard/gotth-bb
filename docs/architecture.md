@@ -392,6 +392,11 @@ silently break referential or audit integrity.
   transitions, then append the audit event in the same transaction as the
   assignment, note, resolution, or dismissal.
 
+Report-detail reads prove current persisted staff authority in both the detail
+and notes queries. The notes query returns an explicit authorized empty
+sentinel, so a role, suspension, or mute change between the two reads fails the
+whole response closed instead of turning revocation into an empty-notes page.
+
 Database constraints remain authoritative. Application checks improve errors
 but do not replace uniqueness, foreign keys, check constraints, and transaction
 isolation.

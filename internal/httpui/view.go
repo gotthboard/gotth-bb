@@ -17,6 +17,7 @@ type pageView struct {
 	RegisterURL   string
 	LogoutURL     string
 	AdminURL      string
+	ReportsURL    string
 	StylesheetURL string
 	HTMXURL       string
 }
@@ -103,6 +104,8 @@ type topicPostPageView struct {
 	ReplyForm   publishingFormView
 	ShowReply   bool
 	Moderation  []topicModerationView
+	Extended    []extendedModerationView
+	Report      reportFormView
 }
 
 type topicModerationView struct {
@@ -117,6 +120,7 @@ type topicPostItem struct {
 	Number          int32
 	IndentClass     string
 	Tombstone       bool
+	Redacted        bool
 	ParentLabel     string
 	ParentURL       string
 	Author          string
@@ -130,6 +134,43 @@ type topicPostItem struct {
 	Body            contentrender.TrustedHTML
 	ReplyForm       publishingFormView
 	ShowReply       bool
+	Report          reportFormView
+	ReportAuthor    reportFormView
+	Moderation      []extendedModerationView
+}
+
+type extendedModerationView struct {
+	ActionURL, CSRFToken, Action, TargetID, SubmitLabel, ExtraField, ExtraLabel string
+}
+
+type reportFormView struct {
+	ActionURL   string
+	CSRFToken   string
+	TargetType  string
+	TargetID    string
+	SubmitLabel string
+}
+
+type moderationReportListView struct {
+	Reports     []moderationReportListItem
+	Number      int32
+	Total       int64
+	PreviousURL string
+	NextURL     string
+}
+
+type moderationReportListItem struct {
+	DetailURL, TargetType, TargetLabel, Reporter, Reason, Status, Assignee, Created string
+}
+
+type moderationReportDetailView struct {
+	ID, TargetURL, TargetType, TargetLabel, Reporter, Reason, Status, Assignee, Resolution, Resolver, Created, Updated string
+	Notes                                                                                                              []moderationReportNoteView
+	ClaimAction, NoteAction, ResolveAction, DismissAction, CSRFToken                                                   string
+}
+
+type moderationReportNoteView struct {
+	Author, Body, Created string
 }
 
 type moderationUserView struct {
@@ -145,6 +186,7 @@ type moderationUserView struct {
 	ActionURL        string
 	CSRFToken        string
 	SubmitLabel      string
+	Extended         []extendedModerationView
 }
 
 type publishingFormView struct {
@@ -205,6 +247,10 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build area administration URL: %w", err)
 	}
+	reportsURL, err := builder.Path("moderation", "reports")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build moderation reports URL: %w", err)
+	}
 	canonicalURL, err := builder.Absolute(canonicalSegments...)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
@@ -218,6 +264,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		RegisterURL:   registerURL,
 		LogoutURL:     logoutURL,
 		AdminURL:      adminURL,
+		ReportsURL:    reportsURL,
 		StylesheetURL: stylesheetURL,
 		HTMXURL:       htmxURL,
 	}, nil

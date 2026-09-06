@@ -222,19 +222,20 @@ func (*fakeTopicPostRows) Scan(destinations ...any) error {
 	*(destinations[14].(*pgtype.Int8)) = pgtype.Int8{}
 	*(destinations[15].(*int32)) = 1
 	*(destinations[16].(*pgtype.Bool)) = pgtype.Bool{Bool: false, Valid: true}
-	*(destinations[17].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
-	*(destinations[18].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
-	*(destinations[19].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
-	*(destinations[20].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[17].(*pgtype.Bool)) = pgtype.Bool{Bool: false, Valid: true}
+	*(destinations[18].(*pgtype.Text)) = pgtype.Text{String: "<p>Hello <strong>forum</strong></p>", Valid: true}
+	*(destinations[19].(*pgtype.Text)) = pgtype.Text{String: "test-v1", Valid: true}
+	*(destinations[20].(*pgtype.Int4)) = pgtype.Int4{Int32: 1, Valid: true}
 	*(destinations[21].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
-	*(destinations[22].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
-	*(destinations[23].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
-	*(destinations[24].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
-	*(destinations[25].(*pgtype.Int4)) = pgtype.Int4{}
-	*(destinations[26].(*pgtype.Text)) = pgtype.Text{}
-	*(destinations[27].(*pgtype.Int8)) = pgtype.Int8{}
-	*(destinations[28].(*pgtype.Int8)) = pgtype.Int8{Int64: 1, Valid: true}
-	*(destinations[29].(*int64)) = 1
+	*(destinations[22].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: created, Valid: true}
+	*(destinations[23].(*pgtype.Timestamptz)) = pgtype.Timestamptz{}
+	*(destinations[24].(*pgtype.Int8)) = pgtype.Int8{Int64: 11, Valid: true}
+	*(destinations[25].(*pgtype.Text)) = pgtype.Text{String: "Starter", Valid: true}
+	*(destinations[26].(*pgtype.Int4)) = pgtype.Int4{}
+	*(destinations[27].(*pgtype.Text)) = pgtype.Text{}
+	*(destinations[28].(*pgtype.Int8)) = pgtype.Int8{}
+	*(destinations[29].(*pgtype.Int8)) = pgtype.Int8{Int64: 1, Valid: true}
+	*(destinations[30].(*int64)) = 1
 	return nil
 }
 

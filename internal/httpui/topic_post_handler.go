@@ -92,7 +92,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			first.TopicTitle == "" || first.TopicAuthorDisplayName == "" || !first.TopicCreatedAt.Valid ||
 			len(loaded.Rows) > int(store.PostPageSize) ||
 			(loaded.TotalPosts == 0 && (pageNumber != 1 || len(loaded.Rows) != 1 || first.PostID.Valid || first.PostNumber.Valid || first.ParentPostID.Valid ||
-				first.ThreadDepth != 0 || first.IsTombstone.Valid || first.NodeOrdinal.Valid ||
+				first.ThreadDepth != 0 || first.IsTombstone.Valid || first.IsRedacted.Valid || first.NodeOrdinal.Valid ||
 				first.RenderedHtml.Valid || first.RendererVersion.Valid || first.Revision.Valid || first.PostCreatedAt.Valid ||
 				first.PostUpdatedAt.Valid || first.PostEditedAt.Valid || first.PostAuthorDisplayName.Valid ||
 				first.TotalVisiblePosts != loaded.TotalPosts)) ||
@@ -158,12 +158,21 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 		moderationLinks, _ := request.Context().Value(userModerationLinksContextKey{}).(bool)
 		activeStaffLinks := moderationLinks && staff && authentication.Access.Authenticated &&
 			!authentication.Access.Suspended && authentication.Access.MutedUntil == nil
+		reportForms, _ := request.Context().Value(reportFormsContextKey{}).(bool)
+		reportAction := ""
+		extendedAction := ""
+		if reportForms && authentication.Access.Authenticated && !authentication.Access.Suspended && len(token) == sessionCookieEncodedBytes {
+			reportAction, viewErr = builder.Path("reports")
+			if viewErr == nil && staff && authentication.Access.MutedUntil == nil {
+				extendedAction, viewErr = builder.Path("moderation", "actions")
+			}
+		}
 		posts := make([]topicPostItem, 0, len(loaded.Rows))
 		if loaded.TotalPosts > 0 {
 			for _, row := range loaded.Rows {
 				validRow := sameTopicPostPresentationMetadata(first, row) && row.TotalVisiblePosts == loaded.TotalPosts &&
 					row.PostID.Valid && row.PostID.Int64 > 0 && row.PostNumber.Valid && row.PostNumber.Int32 > 0 &&
-					row.ThreadDepth >= 1 && row.ThreadDepth <= forum.MaximumReplyDepth && row.IsTombstone.Valid &&
+					row.ThreadDepth >= 1 && row.ThreadDepth <= forum.MaximumReplyDepth && row.IsTombstone.Valid && row.IsRedacted.Valid &&
 					row.NodeOrdinal.Valid && row.NodeOrdinal.Int64 > 0
 				if !validRow {
 					invalid = true
@@ -177,7 +186,7 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 				}
 				item := topicPostItem{
 					Anchor: anchor, Permalink: permalink, Number: row.PostNumber.Int32,
-					IndentClass: threadIndentClass(row.ThreadDepth), Tombstone: row.IsTombstone.Bool,
+					IndentClass: threadIndentClass(row.ThreadDepth), Tombstone: row.IsTombstone.Bool, Redacted: row.IsRedacted.Bool,
 				}
 				if row.ParentPostID.Valid {
 					parentPage := 1 + (row.ParentNodeOrdinal.Int64-1)/int64(store.PostPageSize)
@@ -190,6 +199,19 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 						item.ParentLabel = "In reply to " + row.ParentAuthorDisplayName.String + " (post #" + strconv.FormatInt(int64(row.ParentPostNumber.Int32), 10) + ")"
 					} else {
 						item.ParentLabel = "In reply to deleted post #" + strconv.FormatInt(int64(row.ParentPostNumber.Int32), 10)
+					}
+				}
+				if extendedAction != "" {
+					action := "hide_post"
+					label := "Hide post"
+					if row.IsTombstone.Bool {
+						action, label = "restore_post", "Restore post"
+					}
+					if !row.IsRedacted.Bool {
+						item.Moderation = append(item.Moderation, extendedModerationView{ActionURL: extendedAction, CSRFToken: token, Action: action, TargetID: strconv.FormatInt(row.PostID.Int64, 10), SubmitLabel: label})
+					}
+					if !row.IsTombstone.Bool {
+						item.Moderation = append(item.Moderation, extendedModerationView{ActionURL: extendedAction, CSRFToken: token, Action: "redact_post", TargetID: strconv.FormatInt(row.PostID.Int64, 10), SubmitLabel: "Redact post"})
 					}
 				}
 				if row.IsTombstone.Bool {
@@ -208,6 +230,12 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 					item.Edited = "Edited " + row.PostEditedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST")
 				}
 				item.Body = contentrender.SanitizeHTML(row.RenderedHtml.String)
+				if reportAction != "" {
+					item.Report = reportFormView{ActionURL: reportAction, CSRFToken: token, TargetType: "post", TargetID: strconv.FormatInt(row.PostID.Int64, 10), SubmitLabel: "Report post"}
+					if row.PostAuthorID.Int64 != authentication.Access.UserID {
+						item.ReportAuthor = reportFormView{ActionURL: reportAction, CSRFToken: token, TargetType: "user", TargetID: strconv.FormatInt(row.PostAuthorID.Int64, 10), SubmitLabel: "Report user"}
+					}
+				}
 				if replyAction != "" {
 					item.ReplyForm = publishingFormView{Heading: "Reply to post #" + strconv.FormatInt(int64(row.PostNumber.Int32), 10), ActionURL: replyAction, PreviewURL: replyPreview, CancelURL: cancelURL, CSRFToken: token, ParentPostID: strconv.FormatInt(row.PostID.Int64, 10), Reply: true}
 					item.ShowReply = true
@@ -292,6 +320,19 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			Posts: posts, Number: pageNumber, TotalPosts: loaded.TotalPosts,
 			PreviousURL: previousURL, NextURL: nextURL, ReplyForm: replyForm, ShowReply: replyForm.ActionURL != "",
 			Moderation: moderationControls,
+		}
+		if reportAction != "" {
+			presentation.Report = reportFormView{ActionURL: reportAction, CSRFToken: token, TargetType: "topic", TargetID: identifier, SubmitLabel: "Report topic"}
+		}
+		if extendedAction != "" && first.TopicState != "archived" && first.TopicState != "hidden" {
+			pinAction, pinLabel := "pin_topic", "Pin topic"
+			if first.TopicPinnedAt.Valid {
+				pinAction, pinLabel = "unpin_topic", "Unpin topic"
+			}
+			presentation.Extended = []extendedModerationView{
+				{ActionURL: extendedAction, CSRFToken: token, Action: pinAction, TargetID: identifier, SubmitLabel: pinLabel},
+				{ActionURL: extendedAction, CSRFToken: token, Action: "move_topic", TargetID: identifier, SubmitLabel: "Move topic", ExtraField: "destination_area_slug", ExtraLabel: "Destination area slug"},
+			}
 		}
 		if renderErr := renderResponse(
 			response, request, http.StatusOK,

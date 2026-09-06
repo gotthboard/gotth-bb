@@ -150,7 +150,7 @@ func sameVisibleTopicMetadata(first, row db.GetVisibleTopicPostPageRow) bool {
 // Complexity: time and auxiliary space are tight Theta(1).
 func validVisibleThreadNode(row db.GetVisibleTopicPostPageRow, previousNodeOrdinal int64) bool {
 	if !row.PostID.Valid || row.PostID.Int64 <= 0 || !row.PostNumber.Valid || row.PostNumber.Int32 <= 0 ||
-		row.ThreadDepth < 1 || row.ThreadDepth > 32 || !row.IsTombstone.Valid ||
+		row.ThreadDepth < 1 || row.ThreadDepth > 32 || !row.IsTombstone.Valid || !row.IsRedacted.Valid ||
 		!row.NodeOrdinal.Valid || row.NodeOrdinal.Int64 != previousNodeOrdinal+1 {
 		return false
 	}
@@ -166,7 +166,7 @@ func validVisibleThreadNode(row db.GetVisibleTopicPostPageRow, previousNodeOrdin
 		return !row.RenderedHtml.Valid && !row.RendererVersion.Valid && !row.Revision.Valid && !row.PostCreatedAt.Valid &&
 			!row.PostUpdatedAt.Valid && !row.PostEditedAt.Valid && !row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid
 	}
-	if !row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" ||
+	if row.IsRedacted.Bool || !row.RenderedHtml.Valid || !row.RendererVersion.Valid || row.RendererVersion.String == "" ||
 		!row.Revision.Valid || row.Revision.Int32 <= 0 || !row.PostCreatedAt.Valid || row.PostCreatedAt.InfinityModifier != pgtype.Finite ||
 		!row.PostUpdatedAt.Valid || row.PostUpdatedAt.InfinityModifier != pgtype.Finite ||
 		row.PostUpdatedAt.Time.Before(row.PostCreatedAt.Time) || !row.PostAuthorID.Valid || row.PostAuthorID.Int64 <= 0 ||
@@ -184,7 +184,7 @@ func validVisibleThreadNode(row db.GetVisibleTopicPostPageRow, previousNodeOrdin
 //
 // Complexity: time and auxiliary space are tight Theta(1).
 func validEmptyVisiblePost(row db.GetVisibleTopicPostPageRow) bool {
-	return !row.PostID.Valid && !row.PostNumber.Valid && !row.ParentPostID.Valid && row.ThreadDepth == 0 && !row.IsTombstone.Valid &&
+	return !row.PostID.Valid && !row.PostNumber.Valid && !row.ParentPostID.Valid && row.ThreadDepth == 0 && !row.IsTombstone.Valid && !row.IsRedacted.Valid &&
 		!row.RenderedHtml.Valid && !row.RendererVersion.Valid &&
 		!row.Revision.Valid && !row.PostCreatedAt.Valid && !row.PostUpdatedAt.Valid && !row.PostEditedAt.Valid &&
 		!row.PostAuthorID.Valid && !row.PostAuthorDisplayName.Valid && !row.ParentPostNumber.Valid &&

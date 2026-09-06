@@ -312,7 +312,7 @@ func validVisibleTopicPostRows(firstPost, lastPost int64) []db.GetVisibleTopicPo
 			AreaID: 3, AreaSlug: "public", AreaName: "Public", AreaDescription: "Open area", AreaPostingMode: "normal",
 			TopicID: 9, TopicFirstPostID: 101, TopicTitle: "Welcome", TopicState: "open", TopicCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, TopicAuthorDisplayName: "Starter",
 			PostID: pgtype.Int8{Int64: 100 + postNumber, Valid: true}, PostNumber: pgtype.Int4{Int32: int32(postNumber), Valid: true},
-			ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true},
+			ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true}, IsRedacted: pgtype.Bool{Bool: false, Valid: true},
 			RenderedHtml: pgtype.Text{String: "<p>Post</p>", Valid: true}, RendererVersion: pgtype.Text{String: "test-v1", Valid: true},
 			Revision: pgtype.Int4{Int32: 1, Valid: true}, PostCreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
 			PostUpdatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true}, PostAuthorID: pgtype.Int8{Int64: 11, Valid: true},
@@ -339,6 +339,7 @@ func clearVisiblePost(row *db.GetVisibleTopicPostPageRow) {
 	row.ParentPostID = pgtype.Int8{}
 	row.ThreadDepth = 0
 	row.IsTombstone = pgtype.Bool{}
+	row.IsRedacted = pgtype.Bool{}
 	row.RenderedHtml = pgtype.Text{}
 	row.RendererVersion = pgtype.Text{}
 	row.Revision = pgtype.Int4{}

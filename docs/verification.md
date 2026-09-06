@@ -350,3 +350,42 @@ Coverage gaps:
 Reviewer:
 Timestamp:
 ```
+
+## 17. AN-01 reports and moderation evidence
+
+| Field | Value |
+| --- | --- |
+| Requirements | `MOD-001` through `MOD-004`, `MOD-007`, `MOD-008` |
+| Issue | `AN-01` |
+| Source branch | `feature/alpha-n-reports-moderation` |
+| PostgreSQL | 17.10, disposable container pinned to `postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d` |
+| Environment | `development`, exact source copied from the feature worktree |
+
+The following gates passed on 2026-09-06:
+
+- constrained focused tests on `agenthost` for moderation, store, HTTP UI, and
+  migrations;
+- `go test -mod=readonly -race -tags=integration -p=1 ./...` against the
+  disposable PostgreSQL 17.10 instance;
+- `go vet -mod=readonly ./...`;
+- `go test -mod=readonly -tags=integration -p=1 -coverprofile=... ./...`;
+- deterministic sqlc, Templ, and Tailwind regeneration, including the expected
+  stylesheet SHA-256
+  `0a190b2010937a7f775df82d43ddf8882f662d156338beeff7d6e71762a0c46c`;
+- `gofmt`, `git diff --check`, and repository integrity checks.
+
+The database workflow covers all three target kinds, hidden and self-target
+denial, active-report uniqueness and cap behavior, queue ordering, authority
+revocation, every report transition, every extended action, fixed redaction
+state, tree-page target links, and atomic audit creation. Ordinary and HTMX
+HTTP paths cover the same successful destinations and error mappings.
+
+Tagged statement coverage was 74.4% for `internal/httpui`, 82.8% for
+`internal/moderation`, 97.4% for `internal/store`, 41.4% for generated
+`internal/store/db`, and 100% for migrations. The explicit gaps are defensive
+malformed-return branches in the service and HTTP adapters and mechanically
+generated sqlc scanner permutations. Forcing each with production-shaped
+PostgreSQL would add test machinery without improving the exercised authority,
+transaction, conflict, or leakage boundaries. Deployed Authentik browser
+acceptance and manual keyboard/mobile review remain release-gate evidence; no
+local result is represented as that evidence.

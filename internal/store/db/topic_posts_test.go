@@ -19,7 +19,7 @@ func TestGetVisibleTopicPostPageBindsAccessAndPaginationAndScansRows(t *testing.
 		TopicID: 9, TopicFirstPostID: 15, TopicTitle: "Welcome", TopicState: "locked", TopicPinnedAt: pgtype.Timestamptz{Valid: true},
 		TopicCreatedAt: pgtype.Timestamptz{Valid: true}, TopicAuthorDisplayName: "Starter",
 		PostID: pgtype.Int8{Int64: 17, Valid: true}, PostNumber: pgtype.Int4{Int32: 2, Valid: true},
-		ParentPostID: pgtype.Int8{Int64: 15, Valid: true}, ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true},
+		ParentPostID: pgtype.Int8{Int64: 15, Valid: true}, ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true}, IsRedacted: pgtype.Bool{Bool: false, Valid: true},
 		RenderedHtml: pgtype.Text{String: "<p>Reply</p>", Valid: true}, RendererVersion: pgtype.Text{String: "v1", Valid: true},
 		Revision: pgtype.Int4{Int32: 3, Valid: true}, PostCreatedAt: pgtype.Timestamptz{Valid: true},
 		PostUpdatedAt: pgtype.Timestamptz{Valid: true}, PostEditedAt: pgtype.Timestamptz{Valid: true},
@@ -141,19 +141,20 @@ func (rows *topicPostRows) Scan(destinations ...any) error {
 	*(destinations[14].(*pgtype.Int8)) = item.ParentPostID
 	*(destinations[15].(*int32)) = item.ThreadDepth
 	*(destinations[16].(*pgtype.Bool)) = item.IsTombstone
-	*(destinations[17].(*pgtype.Text)) = item.RenderedHtml
-	*(destinations[18].(*pgtype.Text)) = item.RendererVersion
-	*(destinations[19].(*pgtype.Int4)) = item.Revision
-	*(destinations[20].(*pgtype.Timestamptz)) = item.PostCreatedAt
-	*(destinations[21].(*pgtype.Timestamptz)) = item.PostUpdatedAt
-	*(destinations[22].(*pgtype.Timestamptz)) = item.PostEditedAt
-	*(destinations[23].(*pgtype.Int8)) = item.PostAuthorID
-	*(destinations[24].(*pgtype.Text)) = item.PostAuthorDisplayName
-	*(destinations[25].(*pgtype.Int4)) = item.ParentPostNumber
-	*(destinations[26].(*pgtype.Text)) = item.ParentAuthorDisplayName
-	*(destinations[27].(*pgtype.Int8)) = item.ParentNodeOrdinal
-	*(destinations[28].(*pgtype.Int8)) = item.NodeOrdinal
-	*(destinations[29].(*int64)) = item.TotalVisiblePosts
+	*(destinations[17].(*pgtype.Bool)) = item.IsRedacted
+	*(destinations[18].(*pgtype.Text)) = item.RenderedHtml
+	*(destinations[19].(*pgtype.Text)) = item.RendererVersion
+	*(destinations[20].(*pgtype.Int4)) = item.Revision
+	*(destinations[21].(*pgtype.Timestamptz)) = item.PostCreatedAt
+	*(destinations[22].(*pgtype.Timestamptz)) = item.PostUpdatedAt
+	*(destinations[23].(*pgtype.Timestamptz)) = item.PostEditedAt
+	*(destinations[24].(*pgtype.Int8)) = item.PostAuthorID
+	*(destinations[25].(*pgtype.Text)) = item.PostAuthorDisplayName
+	*(destinations[26].(*pgtype.Int4)) = item.ParentPostNumber
+	*(destinations[27].(*pgtype.Text)) = item.ParentAuthorDisplayName
+	*(destinations[28].(*pgtype.Int8)) = item.ParentNodeOrdinal
+	*(destinations[29].(*pgtype.Int8)) = item.NodeOrdinal
+	*(destinations[30].(*int64)) = item.TotalVisiblePosts
 	return nil
 }
 

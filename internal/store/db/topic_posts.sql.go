@@ -60,6 +60,7 @@ thread_nodes AS (
         post.parent_post_id,
         post.thread_path,
         (post.deleted_at IS NOT NULL)::boolean AS is_tombstone,
+        (post.redacted_at IS NOT NULL)::boolean AS is_redacted,
         CASE WHEN post.deleted_at IS NULL THEN post.rendered_html ELSE NULL::text END AS rendered_html,
         CASE WHEN post.deleted_at IS NULL THEN post.renderer_version ELSE NULL::text END AS renderer_version,
         CASE WHEN post.deleted_at IS NULL THEN post.revision ELSE NULL::integer END AS revision,
@@ -71,7 +72,8 @@ thread_nodes AS (
     FROM visible_topic
     JOIN public.posts AS post ON post.topic_id = visible_topic.topic_id
     LEFT JOIN public.users AS author ON author.id = post.author_id
-    WHERE post.deleted_at IS NULL
+    WHERE $3::boolean
+       OR post.deleted_at IS NULL
        OR EXISTS (
             SELECT 1
             FROM public.posts AS descendant
@@ -83,13 +85,13 @@ thread_nodes AS (
 ),
 numbered_nodes AS (
     SELECT
-        thread_nodes.post_id, thread_nodes.topic_id, thread_nodes.post_number, thread_nodes.parent_post_id, thread_nodes.thread_path, thread_nodes.is_tombstone, thread_nodes.rendered_html, thread_nodes.renderer_version, thread_nodes.revision, thread_nodes.post_created_at, thread_nodes.post_updated_at, thread_nodes.post_edited_at, thread_nodes.post_author_id, thread_nodes.post_author_display_name,
+        thread_nodes.post_id, thread_nodes.topic_id, thread_nodes.post_number, thread_nodes.parent_post_id, thread_nodes.thread_path, thread_nodes.is_tombstone, thread_nodes.is_redacted, thread_nodes.rendered_html, thread_nodes.renderer_version, thread_nodes.revision, thread_nodes.post_created_at, thread_nodes.post_updated_at, thread_nodes.post_edited_at, thread_nodes.post_author_id, thread_nodes.post_author_display_name,
         row_number() OVER (ORDER BY thread_path)::bigint AS node_ordinal,
         count(*) OVER ()::bigint AS total_visible_posts
     FROM thread_nodes
 ),
 page_nodes AS (
-    SELECT post_id, topic_id, post_number, parent_post_id, thread_path, is_tombstone, rendered_html, renderer_version, revision, post_created_at, post_updated_at, post_edited_at, post_author_id, post_author_display_name, node_ordinal, total_visible_posts
+    SELECT post_id, topic_id, post_number, parent_post_id, thread_path, is_tombstone, is_redacted, rendered_html, renderer_version, revision, post_created_at, post_updated_at, post_edited_at, post_author_id, post_author_display_name, node_ordinal, total_visible_posts
     FROM numbered_nodes
     WHERE node_ordinal > $1::integer
       AND node_ordinal <= $1::integer + $6::integer
@@ -112,6 +114,7 @@ SELECT
     page_nodes.parent_post_id,
     COALESCE(cardinality(page_nodes.thread_path), 0)::integer AS thread_depth,
     page_nodes.is_tombstone,
+    page_nodes.is_redacted,
     page_nodes.rendered_html,
     page_nodes.renderer_version,
     page_nodes.revision,
@@ -159,6 +162,7 @@ type GetVisibleTopicPostPageRow struct {
 	ParentPostID            pgtype.Int8
 	ThreadDepth             int32
 	IsTombstone             pgtype.Bool
+	IsRedacted              pgtype.Bool
 	RenderedHtml            pgtype.Text
 	RendererVersion         pgtype.Text
 	Revision                pgtype.Int4
@@ -208,6 +212,7 @@ func (q *Queries) GetVisibleTopicPostPage(ctx context.Context, arg GetVisibleTop
 			&i.ParentPostID,
 			&i.ThreadDepth,
 			&i.IsTombstone,
+			&i.IsRedacted,
 			&i.RenderedHtml,
 			&i.RendererVersion,
 			&i.Revision,

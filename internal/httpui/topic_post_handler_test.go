@@ -515,7 +515,7 @@ func topicPostTestPage(number int32) store.VisibleTopicPostPage {
 		TopicPinnedAt:  pgtype.Timestamptz{Time: topicCreated, Valid: true},
 		TopicCreatedAt: pgtype.Timestamptz{Time: topicCreated, Valid: true}, TopicAuthorDisplayName: "Alice & Bob",
 		PostID: pgtype.Int8{Int64: 126, Valid: true}, PostNumber: pgtype.Int4{Int32: 26, Valid: true},
-		ParentPostID: pgtype.Int8{Int64: 101, Valid: true}, ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true},
+		ParentPostID: pgtype.Int8{Int64: 101, Valid: true}, ThreadDepth: 2, IsTombstone: pgtype.Bool{Bool: false, Valid: true}, IsRedacted: pgtype.Bool{Bool: false, Valid: true},
 		RenderedHtml:    pgtype.Text{String: `<p onclick="alert(1)">Hello <strong>safe</strong><script>alert(1)</script></p>`, Valid: true},
 		RendererVersion: pgtype.Text{String: "renderer-v1", Valid: true}, Revision: pgtype.Int4{Int32: 2, Valid: true},
 		PostCreatedAt: pgtype.Timestamptz{Time: postCreated, Valid: true},
@@ -556,6 +556,7 @@ func clearTopicPostTestRow(row *db.GetVisibleTopicPostPageRow) {
 	row.ParentPostID = pgtype.Int8{}
 	row.ThreadDepth = 0
 	row.IsTombstone = pgtype.Bool{}
+	row.IsRedacted = pgtype.Bool{}
 	row.RenderedHtml = pgtype.Text{}
 	row.RendererVersion = pgtype.Text{}
 	row.Revision = pgtype.Int4{}

@@ -89,8 +89,8 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 5 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 5, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 6 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 6, 1)", serverVersion, migrationCount, governanceCount)
 	}
 
 	var administratorID int64
@@ -500,6 +500,12 @@ VALUES ($1, $2, 2, 'Duplicate', '<p>Duplicate</p>', 'test-v1')`, topicID, member
     (user_id, topic_id, last_read_post_number) VALUES ($1, $2, 0)`, memberID, topicID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.reports
     (reported_by, topic_id, user_id, reason) VALUES ($1, $2, $1, 'two targets')`, memberID, topicID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.reports
+    (reported_by, topic_id, reason, status, assigned_to)
+VALUES ($1, $2, 'assigned open report', 'open', $1)`, memberID, topicID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.reports
+    (reported_by, topic_id, reason, status)
+VALUES ($1, $2, 'unassigned review report', 'in_review')`, memberID, topicID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.moderation_actions
     (actor_kind, target_type, target_user_id, action_type, request_id)
 VALUES ('forum_user', 'user', $1, 'warn_user', '00000000-0000-0000-0000-000000000001')`, memberID)
@@ -509,4 +515,7 @@ VALUES ('forum_user', $1, 'topic', $2, 'lock_topic', NULL,
         '00000000-0000-0000-0000-000000000002')`, administratorID, topicID); err != nil {
 		t.Fatalf("insert valid moderation action: %v", err)
 	}
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.report_notes (report_id, author_id, body) VALUES (999, $1, '')`, administratorID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.user_warnings (user_id, warned_by, reason) VALUES ($1, $1, '')`, memberID)
+	expectExecutionFailure(t, conn, ctx, `UPDATE public.posts SET redacted_at = clock_timestamp(), redacted_by = $1, redaction_reason = 'test' WHERE id = $2`, administratorID, replyID)
 }

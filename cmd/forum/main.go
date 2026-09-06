@@ -193,7 +193,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct administrator claim service: %w", err)
 	}
-	applicationHandler, err := httpui.NewAuthenticatedModeratedForumHandler(
+	applicationHandler, err := httpui.NewAuthenticatedReportedForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
@@ -242,6 +242,23 @@ func run(
 		},
 		func(administrationContext context.Context, access auth.AccessContext, areaID int64, input administrationservice.AreaInput, requestID pgtype.UUID) (administrationservice.AreaMutationResult, error) {
 			return administrationservice.UpdateArea(administrationContext, pool, time.Now, access, areaID, input, requestID)
+		},
+		httpui.ReportHTTPServices{
+			Create: func(reportContext context.Context, access auth.AccessContext, target moderationservice.ReportTargetType, targetID int64, reason string) (moderationservice.ReportResult, error) {
+				return moderationservice.CreateReport(reportContext, pool, time.Now, access, target, targetID, reason)
+			},
+			List: func(reportContext context.Context, access auth.AccessContext, page int32) (store.ModerationReportPage, error) {
+				return store.ListModerationReports(reportContext, queries, access, page, time.Now())
+			},
+			Load: func(reportContext context.Context, access auth.AccessContext, reportID int64) (store.ModerationReportDetail, error) {
+				return store.GetModerationReport(reportContext, queries, access, reportID, time.Now())
+			},
+			Process: func(reportContext context.Context, access auth.AccessContext, reportID int64, action moderationservice.ReportAction, text string, requestID pgtype.UUID) (moderationservice.ReportActionResult, error) {
+				return moderationservice.ProcessReport(reportContext, pool, time.Now, access, reportID, action, text, requestID)
+			},
+			Extended: func(moderationContext context.Context, access auth.AccessContext, input moderationservice.ExtendedActionInput, requestID pgtype.UUID) (moderationservice.ExtendedActionResult, error) {
+				return moderationservice.ApplyExtendedAction(moderationContext, pool, time.Now, access, input, requestID)
+			},
 		},
 		configured.RegistrationURL,
 		configured.RegistrationEnabled,

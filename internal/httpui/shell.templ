@@ -34,6 +34,9 @@ templ document(view pageView, content templ.Component) {
 						if sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator {
 							<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Manage areas</a>
 						}
+						if reportFormsEnabled(ctx) && (sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleModerator || sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator) {
+							<a href={ view.ReportsURL } hx-get={ view.ReportsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Reports</a>
+						}
 						if sessionAuthenticationFromContext(ctx).Access.Authenticated {
 							<form method="post" action={ view.LogoutURL }>
 								<input type="hidden" name="_csrf" value={ csrfTokenFromContext(ctx) }/>
@@ -197,20 +200,25 @@ templ footer(view pageView, loadTimes footerLoadTimesView) {
 	</footer>
 }
 
-templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem, logoutVerificationFailed bool) {
-	@document(view, areaIndexContentWithAreas(view, areas, logoutVerificationFailed))
+templ areaIndexPageWithAreas(view pageView, areas []areaIndexItem, notice areaIndexNotice) {
+	@document(view, areaIndexContentWithAreas(view, areas, notice))
 }
 
-templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, logoutVerificationFailed bool) {
+templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, notice areaIndexNotice) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm">
 			<ol>
 				<li><span aria-current="page">Areas</span></li>
 			</ol>
 		</nav>
-		if logoutVerificationFailed {
+		if notice == areaIndexLogoutVerificationFailed {
 			<div role="alert" class="mb-6 rounded-lg border border-amber-800/70 bg-amber-950/20 p-4 text-amber-100">
 				Logout failed because the page was stale. You are still logged in. Please try again.
+			</div>
+		}
+		if notice == areaIndexReportSubmitted {
+			<div role="status" class="mb-6 rounded-lg border border-emerald-800/70 bg-emerald-950/20 p-4 text-emerald-100">
+				Your report was submitted to the moderation queue.
 			</div>
 		}
 		<section aria-labelledby="areas-title" class="overflow-hidden rounded border border-slate-700 bg-slate-900 shadow-lg shadow-black/20">
@@ -354,6 +362,9 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 			<h1 id="topic-title" class="mt-2 text-2xl font-bold tracking-tight text-blue-100 sm:text-3xl">{ topic.Title }</h1>
 			<p class="mt-2 text-sm text-slate-400">Started by { topic.Author } · { topic.Started }</p>
 			<p class="mt-1 text-sm text-slate-400">Page { topic.Number } · { topic.TotalPosts } visible conversation nodes</p>
+			if topic.Report.ActionURL != "" {
+				@reportForm(topic.Report)
+			}
 			for _, control := range topic.Moderation {
 				<form method="post" action={ control.ActionURL } hx-post={ control.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-6 grid max-w-xl gap-3 rounded-lg border border-amber-800/70 bg-amber-950/20 p-4">
 					<input type="hidden" name="_csrf" value={ control.CSRFToken }/>
@@ -363,6 +374,9 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 					</label>
 					<button type="submit" class="w-fit rounded-md border border-amber-700 px-4 py-2 font-semibold text-amber-100 hover:border-amber-500">{ control.SubmitLabel }</button>
 				</form>
+			}
+			for _, control := range topic.Extended {
+				@extendedModerationForm(control)
 			}
 		</section>
 		if len(topic.Posts) == 0 {
@@ -382,7 +396,14 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 							if post.Tombstone {
 								<div class="px-4 py-5 text-sm italic text-slate-400">
 									<h2 id={ post.Anchor + "-author" } class="sr-only">Deleted post</h2>
-									This post was deleted. Replies remain in their original conversation branch.
+									if post.Redacted {
+										This post was permanently redacted by moderation. Replies remain in their original conversation branch.
+									} else {
+										This post was deleted. Replies remain in their original conversation branch.
+									}
+									for _, control := range post.Moderation {
+										@extendedModerationForm(control)
+									}
 								</div>
 							} else {
 								<div class="md:grid md:grid-cols-[11rem_minmax(0,1fr)]">
@@ -394,6 +415,9 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 									}
 									if post.AuthorStatusURL != "" {
 										<a href={ post.AuthorStatusURL } hx-get={ post.AuthorStatusURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="mt-2 inline-block text-xs font-semibold text-blue-300 hover:text-blue-100 hover:underline">Account status</a>
+									}
+									if post.ReportAuthor.ActionURL != "" {
+										@reportForm(post.ReportAuthor)
 									}
 									</header>
 									<div class="min-w-0 p-4">
@@ -416,6 +440,12 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 											<a href={ post.Permalink } class="font-semibold text-blue-300 hover:text-blue-100 hover:underline">Post #{ post.Number }</a>
 										</div>
 									<div class="rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-200">@post.Body.Component()</div>
+									if post.Report.ActionURL != "" {
+											@reportForm(post.Report)
+									}
+									for _, control := range post.Moderation {
+										@extendedModerationForm(control)
+									}
 										if post.ShowReply {
 											<details class="mt-5 border-t border-slate-700 pt-3">
 												<summary class="w-fit cursor-pointer rounded bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800">Reply</summary>
@@ -444,6 +474,116 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 			@publishingFormSection(topic.ReplyForm)
 		}
 	</main>
+}
+
+templ reportForm(form reportFormView) {
+	<details class="mt-3 text-sm">
+		<summary class="w-fit cursor-pointer font-semibold text-rose-300 hover:text-rose-200">{ form.SubmitLabel }</summary>
+		<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-3 grid gap-2 rounded border border-rose-900/70 bg-rose-950/20 p-3">
+			<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
+			<input type="hidden" name="target_type" value={ form.TargetType }/>
+			<input type="hidden" name="target_id" value={ form.TargetID }/>
+			<label class="grid gap-1 font-semibold text-rose-100">Reason<textarea name="reason" required maxlength="2000" rows="3" class="rounded border border-rose-900 bg-slate-950 px-3 py-2 text-white"></textarea></label>
+			<button type="submit" class="w-fit rounded border border-rose-700 px-3 py-1.5 font-semibold text-rose-100">Submit report</button>
+		</form>
+	</details>
+}
+
+templ extendedModerationForm(form extendedModerationView) {
+	<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-3 grid max-w-xl gap-2 rounded border border-amber-900/70 bg-amber-950/20 p-3 text-sm">
+		<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
+		<input type="hidden" name="action" value={ form.Action }/>
+		<input type="hidden" name="target_id" value={ form.TargetID }/>
+		if form.ExtraField != "" {
+			<label class="grid gap-1 font-semibold text-amber-100">{ form.ExtraLabel }<input name={ form.ExtraField } required maxlength="80" class="rounded border border-amber-900 bg-slate-950 px-3 py-2 text-white"/></label>
+		}
+		<label class="grid gap-1 font-semibold text-amber-100">Moderation reason<input name="reason" required maxlength="2000" class="rounded border border-amber-900 bg-slate-950 px-3 py-2 text-white"/></label>
+		<button type="submit" class="w-fit rounded border border-amber-700 px-3 py-1.5 font-semibold text-amber-100">{ form.SubmitLabel }</button>
+	</form>
+}
+
+templ moderationReportListPage(view pageView, page moderationReportListView) {
+	@document(view, moderationReportListContent(view, page))
+}
+
+templ moderationReportListContent(view pageView, page moderationReportListView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-5xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12">
+		<h1 class="text-3xl font-bold text-white">Moderation reports</h1>
+		<p class="mt-2 text-slate-400">{ page.Total } active reports · page { page.Number }</p>
+		if len(page.Reports) == 0 {
+			<p class="mt-6 rounded border border-slate-700 bg-slate-900 p-5 text-slate-300">The active report queue is empty.</p>
+		} else {
+			<ol class="mt-6 grid gap-4">
+				for _, report := range page.Reports {
+					<li class="rounded border border-slate-700 bg-slate-900 p-5">
+						<div class="flex flex-wrap justify-between gap-3"><a href={ report.DetailURL } hx-get={ report.DetailURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="font-bold text-blue-300">{ report.TargetType }: { report.TargetLabel }</a><span class="font-semibold text-amber-200">{ report.Status }</span></div>
+						<p class="mt-2 whitespace-pre-wrap text-slate-200">{ report.Reason }</p>
+						<p class="mt-3 text-sm text-slate-400">Reported by { report.Reporter } · { report.Created }</p>
+						if report.Assignee != "" {
+							<p class="mt-1 text-sm text-slate-400">Assigned to { report.Assignee }</p>
+						}
+					</li>
+				}
+			</ol>
+		}
+		<nav aria-label="Report pages" class="mt-8 flex gap-4">
+			if page.PreviousURL != "" {
+				<a href={ page.PreviousURL } hx-get={ page.PreviousURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Previous</a>
+			}
+			if page.NextURL != "" {
+				<a href={ page.NextURL } hx-get={ page.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Next</a>
+			}
+		</nav>
+	</main>
+}
+
+templ moderationReportDetailPage(view pageView, report moderationReportDetailView) {
+	@document(view, moderationReportDetailContent(view, report))
+}
+
+templ moderationReportDetailContent(view pageView, report moderationReportDetailView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-4xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12">
+		<a href={ view.ReportsURL } hx-get={ view.ReportsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="font-semibold text-blue-300">← Report queue</a>
+		<section class="mt-5 rounded border border-slate-700 bg-slate-900 p-6">
+			<h1 class="text-3xl font-bold text-white">Report #{ report.ID }</h1>
+			<p class="mt-3"><a href={ report.TargetURL } class="font-semibold text-blue-300">{ report.TargetType }: { report.TargetLabel }</a></p>
+			<p class="mt-4 whitespace-pre-wrap text-slate-200">{ report.Reason }</p>
+			<p class="mt-3 text-sm text-slate-400">Reporter: { report.Reporter } · Status: { report.Status } · Created: { report.Created }</p>
+			if report.Assignee != "" {
+				<p class="mt-1 text-sm text-slate-400">Assigned to { report.Assignee }</p>
+			}
+			if report.Resolution != "" {
+				<p class="mt-4 rounded border border-slate-700 bg-slate-950 p-4 whitespace-pre-wrap">Resolution: { report.Resolution } · { report.Resolver }</p>
+			}
+			if report.ClaimAction != "" {
+				<form method="post" action={ report.ClaimAction } class="mt-6"><input type="hidden" name="_csrf" value={ report.CSRFToken }/><button class="rounded bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Claim report</button></form>
+			}
+			if report.NoteAction != "" {
+				@reportActionForm(report.NoteAction, report.CSRFToken, "note", "Add moderator note")
+				@reportActionForm(report.ResolveAction, report.CSRFToken, "resolution", "Resolve report")
+				@reportActionForm(report.DismissAction, report.CSRFToken, "resolution", "Dismiss report")
+			}
+		</section>
+		<section class="mt-6"><h2 class="text-2xl font-bold text-white">Moderator notes</h2>
+			if len(report.Notes) == 0 {
+				<p class="mt-3 text-slate-400">No notes.</p>
+			} else {
+				<ol class="mt-3 grid gap-3">
+					for _, note := range report.Notes {
+						<li class="rounded border border-slate-700 bg-slate-900 p-4"><p class="whitespace-pre-wrap">{ note.Body }</p><p class="mt-2 text-sm text-slate-400">{ note.Author } · { note.Created }</p></li>
+					}
+				</ol>
+			}
+		</section>
+	</main>
+}
+
+templ reportActionForm(actionURL string, csrfToken string, field string, label string) {
+	<form method="post" action={ actionURL } hx-post={ actionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-5 grid gap-2 rounded border border-amber-900/70 bg-amber-950/20 p-4">
+		<input type="hidden" name="_csrf" value={ csrfToken }/>
+		<label class="grid gap-1 font-semibold">{ label }<textarea name={ field } required maxlength="2000" rows="3" class="rounded border border-amber-900 bg-slate-950 px-3 py-2 text-white"></textarea></label>
+		<button type="submit" class="w-fit rounded border border-amber-700 px-4 py-2 font-semibold text-amber-100">{ label }</button>
+	</form>
 }
 
 templ inlineReplyForm(form publishingFormView) {
@@ -505,6 +645,9 @@ templ moderationUserContent(view pageView, user moderationUserView) {
 				</label>
 				<button type="submit" class="w-fit rounded-md border border-amber-700 px-4 py-2 font-semibold text-amber-100 hover:border-amber-500">{ user.SubmitLabel }</button>
 			</form>
+			for _, control := range user.Extended {
+				@extendedModerationForm(control)
+			}
 		</section>
 	</main>
 }

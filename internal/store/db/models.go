@@ -108,6 +108,9 @@ type Post struct {
 	DeletionReason  pgtype.Text
 	ParentPostID    pgtype.Int8
 	ThreadPath      []int32
+	RedactedAt      pgtype.Timestamptz
+	RedactedBy      pgtype.Int8
+	RedactionReason pgtype.Text
 }
 
 type Report struct {
@@ -124,6 +127,14 @@ type Report struct {
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
 	ResolvedAt pgtype.Timestamptz
+}
+
+type ReportNote struct {
+	ID        int64
+	ReportID  int64
+	AuthorID  int64
+	Body      string
+	CreatedAt pgtype.Timestamptz
 }
 
 type Session struct {
@@ -178,4 +189,12 @@ type User struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	LastLoginAt      pgtype.Timestamptz
+}
+
+type UserWarning struct {
+	ID        int64
+	UserID    int64
+	WarnedBy  int64
+	Reason    string
+	CreatedAt pgtype.Timestamptz
 }

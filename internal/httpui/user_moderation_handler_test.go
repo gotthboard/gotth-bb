@@ -48,7 +48,7 @@ func TestUserModerationHandlerRendersExactActiveAndSuspendedStatus(t *testing.T)
 				return test.status, nil
 			}, func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.UserSuspensionResult, error) {
 				panic("mutation called by status GET")
-			})
+			}, false)
 			if err != nil {
 				t.Fatalf("newUserModerationHandler() returned error: %v", err)
 			}
@@ -104,7 +104,7 @@ func TestUserModerationHandlerChangesExactStateAndRedirects(t *testing.T) {
 					t.Fatalf("change call = (%v, %+v, %d, %t, %q, %+v)", ctx, access, userID, suspend, reason, requestID)
 				}
 				return moderation.UserSuspensionResult{UserID: 41, Suspended: suspend, AuditID: 81}, nil
-			})
+			}, false)
 			if err != nil {
 				t.Fatalf("newUserModerationHandler() returned error: %v", err)
 			}
@@ -178,7 +178,7 @@ func TestUserModerationHandlerFailsClosedBeforeDelegation(t *testing.T) {
 			}, func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.UserSuspensionResult, error) {
 				changes++
 				return test.result, test.changeErr
-			})
+			}, false)
 			if err != nil {
 				t.Fatalf("newUserModerationHandler() returned error: %v", err)
 			}
@@ -217,11 +217,11 @@ func TestUserModerationPresentationHelpersAndConstruction(t *testing.T) {
 		load    ModerationUserStatusLoader
 		change  UserSuspensionChanger
 	}{{builder: callbackTestURLBuilder(t), load: validLoad}, {builder: callbackTestURLBuilder(t), change: validChange}, {load: validLoad, change: validChange}} {
-		if handler, err := newUserModerationHandler(test.builder, test.load, test.change); err == nil || handler != nil {
+		if handler, err := newUserModerationHandler(test.builder, test.load, test.change, false); err == nil || handler != nil {
 			t.Fatalf("newUserModerationHandler(missing) = (%v, %v)", handler, err)
 		}
 	}
-	if handler, err := newUserModerationHandler(URLBuilder{basePath: "/\x00", initialized: true}, validLoad, validChange); err == nil || handler != nil {
+	if handler, err := newUserModerationHandler(URLBuilder{basePath: "/\x00", initialized: true}, validLoad, validChange, false); err == nil || handler != nil {
 		t.Fatalf("newUserModerationHandler(invalid absolute URL) = (%v, %v)", handler, err)
 	}
 	for role, want := range map[policy.Role]string{policy.RoleMember: "Member", policy.RoleModerator: "Moderator", policy.RoleAdministrator: "Administrator"} {
@@ -332,7 +332,7 @@ func TestUserModerationHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 		handler, err := newUserModerationHandler(callbackTestURLBuilder(t), load,
 			func(context.Context, auth.AccessContext, int64, bool, string, pgtype.UUID) (moderation.UserSuspensionResult, error) {
 				panic("mutation called by GET")
-			})
+			}, false)
 		if err != nil {
 			t.Fatalf("newUserModerationHandler() returned error: %v", err)
 		}
@@ -373,7 +373,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 		missing, missingErr := newAuthenticatedHandler(
 			builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
 			panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
-			services.load, services.change, nil, nil, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
+			services.load, services.change, nil, nil, nil, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 		)
 		if missingErr == nil || missing != nil {
 			t.Fatalf("newAuthenticatedHandler(incomplete user moderation) = (%v, %v)", missing, missingErr)
@@ -391,7 +391,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 			changes++
 			return moderation.UserSuspensionResult{UserID: userID, Suspended: suspend, AuditID: 81}, nil
 		},
-		nil, nil, nil,
+		nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)
 	if err != nil {

@@ -105,6 +105,9 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit upgrade reply: %v", err)
 	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.reports (reported_by, topic_id, reason) VALUES ($1, $2, 'upgrade report')`, userID, topicID); err != nil {
+		t.Fatalf("insert alpha.1 report: %v", err)
+	}
 	if err := migration.Apply(ctx, testConfig, Files()); err != nil {
 		t.Fatalf("upgrade populated alpha.1 database: %v", err)
 	}
@@ -120,7 +123,7 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	if err := connection.QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, replyID).Scan(&replyParent, &replyPath); err != nil {
 		t.Fatalf("inspect upgraded reply: %v", err)
 	}
-	if migrationCount != 5 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) {
+	if migrationCount != 6 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) {
 		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v)", migrationCount, rootParent, rootPath, replyParent, replyPath)
 	}
 }

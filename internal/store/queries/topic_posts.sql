@@ -47,6 +47,7 @@ thread_nodes AS (
         post.parent_post_id,
         post.thread_path,
         (post.deleted_at IS NOT NULL)::boolean AS is_tombstone,
+        (post.redacted_at IS NOT NULL)::boolean AS is_redacted,
         CASE WHEN post.deleted_at IS NULL THEN post.rendered_html ELSE NULL::text END AS rendered_html,
         CASE WHEN post.deleted_at IS NULL THEN post.renderer_version ELSE NULL::text END AS renderer_version,
         CASE WHEN post.deleted_at IS NULL THEN post.revision ELSE NULL::integer END AS revision,
@@ -58,7 +59,8 @@ thread_nodes AS (
     FROM visible_topic
     JOIN public.posts AS post ON post.topic_id = visible_topic.topic_id
     LEFT JOIN public.users AS author ON author.id = post.author_id
-    WHERE post.deleted_at IS NULL
+    WHERE sqlc.arg(is_staff)::boolean
+       OR post.deleted_at IS NULL
        OR EXISTS (
             SELECT 1
             FROM public.posts AS descendant
@@ -99,6 +101,7 @@ SELECT
     page_nodes.parent_post_id,
     COALESCE(cardinality(page_nodes.thread_path), 0)::integer AS thread_depth,
     page_nodes.is_tombstone,
+    page_nodes.is_redacted,
     page_nodes.rendered_html,
     page_nodes.renderer_version,
     page_nodes.revision,

@@ -174,6 +174,43 @@ func TestAreaIndexHandlerShowsLogoutVerificationFailureOnlyToAuthenticatedSessio
 	}
 }
 
+func TestAreaIndexHandlerShowsReportConfirmationOnlyToAuthenticatedSession(t *testing.T) {
+	t.Parallel()
+
+	builder, view := areaIndexTestBuilderAndView(t)
+	handler, err := newAreaIndexHandler(builder, view, func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("newAreaIndexHandler() returned error: %v", err)
+	}
+	for _, test := range []struct {
+		name          string
+		authenticated bool
+		wantNotice    bool
+	}{
+		{name: "authenticated report", authenticated: true, wantNotice: true},
+		{name: "anonymous marker"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodGet, "/?"+reportSubmittedQuery, nil)
+			if test.authenticated {
+				request = request.WithContext(context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{
+					Access: auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleMember},
+				}))
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			gotNotice := strings.Contains(response.Body.String(), "Your report was submitted to the moderation queue.")
+			if response.Code != http.StatusOK || gotNotice != test.wantNotice {
+				t.Fatalf("response = (status %d, notice %t, body %q)", response.Code, gotNotice, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestNewAreaIndexHandlerRejectsMissingLister(t *testing.T) {
 	t.Parallel()
 

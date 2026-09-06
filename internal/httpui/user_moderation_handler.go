@@ -30,7 +30,7 @@ type UserSuspensionChanger func(context.Context, auth.AccessContext, int64, bool
 // O(n+D+r), Omega(1), and auxiliary space is O(n+r), Omega(1), without one
 // tight bound because PostgreSQL and transport work vary. A request invokes at
 // most one loader or changer and is never retried or detached.
-func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoader, change UserSuspensionChanger) (http.Handler, error) {
+func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoader, change UserSuspensionChanger, extendedEnabled bool) (http.Handler, error) {
 	if load == nil || change == nil {
 		return nil, fmt.Errorf("user moderation services are required")
 	}
@@ -123,6 +123,17 @@ func newUserModerationHandler(builder URLBuilder, load ModerationUserStatusLoade
 			CreatedAt: formatModerationTime(status.CreatedAt.Time), LastLoginAt: formatModerationTime(status.LastLoginAt.Time),
 			MutedUntil: formatOptionalModerationTime(status.MutedUntil), ActionURL: actionURL,
 			CSRFToken: token, SubmitLabel: submitLabel,
+		}
+		if extendedEnabled {
+			extendedURL, extendedErr := builder.Path("moderation", "actions")
+			if extendedErr != nil {
+				serveError(response, request, http.StatusServiceUnavailable, "Account status unavailable", "Account status is temporarily unavailable.")
+				return
+			}
+			presentation.Extended = []extendedModerationView{
+				{ActionURL: extendedURL, CSRFToken: token, Action: "warn_user", TargetID: identifier, SubmitLabel: "Warn account"},
+				{ActionURL: extendedURL, CSRFToken: token, Action: "mute_user", TargetID: identifier, SubmitLabel: "Mute account", ExtraField: "mute_duration", ExtraLabel: "Mute duration (1h, 24h, 168h, or 720h)"},
+			}
 		}
 		if status.Suspended {
 			presentation.SuspendedAt = formatOptionalModerationTime(status.SuspendedAt)

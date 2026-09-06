@@ -498,7 +498,9 @@ undeleted post, so the endpoint cannot become an account-enumeration oracle.
 
 The active moderation queue is bounded to 25 rows per page and orders `open`
 before `in_review`, then by `(created_at, id)` ascending. It does not return post
-bodies. Assignment is self-claim only: `open -> in_review` sets `assigned_to`
+bodies. A post-target detail computes the post's current staff-visible tree
+page so its fragment link lands on the target rather than assuming page one.
+Assignment is self-claim only: `open -> in_review` sets `assigned_to`
 to the current staff actor. A moderator may resolve or dismiss only its own
 claim; an administrator may finish any in-review report. Terminal states are
 irreversible in this release. Resolution and dismissal require a canonical

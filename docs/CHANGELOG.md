@@ -5,6 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 18:39 CDT — Complete AN-01 reports and moderation
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `migrations/000006_reports_moderation_completion.sql`
+- `internal/moderation/`
+- `internal/store/queries/`, `internal/store/db/`, and report read models
+- `internal/httpui/`, including generated templates and content-addressed CSS
+- `cmd/forum/`
+- AN-01 architecture, implementation, verification, and test records
+
+Explanation:
+
+Implement bounded topic, post, and visible-author reports; the staff queue,
+self-claim, append-only notes, and irreversible resolve/dismiss workflow; and
+topic pin/move, post hide/restore/redaction, and user warn/mute actions. Every
+staff mutation revalidates persisted authority, locks the relevant rows, and
+commits exactly one immutable audit row with the mutation. Report-detail reads
+fail closed if staff authority changes between detail and note loading, and
+post targets link to their calculated tree page.
+
+Verification:
+
+- focused unit and HTTP tests with constrained local Go execution
+- PostgreSQL 17.10 fresh-schema, populated-upgrade, access, workflow, and
+  atomic-audit integration tests
+- full race-enabled unit and PostgreSQL integration suites on `development`
+- `go vet`, `gofmt`, sqlc/Templ/Tailwind generation drift, stylesheet digest,
+  `git diff --check`, and repository integrity checks
+- two fresh independent final judge passes before handoff
+
+Risks / non-goals:
+
+- No rate limiting or blocked-domain controls are included; those remain AN-05.
+- No deployment, tag, release, pull request, or remote push is performed here.
+- Deployed Authentik browser acceptance and manual 320-pixel/keyboard review
+  remain release-gate evidence, not fabricated local evidence.
+
 ### 2026-09-06 17:36 CDT — Define AN-01 reports and moderation contracts
 
 Commit: current commit; hash assigned by Git after commit

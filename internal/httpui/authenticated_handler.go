@@ -53,7 +53,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -84,7 +84,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -116,7 +116,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -162,7 +162,50 @@ func NewAuthenticatedModeratedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil,
+		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		sessionCookieName, secure, checkReadiness,
+	)
+}
+
+// NewAuthenticatedReportedForumHandler adds AN-01 report submission and the
+// staff report queue while preserving the older constructor contracts.
+func NewAuthenticatedReportedForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
+	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
+	reports ReportHTTPServices,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
+	sessionCookieName string,
+	secure bool,
+	checkReadiness ReadinessChecker,
+) (http.Handler, error) {
+	if reports.Create == nil || reports.List == nil || reports.Load == nil || reports.Process == nil || reports.Extended == nil {
+		return nil, fmt.Errorf("browser report services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -196,6 +239,7 @@ func newAuthenticatedHandler(
 	loadAreaAdministration AreaAdministrationLoader,
 	createArea AreaCreator,
 	updateArea AreaUpdater,
+	reports *ReportHTTPServices,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -215,6 +259,12 @@ func newAuthenticatedHandler(
 		basePublicHandler := publicHandler
 		publicHandler = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			basePublicHandler.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), userModerationLinksContextKey{}, true)))
+		})
+	}
+	if reports != nil {
+		basePublicHandler := publicHandler
+		publicHandler = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			basePublicHandler.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), reportFormsContextKey{}, true)))
 		})
 	}
 	loginHandler, err := newLoginStartHandler(
@@ -362,7 +412,7 @@ func newAuthenticatedHandler(
 		if loadModerationUser == nil || changeUserSuspension == nil {
 			return nil, fmt.Errorf("browser user moderation services are incomplete")
 		}
-		userModerationHandler, moderationErr := newUserModerationHandler(builder, loadModerationUser, changeUserSuspension)
+		userModerationHandler, moderationErr := newUserModerationHandler(builder, loadModerationUser, changeUserSuspension, reports != nil)
 		if moderationErr != nil {
 			return nil, fmt.Errorf("construct user moderation routes: %w", moderationErr)
 		}
@@ -387,6 +437,19 @@ func newAuthenticatedHandler(
 		)
 		if administrationErr != nil {
 			return nil, fmt.Errorf("construct area administration session boundary: %w", administrationErr)
+		}
+	}
+	var authenticatedReportHandler http.Handler
+	if reports != nil {
+		reportHandler, reportErr := newReportHandler(builder, *reports)
+		if reportErr != nil {
+			return nil, fmt.Errorf("construct report routes: %w", reportErr)
+		}
+		authenticatedReportHandler, reportErr = newSessionAuthenticationHandler(
+			reportHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if reportErr != nil {
+			return nil, fmt.Errorf("construct report session boundary: %w", reportErr)
 		}
 	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -429,9 +492,35 @@ func newAuthenticatedHandler(
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
+		case "/reports", "/moderation/reports", "/moderation/actions":
+			if authenticatedReportHandler != nil {
+				authenticatedReportHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if authenticatedReportHandler != nil && request.URL.RawPath == "" &&
+				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
+				suffix, reportPath := strings.CutPrefix(request.URL.Path, "/moderation/reports/")
+				identifier := suffix
+				validAction := request.Method == http.MethodGet
+				if request.Method == http.MethodPost {
+					validAction = false
+					for _, actionSuffix := range [...]string{"/claim", "/notes", "/resolve", "/dismiss"} {
+						if identifier, validAction = strings.CutSuffix(suffix, actionSuffix); validAction {
+							break
+						}
+					}
+				}
+				if reportPath && validAction && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseCanonicalPositiveID(identifier); identifierErr == nil {
+						authenticatedReportHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedAreaAdministrationHandler != nil && request.Method == http.MethodPost && request.URL.RawPath == "" {
 				identifier, areaPath := strings.CutPrefix(request.URL.Path, "/admin/areas/")
 				if areaPath && identifier != "" && !strings.ContainsRune(identifier, '/') {

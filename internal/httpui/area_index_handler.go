@@ -15,6 +15,14 @@ import (
 // AreaIndexLister returns only area summaries visible to one canonical request authority.
 type AreaIndexLister func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error)
 
+type areaIndexNotice string
+
+const (
+	areaIndexNoNotice                 areaIndexNotice = ""
+	areaIndexLogoutVerificationFailed areaIndexNotice = "logout-verification-failed"
+	areaIndexReportSubmitted          areaIndexNotice = "report-submitted"
+)
+
 // newAreaIndexHandler loads the visible areas for the exact server-owned
 // request authority, builds canonical area links from schema-valid slugs, and
 // renders either the complete root page or its HTMX fragment. Store failures
@@ -49,7 +57,15 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		authentication := sessionAuthenticationFromContext(request.Context())
-		logoutVerificationFailed := authentication.Access.Authenticated && request.URL.RawQuery == logoutVerificationFailureQuery
+		notice := areaIndexNoNotice
+		if authentication.Access.Authenticated {
+			switch request.URL.RawQuery {
+			case logoutVerificationFailureQuery:
+				notice = areaIndexLogoutVerificationFailed
+			case reportSubmittedQuery:
+				notice = areaIndexReportSubmitted
+			}
+		}
 		summaries, err := list(request.Context(), authentication.Access)
 		if err != nil {
 			serveUnavailable(response, request)
@@ -100,8 +116,8 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 			response,
 			request,
 			http.StatusOK,
-			areaIndexPageWithAreas(view, items, logoutVerificationFailed),
-			areaIndexContentWithAreas(view, items, logoutVerificationFailed),
+			areaIndexPageWithAreas(view, items, notice),
+			areaIndexContentWithAreas(view, items, notice),
 		); renderErr != nil {
 			panic(renderErr)
 		}
