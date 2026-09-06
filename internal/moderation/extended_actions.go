@@ -36,6 +36,7 @@ type ExtendedActionResult struct {
 	Action     ExtendedAction
 	TargetID   int64
 	TopicID    int64
+	TargetPage int64
 	AuditID    int64
 	WarningID  int64
 	MutedUntil *time.Time
@@ -225,6 +226,7 @@ func applyPostAction(
 		return fmt.Errorf("lock post for moderation: %w", err)
 	}
 	if post.ID != input.TargetID || post.TopicID <= 0 || post.AuthorID <= 0 || post.Revision <= 0 ||
+		post.NodeOrdinal <= 0 || post.NodeOrdinal > int64(store.MaximumPostPage)*int64(store.PostPageSize) ||
 		!finiteTimestamp(post.CreatedAt) || !finiteTimestamp(post.UpdatedAt) ||
 		post.UpdatedAt.Time.Before(post.CreatedAt.Time) {
 		return fmt.Errorf("post moderation lock returned invalid state")
@@ -241,6 +243,7 @@ func applyPostAction(
 	}
 	atTime := pgtype.Timestamptz{Time: at, Valid: true}
 	actor := pgtype.Int8{Int64: actorID, Valid: true}
+	targetPage := 1 + (post.NodeOrdinal-1)/int64(store.PostPageSize)
 	if input.Action == RedactPost {
 		changed, changeErr := queries.RedactPostAndAudit(ctx, db.RedactPostAndAuditParams{
 			AtTime: atTime, ActorUserID: actor,
@@ -255,7 +258,7 @@ func applyPostAction(
 			!changed.RedactedBy.Valid || changed.RedactedBy.Int64 != actorID || changed.AuditID <= 0 {
 			return fmt.Errorf("redact post returned invalid result")
 		}
-		*result = ExtendedActionResult{Action: input.Action, TargetID: post.ID, TopicID: post.TopicID, AuditID: changed.AuditID}
+		*result = ExtendedActionResult{Action: input.Action, TargetID: post.ID, TopicID: post.TopicID, TargetPage: targetPage, AuditID: changed.AuditID}
 		return nil
 	}
 	deletedAt, deletedBy, deletionReason := pgtype.Timestamptz{}, pgtype.Int8{}, pgtype.Text{}
@@ -284,7 +287,7 @@ func applyPostAction(
 		changed.AuditID <= 0 || invalidVisibility {
 		return fmt.Errorf("post visibility returned invalid result")
 	}
-	*result = ExtendedActionResult{Action: input.Action, TargetID: post.ID, TopicID: post.TopicID, AuditID: changed.AuditID}
+	*result = ExtendedActionResult{Action: input.Action, TargetID: post.ID, TopicID: post.TopicID, TargetPage: targetPage, AuditID: changed.AuditID}
 	return nil
 }
 

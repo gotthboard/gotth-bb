@@ -424,13 +424,7 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 			}
 			return
 		}
-		contentAction := input.Action == moderation.PinTopic || input.Action == moderation.UnpinTopic ||
-			input.Action == moderation.MoveTopic || input.Action == moderation.HidePost ||
-			input.Action == moderation.RestorePost || input.Action == moderation.RedactPost
-		userAction := input.Action == moderation.WarnUser || input.Action == moderation.MuteUser
-		invalidResult := result.TargetID != input.TargetID || result.Action != input.Action ||
-			result.AuditID <= 0 || contentAction && result.TopicID <= 0 || userAction && result.TopicID != 0
-		if invalidResult {
+		if !validExtendedActionResult(result, input) {
 			serveError(response, request, http.StatusServiceUnavailable, "Moderation unavailable", "Moderation is temporarily unavailable.")
 			return
 		}
@@ -440,9 +434,13 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 		case moderation.PinTopic, moderation.UnpinTopic, moderation.MoveTopic:
 			location, buildErr = builder.Path("topics", strconv.FormatInt(result.TopicID, 10))
 		case moderation.HidePost, moderation.RestorePost, moderation.RedactPost:
+			query := make(url.Values)
+			if result.TargetPage > 1 {
+				query.Set("page", strconv.FormatInt(result.TargetPage, 10))
+			}
 			location, buildErr = builder.PathWithQueryAndFragment(
 				[]string{"topics", strconv.FormatInt(result.TopicID, 10)},
-				nil,
+				query,
 				"post-"+strconv.FormatInt(result.TargetID, 10),
 			)
 		case moderation.WarnUser, moderation.MuteUser:
@@ -455,6 +453,26 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 		serveMutationNavigation(response, request, location)
 	})
 	return recordRoutePattern(router), nil
+}
+
+func validExtendedActionResult(result moderation.ExtendedActionResult, input moderation.ExtendedActionInput) bool {
+	if result.Action != input.Action || result.TargetID != input.TargetID || result.AuditID <= 0 {
+		return false
+	}
+	switch input.Action {
+	case moderation.PinTopic, moderation.UnpinTopic, moderation.MoveTopic:
+		return result.TopicID == input.TargetID && result.TargetPage == 0 && result.WarningID == 0 && result.MutedUntil == nil
+	case moderation.HidePost, moderation.RestorePost, moderation.RedactPost:
+		return result.TopicID > 0 && result.TargetPage > 0 && result.TargetPage <= int64(store.MaximumPostPage) &&
+			result.WarningID == 0 && result.MutedUntil == nil
+	case moderation.WarnUser:
+		return result.TopicID == 0 && result.TargetPage == 0 && result.WarningID > 0 && result.MutedUntil == nil
+	case moderation.MuteUser:
+		return result.TopicID == 0 && result.TargetPage == 0 && result.WarningID == 0 &&
+			result.MutedUntil != nil && !result.MutedUntil.IsZero()
+	default:
+		return false
+	}
 }
 
 func validReportActionResult(result moderation.ReportActionResult, reportID int64, action moderation.ReportAction) bool {

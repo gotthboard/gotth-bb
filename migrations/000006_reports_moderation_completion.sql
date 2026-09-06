@@ -28,6 +28,22 @@ CREATE TABLE public.user_warnings (
 CREATE INDEX user_warnings_user_created_idx
     ON public.user_warnings (user_id, created_at DESC, id DESC);
 
+-- Alpha.1 exposed the report schema before it exposed report processing. Its
+-- constraints permitted assignment/state combinations that AN-01 closes.
+-- Preserve assignment when present, reopen unassigned work, and recover a
+-- terminal assignee from the already-required resolver before validation.
+UPDATE public.reports
+SET status = 'in_review'
+WHERE status = 'open' AND assigned_to IS NOT NULL;
+
+UPDATE public.reports
+SET status = 'open'
+WHERE status = 'in_review' AND assigned_to IS NULL;
+
+UPDATE public.reports
+SET assigned_to = resolved_by
+WHERE status IN ('resolved', 'dismissed') AND assigned_to IS NULL;
+
 ALTER TABLE public.reports
     ADD CONSTRAINT reports_assignment_state_consistent CHECK (
         (status = 'open' AND assigned_to IS NULL)

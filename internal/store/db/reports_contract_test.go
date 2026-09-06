@@ -16,6 +16,7 @@ func TestReportQueriesPreserveAccessConcurrencyAndAuditContracts(t *testing.T) {
 		{name: "user submission", query: createUserReport, required: []string{"target.id <> $1", "post.author_id = target.id", "post.deleted_at IS NULL", "membership.group_id = ANY"}},
 		{name: "queue", query: listActiveReportsForModeration, required: []string{"actor.role IN ('moderator', 'administrator')", "actor.suspended_at IS NULL", "actor.muted_until IS NULL", "count(*) OVER", "LIMIT", "OFFSET"}},
 		{name: "detail", query: getReportForModeration, required: []string{"actor.role IN ('moderator', 'administrator')", "ranked_post.thread_path <= post.thread_path", "(count(*) - 1) / 25"}},
+		{name: "post lock page", query: lockPostForModeration, required: []string{"ranked_post.thread_path <= post.thread_path", "AS node_ordinal"}},
 		{name: "notes read", query: listReportNotes, required: []string{"report.id AS authorized_report_id", "JOIN public.users AS actor", "LEFT JOIN public.report_notes", "actor.muted_until IS NULL"}},
 		{name: "claim", query: claimReportAndAudit, required: []string{"status = 'in_review'", "status = 'open'", "assigned_to IS NULL", "'assign_report'", "INSERT INTO public.moderation_actions"}},
 		{name: "note", query: addReportNoteAndAudit, required: []string{"INSERT INTO public.report_notes", "report.status = 'in_review'", "report.assigned_to IS NOT NULL", "'note_report'", "INSERT INTO public.moderation_actions"}},

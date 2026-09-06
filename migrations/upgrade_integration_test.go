@@ -105,13 +105,24 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit upgrade reply: %v", err)
 	}
-	if _, err := connection.Exec(ctx, `INSERT INTO public.reports (reported_by, topic_id, reason) VALUES ($1, $2, 'upgrade report')`, userID, topicID); err != nil {
-		t.Fatalf("insert alpha.1 report: %v", err)
+	legacyReports := []struct {
+		statement string
+		arguments []any
+	}{
+		{`INSERT INTO public.reports (reported_by, topic_id, reason, status, assigned_to) VALUES ($1, $2, 'assigned open', 'open', $1)`, []any{userID, topicID}},
+		{`INSERT INTO public.reports (reported_by, post_id, reason, status) VALUES ($1, $2, 'unassigned review', 'in_review')`, []any{userID, replyID}},
+		{`INSERT INTO public.reports (reported_by, user_id, reason, status, resolution, resolved_by, resolved_at) VALUES ($1, $1, 'unassigned terminal', 'resolved', 'handled', $1, clock_timestamp())`, []any{userID}},
+	}
+	for _, report := range legacyReports {
+		if _, err := connection.Exec(ctx, report.statement, report.arguments...); err != nil {
+			t.Fatalf("insert valid alpha.1 report state: %v", err)
+		}
 	}
 	if err := migration.Apply(ctx, testConfig, Files()); err != nil {
 		t.Fatalf("upgrade populated alpha.1 database: %v", err)
 	}
 	var migrationCount int
+	var assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized bool
 	var rootParent, replyParent *int64
 	var rootPath, replyPath []int32
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.gotth_schema_migrations`).Scan(&migrationCount); err != nil {
@@ -123,7 +134,14 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	if err := connection.QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, replyID).Scan(&replyParent, &replyPath); err != nil {
 		t.Fatalf("inspect upgraded reply: %v", err)
 	}
-	if migrationCount != 6 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) {
-		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v)", migrationCount, rootParent, rootPath, replyParent, replyPath)
+	if err := connection.QueryRow(ctx, `SELECT
+    bool_and(status = 'in_review' AND assigned_to = reported_by) FILTER (WHERE reason = 'assigned open'),
+    bool_and(status = 'open' AND assigned_to IS NULL) FILTER (WHERE reason = 'unassigned review'),
+    bool_and(status = 'resolved' AND assigned_to = resolved_by) FILTER (WHERE reason = 'unassigned terminal')
+FROM public.reports`).Scan(&assignedOpenNormalized, &unassignedReviewNormalized, &terminalAssignmentNormalized); err != nil {
+		t.Fatalf("inspect normalized report states: %v", err)
+	}
+	if migrationCount != 6 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
+		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v, reports %t/%t/%t)", migrationCount, rootParent, rootPath, replyParent, replyPath, assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized)
 	}
 }

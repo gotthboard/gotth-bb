@@ -176,6 +176,24 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 		if actionErr != nil || result.Action != input.Action || result.TargetID != input.TargetID || result.AuditID <= 0 {
 			t.Fatalf("action %s = (%+v, %v)", input.Action, result, actionErr)
 		}
+		switch input.Action {
+		case PinTopic, UnpinTopic, MoveTopic:
+			if result.TopicID != topic.TopicID || result.TargetPage != 0 || result.WarningID != 0 || result.MutedUntil != nil {
+				t.Fatalf("topic action %s returned malformed variant: %+v", input.Action, result)
+			}
+		case HidePost, RestorePost, RedactPost:
+			if result.TopicID != topic.TopicID || result.TargetPage != 1 || result.WarningID != 0 || result.MutedUntil != nil {
+				t.Fatalf("post action %s returned malformed variant: %+v", input.Action, result)
+			}
+		case WarnUser:
+			if result.TopicID != 0 || result.TargetPage != 0 || result.WarningID <= 0 || result.MutedUntil != nil {
+				t.Fatalf("warning returned malformed variant: %+v", result)
+			}
+		case MuteUser:
+			if result.TopicID != 0 || result.TargetPage != 0 || result.WarningID != 0 || result.MutedUntil == nil {
+				t.Fatalf("mute returned malformed variant: %+v", result)
+			}
+		}
 	}
 	var areaSlug, markdown, rendered, renderer string
 	var redacted bool

@@ -206,7 +206,13 @@ func (q *Queries) LockAreaForTopicMove(ctx context.Context, areaID int64) (LockA
 const lockPostForModeration = `-- name: LockPostForModeration :one
 SELECT post.id, post.topic_id, post.author_id, post.revision, post.deleted_at,
        post.deleted_by, post.deletion_reason, post.redacted_at, post.redacted_by,
-       post.redaction_reason, post.created_at, post.updated_at
+       post.redaction_reason, post.created_at, post.updated_at,
+       (
+           SELECT count(*)
+           FROM public.posts AS ranked_post
+           WHERE ranked_post.topic_id = post.topic_id
+             AND ranked_post.thread_path <= post.thread_path
+       )::bigint AS node_ordinal
 FROM public.posts AS post
 JOIN public.topics AS topic ON topic.id = post.topic_id
 WHERE post.id = $1 AND topic.deleted_at IS NULL
@@ -226,6 +232,7 @@ type LockPostForModerationRow struct {
 	RedactionReason pgtype.Text
 	CreatedAt       pgtype.Timestamptz
 	UpdatedAt       pgtype.Timestamptz
+	NodeOrdinal     int64
 }
 
 func (q *Queries) LockPostForModeration(ctx context.Context, postID int64) (LockPostForModerationRow, error) {
@@ -244,6 +251,7 @@ func (q *Queries) LockPostForModeration(ctx context.Context, postID int64) (Lock
 		&i.RedactionReason,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NodeOrdinal,
 	)
 	return i, err
 }

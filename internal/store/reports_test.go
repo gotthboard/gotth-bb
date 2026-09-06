@@ -154,6 +154,12 @@ func TestGetModerationReportFailsClosedOnRevocationAndMalformedRows(t *testing.T
 		CreatedAt: reportStoreTimestamp(9), UpdatedAt: reportStoreTimestamp(10),
 		TargetType: "post", TargetID: 91, TargetTopicID: 90, TargetPage: 1, TargetLabel: "Topic",
 	}
+	terminalWithoutAssignment := valid
+	terminalWithoutAssignment.Status = "resolved"
+	terminalWithoutAssignment.Resolution = pgtype.Text{String: "Handled", Valid: true}
+	terminalWithoutAssignment.ResolvedBy = pgtype.Int8{Int64: 7, Valid: true}
+	terminalWithoutAssignment.ResolverDisplayName = pgtype.Text{String: "Administrator", Valid: true}
+	terminalWithoutAssignment.ResolvedAt = reportStoreTimestamp(11)
 	for _, test := range []struct {
 		name   string
 		reader reportReader
@@ -161,6 +167,7 @@ func TestGetModerationReportFailsClosedOnRevocationAndMalformedRows(t *testing.T
 	}{
 		{name: "detail failure", reader: &reportReaderStub{detailErr: context.DeadlineExceeded}, cause: context.DeadlineExceeded},
 		{name: "malformed detail", reader: &reportReaderStub{detailRow: db.GetReportForModerationRow{ID: -1}}},
+		{name: "terminal without assignment", reader: &reportReaderStub{detailRow: terminalWithoutAssignment}},
 		{name: "notes failure", reader: &reportReaderStub{detailRow: valid, noteErr: context.Canceled}, cause: context.Canceled},
 		{name: "authority revoked between reads", reader: &reportReaderStub{detailRow: valid}, cause: pgx.ErrNoRows},
 		{name: "wrong authorization sentinel", reader: &reportReaderStub{detailRow: valid, noteRows: []db.ListReportNotesRow{{AuthorizedReportID: 42}}}},

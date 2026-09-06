@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -184,18 +185,22 @@ func TestReportHandlerAppliesEveryExtendedAction(t *testing.T) {
 		{action: moderation.PinTopic, wantURL: "/bb/topics/81", htmx: true},
 		{action: moderation.UnpinTopic, wantURL: "/bb/topics/81"},
 		{action: moderation.MoveTopic, extraKey: "destination_area_slug", extra: "archive", wantURL: "/bb/topics/81"},
-		{action: moderation.HidePost, wantURL: "/bb/topics/81#post-91"},
-		{action: moderation.RestorePost, wantURL: "/bb/topics/81#post-91"},
-		{action: moderation.RedactPost, wantURL: "/bb/topics/81#post-91"},
+		{action: moderation.HidePost, wantURL: "/bb/topics/81?page=3#post-91"},
+		{action: moderation.RestorePost, wantURL: "/bb/topics/81?page=3#post-91"},
+		{action: moderation.RedactPost, wantURL: "/bb/topics/81?page=3#post-91"},
 		{action: moderation.WarnUser, wantURL: "/bb/moderation/users/91"},
 		{action: moderation.MuteUser, extraKey: "mute_duration", extra: "24h", wantURL: "/bb/moderation/users/91"},
 	} {
 		test := test
 		t.Run(string(test.action), func(t *testing.T) {
 			t.Parallel()
+			targetID := int64(91)
+			if test.action == moderation.PinTopic || test.action == moderation.UnpinTopic || test.action == moderation.MoveTopic {
+				targetID = 81
+			}
 			services := reportTestServices()
 			services.Extended = func(ctx context.Context, gotActor auth.AccessContext, input moderation.ExtendedActionInput, requestID pgtype.UUID) (moderation.ExtendedActionResult, error) {
-				if !reportFormsEnabled(ctx) || !reflect.DeepEqual(gotActor, actor) || input.Action != test.action || input.TargetID != 91 || input.Reason != "Clear reason" || !requestID.Valid {
+				if !reportFormsEnabled(ctx) || !reflect.DeepEqual(gotActor, actor) || input.Action != test.action || input.TargetID != targetID || input.Reason != "Clear reason" || !requestID.Valid {
 					t.Fatalf("extended call = (%t, %+v, %+v, %+v)", reportFormsEnabled(ctx), gotActor, input, requestID)
 				}
 				if test.action == moderation.MoveTopic && input.DestinationAreaSlug != "archive" {
@@ -205,15 +210,24 @@ func TestReportHandlerAppliesEveryExtendedAction(t *testing.T) {
 					t.Fatalf("mute duration = %s", input.MuteDuration)
 				}
 				result := moderation.ExtendedActionResult{Action: input.Action, TargetID: input.TargetID, AuditID: 19}
-				if input.Action != moderation.WarnUser && input.Action != moderation.MuteUser {
+				switch input.Action {
+				case moderation.PinTopic, moderation.UnpinTopic, moderation.MoveTopic:
 					result.TopicID = 81
+					result.TargetID = 81
+				case moderation.HidePost, moderation.RestorePost, moderation.RedactPost:
+					result.TopicID, result.TargetPage = 81, 3
+				case moderation.WarnUser:
+					result.WarningID = 23
+				case moderation.MuteUser:
+					mutedUntil := reportHandlerTime(12)
+					result.MutedUntil = &mutedUntil
 				}
 				return result, nil
 			}
 			handler := newReportTestHandler(t, services, true)
 			form := url.Values{
 				"_csrf": {validCSRFTokenForTest(0x51)}, "action": {string(test.action)},
-				"target_id": {"91"}, "reason": {"Clear reason"},
+				"target_id": {strconv.FormatInt(targetID, 10)}, "reason": {"Clear reason"},
 			}
 			if test.extraKey != "" {
 				form.Set(test.extraKey, test.extra)
@@ -233,6 +247,39 @@ func TestReportHandlerAppliesEveryExtendedAction(t *testing.T) {
 				t.Fatalf("extended response = (status %d, headers %v, pattern %q, body %q)", response.Code, response.Header(), request.Pattern, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestValidExtendedActionResultClosesEveryVariant(t *testing.T) {
+	t.Parallel()
+	mutedUntil := reportHandlerTime(12)
+	valid := []struct {
+		input  moderation.ExtendedActionInput
+		result moderation.ExtendedActionResult
+	}{
+		{moderation.ExtendedActionInput{Action: moderation.PinTopic, TargetID: 81}, moderation.ExtendedActionResult{Action: moderation.PinTopic, TargetID: 81, TopicID: 81, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.HidePost, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.HidePost, TargetID: 91, TopicID: 81, TargetPage: 3, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.WarnUser, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.WarnUser, TargetID: 91, WarningID: 2, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.MuteUser, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.MuteUser, TargetID: 91, MutedUntil: &mutedUntil, AuditID: 1}},
+	}
+	for _, test := range valid {
+		if !validExtendedActionResult(test.result, test.input) {
+			t.Fatalf("validExtendedActionResult(%+v, %+v) rejected valid result", test.result, test.input)
+		}
+	}
+	invalid := []struct {
+		input  moderation.ExtendedActionInput
+		result moderation.ExtendedActionResult
+	}{
+		{moderation.ExtendedActionInput{Action: moderation.PinTopic, TargetID: 81}, moderation.ExtendedActionResult{Action: moderation.PinTopic, TargetID: 81, TopicID: 82, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.HidePost, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.HidePost, TargetID: 91, TopicID: 81, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.WarnUser, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.WarnUser, TargetID: 91, AuditID: 1}},
+		{moderation.ExtendedActionInput{Action: moderation.MuteUser, TargetID: 91}, moderation.ExtendedActionResult{Action: moderation.MuteUser, TargetID: 91, AuditID: 1}},
+	}
+	for _, test := range invalid {
+		if validExtendedActionResult(test.result, test.input) {
+			t.Fatalf("validExtendedActionResult(%+v, %+v) accepted malformed result", test.result, test.input)
+		}
 	}
 }
 

@@ -62,7 +62,13 @@ FROM changed JOIN audit ON audit.target_topic_id = changed.id;
 -- name: LockPostForModeration :one
 SELECT post.id, post.topic_id, post.author_id, post.revision, post.deleted_at,
        post.deleted_by, post.deletion_reason, post.redacted_at, post.redacted_by,
-       post.redaction_reason, post.created_at, post.updated_at
+       post.redaction_reason, post.created_at, post.updated_at,
+       (
+           SELECT count(*)
+           FROM public.posts AS ranked_post
+           WHERE ranked_post.topic_id = post.topic_id
+             AND ranked_post.thread_path <= post.thread_path
+       )::bigint AS node_ordinal
 FROM public.posts AS post
 JOIN public.topics AS topic ON topic.id = post.topic_id
 WHERE post.id = sqlc.arg(post_id) AND topic.deleted_at IS NULL

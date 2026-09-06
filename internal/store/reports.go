@@ -247,7 +247,9 @@ func validReportDetailRow(row db.GetReportForModerationRow) bool {
 			!row.Resolution.Valid && !row.ResolvedBy.Valid &&
 			!row.ResolverDisplayName.Valid && !row.ResolvedAt.Valid
 	case "resolved", "dismissed":
-		return row.Resolution.Valid && validReportTextValue(row.Resolution.String) &&
+		return row.AssignedTo.Valid && row.AssignedTo.Int64 > 0 &&
+			row.AssigneeDisplayName.Valid && row.AssigneeDisplayName.String != "" &&
+			row.Resolution.Valid && validReportTextValue(row.Resolution.String) &&
 			row.ResolvedBy.Valid && row.ResolvedBy.Int64 > 0 &&
 			row.ResolverDisplayName.Valid && row.ResolverDisplayName.String != "" &&
 			validReportTimestamp(row.ResolvedAt)
