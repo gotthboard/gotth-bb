@@ -37,7 +37,7 @@ completion update changes evidence only and receives two fresh cold passes
 before commit. No performance benchmark applies because executable paths and
 data flow are unchanged.
 
-No license was selected. New release publication remains blocked. GitHub
-metadata mutation lacks authentication. Forgejo is still private, so
-unauthenticated public contribution and private vulnerability reporting remain
-unresolved. Account conversion and ownership changes were not performed.
+No license was selected. New release publication remains blocked. Forgejo
+remains private and canonical. GitHub Issues provides public bug intake, and
+GitHub private vulnerability reporting provides confidential security intake.
+Account conversion and ownership changes were not performed.

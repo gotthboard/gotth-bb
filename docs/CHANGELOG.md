@@ -5,6 +5,35 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 00:54 CDT — Route vulnerability reports through GitHub
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `README.md`
+- `CONTRIBUTING.md`
+- `SECURITY.md`
+- `docs/distribution.md`
+- `docs/distribution-verification.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Keep Forgejo as the canonical development source while routing public bugs to
+GitHub Issues and confidential vulnerability reports to GitHub private
+security advisories. Remove the obsolete private Forgejo reporting path and
+the retired `agents/` namespace.
+
+Verification:
+
+- documentation whitespace and stale-policy scans
+- direct GitHub API confirmation that private vulnerability reporting is enabled
+
+Risks / non-goals:
+
+- no source code, public API, tag, release, deployment, or compatibility promise changed
+
 ### 2026-09-03 00:42 CDT — Establish GitHub public distribution
 
 Commit: current commit; hash assigned by Git after commit

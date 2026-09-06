@@ -9,12 +9,17 @@ versions will be listed here and in the changelog.
 
 ## Reporting a vulnerability
 
-Do not publish exploit details in a GitHub issue, Forgejo issue, pull request,
-or discussion. Request a private reporting channel from the maintainers through
-the canonical Forgejo project at
-<https://git.dannyhunn.com/agents/gotth-bb> using only non-sensitive information.
+Do not disclose exploit details in a public GitHub issue, pull request,
+discussion, or Forgejo ticket. Report vulnerabilities privately through
+GitHub's private vulnerability-reporting form:
 
-The Forgejo project may require an account or explicit access. If it is not
-accessible, this project does not yet offer a public vulnerability-reporting
-channel. That is a known distribution limitation; do not disclose sensitive
-details merely to obtain contact.
+<https://github.com/gotthboard/gotth-bb/security/advisories/new>
+
+Include the affected version or commit, impact, reproduction steps, and any
+suggested remediation when available. The maintainers will acknowledge the
+report and coordinate validation, remediation, and disclosure through the
+private advisory.
+
+Use GitHub Issues only for non-sensitive bugs. If the private form cannot be
+used, open a GitHub issue containing no vulnerability details and ask the
+maintainers to restore private reporting access.
