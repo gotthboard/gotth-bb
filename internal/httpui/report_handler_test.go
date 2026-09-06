@@ -63,12 +63,16 @@ func TestReportHandlerListsAndLoadsReports(t *testing.T) {
 		if !reportFormsEnabled(ctx) || !reflect.DeepEqual(gotActor, actor) || page != 2 {
 			t.Fatalf("list report call = (%t, %+v, %d)", reportFormsEnabled(ctx), gotActor, page)
 		}
+		reports := make([]store.ModerationReportSummary, store.ReportPageSize)
+		for index := range reports {
+			reports[index] = store.ModerationReportSummary{
+				ID: int64(7 + index), TargetID: int64(91 + index), Reason: "Needs <review>", Status: "in_review", Reporter: "Reporter",
+				Assignee: "Moderator", TargetType: "post", TargetLabel: "Visible topic", CreatedAt: reportHandlerTime(10),
+			}
+		}
 		return store.ModerationReportPage{
 			Number: 2, Total: 51, TotalPages: 3,
-			Reports: []store.ModerationReportSummary{{
-				ID: 7, TargetID: 91, Reason: "Needs <review>", Status: "in_review", Reporter: "Reporter",
-				Assignee: "Moderator", TargetType: "post", TargetLabel: "Visible topic", CreatedAt: reportHandlerTime(10),
-			}},
+			Reports: reports,
 		}, nil
 	}
 	services.Load = func(ctx context.Context, gotActor auth.AccessContext, reportID int64) (store.ModerationReportDetail, error) {
@@ -110,6 +114,46 @@ func TestReportHandlerListsAndLoadsReports(t *testing.T) {
 	}
 	if detailResponse.Code != http.StatusOK || detailRequest.Pattern != "GET /moderation/reports/{reportID}" || !strings.Contains(detailResponse.Header().Get("Cache-Control"), "no-store") {
 		t.Fatalf("detail response = (status %d, headers %v, pattern %q)", detailResponse.Code, detailResponse.Header(), detailRequest.Pattern)
+	}
+}
+
+func TestReportHandlerRejectsMalformedReadResults(t *testing.T) {
+	t.Parallel()
+	actor := auth.AccessContext{Authenticated: true, UserID: 42, Role: auth.RoleModerator}
+	for _, test := range []struct {
+		name   string
+		target string
+		list   *store.ModerationReportPage
+		detail *store.ModerationReportDetail
+	}{
+		{name: "wrong list page", target: "/moderation/reports", list: &store.ModerationReportPage{Number: 2}},
+		{name: "incomplete list", target: "/moderation/reports", list: &store.ModerationReportPage{Number: 1, Total: 2, TotalPages: 1}},
+		{name: "wrong detail identity", target: "/moderation/reports/7", detail: &store.ModerationReportDetail{ID: 8}},
+		{name: "unknown detail target", target: "/moderation/reports/7", detail: &store.ModerationReportDetail{
+			ID: 7, ReporterID: 5, TargetID: 9, Reporter: "Reporter", Reason: "Reason", Status: "open",
+			TargetType: "unknown", TargetLabel: "Target", CreatedAt: reportHandlerTime(9), UpdatedAt: reportHandlerTime(10),
+		}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			services := reportTestServices()
+			if test.list != nil {
+				services.List = func(context.Context, auth.AccessContext, int32) (store.ModerationReportPage, error) {
+					return *test.list, nil
+				}
+			} else {
+				services.Load = func(context.Context, auth.AccessContext, int64) (store.ModerationReportDetail, error) {
+					return *test.detail, nil
+				}
+			}
+			handler := newReportTestHandler(t, services, false)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, reportHandlerGET(test.target, actor))
+			if response.Code != http.StatusServiceUnavailable {
+				t.Fatalf("malformed read response = (status %d, body %q)", response.Code, response.Body.String())
+			}
+		})
 	}
 }
 

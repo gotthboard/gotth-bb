@@ -1,8 +1,9 @@
--- Lock risk: ALTER TABLE takes brief ACCESS EXCLUSIVE locks on reports,
--- moderation_actions, and posts. Existing post rows are not rewritten because
--- every added column is nullable without a volatile default.
--- Rewrite risk: none. New relations and indexes are built from empty tables;
--- constraint validation scans only the affected existing relations.
+-- Lock risk: the legacy-state repair updates and row-locks only reports whose
+-- assignment contradicts the AN-01 state machine. ALTER TABLE then takes brief
+-- ACCESS EXCLUSIVE locks on reports, moderation_actions, and posts.
+-- Rewrite risk: no full-table rewrite. Matching legacy report tuples are
+-- rewritten; existing post rows are not because each added column is nullable
+-- without a volatile default. Constraint validation scans affected relations.
 
 CREATE TABLE public.report_notes (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/auth"
@@ -161,6 +163,10 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 			}
 			return
 		}
+		if !validModerationReportPage(loaded, page) {
+			serveError(response, request, http.StatusServiceUnavailable, "Reports unavailable", "The moderation queue is temporarily unavailable.")
+			return
+		}
 		presentation := moderationReportListView{
 			Number:  loaded.Number,
 			Total:   loaded.Total,
@@ -237,6 +243,10 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 			} else {
 				serveError(response, request, http.StatusServiceUnavailable, "Reports unavailable", "The report is temporarily unavailable.")
 			}
+			return
+		}
+		if !validModerationReportDetail(loaded, reportID) {
+			serveError(response, request, http.StatusServiceUnavailable, "Reports unavailable", "The report is temporarily unavailable.")
 			return
 		}
 		targetURL := ""
@@ -453,6 +463,82 @@ func newReportHandler(builder URLBuilder, services ReportHTTPServices) (http.Han
 		serveMutationNavigation(response, request, location)
 	})
 	return recordRoutePattern(router), nil
+}
+
+func validModerationReportPage(page store.ModerationReportPage, requested int32) bool {
+	if page.Number != requested || page.Total < 0 || page.TotalPages < 0 || len(page.Reports) > int(store.ReportPageSize) {
+		return false
+	}
+	if page.Total == 0 {
+		return requested == 1 && page.TotalPages == 0 && len(page.Reports) == 0
+	}
+	expectedPages := 1 + (page.Total-1)/int64(store.ReportPageSize)
+	remaining := page.Total - int64(requested-1)*int64(store.ReportPageSize)
+	expectedRows := int64(store.ReportPageSize)
+	if remaining < expectedRows {
+		expectedRows = remaining
+	}
+	if page.TotalPages != expectedPages || int64(requested) > expectedPages || remaining <= 0 || int64(len(page.Reports)) != expectedRows {
+		return false
+	}
+	seen := make(map[int64]struct{}, len(page.Reports))
+	for _, report := range page.Reports {
+		_, duplicate := seen[report.ID]
+		validTarget := report.TargetType == "topic" || report.TargetType == "post" || report.TargetType == "user"
+		validState := report.Status == "open" && report.Assignee == "" || report.Status == "in_review" && report.Assignee != ""
+		if duplicate || report.ID <= 0 || report.TargetID <= 0 || !validTarget || !validState ||
+			report.Reporter == "" || report.TargetLabel == "" || !validReportHTTPText(report.Reason) || report.CreatedAt.IsZero() {
+			return false
+		}
+		seen[report.ID] = struct{}{}
+	}
+	return true
+}
+
+func validModerationReportDetail(report store.ModerationReportDetail, requestedID int64) bool {
+	if report.ID != requestedID || report.ReporterID <= 0 || report.TargetID <= 0 || report.Reporter == "" ||
+		report.TargetLabel == "" || !validReportHTTPText(report.Reason) || report.CreatedAt.IsZero() ||
+		report.UpdatedAt.IsZero() || report.UpdatedAt.Before(report.CreatedAt) {
+		return false
+	}
+	validTarget := report.TargetType == "topic" && report.TargetTopicID == report.TargetID && report.TargetPage == 0 ||
+		report.TargetType == "post" && report.TargetTopicID > 0 && report.TargetPage > 0 && report.TargetPage <= int64(store.MaximumPostPage) ||
+		report.TargetType == "user" && report.TargetTopicID == 0 && report.TargetPage == 0
+	if !validTarget {
+		return false
+	}
+	switch report.Status {
+	case "open":
+		if report.AssignedTo != 0 || report.Assignee != "" || report.Resolution != "" || report.Resolver != "" || report.ResolvedAt != nil {
+			return false
+		}
+	case "in_review":
+		if report.AssignedTo <= 0 || report.Assignee == "" || report.Resolution != "" || report.Resolver != "" || report.ResolvedAt != nil {
+			return false
+		}
+	case "resolved", "dismissed":
+		if report.AssignedTo <= 0 || report.Assignee == "" || !validReportHTTPText(report.Resolution) ||
+			report.Resolver == "" || report.ResolvedAt == nil || report.ResolvedAt.Before(report.CreatedAt) {
+			return false
+		}
+	default:
+		return false
+	}
+	seen := make(map[int64]struct{}, len(report.Notes))
+	for _, note := range report.Notes {
+		_, duplicate := seen[note.ID]
+		if duplicate || note.ID <= 0 || note.AuthorID <= 0 || note.Author == "" ||
+			!validReportHTTPText(note.Body) || note.CreatedAt.IsZero() || note.CreatedAt.Before(report.CreatedAt) {
+			return false
+		}
+		seen[note.ID] = struct{}{}
+	}
+	return true
+}
+
+func validReportHTTPText(value string) bool {
+	return len(value) > 0 && len(value) <= 2_000 && utf8.ValidString(value) && strings.TrimSpace(value) == value &&
+		strings.IndexFunc(value, func(r rune) bool { return unicode.IsControl(r) && r != '\n' && r != '\t' }) < 0
 }
 
 func validExtendedActionResult(result moderation.ExtendedActionResult, input moderation.ExtendedActionInput) bool {

@@ -322,7 +322,10 @@ func mapCreateReportError(err error) error {
 	}
 	var databaseError *pgconn.PgError
 	if errors.As(err, &databaseError) && databaseError.Code == "23505" {
-		return ErrReportDuplicate
+		switch databaseError.ConstraintName {
+		case "reports_open_topic_reporter_unique", "reports_open_post_reporter_unique", "reports_open_user_reporter_unique":
+			return ErrReportDuplicate
+		}
 	}
 	return fmt.Errorf("insert report: %w", err)
 }

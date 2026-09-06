@@ -10,6 +10,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -80,6 +81,24 @@ func TestReportBoundariesRejectMalformedInputBeforeTransaction(t *testing.T) {
 		if err := run(); err == nil {
 			t.Fatal("report boundary accepted malformed input")
 		}
+	}
+}
+
+func TestMapCreateReportErrorMatchesOnlyActiveTargetConstraints(t *testing.T) {
+	t.Parallel()
+	for _, constraint := range []string{
+		"reports_open_topic_reporter_unique",
+		"reports_open_post_reporter_unique",
+		"reports_open_user_reporter_unique",
+	} {
+		err := &pgconn.PgError{Code: "23505", ConstraintName: constraint}
+		if !errors.Is(mapCreateReportError(err), ErrReportDuplicate) {
+			t.Fatalf("constraint %q was not mapped to duplicate report", constraint)
+		}
+	}
+	primaryKey := &pgconn.PgError{Code: "23505", ConstraintName: "reports_pkey"}
+	if mapped := mapCreateReportError(primaryKey); errors.Is(mapped, ErrReportDuplicate) || !errors.Is(mapped, primaryKey) {
+		t.Fatalf("primary-key violation mapped as %v", mapped)
 	}
 }
 
