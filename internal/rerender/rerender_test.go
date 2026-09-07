@@ -87,6 +87,47 @@ func TestPreflightRejectsInvalidBoundaries(t *testing.T) {
 	}
 }
 
+func TestPreflightPostEnforcesRendererAndRedactionIntegrity(t *testing.T) {
+	t.Parallel()
+
+	currentHTML := currentHTMLForTest(t, "valid **source**")
+	for _, test := range []struct {
+		name          string
+		candidate     post
+		redacted      bool
+		alpha3Applied bool
+		wantError     bool
+	}{
+		{name: "premature exact current", candidate: post{markdown: "valid **source**", originalHTML: currentHTML, originalVersion: contentrender.RendererVersion}, wantError: true},
+		{name: "applied exact current", candidate: post{markdown: "valid **source**", originalHTML: currentHTML, originalVersion: contentrender.RendererVersion}, alpha3Applied: true},
+		{name: "applied forged current", candidate: post{markdown: "valid **source**", originalHTML: "<p>forged</p>\n", originalVersion: contentrender.RendererVersion}, alpha3Applied: true, wantError: true},
+		{name: "applied invalid current source", candidate: post{markdown: " ", originalHTML: "<p>forged</p>\n", originalVersion: contentrender.RendererVersion}, alpha3Applied: true, wantError: true},
+		{name: "redacted current", candidate: post{markdown: "valid **source**", originalHTML: currentHTML, originalVersion: contentrender.RendererVersion}, redacted: true, alpha3Applied: true, wantError: true},
+		{name: "exact redaction", candidate: post{markdown: "[Content removed by moderation]", originalHTML: "<p>Content removed by moderation.</p>", originalVersion: "moderation-redaction-v1"}, redacted: true},
+		{name: "forged redaction", candidate: post{markdown: "[Content removed by moderation]", originalHTML: "<p>forged</p>", originalVersion: "moderation-redaction-v1"}, redacted: true, wantError: true},
+		{name: "unknown under limit converts", candidate: post{markdown: "valid **source**", originalHTML: "discarded", originalVersion: "unknown-v1"}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			candidate := test.candidate
+			err := preflightPost(context.Background(), &candidate, test.redacted, test.alpha3Applied)
+			if test.wantError {
+				if err == nil {
+					t.Fatal("preflightPost() returned nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("preflightPost() returned error: %v", err)
+			}
+			if test.candidate.originalVersion == "unknown-v1" && (candidate.nextVersion != contentrender.RendererVersion || candidate.nextHTML != currentHTML) {
+				t.Fatalf("unknown renderer result = (%q, %q), want canonical p2", candidate.nextHTML, candidate.nextVersion)
+			}
+		})
+	}
+}
+
 func TestPreparePostUsesCurrentRendererForOrdinaryLegacyRow(t *testing.T) {
 	t.Parallel()
 
@@ -190,6 +231,19 @@ func legacyHTMLForTest(t *testing.T, source string) string {
 	policy.RequireNoFollowOnLinks(true)
 	policy.RequireNoReferrerOnLinks(true)
 	return policy.Sanitize(rendered.String())
+}
+
+func currentHTMLForTest(t *testing.T, source string) string {
+	t.Helper()
+	rendered, err := contentrender.RenderMarkdown(source)
+	if err != nil {
+		t.Fatalf("render current Markdown: %v", err)
+	}
+	html, _, err := rendered.PersistenceValues()
+	if err != nil {
+		t.Fatalf("read current rendered Markdown: %v", err)
+	}
+	return html
 }
 
 func BenchmarkPreparePost(b *testing.B) {

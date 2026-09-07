@@ -312,13 +312,20 @@ required sequence is:
    result. It first performs the mandatory complete read-only renderer
    preflight and returns before `migration.Apply` if any existing row is not
    classifiable. A failed preflight leaves migration 000007 absent from the
-   ledger and installs no renderer state or writer constraint. The stop/drain
-   from step 8 must remain in force across the read-only snapshot and later
-   schema transaction because they are separate, not atomic. The alpha.3 `NOT VALID`
+   ledger and installs no renderer state or writer constraint. It uses one
+   initial read-only schema/ledger inspection transaction, then one read-only
+   transaction per at-most-100-row keyset batch plus a final empty batch.
+   Memory and snapshot lifetime are batch-bounded, but total rendering,
+   transactions, round trips, and time grow with every post. The stop/drain
+   from step 8 must remain in force across those snapshots and the later schema
+   transaction because they are separate, not atomic. The alpha.3 `NOT VALID`
    renderer constraint rejects new obsolete-version inserts and updates as soon
    as it is installed; its schema transaction does not scan the posts table.
    The mandatory re-render phase runs even for a fresh empty database and
-   validates the constraint only after the bounded completion oracle succeeds.
+   validates the constraint only after the batched completion oracle succeeds.
+   Final `VALIDATE CONSTRAINT` scans the complete `posts` table while holding
+   PostgreSQL `SHARE UPDATE EXCLUSIVE` and the renderer-state row lock; its I/O
+   and lock duration grow with population and are not batch-bounded.
    The command emits no per-batch progress: `content_renderer_state` and the
    post renderer markers are the canonical restart record. The measured
    100-row dense-task compatibility fixture lasted about 20.4 seconds with a
@@ -328,6 +335,13 @@ required sequence is:
    and drained. Cancellation is checked between rows and renderer phases,
    rolls back the current transaction, and may still wait for one in-progress
    render phase to return.
+   The separate 25,000-post/1,000-topic population fixture records complete
+   preflight, schema, 250 conversion batches, final validation/completion,
+   total release time, and sampled test-process RSS. Treat it as a reproducible
+   planning point, not a universal duration or capacity bound. If its measured
+   maintenance window is unacceptable for the target installation, stop before
+   migration 000007 and plan an explicitly approved maintenance window; do not
+   begin the incompatible schema transition and hope it finishes.
 10. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 11. Validate the resolved Compose model without printing its environment.

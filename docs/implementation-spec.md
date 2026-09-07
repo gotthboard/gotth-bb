@@ -1112,15 +1112,23 @@ rendered core pages for root-relative application links that omit `/bb`.
   `redacted_at` set, or an ordinary unredacted
   `goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved` compatibility row.
 - Before applying migration 000007, the ordinary argument-free release command
-  opens a repeatable-read, read-only snapshot and classifies every existing
-  post in ID order through nullable-cursor batches of at most 100 rows. This is
-  the same p2 typed-overflow, exact-p1, renderer-version, and redaction decision
-  used by the mutating pass. A fresh database with no `posts` relation passes;
-  an idempotent Alpha.3 rerun revalidates any p1-preserved row. Any invalid
-  candidate stops before migration 000007 enters the ledger or installs its
-  state/constraint. The preflight snapshot and later schema transaction are
-  intentionally separate. The required application stop/drain is what excludes
-  a writer in that gap; no atomic guarantee is claimed.
+  classifies every existing post in ID order through nullable-cursor batches of
+  at most 100 rows. Each batch owns a separate repeatable-read, read-only
+  transaction, so retained row data and snapshot lifetime are batch-bounded;
+  the complete preflight still performs O(all posts) rendering. One initial
+  read-only transaction inspects the schema and migration ledger, followed by
+  one read-only transaction and row query per batch plus a final empty batch.
+  Transaction and round-trip counts therefore grow with population. The
+  required application stop/drain makes keyset traversal complete across
+  snapshots and excludes a writer in the gap before the later schema
+  transaction; no atomic guarantee is claimed. A fresh database with no
+  `posts` relation passes. A
+  current-p2 marker before the Alpha.3 ledger is impossible and rejected. On
+  an idempotent Alpha.3 rerun, every current-p2 source is rendered again and its
+  HTML is verified byte-for-byte, every p1-preserved row is revalidated, and
+  redaction state is classified before renderer version. Any invalid candidate
+  stops before migration 000007 enters the ledger or installs its state or
+  constraint.
 - After preflight, the release migration command applies schema migrations,
   then repeatedly processes at most 100 stale posts in one transaction ordered
   by post ID. It
@@ -1131,17 +1139,23 @@ rendered core pages for root-relative application links that omit `/bb`.
   262,144-byte persistence limit, the migration verifies its existing HTML
   byte-for-byte by reconstructing the admitted p1 Goldmark/Bluemonday output,
   preserves that HTML, and records the explicit p1-preserved compatibility
-  marker. An unknown old renderer, invalid source, mismatched p1 HTML, empty
-  output, or any non-size render failure rolls back the batch. Runtime create,
+  marker. Valid canonical source whose p2 output fits the limit migrates to p2
+  regardless of its obsolete renderer marker because old derived HTML is
+  discarded. An unknown renderer becomes fatal only when p2 overflow would
+  require exact p1 provenance; invalid source, mismatched p1 HTML, empty output,
+  and every non-size render failure also roll back the batch. Runtime create,
   reply, and edit services receive renderer metadata only from the private p2
   rendered-value type and cannot produce the compatibility marker.
 - The command observes cancellation before each p2 render and before and after
   the exceptional p1 reconstruction. Cancellation therefore stops before the
   next row and is bounded by one in-progress renderer phase; the transaction
   rolls back rather than publishing a partial batch.
-- The final empty batch proves no unhandled stale ordinary post remains,
-  validates the writer constraint, and marks the singleton complete in the
-  same transaction. Current-p2 and exact p1-preserved rows are both handled.
+- The final empty batch proves no unhandled stale ordinary post remains, then
+  executes PostgreSQL `VALIDATE CONSTRAINT`. That operation scans the complete
+  `posts` table and holds `SHARE UPDATE EXCLUSIVE` on it while the transaction
+  also retains the renderer-state row lock; neither validation I/O nor lock
+  duration is batch-bounded. It then marks the singleton complete in the same
+  transaction. Current-p2 and exact p1-preserved rows are both handled.
   An already-recorded completion timestamp is never rewritten. Process
   interruption or an
   unknown commit outcome is recovered by rerunning the command: already
@@ -1163,6 +1177,13 @@ rendered core pages for root-relative application links that omit `/bb`.
   online/background workload and the batch limit must not increase without new
   evidence. `docs/verification.md` records the committed reproduction method,
   identities, and result state.
+- A separate reproducible population fixture uses 25,000 ordinary posts across
+  1,000 full 25-post topics. This is a representative evidence point, not a
+  capacity promise. It records complete preflight time and exact batch,
+  transaction, and query-round-trip counts, schema time, 250 conversion
+  batches, the final validation/completion transaction, total re-render/release
+  time, RSS, row count, and exact result state. Total maintenance time and I/O
+  grow with population; no universal timing bound is claimed.
 
 ### 13.2 Native toolbar
 
@@ -1179,11 +1200,14 @@ rendered core pages for root-relative application links that omit `/bb`.
   one honest media boundary.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Line actions add/remove prefixes across the complete touched lines.
-  Fenced-code and table actions add only missing LF/CRLF line boundaries;
-  their generated delimiters encode which boundaries they own so toggling can
-  restore the exact original source without deleting a pre-existing newline.
-  All-space inline-code selections omit CommonMark padding so selected spaces
-  remain exact.
+  Fenced-code and table actions expand to complete touched lines and map the
+  original selection into the transformed content. A recognized fence/table
+  toggle removes only its actual wrapper/internal syntax and never an exterior
+  line ending; fence length and separator-dash count carry no hidden ownership
+  state. Production textarea values are browser-normalized to LF. The pure
+  helper also preserves uniform CRLF inputs for deterministic testing, but no
+  lone-CR or mixed-ending browser behavior is promised. All-space inline-code
+  selections omit CommonMark padding so selected spaces remain exact.
   Empty selections insert bounded placeholders and select the useful editable
   portion. Every transformation restores focus and a deterministic selection.
 - The client script does not preview, parse, trust, or sanitize Markdown.

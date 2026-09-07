@@ -434,3 +434,19 @@ and the test process's sampled peak RSS was 80,848 KiB. The run used
 image reference and ID above. This documentation-only evidence commit is the
 direct child of the tested executable commit; it changes no executable source,
 fixture, or methodology.
+
+The separate population-scale reproduction command is
+`scripts/verify-alpha3-population-performance.sh`. It applies the same
+clean-tree, exact-image, environment-identity, and 50 ms test-process `VmRSS`
+sampling gates. Its committed integration fixture creates 25,000 coherent
+ordinary p1 posts as 1,000 full 25-post topics, then verifies every topic's
+exact post count, first/latest/root relationships, counters, parent, and thread
+path before measurement. Fixture loading is explicitly outside the timed
+release phases. The test separately records complete preflight time, 251
+row-batch transactions, the initial schema/ledger transaction, and all 254
+query round trips; schema time; 250 ordinary conversion batches;
+the final whole-table validation/completion transaction, total re-render and
+release time, exact final row/state counts, and sampled test-process RSS. This
+is a representative 1,000-page measurement point, not a universal timing bound
+or capacity promise. The exact clean-commit result is appended after running
+the committed method.

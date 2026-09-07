@@ -29,6 +29,8 @@ func TestApplyReleasePreflightFailsBeforeAlpha3SchemaMutationOnPostgreSQL17(t *t
 	}
 	denseSource := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
 	denseLegacyHTML := migrationLegacyHTML(t, denseSource)
+	validSource := "valid **source**"
+	validCurrentHTML := migrationCurrentHTML(t, validSource)
 	for index, test := range []struct {
 		name       string
 		postID     int64
@@ -40,6 +42,9 @@ func TestApplyReleasePreflightFailsBeforeAlpha3SchemaMutationOnPostgreSQL17(t *t
 		{name: "minimum ID whitespace source", postID: math.MinInt64, markdown: " \n ", html: "<p>schema admitted</p>\n", version: contentrender.LegacyRendererVersion, wantReason: "invalid size, encoding, or content"},
 		{name: "negative ID unknown renderer overflow", postID: -1, markdown: denseSource, html: denseLegacyHTML, version: "unknown-renderer-v1", wantReason: "renderer is not the admitted p1 version"},
 		{name: "zero ID mismatched p1", postID: 0, markdown: denseSource, html: denseLegacyHTML + "mismatch", version: contentrender.LegacyRendererVersion, wantReason: "does not match"},
+		{name: "premature current whitespace", postID: 1, markdown: " ", html: "<p>forged</p>\n", version: contentrender.RendererVersion, wantReason: "predates Alpha.3"},
+		{name: "premature current forged output", postID: 2, markdown: validSource, html: "<p>forged</p>\n", version: contentrender.RendererVersion, wantReason: "predates Alpha.3"},
+		{name: "premature exact current output", postID: 3, markdown: validSource, html: validCurrentHTML, version: contentrender.RendererVersion, wantReason: "predates Alpha.3"},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -68,6 +73,30 @@ func TestApplyReleasePreflightFailsBeforeAlpha3SchemaMutationOnPostgreSQL17(t *t
 				t.Fatalf("failed preflight state = (ledger %d, constraint %d, state absent %t), want 0/0/true", alpha3LedgerCount, rendererConstraintCount, rendererStateAbsent)
 			}
 		})
+	}
+}
+
+func TestApplyReleasePreflightRechecksCurrentOutputOnIdempotentRunOnPostgreSQL17(t *testing.T) {
+	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	configured, connection := migrationTestDatabase(t, ctx, databaseURL, "gotth_bb_alpha3_preflight_current")
+	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
+		t.Fatalf("fresh applyRelease() returned error: %v", err)
+	}
+	const source = "valid **source**"
+	insertMigrationPreflightPost(t, ctx, connection, -3, source, migrationCurrentHTML(t, source), contentrender.RendererVersion)
+	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
+		t.Fatalf("exact current applyRelease() returned error: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.posts SET rendered_html = '<p>forged</p>' WHERE id = -3`); err != nil {
+		t.Fatalf("forge current renderer output: %v", err)
+	}
+	if err := applyRelease(ctx, configured, migrations.Files()); err == nil || !strings.Contains(err.Error(), "does not match canonical Markdown") {
+		t.Fatalf("forged current applyRelease() error = %v, want exact-output rejection", err)
 	}
 }
 
@@ -223,4 +252,17 @@ func migrationLegacyHTML(t *testing.T, source string) string {
 	policy.RequireNoFollowOnLinks(true)
 	policy.RequireNoReferrerOnLinks(true)
 	return policy.Sanitize(rendered.String())
+}
+
+func migrationCurrentHTML(t *testing.T, source string) string {
+	t.Helper()
+	rendered, err := contentrender.RenderMarkdown(source)
+	if err != nil {
+		t.Fatalf("render current fixture: %v", err)
+	}
+	html, _, err := rendered.PersistenceValues()
+	if err != nil {
+		t.Fatalf("read current fixture: %v", err)
+	}
+	return html
 }

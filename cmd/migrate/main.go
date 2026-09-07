@@ -41,10 +41,11 @@ func main() {
 }
 
 // applyRelease first proves every existing post can cross the Alpha.3 renderer
-// boundary in a read-only snapshot, then applies the immutable SQL ledger and
-// resumes the bounded derived-content rebuild. The documented stop/drain must
-// remain in force across the preflight-to-apply gap; the two phases are not an
-// atomic substitute for stopping old writers.
+// boundary in bounded read-only transactions, then applies the immutable SQL
+// ledger and resumes the bounded derived-content rebuild. The documented
+// stop/drain must remain in force across the preflight transactions and the
+// later apply gap; those phases are not an atomic substitute for stopping old
+// writers.
 //
 // Complexity: for migration work m and p stale posts containing n source and h
 // rendered bytes, delegated time is O(m+p+n+h), Omega(m), with no tighter

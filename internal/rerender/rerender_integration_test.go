@@ -24,9 +24,41 @@ import (
 )
 
 const (
-	rerenderTestDatabase            = "gotth_bb_alpha3_rerender_test"
-	rerenderPerformanceTestDatabase = "gotth_bb_alpha3_rerender_performance_test"
+	rerenderTestDatabase                   = "gotth_bb_alpha3_rerender_test"
+	rerenderPerformanceTestDatabase        = "gotth_bb_alpha3_rerender_performance_test"
+	rerenderPopulationTestDatabase         = "gotth_bb_alpha3_rerender_population_test"
+	rerenderPopulationPerformancePostCount = 25_000
 )
+
+type countedPreflightDatabase struct {
+	connection   *pgx.Conn
+	transactions int
+	roundTrips   int
+}
+
+func (database *countedPreflightDatabase) BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	database.transactions++
+	tx, err := database.connection.BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &countedPreflightTx{Tx: tx, roundTrips: &database.roundTrips}, nil
+}
+
+type countedPreflightTx struct {
+	pgx.Tx
+	roundTrips *int
+}
+
+func (tx *countedPreflightTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
+	*tx.roundTrips++
+	return tx.Tx.Query(ctx, sql, arguments...)
+}
+
+func (tx *countedPreflightTx) QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row {
+	*tx.roundTrips++
+	return tx.Tx.QueryRow(ctx, sql, arguments...)
+}
 
 func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -56,19 +88,7 @@ func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 	})
 	testConfig := adminConfig.Copy()
 	testConfig.Database = rerenderTestDatabase
-	legacy := fstest.MapFS{}
-	for _, name := range []string{
-		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
-		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
-		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
-	} {
-		body, readErr := fs.ReadFile(migrations.Files(), name)
-		if readErr != nil {
-			t.Fatalf("read %s: %v", name, readErr)
-		}
-		legacy[name] = &fstest.MapFile{Data: body}
-	}
-	if err := migration.Apply(ctx, testConfig, legacy); err != nil {
+	if err := migration.Apply(ctx, testConfig, preAlpha3MigrationFS(t)); err != nil {
 		t.Fatalf("apply pre-alpha.3 schema: %v", err)
 	}
 	connection, err := pgx.ConnectConfig(ctx, testConfig)
@@ -312,19 +332,7 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 	})
 	testConfig := adminConfig.Copy()
 	testConfig.Database = rerenderPerformanceTestDatabase
-	legacy := fstest.MapFS{}
-	for _, name := range []string{
-		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
-		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
-		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
-	} {
-		body, readErr := fs.ReadFile(migrations.Files(), name)
-		if readErr != nil {
-			t.Fatalf("read %s: %v", name, readErr)
-		}
-		legacy[name] = &fstest.MapFile{Data: body}
-	}
-	if err := migration.Apply(ctx, testConfig, legacy); err != nil {
+	if err := migration.Apply(ctx, testConfig, preAlpha3MigrationFS(t)); err != nil {
 		t.Fatalf("apply pre-alpha.3 schema: %v", err)
 	}
 	connection, err := pgx.ConnectConfig(ctx, testConfig)
@@ -422,6 +430,215 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("maximum compatibility renderer constraint = (%t, %v), want true/nil", rendererValidated, err)
 	}
 	t.Logf("compatibility_batch rows=%d elapsed=%s preserved=%d exact_html=%d converted=%d", MaximumBatchSize, elapsed, preservedCount, exactHTMLCount, convertedCount)
+}
+
+func TestPopulationMigrationPerformanceOnPostgreSQL17(t *testing.T) {
+	if os.Getenv("GOTTH_BB_RUN_POPULATION_PERFORMANCE") != "1" {
+		t.Skip("set GOTTH_BB_RUN_POPULATION_PERFORMANCE=1 to run the population migration admission")
+	}
+	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	adminConfig, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("pgx.ParseConfig() returned error: %v", err)
+	}
+	adminConfig.Database = "postgres"
+	admin, err := pgx.ConnectConfig(ctx, adminConfig)
+	if err != nil {
+		t.Fatalf("connect PostgreSQL administrator: %v", err)
+	}
+	t.Cleanup(func() { _ = admin.Close(context.Background()) })
+	_, _ = admin.Exec(ctx, "DROP DATABASE IF EXISTS "+rerenderPopulationTestDatabase+" WITH (FORCE)")
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+rerenderPopulationTestDatabase); err != nil {
+		t.Fatalf("create renderer population database: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = admin.Exec(cleanupContext, "DROP DATABASE IF EXISTS "+rerenderPopulationTestDatabase+" WITH (FORCE)")
+	})
+	testConfig := adminConfig.Copy()
+	testConfig.Database = rerenderPopulationTestDatabase
+	if err := migration.Apply(ctx, testConfig, preAlpha3MigrationFS(t)); err != nil {
+		t.Fatalf("apply pre-alpha.3 schema: %v", err)
+	}
+	connection, err := pgx.ConnectConfig(ctx, testConfig)
+	if err != nil {
+		t.Fatalf("connect renderer population database: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+
+	const populationSource = "Representative **population** post."
+	populationLegacyHTML := exactLegacyHTML(t, populationSource)
+	t.Logf("population_fixture rows=%d full_pages_25=%d source_bytes=%d source_sha256=%x legacy_html_bytes=%d legacy_html_sha256=%x", rerenderPopulationPerformancePostCount, rerenderPopulationPerformancePostCount/25, len(populationSource), sha256.Sum256([]byte(populationSource)), len(populationLegacyHTML), sha256.Sum256([]byte(populationLegacyHTML)))
+	var userID, areaID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Population owner', 'administrator') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("insert population owner: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `INSERT INTO public.areas (slug, name, created_by, updated_by) VALUES ('population', 'Population', $1, $1) RETURNING id`, userID).Scan(&areaID); err != nil {
+		t.Fatalf("insert population area: %v", err)
+	}
+	fixtureTx, err := connection.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin population fixture: %v", err)
+	}
+	// Fixture construction is outside every measured phase. Suppress per-row
+	// application triggers for this bulk load, then verify the exact coherent
+	// topic/thread shape before timing any production mechanism.
+	if _, err := fixtureTx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+		_ = fixtureTx.Rollback(ctx)
+		t.Fatalf("isolate population fixture trigger cost: %v", err)
+	}
+	if _, err := fixtureTx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number)
+SELECT generated.topic_id,
+       $1,
+       $2,
+       'Population topic ' || generated.topic_id,
+       ((generated.topic_id - 1) * 25) + 1,
+       generated.topic_id * 25,
+       24,
+       26
+FROM generate_series(1, $3::bigint / 25) AS generated(topic_id)`, areaID, userID, rerenderPopulationPerformancePostCount); err != nil {
+		_ = fixtureTx.Rollback(ctx)
+		t.Fatalf("insert population topics: %v", err)
+	}
+	if _, err := fixtureTx.Exec(ctx, `INSERT INTO public.posts (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, parent_post_id, thread_path)
+SELECT generated.id,
+       ((generated.id - 1) / 25) + 1,
+       $1,
+       ((generated.id - 1) % 25)::integer + 1,
+       $2,
+       $3,
+       $4,
+       CASE WHEN ((generated.id - 1) % 25) = 0 THEN NULL ELSE (((generated.id - 1) / 25) * 25) + 1 END,
+       CASE
+           WHEN ((generated.id - 1) % 25) = 0 THEN ARRAY[1]::integer[]
+           ELSE ARRAY[1, (((generated.id - 1) % 25) + 1)::integer]
+       END
+FROM generate_series(1, $5::bigint) AS generated(id)`, userID, populationSource, populationLegacyHTML, contentrender.LegacyRendererVersion, rerenderPopulationPerformancePostCount); err != nil {
+		_ = fixtureTx.Rollback(ctx)
+		t.Fatalf("insert population posts: %v", err)
+	}
+	if err := fixtureTx.Commit(ctx); err != nil {
+		t.Fatalf("commit population fixture: %v", err)
+	}
+	var fixtureRows, invalidFixtureRows, fixtureTopics, invalidFixtureTopics int
+	if err := connection.QueryRow(ctx, `SELECT
+count(*)::integer,
+count(*) FILTER (WHERE NOT (
+    (post_number = 1 AND parent_post_id IS NULL AND thread_path = ARRAY[1]::integer[])
+    OR
+    (post_number > 1
+     AND parent_post_id = ((topic_id - 1) * 25) + 1
+     AND thread_path = ARRAY[1, post_number])
+))::integer
+FROM public.posts`).Scan(&fixtureRows, &invalidFixtureRows); err != nil {
+		t.Fatalf("verify population fixture: %v", err)
+	}
+	if fixtureRows != rerenderPopulationPerformancePostCount || invalidFixtureRows != 0 {
+		t.Fatalf("population fixture = %d rows/%d invalid, want %d/0", fixtureRows, invalidFixtureRows, rerenderPopulationPerformancePostCount)
+	}
+	if err := connection.QueryRow(ctx, `SELECT
+count(*)::integer,
+count(*) FILTER (WHERE NOT (
+    post_state.post_count = 25
+    AND post_state.root_count = 1
+    AND topic.first_post_id = post_state.minimum_post_id
+    AND topic.latest_post_id = post_state.maximum_post_id
+    AND topic.reply_count = 24
+    AND topic.next_post_number = 26
+))::integer
+FROM public.topics AS topic
+CROSS JOIN LATERAL (
+    SELECT count(*)::integer AS post_count,
+           count(*) FILTER (WHERE post.post_number = 1 AND post.parent_post_id IS NULL)::integer AS root_count,
+           min(post.id) AS minimum_post_id,
+           max(post.id) AS maximum_post_id
+    FROM public.posts AS post
+    WHERE post.topic_id = topic.id
+) AS post_state`).Scan(&fixtureTopics, &invalidFixtureTopics); err != nil {
+		t.Fatalf("verify population topic relationships: %v", err)
+	}
+	wantTopics := rerenderPopulationPerformancePostCount / 25
+	if fixtureTopics != wantTopics || invalidFixtureTopics != 0 {
+		t.Fatalf("population topics = %d/%d invalid, want %d/0", fixtureTopics, invalidFixtureTopics, wantTopics)
+	}
+
+	releaseStarted := time.Now()
+	preflightStarted := time.Now()
+	preflightDatabase := &countedPreflightDatabase{connection: connection}
+	if err := Preflight(ctx, preflightDatabase, MaximumBatchSize); err != nil {
+		t.Fatalf("preflight population: %v", err)
+	}
+	preflightElapsed := time.Since(preflightStarted)
+	schemaStarted := time.Now()
+	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
+		t.Fatalf("apply alpha.3 schema: %v", err)
+	}
+	schemaElapsed := time.Since(schemaStarted)
+	conversionStarted := time.Now()
+	converted := 0
+	mutationBatches := 0
+	for converted < rerenderPopulationPerformancePostCount {
+		result, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+		if err != nil || retryable || result.Complete || result.Converted < 1 || result.Converted > MaximumBatchSize {
+			t.Fatalf("population conversion batch %d = (%+v, retryable %t, %v)", mutationBatches+1, result, retryable, err)
+		}
+		converted += result.Converted
+		mutationBatches++
+	}
+	conversionElapsed := time.Since(conversionStarted)
+	validationStarted := time.Now()
+	completion, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+	validationElapsed := time.Since(validationStarted)
+	if err != nil || retryable || !completion.Complete || completion.Converted != 0 {
+		t.Fatalf("population completion = (%+v, retryable %t, %v)", completion, retryable, err)
+	}
+	rerenderElapsed := conversionElapsed + validationElapsed
+	releaseElapsed := time.Since(releaseStarted)
+	var rowCount, currentCount int
+	var convertedCount int64
+	var completed bool
+	var rendererValidated bool
+	if err := connection.QueryRow(ctx, `SELECT
+(SELECT count(*) FROM public.posts),
+(SELECT count(*) FROM public.posts WHERE renderer_version = $1),
+(SELECT converted_count FROM public.content_renderer_state WHERE singleton),
+(SELECT completed_at IS NOT NULL FROM public.content_renderer_state WHERE singleton),
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conrelid = 'public.posts'::regclass AND conname = 'posts_renderer_version_current')`, contentrender.RendererVersion).Scan(&rowCount, &currentCount, &convertedCount, &completed, &rendererValidated); err != nil {
+		t.Fatalf("inspect population result: %v", err)
+	}
+	if rowCount != rerenderPopulationPerformancePostCount || currentCount != rowCount || convertedCount != int64(rowCount) || !completed || !rendererValidated {
+		t.Fatalf("population result = rows %d/current %d/converted %d/completed %t/validated %t", rowCount, currentCount, convertedCount, completed, rendererValidated)
+	}
+	preflightBatches := (rowCount / MaximumBatchSize) + 1
+	preflightTransactions := preflightBatches + 1
+	preflightRoundTrips := preflightBatches + 3
+	if preflightDatabase.transactions != preflightTransactions || preflightDatabase.roundTrips != preflightRoundTrips {
+		t.Fatalf("population preflight work = %d transactions/%d round trips, want %d/%d", preflightDatabase.transactions, preflightDatabase.roundTrips, preflightTransactions, preflightRoundTrips)
+	}
+	t.Logf("population_migration rows=%d preflight_batches=%d preflight_transactions=%d preflight_round_trips=%d mutation_batches=%d preflight_elapsed=%s schema_elapsed=%s conversion_elapsed=%s validation_elapsed=%s rerender_total_elapsed=%s release_total_elapsed=%s current=%d converted=%d completed=%t validated=%t", rowCount, preflightBatches, preflightTransactions, preflightRoundTrips, mutationBatches, preflightElapsed, schemaElapsed, conversionElapsed, validationElapsed, rerenderElapsed, releaseElapsed, currentCount, convertedCount, completed, rendererValidated)
+}
+
+func preAlpha3MigrationFS(t *testing.T) fs.FS {
+	t.Helper()
+	legacy := fstest.MapFS{}
+	for _, name := range []string{
+		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
+		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
+		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+	} {
+		body, err := fs.ReadFile(migrations.Files(), name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		legacy[name] = &fstest.MapFile{Data: body}
+	}
+	return legacy
 }
 
 func exactLegacyHTML(t *testing.T, source string) string {

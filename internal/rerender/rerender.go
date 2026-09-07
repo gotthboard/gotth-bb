@@ -84,6 +84,16 @@ type post struct {
 	nextVersion     string
 }
 
+type preflightBatchResult struct {
+	afterID *int64
+	count   int
+}
+
+type preflightState struct {
+	postsExist    bool
+	alpha3Applied bool
+}
+
 // Run processes finite stale rows in bounded transactions until one committed
 // empty batch proves completion. Serialization and deadlock failures before a
 // commit attempt are retried at most three times; commit-unknown outcomes are
@@ -129,11 +139,17 @@ func Run(ctx context.Context, database database, batchSize int) error {
 
 // Preflight proves, without mutation, that every existing post can cross the
 // Alpha.3 renderer boundary before migration 000007 installs its incompatible
-// writer constraint. It uses one repeatable-read, read-only snapshot and
-// retains at most batchSize rows. The required release stop/drain prevents a
-// writer from changing rows after this snapshot and before schema apply; this
-// function does not pretend those separate operations are atomic.
-func Preflight(ctx context.Context, database preflightDatabase, batchSize int) (resultErr error) {
+// writer constraint. Each read-only transaction retains at most batchSize
+// rows; the required release stop/drain makes nullable-ID keyset pagination
+// complete across those separate snapshots and through the later schema apply.
+//
+// Complexity: for p posts containing n source and h rendered bytes and batch
+// size b <= 100, time is O(p+n+h), Omega(p), with one state transaction plus
+// ceil(p/b)+1 row-batch transactions and no tighter Theta bound because
+// database and renderer costs vary. Auxiliary space is
+// O(b*65,536+b*262,144), Omega(1); total population work, transaction count,
+// and I/O are deliberately not called batch-bounded.
+func Preflight(ctx context.Context, database preflightDatabase, batchSize int) error {
 	if ctx == nil {
 		return fmt.Errorf("renderer preflight context is required")
 	}
@@ -146,12 +162,33 @@ func Preflight(ctx context.Context, database preflightDatabase, batchSize int) (
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("renderer preflight canceled: %w", err)
 	}
+	state, err := inspectPreflightState(ctx, database)
+	if err != nil {
+		return err
+	}
+	if !state.postsExist {
+		return nil
+	}
+	var afterID *int64
+	for {
+		result, err := preflightBatch(ctx, database, batchSize, afterID, state.alpha3Applied)
+		if err != nil {
+			return err
+		}
+		if result.count < batchSize {
+			return nil
+		}
+		afterID = result.afterID
+	}
+}
+
+func inspectPreflightState(ctx context.Context, database preflightDatabase) (state preflightState, resultErr error) {
 	tx, err := database.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return fmt.Errorf("begin renderer preflight snapshot: %w", err)
+		return preflightState{}, fmt.Errorf("begin renderer preflight state inspection: %w", err)
 	}
 	if tx == nil {
-		return fmt.Errorf("begin renderer preflight snapshot returned no transaction")
+		return preflightState{}, fmt.Errorf("begin renderer preflight state inspection returned no transaction")
 	}
 	closed := false
 	defer func() {
@@ -161,35 +198,50 @@ func Preflight(ctx context.Context, database preflightDatabase, batchSize int) (
 		rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 		defer cancel()
 		if rollbackErr := tx.Rollback(rollbackContext); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
-			resultErr = errors.Join(resultErr, fmt.Errorf("rollback renderer preflight snapshot: %w", rollbackErr))
+			resultErr = errors.Join(resultErr, fmt.Errorf("rollback renderer preflight state inspection: %w", rollbackErr))
 		}
 	}()
-	var postsExist bool
-	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.posts') IS NOT NULL`).Scan(&postsExist); err != nil {
-		return fmt.Errorf("inspect renderer preflight schema: %w", err)
-	}
-	if !postsExist {
-		rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
-		defer cancel()
-		if err := tx.Rollback(rollbackContext); err != nil {
-			return fmt.Errorf("close empty renderer preflight snapshot: %w", err)
-		}
-		closed = true
-		return nil
+	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.posts') IS NOT NULL`).Scan(&state.postsExist); err != nil {
+		return preflightState{}, fmt.Errorf("inspect renderer preflight schema: %w", err)
 	}
 	var historyExists bool
 	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.gotth_schema_migrations') IS NOT NULL`).Scan(&historyExists); err != nil {
-		return fmt.Errorf("inspect renderer preflight ledger: %w", err)
+		return preflightState{}, fmt.Errorf("inspect renderer preflight ledger: %w", err)
 	}
-	alpha3Applied := false
 	if historyExists {
-		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM public.gotth_schema_migrations WHERE version = 7 AND name = '000007_gfm_renderer.sql')`).Scan(&alpha3Applied); err != nil {
-			return fmt.Errorf("inspect renderer preflight Alpha.3 ledger state: %w", err)
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM public.gotth_schema_migrations WHERE version = 7 AND name = '000007_gfm_renderer.sql')`).Scan(&state.alpha3Applied); err != nil {
+			return preflightState{}, fmt.Errorf("inspect renderer preflight Alpha.3 ledger state: %w", err)
 		}
 	}
-	var afterID *int64
-	for {
-		rows, err := tx.Query(ctx, `SELECT post.id,
+	rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	if err := tx.Rollback(rollbackContext); err != nil {
+		return preflightState{}, fmt.Errorf("close renderer preflight state inspection: %w", err)
+	}
+	closed = true
+	return state, nil
+}
+
+func preflightBatch(ctx context.Context, database preflightDatabase, batchSize int, afterID *int64, alpha3Applied bool) (result preflightBatchResult, resultErr error) {
+	tx, err := database.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return preflightBatchResult{}, fmt.Errorf("begin renderer preflight batch: %w", err)
+	}
+	if tx == nil {
+		return preflightBatchResult{}, fmt.Errorf("begin renderer preflight batch returned no transaction")
+	}
+	closed := false
+	defer func() {
+		if closed {
+			return
+		}
+		rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+		defer cancel()
+		if rollbackErr := tx.Rollback(rollbackContext); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			resultErr = errors.Join(resultErr, fmt.Errorf("rollback renderer preflight batch: %w", rollbackErr))
+		}
+	}()
+	rows, err := tx.Query(ctx, `SELECT post.id,
 post.markdown_source,
 post.rendered_html,
 post.renderer_version,
@@ -198,41 +250,36 @@ FROM public.posts AS post
 WHERE $1::bigint IS NULL OR post.id > $1
 ORDER BY post.id
 LIMIT $2`, afterID, int32(batchSize))
-		if err != nil {
-			return fmt.Errorf("select renderer preflight rows: %w", err)
-		}
-		batchCount := 0
-		for rows.Next() {
-			var candidate post
-			var redacted bool
-			if err := rows.Scan(&candidate.id, &candidate.markdown, &candidate.originalHTML, &candidate.originalVersion, &redacted); err != nil {
-				rows.Close()
-				return fmt.Errorf("scan renderer preflight row: %w", err)
-			}
-			if err := preflightPost(ctx, &candidate, redacted, alpha3Applied); err != nil {
-				rows.Close()
-				return fmt.Errorf("classify renderer preflight post %d: %w", candidate.id, err)
-			}
-			lastID := candidate.id
-			afterID = &lastID
-			batchCount++
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return fmt.Errorf("iterate renderer preflight rows: %w", err)
-		}
-		rows.Close()
-		if batchCount < batchSize {
-			break
-		}
+	if err != nil {
+		return preflightBatchResult{}, fmt.Errorf("select renderer preflight rows: %w", err)
 	}
+	for rows.Next() {
+		var candidate post
+		var redacted bool
+		if err := rows.Scan(&candidate.id, &candidate.markdown, &candidate.originalHTML, &candidate.originalVersion, &redacted); err != nil {
+			rows.Close()
+			return preflightBatchResult{}, fmt.Errorf("scan renderer preflight row: %w", err)
+		}
+		if err := preflightPost(ctx, &candidate, redacted, alpha3Applied); err != nil {
+			rows.Close()
+			return preflightBatchResult{}, fmt.Errorf("classify renderer preflight post %d: %w", candidate.id, err)
+		}
+		lastID := candidate.id
+		result.afterID = &lastID
+		result.count++
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return preflightBatchResult{}, fmt.Errorf("iterate renderer preflight rows: %w", err)
+	}
+	rows.Close()
 	rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
 	if err := tx.Rollback(rollbackContext); err != nil {
-		return fmt.Errorf("close renderer preflight snapshot: %w", err)
+		return preflightBatchResult{}, fmt.Errorf("close renderer preflight batch: %w", err)
 	}
 	closed = true
-	return nil
+	return result, nil
 }
 
 // runBatch locks and converts at most batchSize current rows, or validates the
@@ -388,14 +435,28 @@ func preflightPost(ctx context.Context, candidate *post, redacted, alpha3Applied
 	if candidate == nil {
 		return fmt.Errorf("preflight post is required")
 	}
-	if candidate.originalVersion == contentrender.RendererVersion {
-		return nil
-	}
 	if redacted {
-		if candidate.originalVersion == "moderation-redaction-v1" {
+		if candidate.originalVersion == "moderation-redaction-v1" && candidate.markdown == "[Content removed by moderation]" && candidate.originalHTML == "<p>Content removed by moderation.</p>" {
 			return nil
 		}
-		return fmt.Errorf("redacted post has an unadmitted renderer version")
+		return fmt.Errorf("redacted post does not match the admitted moderation rendering")
+	}
+	if candidate.originalVersion == contentrender.RendererVersion {
+		if !alpha3Applied {
+			return fmt.Errorf("current renderer marker predates Alpha.3 migration state")
+		}
+		rendered, err := contentrender.RenderMarkdown(candidate.markdown)
+		if err != nil {
+			return fmt.Errorf("verify current renderer post: %w", err)
+		}
+		html, version, err := rendered.PersistenceValues()
+		if err != nil {
+			return fmt.Errorf("read current renderer post: %w", err)
+		}
+		if version != candidate.originalVersion || html != candidate.originalHTML {
+			return fmt.Errorf("current renderer output does not match canonical Markdown")
+		}
+		return nil
 	}
 	if candidate.originalVersion == legacyPreservedRendererVersion {
 		if !alpha3Applied {

@@ -408,13 +408,16 @@ renderer boundary. It is acceptable when all of the following hold:
    arbitrary form, and unsafe URL content remains forbidden.
 3. Tables, strikethrough, task lists, and GFM autolinks work, while task-list
    checkboxes remain disabled and cannot become interactive controls.
-4. The persisted renderer version changes immutably. A bounded, transactional,
-   idempotent, restart-safe migration rebuilds old derived HTML from canonical
-   Markdown without overwriting a concurrent edit. When exact application-valid
+4. The persisted renderer version changes immutably. A population-linear,
+   restart-safe migration uses bounded read-only and mutation transactions to
+   rebuild old derived HTML from canonical Markdown without overwriting a
+   concurrent edit. When exact application-valid
    p1 HTML cannot fit after p2 expansion, it is preserved byte-for-byte under a
    distinct compatibility marker rather than stranding the release. Readiness
    fails closed until every ordinary post is current p2 or explicitly
-   p1-preserved and the exact writer constraints are validated.
+   p1-preserved and the exact writer constraints are validated. The final
+   validation performs a whole-table scan under PostgreSQL's documented table
+   lock; maintenance evidence must include that phase separately.
 5. The native authoring toolbar provides bold, italic, link, block quote,
    inline code, fenced code, ordered-list, unordered-list, table, task-list,
    and strikethrough shortcuts with selection, caret, multiline, and

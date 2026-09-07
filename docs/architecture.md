@@ -364,18 +364,23 @@ Posts keep Markdown source as canonical content. Sanitized HTML may be stored
 as a derived cache with a renderer-version marker. A renderer change can rebuild
 the cache from source. Before Alpha.3 installs its writer constraint, the
 ordinary release command classifies every existing post through bounded
-read-only snapshot batches using the same renderer rules as the mutating pass.
-The application stop/drain, not a fake atomic claim, protects the gap between
-that snapshot and schema apply. Alpha.3 then performs the rebuild through a
-release-owned, bounded batch transaction. Each batch locks only its selected stale post rows,
-plus the singleton renderer-state row that serializes competing runners,
+read-only transactions of at most 100 rows using the same renderer rules as the
+mutating pass. The snapshots are batch-bounded, but total preflight rendering,
+transactions, and round trips grow with the complete post population.
+The application stop/drain, not a fake atomic claim, protects traversal across
+those snapshots and the gap before schema apply. Alpha.3 then performs the
+rebuild through release-owned, bounded batch transactions. Each batch locks
+only its selected stale post rows plus the singleton renderer-state row that
+serializes competing runners,
 renders current canonical source, updates only those locked identities, and
 commits before selecting more. The schema installs a `NOT VALID` writer
 constraint that immediately rejects obsolete-version inserts and updates while
 the application is stopped and old rows are rebuilt. The schema transaction
-does not scan `posts`; the later final empty batch validates that constraint and
-records completion. A legacy row whose exact admitted p1 HTML would exceed the
-unchanged persistence limit under p2 keeps that verified p1 HTML under an
+does not scan `posts`; the later final empty batch validates that constraint by
+scanning the complete table under `SHARE UPDATE EXCLUSIVE` while retaining the
+renderer-state row lock, then records completion. A legacy row whose exact
+admitted p1 HTML would exceed the unchanged persistence limit under p2 keeps
+that verified p1 HTML under an
 explicit p1-preserved compatibility marker. Every other row moves to p2, and
 every other failure stops the batch. Readiness checks the exact completed
 target and validated catalog constraints in constant-shaped SQL. Per-batch

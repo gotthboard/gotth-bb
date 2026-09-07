@@ -99,7 +99,7 @@ test("block, link, and table insertions keep useful edit selections", () => {
   assert.deepEqual({ ...transform(result.value, result.start, result.end, "table") }, { value: "cell", start: 0, end: 4 });
 });
 
-test("mid-line blocks add only required boundaries and round-trip exactly", () => {
+test("block actions expand to complete lines and preserve mapped selections", () => {
   const { transform } = load();
   for (const [source, start, end, eol] of [
     ["before code after", 7, 11, "\n"],
@@ -108,19 +108,88 @@ test("mid-line blocks add only required boundaries and round-trip exactly", () =
   ]) {
     let result = transform(source, start, end, "fenced-code");
     assert.equal(result.value.slice(result.start, result.end), "code");
-    assert.match(result.value, new RegExp("`{3,}" + eol + "code" + eol + "`{3,}"));
+    const completeLine = source.includes("before code") ? "before code after" : "code";
+    assert.match(result.value, new RegExp("`{3,}" + eol + completeLine + eol + "`{3,}"));
     assert.deepEqual({ ...transform(result.value, result.start, result.end, "fenced-code") }, { value: source, start, end });
 
     result = transform(source, start, end, "table");
     assert.equal(result.value.slice(result.start, result.end), "code");
-    assert.match(result.value, new RegExp("\\| code \\| Column 2 \\|" + eol + "\\| -{3,4} \\| -{3,4} \\|"));
+    assert.match(result.value, new RegExp("\\| " + completeLine + " \\| Column 2 \\|" + eol + "\\| --- \\| --- \\|"));
     assert.deepEqual({ ...transform(result.value, result.start, result.end, "table") }, { value: source, start, end });
   }
 
   let result = transform("before code after", 7, 11, "fenced-code");
-  assert.equal(result.value, "before \n``````\ncode\n``````\n after");
+  assert.equal(result.value, "```\nbefore code after\n```");
   result = transform("before cell after", 7, 11, "table");
-  assert.equal(result.value, "before \n| cell | Column 2 |\n| ---- | ---- |\n| Cell 1 | Cell 2 |\n after");
+  assert.equal(result.value, "| before cell after | Column 2 |\n| --- | --- |");
+});
+
+test("block actions preserve multiline LF and uniform CRLF source exactly", () => {
+  const { transform } = load();
+  for (const [source, selected] of [
+    ["before\none\ntwo\nafter", "one\ntwo"],
+    ["before\r\none\r\ntwo\r\nafter", "one\r\ntwo"],
+  ]) {
+    const start = source.indexOf(selected);
+    const end = start + selected.length;
+    for (const action of ["fenced-code", "table"]) {
+      const result = transform(source, start, end, action);
+      assert.equal(result.value.slice(result.start, result.end).includes("one"), true);
+      assert.deepEqual({ ...transform(result.value, result.start, result.end, action) }, { value: source, start, end });
+    }
+  }
+});
+
+test("authored fences and table dash variants never consume exterior newlines", () => {
+  const { transform } = load();
+  for (const length of [3, 4, 5, 6, 9]) {
+    const marker = "`".repeat(length);
+    const source = "before\n" + marker + "\ncode\n" + marker + "\nafter";
+    const start = source.indexOf("code");
+    const result = transform(source, start, start + 4, "fenced-code");
+    assert.deepEqual({ ...result }, { value: "before\ncode\nafter", start: 7, end: 11 });
+  }
+  for (const [openingLength, closingLength] of [[3, 4], [4, 7]]) {
+    const opening = "`".repeat(openingLength);
+    const closing = "`".repeat(closingLength);
+    const source = "before\n" + opening + "\ncode\n" + closing + "\nafter";
+    const start = source.indexOf("code");
+    const result = transform(source, start, start + 4, "fenced-code");
+    assert.deepEqual({ ...result }, { value: "before\ncode\nafter", start: 7, end: 11 });
+  }
+  for (const [left, right] of [[3, 3], [4, 3], [3, 4], [4, 4], [7, 6]]) {
+    const source = "before\n| cell | Column 2 |\n| " + "-".repeat(left) + " | " + "-".repeat(right) + " |\n| Cell 1 | Cell 2 |\nafter";
+    const start = source.indexOf("cell");
+    const result = transform(source, start, start + 4, "table");
+    assert.deepEqual({ ...result }, { value: "before\ncell\nCell 1\nafter", start: 7, end: 11 });
+  }
+});
+
+test("table action round-trips escaped first-column text and mapped selection", () => {
+  const { transform } = load();
+  const source = "before\na|b\\c\nd|e\\f\nafter";
+  const selected = "b\\c\nd|e";
+  const start = source.indexOf(selected);
+  const end = start + selected.length;
+  const table = transform(source, start, end, "table");
+  assert.match(table.value, /\| a\\\|b\\\\c \| Column 2 \|/);
+  assert.match(table.value, /\| d\\\|e\\\\f \| Cell 2 \|/);
+  assert.equal(table.value.slice(table.start, table.end), "b\\\\c | Column 2 |\n| --- | --- |\n| d\\|e");
+  assert.deepEqual({ ...transform(table.value, table.start, table.end, "table") }, { value: source, start, end });
+});
+
+test("block actions use adaptive fences and bounded empty placeholders", () => {
+  const { transform } = load();
+  const source = "prefix `````` suffix";
+  const start = source.indexOf("``````");
+  const fenced = transform(source, start, start + 6, "fenced-code");
+  assert.match(fenced.value, /^`{7}\n/);
+  assert.deepEqual({ ...transform(fenced.value, fenced.start, fenced.end, "fenced-code") }, { value: source, start, end: start + 6 });
+
+  let result = transform("", 0, 0, "fenced-code");
+  assert.deepEqual({ value: result.value, selected: result.value.slice(result.start, result.end) }, { value: "```\ncode\n```", selected: "code" });
+  result = transform("", 0, 0, "table");
+  assert.deepEqual({ value: result.value, selected: result.value.slice(result.start, result.end) }, { value: "| Column 1 | Column 2 |\n| --- | --- |", selected: "Column 1" });
 });
 
 test("all-space inline code preserves and toggles exact selected spaces", () => {

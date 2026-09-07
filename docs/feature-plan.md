@@ -346,8 +346,9 @@ Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
   oracle, readiness gate, and rollback record. Keep the 262,144-byte persisted
   output limit; preserve only byte-verified p1 HTML when p2 expansion exceeds
   it, and fail closed on every other render or legacy-integrity error.
-- Make the ordinary argument-free migration command run a complete bounded
-  read-only candidate preflight after stop/drain and before migration 000007;
+- Make the ordinary argument-free migration command run a population-linear
+  read-only candidate preflight in bounded transactions after stop/drain and
+  before migration 000007;
   a failed classification must leave its ledger/state/constraint absent.
 - Prove every create/reply/edit/preview/publish/read path uses the same policy;
   cover normative GFM, XSS, malformed and size boundaries, toolbar selection,

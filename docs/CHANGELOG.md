@@ -20,17 +20,21 @@ Affected files:
 
 Explanation:
 
-Add a mandatory, bounded, read-only candidate preflight before migration 000007
+Add a mandatory, population-linear, read-only candidate preflight whose
+individual transactions retain at most 100 rows before migration 000007
 and a release-owned re-render pass after schema migration. One locked
 singleton serializes runners, each transaction handles at most 100 ordinary
 posts from canonical Markdown, and an immediately enforced `NOT VALID` writer
 constraint prevents a stopped old release from leaving mixed renderer writes.
-The final empty transaction validates the constraint and records one stable
-completion time. Readiness checks that constant-shaped state rather than
+The final empty transaction performs PostgreSQL's population-wide constraint
+validation under `SHARE UPDATE EXCLUSIVE` and records one stable completion
+time. Readiness checks that constant-shaped state rather than
 scanning posts. The 262,144-byte persisted-output ceiling remains unchanged.
-Only an exact application-valid p1 row whose p2 expansion exceeds that ceiling
-retains its byte-verified p1 HTML under an explicit p1-preserved compatibility
-marker; every other render or legacy-integrity error fails closed.
+Any valid canonical source whose p2 output fits is rebuilt regardless of its
+obsolete renderer marker. Only an exact application-valid p1 row whose p2
+expansion exceeds that ceiling retains its byte-verified p1 HTML under an
+explicit p1-preserved compatibility marker; every other render or
+legacy-integrity error fails closed.
 The mutating loop performs no synchronous progress writes; durable database
 state is the canonical restart record.
 
@@ -43,9 +47,15 @@ Verification:
 - preflight failures for whitespace source, unknown-renderer p2 overflow, and
   mismatched p1 HTML at minimum, negative, and zero post IDs, proving no
   migration-000007 ledger/state/constraint mutation
+- rejection of impossible pre-Alpha.3 p2 markers and byte verification of
+  current-p2 and moderation rows on idempotent preflight
 - opt-in pinned-PostgreSQL measurement of one actual 100-row dense-task
   compatibility transaction, exact output/state verification, peak-RSS
   sampling, and bounded cancellation between renderer phases
+- opt-in pinned-PostgreSQL 25,000-post population measurement with separate
+  complete-preflight transaction/round-trip counts, conversion,
+  final-validation, total-time, row-state, and
+  sampled test-process RSS evidence
 
 Risks / non-goals:
 
@@ -75,6 +85,10 @@ visible keyboard focus, unique textarea labels, and HTMX replacement wiring.
 Serve the script as an immutable same-origin asset while leaving the ordinary
 textarea, preview, CSRF, validation, and publication paths independent of
 JavaScript.
+Fenced-code and table actions operate on complete touched lines and map the
+original selection into the result. Toggling recognized authored syntax removes
+only wrapper/internal syntax, never exterior line endings; delimiter length and
+separator dashes carry no hidden provenance.
 
 Verification:
 

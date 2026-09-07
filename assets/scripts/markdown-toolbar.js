@@ -148,73 +148,82 @@
     };
   }
 
-  function lineEnding(source) {
-    return source.includes("\r\n") ? "\r\n" : "\n";
+  function sourceLines(source) {
+    const lines = [];
+    let start = 0;
+    while (start <= source.length) {
+      const newline = source.indexOf("\n", start);
+      if (newline === -1) {
+        lines.push({ start, end: source.length, next: source.length, text: source.slice(start), eol: "" });
+        break;
+      }
+      const hasCR = newline > start && source[newline - 1] === "\r";
+      const end = hasCR ? newline - 1 : newline;
+      lines.push({ start, end, next: newline + 1, text: source.slice(start, end), eol: hasCR ? "\r\n" : "\n" });
+      start = newline + 1;
+      if (start === source.length) {
+        lines.push({ start, end: start, next: start, text: "", eol: "" });
+        break;
+      }
+    }
+    return lines;
   }
 
-  function startsAtLineBoundary(source, position) {
-    return position === 0 || source[position - 1] === "\n";
+  function lineIndexAt(lines, position) {
+    for (let index = 0; index < lines.length; index += 1) {
+      if (position < lines[index].next || (position === lines[index].next && lines[index].next === lines[index].end)) return index;
+    }
+    return lines.length - 1;
   }
 
-  function endsAtLineBoundary(source, position) {
-    return position === source.length || source[position] === "\n" || source.slice(position, position + 2) === "\r\n";
+  function touchedLineRange(source, start, end) {
+    const lines = sourceLines(source);
+    const first = lineIndexAt(lines, start);
+    const lastPosition = end > start ? end - 1 : end;
+    return { lines, first, last: lineIndexAt(lines, lastPosition) };
   }
 
-  function scanBackticksLeft(source, before) {
-    let cursor = before - 1;
-    while (cursor >= 0 && source[cursor] === "`") cursor -= 1;
-    return { start: cursor + 1, length: before - cursor - 1 };
-  }
-
-  function scanBackticksRight(source, after) {
-    let cursor = after;
-    while (cursor < source.length && source[cursor] === "`") cursor += 1;
-    return { end: cursor, length: cursor - after };
+  function localLineEnding(lines, first, last) {
+    for (let index = first; index <= last; index += 1) {
+      if (lines[index].eol) return lines[index].eol;
+    }
+    if (first > 0 && lines[first - 1].eol) return lines[first - 1].eol;
+    return "\n";
   }
 
   // Complexity: for n source bytes and m selected bytes, time and returned
   // space are O(n+m), Omega(n), and tight Theta(n+m); no I/O or DOM work occurs.
   function fencedCode(source, start, end) {
-    const selected = source.slice(start, end);
-    const eol = lineEnding(source);
-    const contentStartsWithEOL = selected.startsWith(eol);
-    const contentEndsWithEOL = selected.endsWith(eol);
-    const opening = scanBackticksLeft(source, contentStartsWithEOL ? start : start - eol.length);
-    const closing = scanBackticksRight(source, contentEndsWithEOL ? end : end + eol.length);
-    const openingBreakMatches = contentStartsWithEOL || source.slice(start - eol.length, start) === eol;
-    const closingBreakMatches = contentEndsWithEOL || source.slice(end, end + eol.length) === eol;
-    const baseMarkerLength = Math.max(3, maximumBacktickRun(selected) + 1);
-    const boundaryCode = opening.length - baseMarkerLength;
-    if (openingBreakMatches && closingBreakMatches && opening.length === closing.length && boundaryCode >= 0 && boundaryCode <= 3) {
-      const leftInserted = (boundaryCode & 1) !== 0;
-      const rightInserted = (boundaryCode & 2) !== 0;
-      const blockStart = opening.start - (leftInserted ? eol.length : 0);
-      const blockEnd = closing.end + (rightInserted ? eol.length : 0);
-      const leftBoundaryMatches = !leftInserted || source.slice(blockStart, opening.start) === eol;
-      const rightBoundaryMatches = !rightInserted || source.slice(closing.end, blockEnd) === eol;
-      if (leftBoundaryMatches && rightBoundaryMatches) {
+    const range = touchedLineRange(source, start, end);
+    const firstLine = range.lines[range.first];
+    const lastLine = range.lines[range.last];
+    if (range.first > 0 && range.last + 1 < range.lines.length) {
+      const opening = range.lines[range.first - 1];
+      const closing = range.lines[range.last + 1];
+      const openingMatch = opening.text.match(/^(`{3,})$/);
+      const closingMatch = closing.text.match(/^(`{3,})$/);
+      if (openingMatch && closingMatch && closingMatch[1].length >= openingMatch[1].length) {
+        const content = source.slice(firstLine.start, lastLine.end);
+        const restoredStart = opening.start;
         return {
-          value: source.slice(0, blockStart) + selected + source.slice(blockEnd),
-          start: blockStart,
-          end: blockStart + selected.length,
+          value: source.slice(0, opening.start) + content + source.slice(closing.end),
+          start: restoredStart + (start - firstLine.start),
+          end: restoredStart + (end - firstLine.start),
         };
       }
     }
-    const content = selected || "code";
-    const leftInserted = !startsAtLineBoundary(source, start);
-    const rightInserted = !endsAtLineBoundary(source, end);
-    const insertedBoundaryCode = (leftInserted ? 1 : 0) + (rightInserted ? 2 : 0);
-    const marker = "`".repeat(Math.max(3, maximumBacktickRun(content) + 1) + insertedBoundaryCode);
-    const outerStart = leftInserted ? eol : "";
-    const openingBreak = content.startsWith(eol) ? "" : eol;
-    const closingBreak = content.endsWith(eol) ? "" : eol;
-    const outerEnd = rightInserted ? eol : "";
-    const inserted = outerStart + marker + openingBreak + content + closingBreak + marker + outerEnd;
-    const contentStart = start + outerStart.length + marker.length + openingBreak.length;
+    const original = source.slice(firstLine.start, lastLine.end);
+    const content = original || "code";
+    const eol = localLineEnding(range.lines, range.first, range.last);
+    const marker = "`".repeat(Math.max(3, maximumBacktickRun(content) + 1));
+    const inserted = marker + eol + content + eol + marker;
+    const contentStart = firstLine.start + marker.length + eol.length;
+    const mappedStart = original ? contentStart + (start - firstLine.start) : contentStart;
+    const mappedEnd = original ? contentStart + (end - firstLine.start) : contentStart + content.length;
     return {
-      value: source.slice(0, start) + inserted + source.slice(end),
-      start: contentStart,
-      end: contentStart + content.length,
+      value: source.slice(0, firstLine.start) + inserted + source.slice(lastLine.end),
+      start: mappedStart,
+      end: mappedEnd,
     };
   }
 
@@ -236,45 +245,129 @@
     };
   }
 
-  // Complexity: for n source bytes and m selected bytes, time and returned
-  // space are O(n+m), Omega(n), and tight Theta(n+m); the fixed table template
-  // is bounded independently of input.
+  function escapeTableCell(value) {
+    return value.replaceAll("\\", "\\\\").replaceAll("|", "\\|");
+  }
+
+  function unescapeTableCell(value) {
+    let unescaped = "";
+    for (let index = 0; index < value.length; index += 1) {
+      if (value[index] === "\\" && index + 1 < value.length && (value[index + 1] === "\\" || value[index + 1] === "|")) {
+        index += 1;
+      }
+      unescaped += value[index];
+    }
+    return unescaped;
+  }
+
+  function tableCell(line, suffix) {
+    const prefix = "| ";
+    if (!line.text.startsWith(prefix) || !line.text.endsWith(suffix)) return null;
+    const encoded = line.text.slice(prefix.length, -suffix.length);
+    return {
+      encoded,
+      value: unescapeTableCell(encoded),
+      start: line.start + prefix.length,
+      end: line.end - suffix.length,
+    };
+  }
+
+  function decodedPrefixLength(encoded, length) {
+    return unescapeTableCell(encoded.slice(0, Math.max(0, Math.min(length, encoded.length)))).length;
+  }
+
+  function recognizedTable(lines, selectedFirst, selectedLast) {
+    for (let headerIndex = selectedFirst; headerIndex >= 0; headerIndex -= 1) {
+      if (headerIndex + 1 >= lines.length) continue;
+      const header = tableCell(lines[headerIndex], " | Column 2 |");
+      if (!header || !/^\| -{3,} \| -{3,} \|$/.test(lines[headerIndex + 1].text)) continue;
+      const rows = [{ line: lines[headerIndex], cell: header }];
+      let lastIndex = headerIndex + 1;
+      for (let index = headerIndex + 2; index < lines.length; index += 1) {
+        const cell = tableCell(lines[index], " | Cell 2 |");
+        if (!cell) break;
+        rows.push({ line: lines[index], cell });
+        lastIndex = index;
+      }
+      if (selectedFirst < headerIndex || selectedLast > lastIndex || selectedFirst === headerIndex + 1) continue;
+      return { headerIndex, lastIndex, rows };
+    }
+    return null;
+  }
+
+  // Complexity: for n source bytes and l touched lines, time and returned
+  // space are O(n+l), Omega(n), and tight Theta(n+l). Existing text is escaped
+  // into the first column; no Markdown delimiter carries hidden ownership.
   function table(source, start, end) {
-    const selected = source.slice(start, end);
-    const eol = lineEnding(source);
-    if (start >= 2 && source.slice(start - 2, start) === "| ") {
-      const suffix = source.slice(end).match(/^( \| Column 2 \|)(\r?\n)\| (-{3,4}) \| (-{3,4}) \|\2\| Cell 1 \| Cell 2 \|/);
-      if (suffix) {
-        const leftInserted = suffix[3].length === 4;
-        const rightInserted = suffix[4].length === 4;
-        const tableStart = start - 2;
-        const tableEnd = end + suffix[0].length;
-        const blockStart = tableStart - (leftInserted ? suffix[2].length : 0);
-        const blockEnd = tableEnd + (rightInserted ? suffix[2].length : 0);
-        const leftBoundaryMatches = !leftInserted || source.slice(blockStart, tableStart) === suffix[2];
-        const rightBoundaryMatches = !rightInserted || source.slice(tableEnd, blockEnd) === suffix[2];
-        if (leftBoundaryMatches && rightBoundaryMatches) {
-          return {
-            value: source.slice(0, blockStart) + selected + source.slice(blockEnd),
-            start: blockStart,
-            end: blockStart + selected.length,
-          };
+    const range = touchedLineRange(source, start, end);
+    const existing = recognizedTable(range.lines, range.first, range.last);
+    if (existing) {
+      const eol = localLineEnding(range.lines, existing.headerIndex, existing.lastIndex);
+      const restored = existing.rows.map((row) => row.cell.value).join(eol);
+      const restoredStart = range.lines[existing.headerIndex].start;
+      const mapPosition = (position) => {
+        let offset = 0;
+        for (const row of existing.rows) {
+          if (position <= row.cell.end) {
+            return restoredStart + offset + decodedPrefixLength(row.cell.encoded, position - row.cell.start);
+          }
+          offset += row.cell.value.length + eol.length;
         }
+        return restoredStart + restored.length;
+      };
+      return {
+        value: source.slice(0, restoredStart) + restored + source.slice(range.lines[existing.lastIndex].end),
+        start: mapPosition(start),
+        end: mapPosition(end),
+      };
+    }
+    const firstLine = range.lines[range.first];
+    const lastLine = range.lines[range.last];
+    const selectedLines = range.lines.slice(range.first, range.last + 1);
+    const original = source.slice(firstLine.start, lastLine.end);
+    const sourceRows = original ? selectedLines.map((line) => line.text) : ["Column 1"];
+    const eol = localLineEnding(range.lines, range.first, range.last);
+    const generated = [];
+    const mappedRows = [];
+    let generatedLength = 0;
+    for (let index = 0; index < sourceRows.length; index += 1) {
+      const escaped = escapeTableCell(sourceRows[index]);
+      const prefix = "| ";
+      const suffix = index === 0 ? " | Column 2 |" : " | Cell 2 |";
+      const row = prefix + escaped + suffix;
+      if (index === 1) {
+        const separator = "| --- | --- |" + eol;
+        generated.push(separator);
+        generatedLength += separator.length;
+      }
+      mappedRows.push({ source: selectedLines[index], cellStart: generatedLength + prefix.length, escaped });
+      generated.push(row);
+      generatedLength += row.length;
+      if (index + 1 < sourceRows.length) {
+        generated.push(eol);
+        generatedLength += eol.length;
       }
     }
-    const content = selected || "Column 1";
-    const leftInserted = !startsAtLineBoundary(source, start);
-    const rightInserted = !endsAtLineBoundary(source, end);
-    const leftRule = leftInserted ? "----" : "---";
-    const rightRule = rightInserted ? "----" : "---";
-    const outerStart = leftInserted ? eol : "";
-    const outerEnd = rightInserted ? eol : "";
-    const inserted = outerStart + "| " + content + " | Column 2 |" + eol + "| " + leftRule + " | " + rightRule + " |" + eol + "| Cell 1 | Cell 2 |" + outerEnd;
-    const contentStart = start + outerStart.length + 2;
+    if (sourceRows.length === 1) {
+      generated.push(eol + "| --- | --- |");
+    }
+    const inserted = generated.join("");
+    const mapPosition = (position) => {
+      if (!original) return firstLine.start + mappedRows[0].cellStart;
+      for (let index = 0; index < mappedRows.length; index += 1) {
+        const row = mappedRows[index];
+        if (position <= row.source.end) {
+          const column = Math.max(0, Math.min(position - row.source.start, row.source.text.length));
+          return firstLine.start + row.cellStart + escapeTableCell(row.source.text.slice(0, column)).length;
+        }
+      }
+      const last = mappedRows[mappedRows.length - 1];
+      return firstLine.start + last.cellStart + last.escaped.length;
+    };
     return {
-      value: source.slice(0, start) + inserted + source.slice(end),
-      start: contentStart,
-      end: contentStart + content.length,
+      value: source.slice(0, firstLine.start) + inserted + source.slice(lastLine.end),
+      start: mapPosition(start),
+      end: original ? mapPosition(end) : mapPosition(start) + sourceRows[0].length,
     };
   }
 
