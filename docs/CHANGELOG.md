@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Add authorization-first AN-02 discovery stores
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- bounded search/activity request and cursor-keyring codecs
+- typed authorization-first PostgreSQL search, activity, and direct-post stores
+- focused unit, PostgreSQL 17 integration, and custom/generic plan evidence
+
+Explanation:
+
+Add the non-HTTP AN-02-02 store boundary. Search closes and canonicalizes its
+query grammar before database work, delegates web-search parsing to PostgreSQL,
+materializes at most 51 authorized typed identities, ranks only the first 50,
+rechecks the selected page, and derives bounded sanitized excerpts. Recent
+activity uses a strict 26-row keyset query and an exact 77-byte HMAC cursor
+bound to the complete authority snapshot. Direct-post lookup starts from the
+post primary key and remains independent of search-projection health. All
+multi-statement reads use bounded read-only repeatable-read transactions.
+
+Verification:
+
+- request, semantic-query, selected-row, excerpt, cursor, rotation, audience,
+  keyring-file, activity-boundary, and direct-post unit tests
+- PostgreSQL 17.10 visitor/member/group/moderator/administrator matrices,
+  restricted-occupancy, projection-independence, 51-row, and 26-row coverage
+- retained `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` evidence for current
+  vector, author, date/area, common/rare text, activity, and primary-key direct
+  shapes under forced custom and forced generic plans
+
+Risks / non-goals:
+
+- this unit adds no HTTP route, template, navigation, startup wiring, PR,
+  merge, push, tag, release, or deployment
+- the final million-post corpus, HTTP/HTMX behavior, and browser admission
+  remain AN-02-03/AN-02-04 work
+
 ### 2026-09-07 — Build the AN-02 search projection gate
 
 Commit: current commit; hash assigned by Git after commit
