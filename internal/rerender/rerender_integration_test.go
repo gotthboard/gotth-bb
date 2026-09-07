@@ -5,9 +5,9 @@ package rerender
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -27,10 +27,6 @@ const (
 	rerenderTestDatabase            = "gotth_bb_alpha3_rerender_test"
 	rerenderPerformanceTestDatabase = "gotth_bb_alpha3_rerender_performance_test"
 )
-
-type failingWriter struct{}
-
-func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
 
 func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -188,7 +184,7 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 		t.Fatalf("lock stale row with concurrent edit: %v", err)
 	}
 	blockedEditContext, blockedEditCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	if err := Run(blockedEditContext, contentionConnection, io.Discard, 1); !errors.Is(err, context.DeadlineExceeded) {
+	if err := Run(blockedEditContext, contentionConnection, 1); !errors.Is(err, context.DeadlineExceeded) {
 		blockedEditCancel()
 		_ = editTx.Rollback(ctx)
 		t.Fatalf("edit-versus-rerender error = %v, want deadline", err)
@@ -205,27 +201,19 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if err != nil || result.Converted != 1 || result.Complete {
 		t.Fatalf("first batch = (%+v, %v), want one/incomplete", result, err)
 	}
-	if err := Run(ctx, runnerConnection, failingWriter{}, 1); err == nil {
-		t.Fatal("Run() accepted a failed progress write")
+	if err := Run(ctx, runnerConnection, 1); err != nil {
+		t.Fatalf("restart Run() returned error: %v", err)
 	}
 	var staleCount int
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE redacted_at IS NULL AND renderer_version <> $1`, contentrender.RendererVersion).Scan(&staleCount); err != nil || staleCount != 2 {
 		t.Fatalf("post-output-failure stale rows = (%d, %v), want two/nil", staleCount, err)
 	}
-	var output bytes.Buffer
-	if err := Run(ctx, runnerConnection, &output, 1); err != nil {
-		t.Fatalf("restart Run() returned error: %v", err)
-	}
-	if !strings.Contains(output.String(), "converted=0 complete=true") {
-		t.Fatalf("restart progress = %q", output.String())
-	}
 	var completedAt time.Time
 	if err := connection.QueryRow(ctx, `SELECT completed_at FROM public.content_renderer_state WHERE singleton`).Scan(&completedAt); err != nil {
 		t.Fatalf("read renderer completion time: %v", err)
 	}
-	output.Reset()
-	if err := Run(ctx, runnerConnection, &output, 1); err != nil || output.String() != progressLine(BatchResult{Complete: true}) {
-		t.Fatalf("idempotent Run() = (%q, %v)", output.String(), err)
+	if err := Run(ctx, runnerConnection, 1); err != nil {
+		t.Fatalf("idempotent Run() returned error: %v", err)
 	}
 	var repeatedCompletedAt time.Time
 	if err := connection.QueryRow(ctx, `SELECT completed_at FROM public.content_renderer_state WHERE singleton`).Scan(&repeatedCompletedAt); err != nil || !repeatedCompletedAt.Equal(completedAt) {
@@ -267,7 +255,7 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	}
 	blockedContext, blockedCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer blockedCancel()
-	if err := Run(blockedContext, singletonConnection, io.Discard, 1); !errors.Is(err, context.DeadlineExceeded) {
+	if err := Run(blockedContext, singletonConnection, 1); !errors.Is(err, context.DeadlineExceeded) {
 		_ = singletonConnection.Close(context.Background())
 		t.Fatalf("concurrent runner error = %v, want deadline", err)
 	}
@@ -282,13 +270,13 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts ADD CONSTRAINT posts_renderer_version_current CHECK (false) NOT VALID`); err != nil {
 		t.Fatalf("install invalid renderer constraint probe: %v", err)
 	}
-	if err := Run(ctx, runnerConnection, io.Discard, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "validate current renderer constraint") {
+	if err := Run(ctx, runnerConnection, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "validate current renderer constraint") {
 		t.Fatalf("constraint validation failure = %v", err)
 	}
 	if _, err := connection.Exec(ctx, `DELETE FROM public.content_renderer_state WHERE singleton`); err != nil {
 		t.Fatalf("delete renderer state probe: %v", err)
 	}
-	if err := Run(ctx, runnerConnection, io.Discard, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "lock renderer migration state") {
+	if err := Run(ctx, runnerConnection, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "lock renderer migration state") {
 		t.Fatalf("missing renderer state failure = %v", err)
 	}
 }
@@ -380,6 +368,7 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 	}
 	denseSource := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
 	denseLegacyHTML := exactLegacyHTML(t, denseSource)
+	t.Logf("fixture source_bytes=%d source_sha256=%x legacy_html_bytes=%d legacy_html_sha256=%x", len(denseSource), sha256.Sum256([]byte(denseSource)), len(denseLegacyHTML), sha256.Sum256([]byte(denseLegacyHTML)))
 	fixtureTx, err := connection.Begin(ctx)
 	if err != nil {
 		t.Fatalf("begin renderer performance fixture: %v", err)

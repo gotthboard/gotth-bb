@@ -20,7 +20,8 @@ Affected files:
 
 Explanation:
 
-Add a release-owned, bounded re-render pass after schema migration. One locked
+Add a mandatory, bounded, read-only candidate preflight before migration 000007
+and a release-owned re-render pass after schema migration. One locked
 singleton serializes runners, each transaction handles at most 100 ordinary
 posts from canonical Markdown, and an immediately enforced `NOT VALID` writer
 constraint prevents a stopped old release from leaving mixed renderer writes.
@@ -30,6 +31,8 @@ scanning posts. The 262,144-byte persisted-output ceiling remains unchanged.
 Only an exact application-valid p1 row whose p2 expansion exceeds that ceiling
 retains its byte-verified p1 HTML under an explicit p1-preserved compatibility
 marker; every other render or legacy-integrity error fails closed.
+The mutating loop performs no synchronous progress writes; durable database
+state is the canonical restart record.
 
 Verification:
 
@@ -37,7 +40,10 @@ Verification:
 - PostgreSQL 17.10 fresh, upgrade, exact p1 preservation, restart, writer
   enforcement, edit/runner contention, runner serialization,
   validation-failure, missing-state, and idempotence checks
-- opt-in pinned-PostgreSQL admission of one actual 100-row worst-case
+- preflight failures for whitespace source, unknown-renderer p2 overflow, and
+  mismatched p1 HTML at minimum, negative, and zero post IDs, proving no
+  migration-000007 ledger/state/constraint mutation
+- opt-in pinned-PostgreSQL measurement of one actual 100-row dense-task
   compatibility transaction, exact output/state verification, peak-RSS
   sampling, and bounded cancellation between renderer phases
 

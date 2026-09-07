@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"time"
 
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
@@ -66,6 +65,10 @@ type database interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
+type preflightDatabase interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}
+
 // BatchResult is one committed transaction's content-free progress record.
 type BatchResult struct {
 	Converted int
@@ -90,17 +93,14 @@ type post struct {
 // b <= 100, and retry count r <= 3 per batch, time is O(r*(p+n+h)) and
 // Omega(p+n+h), with no tight Theta bound because database I/O and retry
 // occurrence vary; auxiliary space is O(b*65,536+b*262,144), Omega(1), bounded
-// by the source, persisted-output, and batch limits. Output is one
-// constant-size line per batch.
-func Run(ctx context.Context, database database, output io.Writer, batchSize int) error {
+// by the source, persisted-output, and batch limits. Durable renderer state is
+// the sole progress record; the loop performs no synchronous output I/O.
+func Run(ctx context.Context, database database, batchSize int) error {
 	if ctx == nil {
 		return fmt.Errorf("renderer migration context is required")
 	}
 	if database == nil {
 		return fmt.Errorf("renderer migration database is required")
-	}
-	if output == nil {
-		return fmt.Errorf("renderer migration output is required")
 	}
 	if batchSize < 1 || batchSize > MaximumBatchSize {
 		return fmt.Errorf("renderer migration batch size must be between 1 and %d", MaximumBatchSize)
@@ -121,13 +121,118 @@ func Run(ctx context.Context, database database, output io.Writer, batchSize int
 		if err != nil {
 			return err
 		}
-		if _, err := io.WriteString(output, progressLine(result)); err != nil {
-			return fmt.Errorf("write renderer migration progress: %w", err)
-		}
 		if result.Complete {
 			return nil
 		}
 	}
+}
+
+// Preflight proves, without mutation, that every existing post can cross the
+// Alpha.3 renderer boundary before migration 000007 installs its incompatible
+// writer constraint. It uses one repeatable-read, read-only snapshot and
+// retains at most batchSize rows. The required release stop/drain prevents a
+// writer from changing rows after this snapshot and before schema apply; this
+// function does not pretend those separate operations are atomic.
+func Preflight(ctx context.Context, database preflightDatabase, batchSize int) (resultErr error) {
+	if ctx == nil {
+		return fmt.Errorf("renderer preflight context is required")
+	}
+	if database == nil {
+		return fmt.Errorf("renderer preflight database is required")
+	}
+	if batchSize < 1 || batchSize > MaximumBatchSize {
+		return fmt.Errorf("renderer preflight batch size must be between 1 and %d", MaximumBatchSize)
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("renderer preflight canceled: %w", err)
+	}
+	tx, err := database.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return fmt.Errorf("begin renderer preflight snapshot: %w", err)
+	}
+	if tx == nil {
+		return fmt.Errorf("begin renderer preflight snapshot returned no transaction")
+	}
+	closed := false
+	defer func() {
+		if closed {
+			return
+		}
+		rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+		defer cancel()
+		if rollbackErr := tx.Rollback(rollbackContext); rollbackErr != nil && !errors.Is(rollbackErr, pgx.ErrTxClosed) {
+			resultErr = errors.Join(resultErr, fmt.Errorf("rollback renderer preflight snapshot: %w", rollbackErr))
+		}
+	}()
+	var postsExist bool
+	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.posts') IS NOT NULL`).Scan(&postsExist); err != nil {
+		return fmt.Errorf("inspect renderer preflight schema: %w", err)
+	}
+	if !postsExist {
+		rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+		defer cancel()
+		if err := tx.Rollback(rollbackContext); err != nil {
+			return fmt.Errorf("close empty renderer preflight snapshot: %w", err)
+		}
+		closed = true
+		return nil
+	}
+	var historyExists bool
+	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.gotth_schema_migrations') IS NOT NULL`).Scan(&historyExists); err != nil {
+		return fmt.Errorf("inspect renderer preflight ledger: %w", err)
+	}
+	alpha3Applied := false
+	if historyExists {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM public.gotth_schema_migrations WHERE version = 7 AND name = '000007_gfm_renderer.sql')`).Scan(&alpha3Applied); err != nil {
+			return fmt.Errorf("inspect renderer preflight Alpha.3 ledger state: %w", err)
+		}
+	}
+	var afterID *int64
+	for {
+		rows, err := tx.Query(ctx, `SELECT post.id,
+post.markdown_source,
+post.rendered_html,
+post.renderer_version,
+COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)
+FROM public.posts AS post
+WHERE $1::bigint IS NULL OR post.id > $1
+ORDER BY post.id
+LIMIT $2`, afterID, int32(batchSize))
+		if err != nil {
+			return fmt.Errorf("select renderer preflight rows: %w", err)
+		}
+		batchCount := 0
+		for rows.Next() {
+			var candidate post
+			var redacted bool
+			if err := rows.Scan(&candidate.id, &candidate.markdown, &candidate.originalHTML, &candidate.originalVersion, &redacted); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan renderer preflight row: %w", err)
+			}
+			if err := preflightPost(ctx, &candidate, redacted, alpha3Applied); err != nil {
+				rows.Close()
+				return fmt.Errorf("classify renderer preflight post %d: %w", candidate.id, err)
+			}
+			lastID := candidate.id
+			afterID = &lastID
+			batchCount++
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("iterate renderer preflight rows: %w", err)
+		}
+		rows.Close()
+		if batchCount < batchSize {
+			break
+		}
+	}
+	rollbackContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	if err := tx.Rollback(rollbackContext); err != nil {
+		return fmt.Errorf("close renderer preflight snapshot: %w", err)
+	}
+	closed = true
+	return nil
 }
 
 // runBatch locks and converts at most batchSize current rows, or validates the
@@ -279,6 +384,35 @@ func preparePost(ctx context.Context, candidate *post) error {
 	return nil
 }
 
+func preflightPost(ctx context.Context, candidate *post, redacted, alpha3Applied bool) error {
+	if candidate == nil {
+		return fmt.Errorf("preflight post is required")
+	}
+	if candidate.originalVersion == contentrender.RendererVersion {
+		return nil
+	}
+	if redacted {
+		if candidate.originalVersion == "moderation-redaction-v1" {
+			return nil
+		}
+		return fmt.Errorf("redacted post has an unadmitted renderer version")
+	}
+	if candidate.originalVersion == legacyPreservedRendererVersion {
+		if !alpha3Applied {
+			return fmt.Errorf("p1-preserved renderer marker predates Alpha.3 migration state")
+		}
+		candidate.originalVersion = contentrender.LegacyRendererVersion
+		if err := preparePost(ctx, candidate); err != nil {
+			return err
+		}
+		if candidate.nextVersion != legacyPreservedRendererVersion {
+			return fmt.Errorf("p1-preserved renderer row no longer requires compatibility")
+		}
+		return nil
+	}
+	return preparePost(ctx, candidate)
+}
+
 // isRetryable recognizes PostgreSQL's serialization and deadlock aborts,
 // whose failed transactions are known not to have committed.
 //
@@ -288,12 +422,4 @@ func preparePost(ctx context.Context, candidate *post) error {
 func isRetryable(err error) bool {
 	var postgresError *pgconn.PgError
 	return errors.As(err, &postgresError) && (postgresError.Code == "40001" || postgresError.Code == "40P01")
-}
-
-// progressLine formats one fixed-field, content-free operator record.
-//
-// Complexity: for decimal digit count d, time and returned space are O(d),
-// Omega(1), and tight Theta(d); d is bounded by the batch limit.
-func progressLine(result BatchResult) string {
-	return fmt.Sprintf("renderer_migration target=%s converted=%d complete=%t\n", contentrender.RendererVersion, result.Converted, result.Complete)
 }

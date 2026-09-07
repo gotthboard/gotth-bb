@@ -4,7 +4,6 @@ package readiness
 
 import (
 	"context"
-	"io"
 	"os"
 	"testing"
 	"time"
@@ -69,7 +68,7 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	// The release-owned migrate command always runs this completion phase after
 	// applying schema migrations, including on an empty fresh database. That
 	// validates the NOT VALID renderer constraint before readiness can pass.
-	if err := rerender.Run(ctx, connection, io.Discard, rerender.MaximumBatchSize); err != nil {
+	if err := rerender.Run(ctx, connection, rerender.MaximumBatchSize); err != nil {
 		t.Fatalf("rerender.Run() returned error: %v", err)
 	}
 	release, err := migration.NewReleaseVerifier(migrations.Files())

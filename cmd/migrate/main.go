@@ -33,22 +33,24 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := command(ctx, os.Args[1:], os.Stdout, buildinfo.Current, os.LookupEnv, migrations.Files(), func(runContext context.Context, configured *pgx.ConnConfig, filesystem fs.FS) error {
-		return applyRelease(runContext, configured, filesystem, os.Stdout)
+		return applyRelease(runContext, configured, filesystem)
 	}); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb-migrate: %v\n", err)
 		os.Exit(1)
 	}
 }
 
-// applyRelease applies the immutable SQL ledger, then resumes the bounded
-// derived-content rebuild using the same release and migration-role database
-// configuration. The application remains stopped throughout this command.
+// applyRelease first proves every existing post can cross the Alpha.3 renderer
+// boundary in a read-only snapshot, then applies the immutable SQL ledger and
+// resumes the bounded derived-content rebuild. The documented stop/drain must
+// remain in force across the preflight-to-apply gap; the two phases are not an
+// atomic substitute for stopping old writers.
 //
 // Complexity: for migration work m and p stale posts containing n source and h
 // rendered bytes, delegated time is O(m+p+n+h), Omega(m), with no tighter
 // Theta bound because database I/O varies; auxiliary space is bounded by one
 // renderer batch plus the migration runner's state.
-func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs.FS, output io.Writer) (resultErr error) {
+func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs.FS) (resultErr error) {
 	if ctx == nil {
 		return fmt.Errorf("release migration context is required")
 	}
@@ -58,15 +60,9 @@ func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs
 	if filesystem == nil {
 		return fmt.Errorf("release migration filesystem is required")
 	}
-	if output == nil {
-		return fmt.Errorf("release migration output is required")
-	}
-	if err := migration.Apply(ctx, configured, filesystem); err != nil {
-		return err
-	}
 	connection, err := pgx.ConnectConfig(ctx, configured)
 	if err != nil {
-		return fmt.Errorf("connect for renderer migration: %w", err)
+		return fmt.Errorf("connect for renderer preflight and migration: %w", err)
 	}
 	defer func() {
 		closeContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rendererConnectionCloseTimeout)
@@ -75,7 +71,13 @@ func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs
 			resultErr = errors.Join(resultErr, fmt.Errorf("close renderer migration connection: %w", closeErr))
 		}
 	}()
-	if err := rerender.Run(ctx, connection, output, rerender.MaximumBatchSize); err != nil {
+	if err := rerender.Preflight(ctx, connection, rerender.MaximumBatchSize); err != nil {
+		return fmt.Errorf("preflight persisted Markdown: %w", err)
+	}
+	if err := migration.Apply(ctx, configured, filesystem); err != nil {
+		return err
+	}
+	if err := rerender.Run(ctx, connection, rerender.MaximumBatchSize); err != nil {
 		return fmt.Errorf("re-render persisted Markdown: %w", err)
 	}
 	return nil

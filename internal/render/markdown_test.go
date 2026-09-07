@@ -102,6 +102,33 @@ func TestRenderMarkdownPreservesAdaptiveToolbarCodeContent(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownAcceptsToolbarBoundaryMarkdown(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		source   string
+		required string
+	}{
+		{name: "mid-line fenced block", source: "before \n``````\ncode\n``````\n after", required: "<pre><code>code\n</code></pre>"},
+		{name: "mid-line table", source: "before \n| cell | Column 2 |\n| ---- | ---- |\n| Cell 1 | Cell 2 |\n after", required: "<th>cell</th>"},
+		{name: "all-space inline code", source: "` `", required: "<p><code> </code></p>"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			rendered, err := RenderMarkdown(test.source)
+			if err != nil {
+				t.Fatalf("RenderMarkdown() returned error: %v", err)
+			}
+			html, _, err := rendered.PersistenceValues()
+			if err != nil || !strings.Contains(html, test.required) {
+				t.Fatalf("toolbar boundary rendering = (%q, %v), want containing %q", html, err, test.required)
+			}
+		})
+	}
+}
+
 func TestRenderMarkdownIsDeterministic(t *testing.T) {
 	t.Parallel()
 

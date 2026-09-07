@@ -389,3 +389,33 @@ PostgreSQL would add test machinery without improving the exercised authority,
 transaction, conflict, or leakage boundaries. Deployed Authentik browser
 acceptance and manual keyboard/mobile review remain release-gate evidence; no
 local result is represented as that evidence.
+
+## 18. Alpha.3 renderer migration evidence
+
+The canonical reproduction command is
+`scripts/verify-alpha3-rerender-performance.sh`. It refuses a dirty source
+tree, requires `GOTTH_BB_TEST_DATABASE_URL`, verifies that
+`GOTTH_BB_POSTGRES_CONTAINER` (default
+`gotth-bb-alpha3-totality-pg`) uses both the exact configured image reference
+and image ID
+`postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d`,
+compiles the committed integration test, runs it once with `GOMAXPROCS=4`, and
+samples the test process's `VmRSS` from `/proc` every 50 ms. It prints the
+commit, tree, deterministic `git archive` digest, OS, Go version, PostgreSQL
+binary identity, fixture digests, transaction elapsed time, result state, and
+sampled peak RSS without printing the database URL.
+
+The fixture is exactly 100 copies of
+`strings.Repeat("- [x]\n", 65536/len("- [x]\n"))`, each paired with the
+byte-for-byte Goldmark v1.8.5/Bluemonday v1.0.27 p1 output. The test applies
+migrations 1 through 6, inserts one coherent topic and those 100 posts, applies
+migration 000007, times one real `runBatch(..., 100)` transaction, and requires
+100 p1-preserved markers, 100 exact HTML matches, `converted_count=100`, and
+`completed_at IS NULL`. It then runs the mandatory empty transaction and
+requires exact writer-constraint validation and completed state. This is a
+measured dense-task fixture, not a proof that it is the maximum over every
+valid p1 source.
+
+An exact clean-commit result is recorded here after running that script. A
+documentation-only evidence commit may follow the tested executable commit;
+if so, both identities and that relationship must be explicit.

@@ -39,7 +39,7 @@
   // space are O(n+l), Omega(n), and tight Theta(n+l); split/map/join own O(l)
   // temporary string headers in addition to the returned source.
   function prefixLines(source, start, end, matches, prefix) {
-    const lineStart = source.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const lineStart = start === 0 ? 0 : source.lastIndexOf("\n", start - 1) + 1;
     const touchedEnd = end > start && source[end - 1] === "\n" ? end - 1 : end;
     const nextBreak = source.indexOf("\n", touchedEnd);
     const lineEnd = nextBreak === -1 ? source.length : nextBreak;
@@ -97,11 +97,32 @@
     return maximum;
   }
 
-  // Inline code always uses padding around a nonblank selection. CommonMark
-  // removes exactly that padding while preserving any spaces or backticks the
-  // author selected. The delimiter is longer than every selected run.
+  // Inline code uses CommonMark padding except for all-space selections, where
+  // padding would become content. The delimiter is longer than every selected
+  // run and exact adjacent wrappers toggle off.
   function inlineCode(source, start, end) {
     const selected = source.slice(start, end);
+    if (selected.length > 0 && selected.trim() === "") {
+      let left = start - 1;
+      while (left >= 0 && source[left] === "`") left -= 1;
+      let right = end;
+      while (right < source.length && source[right] === "`") right += 1;
+      const leftLength = start - 1 - left;
+      const rightLength = right - end;
+      if (leftLength > 0 && leftLength === rightLength) {
+        return {
+          value: source.slice(0, left + 1) + selected + source.slice(right),
+          start: left + 1,
+          end: left + 1 + selected.length,
+        };
+      }
+      const marker = "`".repeat(maximumBacktickRun(selected) + 1);
+      return {
+        value: source.slice(0, start) + marker + selected + marker + source.slice(end),
+        start: start + marker.length,
+        end: start + marker.length + selected.length,
+      };
+    }
     if (start > 1 && source[start - 1] === " " && source[end] === " ") {
       let left = start - 2;
       while (left >= 0 && source[left] === "`") left -= 1;
@@ -127,31 +148,73 @@
     };
   }
 
+  function lineEnding(source) {
+    return source.includes("\r\n") ? "\r\n" : "\n";
+  }
+
+  function startsAtLineBoundary(source, position) {
+    return position === 0 || source[position - 1] === "\n";
+  }
+
+  function endsAtLineBoundary(source, position) {
+    return position === source.length || source[position] === "\n" || source.slice(position, position + 2) === "\r\n";
+  }
+
+  function scanBackticksLeft(source, before) {
+    let cursor = before - 1;
+    while (cursor >= 0 && source[cursor] === "`") cursor -= 1;
+    return { start: cursor + 1, length: before - cursor - 1 };
+  }
+
+  function scanBackticksRight(source, after) {
+    let cursor = after;
+    while (cursor < source.length && source[cursor] === "`") cursor += 1;
+    return { end: cursor, length: cursor - after };
+  }
+
   // Complexity: for n source bytes and m selected bytes, time and returned
   // space are O(n+m), Omega(n), and tight Theta(n+m); no I/O or DOM work occurs.
   function fencedCode(source, start, end) {
     const selected = source.slice(start, end);
-    if (start >= 4 && source[start - 1] === "\n" && source[end] === "\n") {
-      let left = start - 2;
-      while (left >= 0 && source[left] === "`") left -= 1;
-      let right = end + 1;
-      while (right < source.length && source[right] === "`") right += 1;
-      const leftLength = start - 1 - (left + 1);
-      const rightLength = right - (end + 1);
-      if (leftLength >= 3 && leftLength === rightLength) {
+    const eol = lineEnding(source);
+    const contentStartsWithEOL = selected.startsWith(eol);
+    const contentEndsWithEOL = selected.endsWith(eol);
+    const opening = scanBackticksLeft(source, contentStartsWithEOL ? start : start - eol.length);
+    const closing = scanBackticksRight(source, contentEndsWithEOL ? end : end + eol.length);
+    const openingBreakMatches = contentStartsWithEOL || source.slice(start - eol.length, start) === eol;
+    const closingBreakMatches = contentEndsWithEOL || source.slice(end, end + eol.length) === eol;
+    const baseMarkerLength = Math.max(3, maximumBacktickRun(selected) + 1);
+    const boundaryCode = opening.length - baseMarkerLength;
+    if (openingBreakMatches && closingBreakMatches && opening.length === closing.length && boundaryCode >= 0 && boundaryCode <= 3) {
+      const leftInserted = (boundaryCode & 1) !== 0;
+      const rightInserted = (boundaryCode & 2) !== 0;
+      const blockStart = opening.start - (leftInserted ? eol.length : 0);
+      const blockEnd = closing.end + (rightInserted ? eol.length : 0);
+      const leftBoundaryMatches = !leftInserted || source.slice(blockStart, opening.start) === eol;
+      const rightBoundaryMatches = !rightInserted || source.slice(closing.end, blockEnd) === eol;
+      if (leftBoundaryMatches && rightBoundaryMatches) {
         return {
-          value: source.slice(0, left + 1) + selected + source.slice(right),
-          start: left + 1,
-          end: left + 1 + selected.length,
+          value: source.slice(0, blockStart) + selected + source.slice(blockEnd),
+          start: blockStart,
+          end: blockStart + selected.length,
         };
       }
     }
     const content = selected || "code";
-    const marker = "`".repeat(Math.max(3, maximumBacktickRun(content) + 1));
+    const leftInserted = !startsAtLineBoundary(source, start);
+    const rightInserted = !endsAtLineBoundary(source, end);
+    const insertedBoundaryCode = (leftInserted ? 1 : 0) + (rightInserted ? 2 : 0);
+    const marker = "`".repeat(Math.max(3, maximumBacktickRun(content) + 1) + insertedBoundaryCode);
+    const outerStart = leftInserted ? eol : "";
+    const openingBreak = content.startsWith(eol) ? "" : eol;
+    const closingBreak = content.endsWith(eol) ? "" : eol;
+    const outerEnd = rightInserted ? eol : "";
+    const inserted = outerStart + marker + openingBreak + content + closingBreak + marker + outerEnd;
+    const contentStart = start + outerStart.length + marker.length + openingBreak.length;
     return {
-      value: source.slice(0, start) + marker + "\n" + content + "\n" + marker + source.slice(end),
-      start: start + marker.length + 1,
-      end: start + marker.length + 1 + content.length,
+      value: source.slice(0, start) + inserted + source.slice(end),
+      start: contentStart,
+      end: contentStart + content.length,
     };
   }
 
@@ -177,12 +240,41 @@
   // space are O(n+m), Omega(n), and tight Theta(n+m); the fixed table template
   // is bounded independently of input.
   function table(source, start, end) {
-    const selected = source.slice(start, end) || "Column 1";
-    const inserted = "| " + selected + " | Column 2 |\n| --- | --- |\n| Cell 1 | Cell 2 |";
+    const selected = source.slice(start, end);
+    const eol = lineEnding(source);
+    if (start >= 2 && source.slice(start - 2, start) === "| ") {
+      const suffix = source.slice(end).match(/^( \| Column 2 \|)(\r?\n)\| (-{3,4}) \| (-{3,4}) \|\2\| Cell 1 \| Cell 2 \|/);
+      if (suffix) {
+        const leftInserted = suffix[3].length === 4;
+        const rightInserted = suffix[4].length === 4;
+        const tableStart = start - 2;
+        const tableEnd = end + suffix[0].length;
+        const blockStart = tableStart - (leftInserted ? suffix[2].length : 0);
+        const blockEnd = tableEnd + (rightInserted ? suffix[2].length : 0);
+        const leftBoundaryMatches = !leftInserted || source.slice(blockStart, tableStart) === suffix[2];
+        const rightBoundaryMatches = !rightInserted || source.slice(tableEnd, blockEnd) === suffix[2];
+        if (leftBoundaryMatches && rightBoundaryMatches) {
+          return {
+            value: source.slice(0, blockStart) + selected + source.slice(blockEnd),
+            start: blockStart,
+            end: blockStart + selected.length,
+          };
+        }
+      }
+    }
+    const content = selected || "Column 1";
+    const leftInserted = !startsAtLineBoundary(source, start);
+    const rightInserted = !endsAtLineBoundary(source, end);
+    const leftRule = leftInserted ? "----" : "---";
+    const rightRule = rightInserted ? "----" : "---";
+    const outerStart = leftInserted ? eol : "";
+    const outerEnd = rightInserted ? eol : "";
+    const inserted = outerStart + "| " + content + " | Column 2 |" + eol + "| " + leftRule + " | " + rightRule + " |" + eol + "| Cell 1 | Cell 2 |" + outerEnd;
+    const contentStart = start + outerStart.length + 2;
     return {
       value: source.slice(0, start) + inserted + source.slice(end),
-      start: start + 2,
-      end: start + 2 + selected.length,
+      start: contentStart,
+      end: contentStart + content.length,
     };
   }
 

@@ -65,6 +65,12 @@ test("line actions preserve exact caret and selection coordinates", () => {
 
     added = transform("zero\n" + prefixOne + "one", 5 + prefixOne.length + 1, 5 + prefixOne.length + 1, action);
     assert.deepEqual({ ...added }, { value: "zero\none", start: 6, end: 6 });
+
+    added = transform("\nabc", 0, 0, action);
+    assert.deepEqual({ ...added }, { value: prefixOne + "\nabc", start: prefixOne.length, end: prefixOne.length });
+
+    added = transform("\r\nabc", 0, 0, action);
+    assert.deepEqual({ ...added }, { value: prefixOne + "\r\nabc", start: prefixOne.length, end: prefixOne.length });
   }
 });
 
@@ -90,6 +96,41 @@ test("block, link, and table insertions keep useful edit selections", () => {
   result = transform("cell", 0, 4, "table");
   assert.match(result.value, /^\| cell \| Column 2 \|/);
   assert.equal(result.value.slice(result.start, result.end), "cell");
+  assert.deepEqual({ ...transform(result.value, result.start, result.end, "table") }, { value: "cell", start: 0, end: 4 });
+});
+
+test("mid-line blocks add only required boundaries and round-trip exactly", () => {
+  const { transform } = load();
+  for (const [source, start, end, eol] of [
+    ["before code after", 7, 11, "\n"],
+    ["before\r\ncode\r\nafter", 8, 12, "\r\n"],
+    ["before\ncode\nafter", 7, 11, "\n"],
+  ]) {
+    let result = transform(source, start, end, "fenced-code");
+    assert.equal(result.value.slice(result.start, result.end), "code");
+    assert.match(result.value, new RegExp("`{3,}" + eol + "code" + eol + "`{3,}"));
+    assert.deepEqual({ ...transform(result.value, result.start, result.end, "fenced-code") }, { value: source, start, end });
+
+    result = transform(source, start, end, "table");
+    assert.equal(result.value.slice(result.start, result.end), "code");
+    assert.match(result.value, new RegExp("\\| code \\| Column 2 \\|" + eol + "\\| -{3,4} \\| -{3,4} \\|"));
+    assert.deepEqual({ ...transform(result.value, result.start, result.end, "table") }, { value: source, start, end });
+  }
+
+  let result = transform("before code after", 7, 11, "fenced-code");
+  assert.equal(result.value, "before \n``````\ncode\n``````\n after");
+  result = transform("before cell after", 7, 11, "table");
+  assert.equal(result.value, "before \n| cell | Column 2 |\n| ---- | ---- |\n| Cell 1 | Cell 2 |\n after");
+});
+
+test("all-space inline code preserves and toggles exact selected spaces", () => {
+  const { transform } = load();
+  for (const source of [" ", "   "]) {
+    const result = transform(source, 0, source.length, "inline-code");
+    assert.equal(result.value, "`" + source + "`");
+    assert.equal(result.value.slice(result.start, result.end), source);
+    assert.deepEqual({ ...transform(result.value, result.start, result.end, "inline-code") }, { value: source, start: 0, end: source.length });
+  }
 });
 
 test("unsupported Image action is a no-op", () => {

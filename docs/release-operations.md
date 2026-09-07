@@ -300,25 +300,34 @@ required sequence is:
 5. Validate new configuration without exposing secrets.
 6. Put the new artifact beside the current artifact; do not overwrite the only
    rollback copy.
-7. Run preflight checks and inspect pending migrations.
+7. Inspect pending migrations and confirm the Alpha.3 renderer preflight is
+   present in the exact `gotth-bb-migrate` artifact. Do not run it while the
+   old application can still write.
 8. For alpha.3 or any later renderer-version migration, enter a visible
    maintenance window, stop the current application, drain in-flight requests,
    and prove the old listener is closed before applying schema or content
    changes. Do not rely on row locks to protect against an old binary that can
    resume afterward and write an obsolete renderer version.
-9. Run migrations once with an explicit result. The alpha.3 `NOT VALID`
+9. Run the ordinary argument-free migration command once with an explicit
+   result. It first performs the mandatory complete read-only renderer
+   preflight and returns before `migration.Apply` if any existing row is not
+   classifiable. A failed preflight leaves migration 000007 absent from the
+   ledger and installs no renderer state or writer constraint. The stop/drain
+   from step 8 must remain in force across the read-only snapshot and later
+   schema transaction because they are separate, not atomic. The alpha.3 `NOT VALID`
    renderer constraint rejects new obsolete-version inserts and updates as soon
    as it is installed; its schema transaction does not scan the posts table.
    The mandatory re-render phase runs even for a fresh empty database and
    validates the constraint only after the bounded completion oracle succeeds.
-   Its progress count includes both p2 conversions and byte-verified
-   p1-preserved compatibility rows; it never logs their content.
-   The admitted worst case is a 100-row compatibility transaction lasting
-   about 21 seconds with about 77 MiB test-process peak RSS on the development
-   host. Those selected post rows remain locked for the transaction. Run this
-   only while the application is stopped and drained. Cancellation is checked
-   between rows and renderer phases, rolls back the current transaction, and
-   may still wait for one in-progress render phase to return.
+   The command emits no per-batch progress: `content_renderer_state` and the
+   post renderer markers are the canonical restart record. The measured
+   100-row dense-task compatibility fixture lasted about 21 seconds with a
+   sampled roughly 77 MiB test-process peak RSS on the development host; it is
+   not claimed as a universal worst case. Those selected post rows remain
+   locked for the transaction. Run this only while the application is stopped
+   and drained. Cancellation is checked between rows and renderer phases,
+   rolls back the current transaction, and may still wait for one in-progress
+   render phase to return.
 10. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 11. Validate the resolved Compose model without printing its environment.

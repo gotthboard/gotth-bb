@@ -362,8 +362,12 @@ immutable together and database-validated.
 
 Posts keep Markdown source as canonical content. Sanitized HTML may be stored
 as a derived cache with a renderer-version marker. A renderer change can rebuild
-the cache from source. Alpha.3 performs that rebuild through a release-owned,
-bounded batch transaction. Each batch locks only its selected stale post rows,
+the cache from source. Before Alpha.3 installs its writer constraint, the
+ordinary release command classifies every existing post through bounded
+read-only snapshot batches using the same renderer rules as the mutating pass.
+The application stop/drain, not a fake atomic claim, protects the gap between
+that snapshot and schema apply. Alpha.3 then performs the rebuild through a
+release-owned, bounded batch transaction. Each batch locks only its selected stale post rows,
 plus the singleton renderer-state row that serializes competing runners,
 renders current canonical source, updates only those locked identities, and
 commits before selecting more. The schema installs a `NOT VALID` writer
@@ -374,7 +378,8 @@ records completion. A legacy row whose exact admitted p1 HTML would exceed the
 unchanged persistence limit under p2 keeps that verified p1 HTML under an
 explicit p1-preserved compatibility marker. Every other row moves to p2, and
 every other failure stops the batch. Readiness checks the exact completed
-target and validated catalog constraints in constant-shaped SQL; restarting
+target and validated catalog constraints in constant-shaped SQL. Per-batch
+logging is absent; durable database state is the sole progress record. Restarting
 the migration safely resumes from remaining stale rows while treating current
 p2 and p1-preserved rows as handled.
 

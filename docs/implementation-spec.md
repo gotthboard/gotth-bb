@@ -1084,10 +1084,14 @@ rendered core pages for root-relative application links that omit `/bb`.
   claims safe output.
 - Every surviving link receives `nofollow noreferrer`, avoiding a second
   browser-versus-Go external-URL classification policy.
-- The sanitizer adds only `table`, `thead`, `tbody`, `tr`, `th`, `td`, `del`,
-  and `input`. An `input` survives only with Goldmark's exact empty `disabled`
-  and optional empty `checked` attributes plus `type="checkbox"`; no `name`,
-  `value`, `form`, style, class, event, URL, or other attribute is allowed.
+- The complete p2 element allowlist is `p`, `h1` through `h6`, `hr`, `em`,
+  `strong`, `ul`, `ol`, `li`, `a`, `blockquote`, `pre`, `code`, `br`, `table`,
+  `thead`, `tbody`, `tr`, `th`, `td`, `del`, and `input`. An `a` may retain
+  only its allowed `href`; an `input` survives only with Goldmark's exact empty
+  `disabled` and optional empty `checked` attributes plus `type="checkbox"`.
+  No heading ID, `name`, `value`, `form`, style, class, event, URL-bearing
+  attribute other than the allowed link `href`, or other element/attribute is
+  admitted.
 - Rendered output carries the exact renderer version
   `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2` for deterministic rebuilding.
 - Templates receive rendered content through one explicit trusted-HTML type;
@@ -1107,8 +1111,19 @@ rendered core pages for root-relative application links that omit `/bb`.
   the exact current version, an exact `moderation-redaction-v1` row with
   `redacted_at` set, or an ordinary unredacted
   `goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved` compatibility row.
-- The release migration command applies schema migrations, then repeatedly
-  processes at most 100 stale posts in one transaction ordered by post ID. It
+- Before applying migration 000007, the ordinary argument-free release command
+  opens a repeatable-read, read-only snapshot and classifies every existing
+  post in ID order through nullable-cursor batches of at most 100 rows. This is
+  the same p2 typed-overflow, exact-p1, renderer-version, and redaction decision
+  used by the mutating pass. A fresh database with no `posts` relation passes;
+  an idempotent Alpha.3 rerun revalidates any p1-preserved row. Any invalid
+  candidate stops before migration 000007 enters the ledger or installs its
+  state/constraint. The preflight snapshot and later schema transaction are
+  intentionally separate. The required application stop/drain is what excludes
+  a writer in that gap; no atomic guarantee is claimed.
+- After preflight, the release migration command applies schema migrations,
+  then repeatedly processes at most 100 stale posts in one transaction ordered
+  by post ID. It
   first locks the renderer-state singleton, mechanically serializing multiple
   migration runners, then locks the selected posts. Rendering uses the same
   `RenderMarkdown` function as preview and publication. If and only if p2
@@ -1133,17 +1148,21 @@ rendered core pages for root-relative application links that omit `/bb`.
   converted or preserved rows no longer match, while an edit serialized by the
   row lock either precedes the batch render or persists the new p2 renderer
   itself.
-- Progress output contains only bounded counts, target renderer version, and
-  completion state; it never logs Markdown, rendered HTML, identities, or
-  connection secrets. Readiness requires the exact completed target and the
+- The re-render loop performs no per-batch output I/O. The renderer-state
+  singleton and post renderer markers are the canonical restart/progress
+  record, so a blocked logging sink cannot stop database progress or signal
+  cancellation. Readiness requires the exact completed target and the
   exact validated writer constraint through a constant-shaped catalog query;
   it does not scan the posts table on every probe.
-- A deliberately worst-case 100-row compatibility transaction on the pinned
-  PostgreSQL 17.10 image took 21.286 seconds and the test process peaked at
-  78,572 KiB RSS. All 100 selected post rows remain locked for that
-  maintenance transaction. This cost is admitted only because the application
-  is stopped and drained before migration; it is not an online/background
-  workload and the batch limit must not increase without new evidence.
+- A measured 100-row dense-task compatibility fixture on the pinned PostgreSQL
+  17.10 image took 21.286 seconds and the test process peaked at a sampled
+  78,572 KiB RSS. This is one deliberately expensive admitted fixture, not a
+  universal maximum over all valid p1 source. All 100 selected post rows remain
+  locked for that maintenance transaction. This cost is admitted only because
+  the application is stopped and drained before migration; it is not an
+  online/background workload and the batch limit must not increase without new
+  evidence. `docs/verification.md` records the committed reproduction method,
+  identities, and result state.
 
 ### 13.2 Native toolbar
 
@@ -1160,6 +1179,11 @@ rendered core pages for root-relative application links that omit `/bb`.
   one honest media boundary.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Line actions add/remove prefixes across the complete touched lines.
+  Fenced-code and table actions add only missing LF/CRLF line boundaries;
+  their generated delimiters encode which boundaries they own so toggling can
+  restore the exact original source without deleting a pre-existing newline.
+  All-space inline-code selections omit CommonMark padding so selected spaces
+  remain exact.
   Empty selections insert bounded placeholders and select the useful editable
   portion. Every transformation restores focus and a deterministic selection.
 - The client script does not preview, parse, trust, or sanitize Markdown.
@@ -1403,9 +1427,10 @@ operator logs.
 - Topic-read monotonicity.
 - Search/count leakage checks.
 - Fresh and upgrade migrations.
-- Renderer migration batching, restart/idempotence, rollback, concurrent edit
-  serialization, completion oracle, progress redaction, and readiness failure
-  while stale renderer rows remain.
+- Renderer read-only preflight/non-mutation failures, migration batching,
+  restart/idempotence, rollback, concurrent edit serialization, completion
+  oracle, absence of per-batch output I/O, and readiness failure while stale
+  renderer rows remain.
 
 ### 18.3 HTTP tests
 
