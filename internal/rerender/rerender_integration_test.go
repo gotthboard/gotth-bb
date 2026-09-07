@@ -68,6 +68,7 @@ type explainNode struct {
 	NodeType            string        `json:"Node Type"`
 	RelationName        string        `json:"Relation Name"`
 	IndexName           string        `json:"Index Name"`
+	IndexCond           string        `json:"Index Cond"`
 	ActualRows          float64       `json:"Actual Rows"`
 	RowsRemovedByFilter float64       `json:"Rows Removed by Filter"`
 	Plans               []explainNode `json:"Plans"`
@@ -99,12 +100,16 @@ type countedMutationTx struct {
 
 func (tx *countedMutationTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
 	rows, err := tx.Tx.Query(ctx, sql, arguments...)
-	if err != nil || sql != selectStalePostsSQL {
+	if err != nil || (sql != selectInitialStalePostsSQL && sql != selectStalePostsAfterCursorSQL) {
 		return rows, err
 	}
 	selection := &mutationSelection{}
-	if cursor, ok := arguments[2].(*int64); ok && cursor != nil {
-		value := *cursor
+	if sql == selectStalePostsAfterCursorSQL {
+		value, ok := arguments[2].(int64)
+		if !ok {
+			rows.Close()
+			return nil, fmt.Errorf("counted renderer cursor is %T, want int64", arguments[2])
+		}
 		selection.cursor = &value
 	}
 	tx.database.selections = append(tx.database.selections, selection)
@@ -161,14 +166,13 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 	var cursor *int64
 	for {
 		var encoded string
-		if err := connection.QueryRow(
-			ctx,
-			"EXPLAIN (ANALYZE, FORMAT JSON) "+selectStalePostsSQL,
-			contentrender.RendererVersion,
-			legacyPreservedRendererVersion,
-			cursor,
-			int32(batchSize),
-		).Scan(&encoded); err != nil {
+		var row pgx.Row
+		if cursor == nil {
+			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectInitialStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, int32(batchSize))
+		} else {
+			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectStalePostsAfterCursorSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, *cursor, int32(batchSize))
+		}
+		if err := row.Scan(&encoded); err != nil {
 			return mutationPlanEvidence{}, fmt.Errorf("explain renderer mutation selection after %v: %w", cursor, err)
 		}
 		var documents []explainDocument
@@ -183,12 +187,55 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
 		}
 		evidence.examinedRows += examined
+		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$3") {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v did not retain id > $3 as a generic-plan index condition", cursor)
+		}
 		if returned == 0 {
 			return evidence, nil
 		}
 		nextCursor := int64(evidence.returnedRows)
 		if nextCursor > int64(rowCount) {
 			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation plan returned %d rows from %d-row fixture", nextCursor, rowCount)
+		}
+		cursor = &nextCursor
+	}
+}
+
+func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (mutationPlanEvidence, error) {
+	var evidence mutationPlanEvidence
+	var cursor *int64
+	for {
+		var encoded string
+		var row pgx.Row
+		if cursor == nil {
+			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectInitialPreflightPostsSQL, int32(batchSize))
+		} else {
+			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectPreflightPostsAfterCursorSQL, *cursor, int32(batchSize))
+		}
+		if err := row.Scan(&encoded); err != nil {
+			return mutationPlanEvidence{}, fmt.Errorf("explain renderer preflight selection after %v: %w", cursor, err)
+		}
+		var documents []explainDocument
+		if err := json.Unmarshal([]byte(encoded), &documents); err != nil || len(documents) != 1 {
+			return mutationPlanEvidence{}, fmt.Errorf("decode renderer preflight selection plan after %v: documents=%d: %w", cursor, len(documents), err)
+		}
+		evidence.queries++
+		returned := int(documents[0].Plan.ActualRows)
+		evidence.returnedRows += returned
+		scans, examined := inspectPostIndexScan(documents[0].Plan)
+		if scans != 1 {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
+		}
+		evidence.examinedRows += examined
+		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$1") {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v did not retain id > $1 as a generic-plan index condition", cursor)
+		}
+		if returned == 0 {
+			return evidence, nil
+		}
+		nextCursor := int64(evidence.returnedRows)
+		if nextCursor > int64(rowCount) {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight plan returned %d rows from %d-row fixture", nextCursor, rowCount)
 		}
 		cursor = &nextCursor
 	}
@@ -205,6 +252,18 @@ func inspectPostIndexScan(node explainNode) (scans, examined int) {
 		examined += childExamined
 	}
 	return scans, examined
+}
+
+func postIndexConditionContains(node explainNode, compactFragment string) bool {
+	if node.NodeType == "Index Scan" && node.RelationName == "posts" && node.IndexName == "posts_pkey" && strings.Contains(strings.ReplaceAll(node.IndexCond, " ", ""), compactFragment) {
+		return true
+	}
+	for _, child := range node.Plans {
+		if postIndexConditionContains(child, compactFragment) {
+			return true
+		}
+	}
+	return false
 }
 
 func (tx *countedPreflightTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
@@ -790,11 +849,24 @@ CROSS JOIN LATERAL (
 	if _, err := connection.Exec(ctx, `ANALYZE public.posts`); err != nil {
 		t.Fatalf("analyze population fixture: %v", err)
 	}
+	if _, err := connection.Exec(ctx, `SET plan_cache_mode = force_generic_plan`); err != nil {
+		t.Fatalf("force generic PostgreSQL plans: %v", err)
+	}
+	preflightPlanEvidence, err := measurePreflightSelectionPlans(ctx, connection, rerenderPopulationPerformancePostCount, MaximumBatchSize)
+	if err != nil {
+		t.Fatalf("measure population preflight plans: %v", err)
+	}
 	planEvidence, err := measureMutationSelectionPlans(ctx, connection, rerenderPopulationPerformancePostCount, MaximumBatchSize)
 	if err != nil {
 		t.Fatalf("measure population mutation plans: %v", err)
 	}
+	if _, err := connection.Exec(ctx, `SET plan_cache_mode = auto`); err != nil {
+		t.Fatalf("restore automatic PostgreSQL plans: %v", err)
+	}
 	wantMutationQueries := (rerenderPopulationPerformancePostCount / MaximumBatchSize) + 1
+	if preflightPlanEvidence.queries != wantMutationQueries || preflightPlanEvidence.returnedRows != rerenderPopulationPerformancePostCount || preflightPlanEvidence.examinedRows != rerenderPopulationPerformancePostCount {
+		t.Fatalf("population preflight plans = %d queries/%d returned/%d examined, want %d/%d/%d", preflightPlanEvidence.queries, preflightPlanEvidence.returnedRows, preflightPlanEvidence.examinedRows, wantMutationQueries, rerenderPopulationPerformancePostCount, rerenderPopulationPerformancePostCount)
+	}
 	if planEvidence.queries != wantMutationQueries || planEvidence.returnedRows != rerenderPopulationPerformancePostCount || planEvidence.examinedRows != rerenderPopulationPerformancePostCount {
 		t.Fatalf("population mutation plans = %d queries/%d returned/%d examined, want %d/%d/%d", planEvidence.queries, planEvidence.returnedRows, planEvidence.examinedRows, wantMutationQueries, rerenderPopulationPerformancePostCount, rerenderPopulationPerformancePostCount)
 	}
@@ -872,7 +944,7 @@ CROSS JOIN LATERAL (
 	if len(mutationDatabase.selections) != wantMutationQueries || mutationSelectedRows != rowCount || len(selectedIDs) != rowCount || len(mutationDatabase.selections[len(mutationDatabase.selections)-1].ids) != 0 {
 		t.Fatalf("population mutation selections = %d queries/%d selected/%d unique/final %d, want %d/%d/%d/0", len(mutationDatabase.selections), mutationSelectedRows, len(selectedIDs), len(mutationDatabase.selections[len(mutationDatabase.selections)-1].ids), wantMutationQueries, rowCount, rowCount)
 	}
-	t.Logf("population_migration rows=%d preflight_batches=%d preflight_transactions=%d preflight_round_trips=%d mutation_batches=%d mutation_selection_queries=%d mutation_selected_rows=%d explain_queries=%d explain_returned_rows=%d explain_examined_rows=%d preflight_elapsed=%s schema_elapsed=%s conversion_elapsed=%s validation_elapsed=%s rerender_total_elapsed=%s release_total_elapsed=%s current=%d converted=%d cursor=%d completed=%t validated=%t", rowCount, preflightBatches, preflightTransactions, preflightRoundTrips, mutationBatches, len(mutationDatabase.selections), mutationSelectedRows, planEvidence.queries, planEvidence.returnedRows, planEvidence.examinedRows, preflightElapsed, schemaElapsed, conversionElapsed, validationElapsed, rerenderElapsed, releaseElapsed, currentCount, convertedCount, *lastProcessedPostID, completed, rendererValidated)
+	t.Logf("population_migration rows=%d preflight_batches=%d preflight_transactions=%d preflight_round_trips=%d mutation_batches=%d mutation_selection_queries=%d mutation_selected_rows=%d generic_plan_mode=forced preflight_explain_queries=%d preflight_explain_returned_rows=%d preflight_explain_examined_rows=%d mutation_explain_queries=%d mutation_explain_returned_rows=%d mutation_explain_examined_rows=%d preflight_elapsed=%s schema_elapsed=%s conversion_elapsed=%s validation_elapsed=%s rerender_total_elapsed=%s release_total_elapsed=%s current=%d converted=%d cursor=%d completed=%t validated=%t", rowCount, preflightBatches, preflightTransactions, preflightRoundTrips, mutationBatches, len(mutationDatabase.selections), mutationSelectedRows, preflightPlanEvidence.queries, preflightPlanEvidence.returnedRows, preflightPlanEvidence.examinedRows, planEvidence.queries, planEvidence.returnedRows, planEvidence.examinedRows, preflightElapsed, schemaElapsed, conversionElapsed, validationElapsed, rerenderElapsed, releaseElapsed, currentCount, convertedCount, *lastProcessedPostID, completed, rendererValidated)
 }
 
 func preAlpha3MigrationFS(t *testing.T) fs.FS {

@@ -20,15 +20,43 @@ const (
 	legacyPreservedRendererVersion = "goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved"
 )
 
-const selectStalePostsSQL = `SELECT id, markdown_source, rendered_html, renderer_version
+const selectInitialStalePostsSQL = `SELECT id, markdown_source, rendered_html, renderer_version
 FROM public.posts
 WHERE redacted_at IS NULL
   AND renderer_version <> $1
   AND renderer_version <> $2
-  AND ($3::bigint IS NULL OR id > $3)
+ORDER BY id
+LIMIT $3
+FOR UPDATE`
+
+const selectStalePostsAfterCursorSQL = `SELECT id, markdown_source, rendered_html, renderer_version
+FROM public.posts
+WHERE redacted_at IS NULL
+  AND renderer_version <> $1
+  AND renderer_version <> $2
+  AND id > $3
 ORDER BY id
 LIMIT $4
 FOR UPDATE`
+
+const selectInitialPreflightPostsSQL = `SELECT post.id,
+post.markdown_source,
+post.rendered_html,
+post.renderer_version,
+COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)
+FROM public.posts AS post
+ORDER BY post.id
+LIMIT $1`
+
+const selectPreflightPostsAfterCursorSQL = `SELECT post.id,
+post.markdown_source,
+post.rendered_html,
+post.renderer_version,
+COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)
+FROM public.posts AS post
+WHERE post.id > $1
+ORDER BY post.id
+LIMIT $2`
 
 const lockRendererStateSQL = `SELECT target_version, last_processed_post_id
 FROM public.content_renderer_state
@@ -245,15 +273,12 @@ func preflightBatch(ctx context.Context, database preflightDatabase, batchSize i
 			resultErr = errors.Join(resultErr, fmt.Errorf("rollback renderer preflight batch: %w", rollbackErr))
 		}
 	}()
-	rows, err := tx.Query(ctx, `SELECT post.id,
-post.markdown_source,
-post.rendered_html,
-post.renderer_version,
-COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)
-FROM public.posts AS post
-WHERE $1::bigint IS NULL OR post.id > $1
-ORDER BY post.id
-LIMIT $2`, afterID, int32(batchSize))
+	var rows pgx.Rows
+	if afterID == nil {
+		rows, err = tx.Query(ctx, selectInitialPreflightPostsSQL, int32(batchSize))
+	} else {
+		rows, err = tx.Query(ctx, selectPreflightPostsAfterCursorSQL, *afterID, int32(batchSize))
+	}
 	if err != nil {
 		return preflightBatchResult{}, fmt.Errorf("select renderer preflight rows: %w", err)
 	}
@@ -323,7 +348,12 @@ func runBatch(ctx context.Context, database database, batchSize int) (result Bat
 	if targetVersion != contentrender.RendererVersion {
 		return BatchResult{}, false, fmt.Errorf("renderer migration target does not match this release")
 	}
-	rows, err := tx.Query(ctx, selectStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, lastProcessedPostID, int32(batchSize))
+	var rows pgx.Rows
+	if lastProcessedPostID == nil {
+		rows, err = tx.Query(ctx, selectInitialStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, int32(batchSize))
+	} else {
+		rows, err = tx.Query(ctx, selectStalePostsAfterCursorSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, *lastProcessedPostID, int32(batchSize))
+	}
 	if err != nil {
 		return BatchResult{}, isRetryable(err), fmt.Errorf("select stale renderer rows: %w", err)
 	}

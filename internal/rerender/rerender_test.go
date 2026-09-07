@@ -59,6 +59,27 @@ func TestRunAcceptsMaximumBatchBoundary(t *testing.T) {
 	}
 }
 
+func TestSelectionSQLUsesDistinctInitialAndCursorShapes(t *testing.T) {
+	t.Parallel()
+
+	for name, sql := range map[string]string{
+		"initial mutation":  selectInitialStalePostsSQL,
+		"cursor mutation":   selectStalePostsAfterCursorSQL,
+		"initial preflight": selectInitialPreflightPostsSQL,
+		"cursor preflight":  selectPreflightPostsAfterCursorSQL,
+	} {
+		if strings.Contains(sql, "IS NULL OR") {
+			t.Fatalf("%s selection retained nullable-OR cursor predicate", name)
+		}
+	}
+	if strings.Contains(selectInitialStalePostsSQL, "id >") || strings.Contains(selectInitialPreflightPostsSQL, "id >") {
+		t.Fatal("initial selection unexpectedly requires a cursor")
+	}
+	if !strings.Contains(selectStalePostsAfterCursorSQL, "id > $3") || !strings.Contains(selectPreflightPostsAfterCursorSQL, "id > $1") {
+		t.Fatal("cursor selection does not expose a direct primary-key lower bound")
+	}
+}
+
 func TestPreflightRejectsInvalidBoundaries(t *testing.T) {
 	t.Parallel()
 
