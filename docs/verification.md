@@ -617,14 +617,15 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
   root body, and a visibility distribution where restricted activity cannot
   suppress older public rows or alter terminality;
 - activity 25/26 boundaries, strict equal-timestamp keysets, insertion,
-  deletion, and authority revocation between pages;
+  deletion, authority revocation between pages, and the closed absent-or-one-
+  cursor query grammar including unknown/duplicate/empty/overlength cases;
 - cursor exact-length/alphabet/re-encoding, integer endpoints, unknown key,
   tamper, constant-time comparison path, issue/key windows, expiry/future skew,
   audience role/group change, rotation overlap/removal, malformed keyring, and
   database-time authority across ordinary restart;
 - direct post canonical ID, primary-key-started authorization, projection
-  independence, no tree enumeration, and indistinguishable missing/deleted/
-  redacted/inaccessible `404` behavior; and
+  independence, no-query grammar, no tree enumeration, and indistinguishable
+  missing/deleted/redacted/inaccessible `404` behavior; and
 - full-page/HTMX parity, base path, navigation without JavaScript, keyboard/
   screen-reader semantics, `private, no-store`, 256-KiB envelope, and no partial
   response.

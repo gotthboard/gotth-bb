@@ -1590,6 +1590,13 @@ All three AN-02 routes render a complete full page or equivalent
 `#main-content` HTMX state and set `Cache-Control: private, no-store` on success
 and failure.
 
+`GET /activity` accepts either no raw query for the first page or exactly one
+nonempty decoded `cursor` key. Unknown/duplicate/empty keys, semicolon
+separators, malformed percent encoding, invalid UTF-8, NUL/control bytes, or a
+raw query over 256 bytes return the fixed `400` before session or database
+work. A terminal page is `200` with no continuation. Canonical first-page links
+have no query; continuation links contain only the strict cursor.
+
 `GET /posts/{postID}` accepts one canonical positive decimal int64. One
 primary-key-started query joins its topic, area, and author and applies the
 complete direct-read predicate before returning fields. Missing, deleted,
@@ -1597,6 +1604,8 @@ redacted, or inaccessible rows are the same fixed `404`. Search projection
 health is irrelevant to this direct read. Success renders only that post and
 authorized context; it never enumerates parents, descendants, siblings,
 totals, or a threaded-page ordinal.
+The direct-post route accepts no query string; any query returns fixed `400`
+before session or database work.
 
 ### 19.2 Authorization-first SQL
 
