@@ -22,8 +22,10 @@ Complete the AN-02-04 evidence boundary without changing production behavior.
 The admission harness preserves the smaller AN-02-02 checkpoint and adds one
 explicit million-post mode with the complete visibility, hidden, deleted,
 redacted, rare-term, author, and activity-skew distribution. It retains exact
-plans and measures database/process resources while two discovery statements
-coexist with an ordinary read and the production publication statement.
+plans, structurally rejects authorization or index drift inside the exact
+candidate fence, and measures database/process resources while two discovery
+statements coexist with an ordinary read and the production publication
+statement.
 
 Verification:
 

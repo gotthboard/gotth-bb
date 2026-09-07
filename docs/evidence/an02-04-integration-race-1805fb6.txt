@@ -1,0 +1,26 @@
+ok  	github.com/gotthboard/gotth-bb/cmd/forum	(cached)	coverage: 63.8% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/migrate	(cached)	coverage: 79.1% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/operator	(cached)	coverage: 90.8% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/package	(cached)	coverage: 89.1% of statements
+ok  	github.com/gotthboard/gotth-bb/deploy/container	(cached)	coverage: [no statements]
+ok  	github.com/gotthboard/gotth-bb/internal/administration	(cached)	coverage: 86.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/app	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/auth	(cached)	coverage: 97.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/buildinfo	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/config	(cached)	coverage: 99.7% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/discovery	(cached)	coverage: 88.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/forum	(cached)	coverage: 97.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/governance	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/httpui	(cached)	coverage: 74.3% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/migration	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/moderation	(cached)	coverage: 83.1% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/observability	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/policy	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/readiness	(cached)	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/releaseartifact	(cached)	coverage: 95.4% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/render	(cached)	coverage: 95.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/rerender	(cached)	coverage: 56.7% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/searchprojection	(cached)	coverage: 77.5% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/store	(cached)	coverage: 97.4% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/store/db	2.511s	coverage: 36.1% of statements
+ok  	github.com/gotthboard/gotth-bb/migrations	(cached)	coverage: 100.0% of statements

@@ -710,33 +710,52 @@ CLEAN on that same exact state before handoff.
 ### 19.4 AN-02 integrated admission result
 
 The exact executable and admission-methodology commit was
-`529f7cc0816c24ae0f3ae1eaadc625e8bb2c5afb`, tree
-`58e75e8c3844444c4472d46374cece1778986cdf`. Its deterministic source archive,
-with prefix `gotth-bb-529f7cc/`, has SHA-256
-`7fea68144e6c1b89923992f1611e82808df2388499fea604607eb9336e06f12b`.
+`1805fb655e05dcf6f7f9528d2fadbf8928b7ed5c`, tree
+`3913e200a0ea5e5dc1f7b33d1dcc3f4d6e966c19`. Its deterministic source archive,
+with prefix `gotth-bb-1805fb6/`, has SHA-256
+`559a3494969d3c52826e3d699f3795992a46bdddfe2e5e4934ab355827b730f8`.
 The designated `development` host used Go 1.26.6, Node 26.7.0, npm 12.0.2,
 PostgreSQL 17.10 image
 `sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193`,
 Caddy 2.11.4, and Chromium 151.0.7922.71.
 
+Exact command forms were:
+
+```text
+GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE=1 go test -mod=readonly -tags integration -run '^TestDiscoveryPlansOnPostgreSQL17$' -count=1 ./internal/store/db
+GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> GOTTH_BB_RUN_AN02_ADMISSION_EVIDENCE=1 go test -mod=readonly -tags integration -run '^TestDiscoveryPlansOnPostgreSQL17$' -count=1 -v ./internal/store/db
+PATH=<pinned-node-26.7.0-and-npm-12.0.2>:$PATH make verify
+GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> go test -mod=readonly -tags integration -p=2 -race -covermode=atomic ./...
+GOTTH_BB_BROWSER_CADDY=1 go test -mod=readonly -tags integration -run '^TestDiscoveryBrowserThroughCaddy$' -count=1 -v ./internal/httpui
+go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 --commit 1805fb655e05dcf6f7f9528d2fadbf8928b7ed5c --goos linux --goarch amd64 --output <fresh-release-a>
+go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 --commit 1805fb655e05dcf6f7f9528d2fadbf8928b7ed5c --goos linux --goarch amd64 --output <fresh-release-b>
+diff -ru <fresh-release-a> <fresh-release-b>
+git archive --format=tar --prefix=gotth-bb-1805fb6/ 1805fb655e05dcf6f7f9528d2fadbf8928b7ed5c | gzip -n > gotth-bb-1805fb6.tar.gz
+```
+
+The PostgreSQL DSN was loopback-only and test-owned. Its disposable credential
+and absolute scratch paths are deliberately redacted; no production secret or
+endpoint was used.
+
 The generated corpus contained exactly 100,000 topics and 1,000,000 posts:
 33,333 public, 33,334 authenticated, and 33,333 group topics; 990 hidden and
 99 deleted topics; 1,978 deleted and 991 redacted posts; 100 rare-term topics,
 1,003 rare-term posts, and 10,000 distinct post timestamps. Population and
-analysis took 32.834 seconds. The resulting database was 596,850,355 bytes;
+analysis took 31.546 seconds. The resulting database was 596,850,355 bytes;
 topics consumed 49,192,960 bytes and posts 538,591,232 bytes. The complete
 custom- and forced-generic `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans
-retained the authorized 51-row search fence, both author indexes for custom
-author shapes, topic GIN for the custom rare-term shape, the strict activity
-tuple condition on `posts_activity_current_idx`, and the direct-post start on
-`posts_pkey`.
+retained the authorized 51-row search fence with its area/topic/post/group
+filters structurally beneath the exact candidate node, both author indexes for
+custom author shapes, both topic and post GIN indexes for the custom rare-term
+shape, the strict activity tuple condition on `posts_activity_current_idx`, and
+the direct-post start on `posts_pkey`.
 
 The same run overlapped exact search and activity statements with an ordinary
 topic read and the production topic/first-post publication statement. They
-completed in 1.707 seconds, 17.514 milliseconds, 6.840 milliseconds, and
-38.245 milliseconds respectively. Connection count returned from one to one,
-cancellation failed closed, process RSS rose from 22,908 KiB to 24,264 KiB,
-and PostgreSQL reported nine temporary files totaling 294,707,246 bytes after
+completed in 1.700 seconds, 36.434 milliseconds, 6.282 milliseconds, and
+62.233 milliseconds respectively. Connection count returned from one to one,
+cancellation failed closed, process RSS rose from 17,776 KiB to 21,068 KiB,
+and PostgreSQL reported nine temporary files totaling 294,707,167 bytes after
 all plans and coexistence work. These are observations on the evidence host,
 not universal latency or capacity promises.
 
@@ -745,21 +764,21 @@ custody, gofmt, vet, repository-wide race/coverage, full PostgreSQL 17
 integration/race including migration and readiness, browser-through-Caddy,
 secret/log-redaction, clean-tree and `git fsck --no-dangling` checks. Two
 independent Linux/amd64 package runs produced byte-identical artifacts with
-SHA-256 `407a936b9cb58d0e85c9e3f6031d3e147beb4b0386ad2886d04f20b99c6a0bf2`.
+SHA-256 `36d7ce67aa7b3392d4ec33ff67b69dfdcd264b6845f869a91a85192c8173bb0a`.
 
 Retained transcripts:
 
-- [`an02-04-admission-529f7cc.txt`](evidence/an02-04-admission-529f7cc.txt),
-  SHA-256 `dbd697850ee7ecc66c8f002e2afb7a614986bac7cd7703af94efffd6d7b7e0f5`;
-- [`an02-04-verify-529f7cc.txt`](evidence/an02-04-verify-529f7cc.txt),
-  SHA-256 `a28896aa4eec99acf26cb71f92744379f27c7d6d2f6feeeec74e310b017bcbe9`;
-- [`an02-04-integration-race-529f7cc.txt`](evidence/an02-04-integration-race-529f7cc.txt),
-  SHA-256 `d9d6f731c2abf02b47dbc3885f8aca1f2af43885c09f634bbef03e0421613666`;
-- [`an02-04-browser-529f7cc.txt`](evidence/an02-04-browser-529f7cc.txt),
-  SHA-256 `70fb58359507f5ae7da300e20707475e9ef7ab3c538c7618c660532caf21911e`;
+- [`an02-04-admission-1805fb6.txt`](evidence/an02-04-admission-1805fb6.txt),
+  SHA-256 `eab671bff1a46049e5acbd02df8fd3e59f65a01cd420dba7bf336427f7c10be0`;
+- [`an02-04-verify-1805fb6.txt`](evidence/an02-04-verify-1805fb6.txt),
+  SHA-256 `c0a311e50513c964af6e8730b79c76664b8f026e8423f6dddfdb5c281381028f`;
+- [`an02-04-integration-race-1805fb6.txt`](evidence/an02-04-integration-race-1805fb6.txt),
+  SHA-256 `a85b5c1ddd8cc233e21a0eede4404e5ec4c74516a30fe21d188f4990659ca2c1`;
+- [`an02-04-browser-1805fb6.txt`](evidence/an02-04-browser-1805fb6.txt),
+  SHA-256 `5d35fc7db1313cc10a63e97fe3989545a20a96451bcc63089038a3ed8b66760e`;
   and
-- [`an02-04-release-529f7cc.txt`](evidence/an02-04-release-529f7cc.txt),
-  SHA-256 `c4b5ddb8f190b91ed44df9e1a4b1cb5ee16be6210a1d6d09cdc83e06a08e992a`.
+- [`an02-04-release-1805fb6.txt`](evidence/an02-04-release-1805fb6.txt),
+  SHA-256 `1cfed2b585258c1de53eaad4c975a629a50134f52b1ec6f1adeb0e55bbfcd70b`.
 
 The evidence contains no universal performance guarantee. The generated
 corpus and release artifacts were disposable verification state; the

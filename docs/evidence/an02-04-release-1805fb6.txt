@@ -1,0 +1,6 @@
+release artifact=/tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz sha256=36d7ce67aa7b3392d4ec33ff67b69dfdcd264b6845f869a91a85192c8173bb0a checksums=/tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-a/SHA256SUMS
+release artifact=/tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz sha256=36d7ce67aa7b3392d4ec33ff67b69dfdcd264b6845f869a91a85192c8173bb0a checksums=/tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-b/SHA256SUMS
+3ba82bb983233956be62484a14a8c534be3315a7d910b17dde1e96857a7343cd  /tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-a/SHA256SUMS
+36d7ce67aa7b3392d4ec33ff67b69dfdcd264b6845f869a91a85192c8173bb0a  /tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+3ba82bb983233956be62484a14a8c534be3315a7d910b17dde1e96857a7343cd  /tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-b/SHA256SUMS
+36d7ce67aa7b3392d4ec33ff67b69dfdcd264b6845f869a91a85192c8173bb0a  /tmp/gotth-bb-an02-04-admission.5ESQgi/release-1805fb6-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
