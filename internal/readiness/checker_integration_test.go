@@ -165,13 +165,15 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 	var rendererOwner string
 	var rendererSelect, rendererInsert, rendererUpdate, rendererDelete bool
 	if err := connection.QueryRow(ctx, `SELECT
-table_owner,
+owner.rolname,
 pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'SELECT'),
 pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'INSERT'),
 pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'UPDATE'),
 pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'DELETE')
-FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name = 'content_renderer_state'`, readinessRestrictedRole).Scan(
+FROM pg_catalog.pg_class AS renderer_state
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = renderer_state.relnamespace
+JOIN pg_catalog.pg_roles AS owner ON owner.oid = renderer_state.relowner
+WHERE namespace.nspname = 'public' AND renderer_state.relname = 'content_renderer_state'`, readinessRestrictedRole).Scan(
 		&rendererOwner, &rendererSelect, &rendererInsert, &rendererUpdate, &rendererDelete,
 	); err != nil {
 		t.Fatalf("inspect renderer-state ownership and privileges: %v", err)
