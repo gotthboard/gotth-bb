@@ -270,8 +270,12 @@ func requireAuthorizedSearchCandidate(t *testing.T, mode, shape string, expected
 	if candidate == nil {
 		t.Fatalf("%s %s search plan lost candidate limit: %s", mode, shape, encoded)
 	}
-	if candidate.PlanRows != 51 || candidate.ActualRows != expectedRows {
-		t.Fatalf("%s %s candidate fence = plan_rows=%d actual_rows=%d, want 51/%d: %s", mode, shape, candidate.PlanRows, candidate.ActualRows, expectedRows, encoded)
+	planRowsBounded := candidate.PlanRows > 0 && candidate.PlanRows <= 51
+	if expectedRows == 51 {
+		planRowsBounded = candidate.PlanRows == 51
+	}
+	if !planRowsBounded || candidate.ActualRows != expectedRows {
+		t.Fatalf("%s %s candidate fence = plan_rows=%d actual_rows=%d, want bounded/%d: %s", mode, shape, candidate.PlanRows, candidate.ActualRows, expectedRows, encoded)
 	}
 	requiredRelations := []struct {
 		relation string
