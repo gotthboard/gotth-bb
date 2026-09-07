@@ -328,8 +328,8 @@ required sequence is:
    and lock duration grow with population and are not batch-bounded.
    The command emits no per-batch progress: `content_renderer_state` and the
    post renderer markers are the canonical restart record. The measured
-   100-row dense-task compatibility fixture lasted about 20.4 seconds with a
-   sampled roughly 79 MiB test-process peak RSS on the development host; it is
+   100-row dense-task compatibility fixture lasted about 20.5 seconds with a
+   sampled roughly 77 MiB test-process peak RSS on the development host; it is
    not claimed as a universal worst case. Those selected post rows remain
    locked for the transaction. Run this only while the application is stopped
    and drained. Cancellation is checked between rows and renderer phases,
