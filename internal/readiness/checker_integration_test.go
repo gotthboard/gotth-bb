@@ -4,11 +4,13 @@ package readiness
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
+	"github.com/gotthboard/gotth-bb/internal/rerender"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -64,6 +66,12 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 			t.Errorf("close readiness connection: %v", err)
 		}
 	})
+	// The release-owned migrate command always runs this completion phase after
+	// applying schema migrations, including on an empty fresh database. That
+	// validates the NOT VALID renderer constraint before readiness can pass.
+	if err := rerender.Run(ctx, connection, io.Discard, rerender.MaximumBatchSize); err != nil {
+		t.Fatalf("rerender.Run() returned error: %v", err)
+	}
 	release, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
 		t.Fatalf("migration.NewReleaseVerifier() returned error: %v", err)
@@ -80,7 +88,44 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if _, err := connection.Exec(ctx, "INSERT INTO public.users (display_name, role) VALUES ('Readiness Administrator', 'administrator')"); err != nil {
 		t.Fatalf("insert readiness administrator: %v", err)
 	}
+	var liveConstraintDefinition, liveSizeDefinition string
+	if err := connection.QueryRow(ctx, `SELECT
+(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'),
+(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size')`).Scan(&liveConstraintDefinition, &liveSizeDefinition); err != nil {
+		t.Fatalf("read renderer constraint definitions: %v", err)
+	}
+	if liveConstraintDefinition != rendererConstraintDefinition {
+		t.Fatalf("renderer constraint definition = %q, want %q", liveConstraintDefinition, rendererConstraintDefinition)
+	}
+	if liveSizeDefinition != renderedSizeConstraintDefinition {
+		t.Fatalf("rendered-size constraint definition = %q, want %q", liveSizeDefinition, renderedSizeConstraintDefinition)
+	}
 	if err := checker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected exact release and governance state: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_renderer_version_current,
+ADD CONSTRAINT posts_renderer_version_current CHECK (true)`); err != nil {
+		t.Fatalf("replace renderer constraint with same-name impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted a same-name validated CHECK (true) renderer constraint")
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_renderer_version_current,
+ADD CONSTRAINT posts_renderer_version_current CHECK (
+    renderer_version = 'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2'
+	OR (renderer_version = 'goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved' AND redacted_at IS NULL)
+    OR (renderer_version = 'moderation-redaction-v1' AND redacted_at IS NOT NULL)
+)`); err != nil {
+		t.Fatalf("restore exact renderer constraint: %v", err)
+	}
+	if err := checker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored exact renderer constraint: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_rendered_size,
+ADD CONSTRAINT posts_rendered_size CHECK (true)`); err != nil {
+		t.Fatalf("replace rendered-size constraint with same-name impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted a same-name validated CHECK (true) rendered-size constraint")
 	}
 }

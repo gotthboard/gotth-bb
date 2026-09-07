@@ -13,6 +13,11 @@ import (
 
 const probeTimeout = 2 * time.Second
 
+const (
+	rendererConstraintDefinition     = "CHECK (((renderer_version = 'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2'::text) OR ((renderer_version = 'goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved'::text) AND (redacted_at IS NULL)) OR ((renderer_version = 'moderation-redaction-v1'::text) AND (redacted_at IS NOT NULL))))"
+	renderedSizeConstraintDefinition = "CHECK ((octet_length(rendered_html) <= 262144))"
+)
+
 const governanceInvariantSQL = `SELECT
     (SELECT count(*) = 1 FROM public.governance_state)
     AND EXISTS (
@@ -42,7 +47,23 @@ const governanceInvariantSQL = `SELECT
         WHERE constrained_schema.nspname = 'public'
           AND constrained_table.relname = 'posts'
           AND constraint_state.conname = 'posts_renderer_version_current'
+          AND constraint_state.contype = 'c'
           AND constraint_state.convalidated
+          AND pg_catalog.pg_get_constraintdef(constraint_state.oid, false) = $3::text
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_state
+        JOIN pg_catalog.pg_class AS constrained_table
+          ON constrained_table.oid = constraint_state.conrelid
+        JOIN pg_catalog.pg_namespace AS constrained_schema
+          ON constrained_schema.oid = constrained_table.relnamespace
+        WHERE constrained_schema.nspname = 'public'
+          AND constrained_table.relname = 'posts'
+          AND constraint_state.conname = 'posts_rendered_size'
+          AND constraint_state.contype = 'c'
+          AND constraint_state.convalidated
+          AND pg_catalog.pg_get_constraintdef(constraint_state.oid, false) = $4::text
     )`
 
 type database interface {
@@ -104,7 +125,14 @@ func (checker *Checker) Check(ctx context.Context) error {
 		return fmt.Errorf("readiness clock returned zero time")
 	}
 	var valid bool
-	if err := checker.database.QueryRow(probeContext, governanceInvariantSQL, observedAt, contentrender.RendererVersion).Scan(&valid); err != nil {
+	if err := checker.database.QueryRow(
+		probeContext,
+		governanceInvariantSQL,
+		observedAt,
+		contentrender.RendererVersion,
+		rendererConstraintDefinition,
+		renderedSizeConstraintDefinition,
+	).Scan(&valid); err != nil {
 		return fmt.Errorf("query governance readiness: %w", err)
 	}
 	if !valid {

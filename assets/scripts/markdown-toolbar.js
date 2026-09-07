@@ -5,7 +5,6 @@
     bold: ["**", "text"],
     italic: ["*", "text"],
     strike: ["~~", "text"],
-    "inline-code": ["`", "code"],
   });
 
   // Complexity: for n source bytes and m selected bytes, time and returned
@@ -46,11 +45,85 @@
     const lineEnd = nextBreak === -1 ? source.length : nextBreak;
     const lines = source.slice(lineStart, lineEnd).split("\n");
     const removing = lines.every((line) => matches.test(line));
-    const changed = lines.map((line, index) => removing ? line.replace(matches, "") : prefix(index) + line).join("\n");
+    const edits = [];
+    let originalOffset = lineStart;
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const match = removing ? line.match(matches) : null;
+      edits.push({
+        at: originalOffset,
+        remove: match ? match[0].length : 0,
+        insert: removing ? "" : prefix(index),
+      });
+      originalOffset += line.length + 1;
+    }
+    let changed = "";
+    let copiedThrough = lineStart;
+    for (const edit of edits) {
+      changed += source.slice(copiedThrough, edit.at) + edit.insert;
+      copiedThrough = edit.at + edit.remove;
+    }
+    changed += source.slice(copiedThrough, lineEnd);
+
+    const mapped = (position) => {
+      let delta = 0;
+      for (const edit of edits) {
+        if (position < edit.at) break;
+        if (position <= edit.at + edit.remove) {
+          return edit.at + delta + edit.insert.length;
+        }
+        delta += edit.insert.length - edit.remove;
+      }
+      return position + delta;
+    };
     return {
       value: source.slice(0, lineStart) + changed + source.slice(lineEnd),
-      start: lineStart,
-      end: lineStart + changed.length,
+      start: mapped(start),
+      end: mapped(end),
+    };
+  }
+
+  function maximumBacktickRun(value) {
+    let maximum = 0;
+    let current = 0;
+    for (const character of value) {
+      if (character === "`") {
+        current += 1;
+        maximum = Math.max(maximum, current);
+      } else {
+        current = 0;
+      }
+    }
+    return maximum;
+  }
+
+  // Inline code always uses padding around a nonblank selection. CommonMark
+  // removes exactly that padding while preserving any spaces or backticks the
+  // author selected. The delimiter is longer than every selected run.
+  function inlineCode(source, start, end) {
+    const selected = source.slice(start, end);
+    if (start > 1 && source[start - 1] === " " && source[end] === " ") {
+      let left = start - 2;
+      while (left >= 0 && source[left] === "`") left -= 1;
+      let right = end + 1;
+      while (right < source.length && source[right] === "`") right += 1;
+      const leftLength = start - 2 - left;
+      const rightLength = right - end - 1;
+      if (leftLength > 0 && leftLength === rightLength) {
+        return {
+          value: source.slice(0, left + 1) + selected + source.slice(right),
+          start: left + 1,
+          end: left + 1 + selected.length,
+        };
+      }
+    }
+    const content = selected || "code";
+    const marker = "`".repeat(maximumBacktickRun(content) + 1);
+    const inserted = marker + " " + content + " " + marker;
+    return {
+      value: source.slice(0, start) + inserted + source.slice(end),
+      start: start + marker.length + 1,
+      end: start + marker.length + 1 + content.length,
     };
   }
 
@@ -58,14 +131,27 @@
   // space are O(n+m), Omega(n), and tight Theta(n+m); no I/O or DOM work occurs.
   function fencedCode(source, start, end) {
     const selected = source.slice(start, end);
-    if (start >= 4 && source.slice(start - 4, start) === "```\n" && source.slice(end, end + 4) === "\n```") {
-      return { value: source.slice(0, start - 4) + selected + source.slice(end + 4), start: start - 4, end: end - 4 };
+    if (start >= 4 && source[start - 1] === "\n" && source[end] === "\n") {
+      let left = start - 2;
+      while (left >= 0 && source[left] === "`") left -= 1;
+      let right = end + 1;
+      while (right < source.length && source[right] === "`") right += 1;
+      const leftLength = start - 1 - (left + 1);
+      const rightLength = right - (end + 1);
+      if (leftLength >= 3 && leftLength === rightLength) {
+        return {
+          value: source.slice(0, left + 1) + selected + source.slice(right),
+          start: left + 1,
+          end: left + 1 + selected.length,
+        };
+      }
     }
     const content = selected || "code";
+    const marker = "`".repeat(Math.max(3, maximumBacktickRun(content) + 1));
     return {
-      value: source.slice(0, start) + "```\n" + content + "\n```" + source.slice(end),
-      start: start + 4,
-      end: start + 4 + content.length,
+      value: source.slice(0, start) + marker + "\n" + content + "\n" + marker + source.slice(end),
+      start: start + marker.length + 1,
+      end: start + marker.length + 1 + content.length,
     };
   }
 
@@ -114,6 +200,8 @@
       return wrapInline(source, start, end, ...inlineActions[action]);
     }
     switch (action) {
+      case "inline-code":
+        return inlineCode(source, start, end);
       case "quote":
         return prefixLines(source, start, end, /^> /, () => "> ");
       case "unordered-list":

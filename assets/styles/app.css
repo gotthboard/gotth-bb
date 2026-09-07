@@ -22,6 +22,38 @@
     overflow-wrap: anywhere;
   }
 
+  .rendered-post h1,
+  .rendered-post h2,
+  .rendered-post h3,
+  .rendered-post h4,
+  .rendered-post h5,
+  .rendered-post h6 {
+    font-weight: 700;
+    line-height: 1.25;
+  }
+
+  .rendered-post h1 {
+    font-size: 1.5rem;
+  }
+
+  .rendered-post h2 {
+    font-size: 1.375rem;
+  }
+
+  .rendered-post h3 {
+    font-size: 1.25rem;
+  }
+
+  .rendered-post h4,
+  .rendered-post h5,
+  .rendered-post h6 {
+    font-size: 1.125rem;
+  }
+
+  .rendered-post hr {
+    border-color: var(--color-slate-700);
+  }
+
   .rendered-post pre,
   .rendered-post table {
     display: block;

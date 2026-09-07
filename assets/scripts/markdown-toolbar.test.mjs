@@ -22,24 +22,50 @@ test("inline actions preserve and toggle selections", () => {
   result = transform("", 0, 0, "italic");
   assert.deepEqual({ ...result }, { value: "*text*", start: 1, end: 5 });
   assert.equal(transform("gone", 0, 4, "strike").value, "~~gone~~");
-  assert.equal(transform("code", 0, 4, "inline-code").value, "`code`");
+  result = transform("code", 0, 4, "inline-code");
+  assert.deepEqual({ ...result }, { value: "` code `", start: 2, end: 6 });
+  assert.deepEqual({ ...transform(result.value, result.start, result.end, "inline-code") }, { value: "code", start: 0, end: 4 });
 });
 
-test("line actions handle multiline selections and toggle", () => {
+test("line actions preserve exact caret and selection coordinates", () => {
   const { transform } = load();
-  for (const [action, want] of [
-    ["quote", "> one\n> two"],
-    ["unordered-list", "- one\n- two"],
-    ["ordered-list", "1. one\n2. two"],
-    ["task-list", "- [ ] one\n- [ ] two"],
+  for (const [action, prefixOne, prefixTwo] of [
+    ["quote", "> ", "> "],
+    ["unordered-list", "- ", "- "],
+    ["ordered-list", "1. ", "2. "],
+    ["task-list", "- [ ] ", "- [ ] "],
   ]) {
-    const added = transform("one\ntwo", 0, 7, action);
-    assert.equal(added.value, want);
-    assert.equal(transform(added.value, added.start, added.end, action).value, "one\ntwo");
-  }
+    let added = transform("one\ntwo", 1, 6, action);
+    assert.deepEqual({ ...added }, {
+      value: prefixOne + "one\n" + prefixTwo + "two",
+      start: prefixOne.length + 1,
+      end: prefixOne.length + 4 + prefixTwo.length + 2,
+    });
+    assert.deepEqual({ ...transform(added.value, added.start, added.end, action) }, { value: "one\ntwo", start: 1, end: 6 });
 
-  assert.equal(transform("one\ntwo", 0, 4, "quote").value, "> one\ntwo");
-  assert.equal(transform("one\ntwo", 4, 4, "quote").value, "one\n> two");
+    added = transform("one", 1, 1, action);
+    assert.deepEqual({ ...added }, { value: prefixOne + "one", start: prefixOne.length + 1, end: prefixOne.length + 1 });
+
+    added = transform("", 0, 0, action);
+    assert.deepEqual({ ...added }, { value: prefixOne, start: prefixOne.length, end: prefixOne.length });
+
+    added = transform("one\ntwo", 0, 4, action);
+    assert.deepEqual({ ...added }, { value: prefixOne + "one\ntwo", start: prefixOne.length, end: prefixOne.length + 4 });
+
+    added = transform("before one after", 8, 11, action);
+    assert.deepEqual({ ...added }, {
+      value: prefixOne + "before one after",
+      start: prefixOne.length + 8,
+      end: prefixOne.length + 11,
+    });
+
+    const prefixed = prefixOne + "one\n" + prefixTwo + "two";
+    added = transform(prefixed, prefixOne.length + 1, prefixOne.length + 4 + prefixTwo.length + 2, action);
+    assert.deepEqual({ ...added }, { value: "one\ntwo", start: 1, end: 6 });
+
+    added = transform("zero\n" + prefixOne + "one", 5 + prefixOne.length + 1, 5 + prefixOne.length + 1, action);
+    assert.deepEqual({ ...added }, { value: "zero\none", start: 6, end: 6 });
+  }
 });
 
 test("block, link, and table insertions keep useful edit selections", () => {
@@ -47,6 +73,15 @@ test("block, link, and table insertions keep useful edit selections", () => {
   let result = transform("line one\nline two", 0, 17, "fenced-code");
   assert.equal(result.value, "```\nline one\nline two\n```");
   assert.equal(transform(result.value, result.start, result.end, "fenced-code").value, "line one\nline two");
+
+  result = transform("a`b", 0, 3, "inline-code");
+  assert.deepEqual({ ...result }, { value: "`` a`b ``", start: 3, end: 6 });
+  assert.deepEqual({ ...transform(result.value, result.start, result.end, "inline-code") }, { value: "a`b", start: 0, end: 3 });
+
+  result = transform("before\n```\nafter", 0, 16, "fenced-code");
+  assert.equal(result.value, "````\nbefore\n```\nafter\n````");
+  assert.equal(result.value.slice(result.start, result.end), "before\n```\nafter");
+  assert.deepEqual({ ...transform(result.value, result.start, result.end, "fenced-code") }, { value: "before\n```\nafter", start: 0, end: 16 });
 
   result = transform("label", 0, 5, "link");
   assert.equal(result.value, "[label](https://example.org)");

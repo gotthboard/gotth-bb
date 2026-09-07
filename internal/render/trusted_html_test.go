@@ -11,6 +11,7 @@ func TestSanitizeHTMLAllowsDocumentedMarkup(t *testing.T) {
 	t.Parallel()
 
 	raw := `<p>Hello <em>careful</em> <strong>world</strong> 👋</p>` +
+		`<h1>one</h1><h2>two</h2><h3>three</h3><h4>four</h4><h5>five</h5><h6>six</h6><hr>` +
 		`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 		`<blockquote>quote</blockquote><pre><code>if x &lt; y</code></pre>` +
 		`<p><a href="/bb/topics/7">local</a> <a href="https://example.org/read">external</a><br>done</p>` +
@@ -18,6 +19,7 @@ func TestSanitizeHTMLAllowsDocumentedMarkup(t *testing.T) {
 		`<input disabled="" type="checkbox"><input checked="" disabled="" type="checkbox">`
 
 	want := `<p>Hello <em>careful</em> <strong>world</strong> 👋</p>` +
+		`<h1>one</h1><h2>two</h2><h3>three</h3><h4>four</h4><h5>five</h5><h6>six</h6><hr>` +
 		`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 		`<blockquote>quote</blockquote><pre><code>if x &lt; y</code></pre>` +
 		`<p><a href="/bb/topics/7" rel="nofollow noreferrer">local</a> <a href="https://example.org/read" rel="nofollow noreferrer">external</a><br>done</p>` +
@@ -33,12 +35,13 @@ func TestSanitizeHTMLStripsExecutableAndUndocumentedMarkup(t *testing.T) {
 	t.Parallel()
 
 	raw := `<script>alert(1)</script><style>body{display:none}</style>` +
+		`<h1 id="x" style="color:red" onclick="alert(0)">heading</h1><hr id="rule" style="display:none">` +
 		`<p id="x" class="y" style="color:red" onclick="alert(2)">safe` +
 		`<img src="https://example.org/tracker.png"><iframe src="https://example.org"></iframe>` +
 		`<table style="color:red" onclick="alert(3)"><tr><td colspan="2">cell</td></tr></table>` +
 		`<input type="text" disabled="" name="stolen"><input type="checkbox" onclick="alert(4)"></p>`
 
-	if got, want := SanitizeHTML(raw).html, `<p>safe<table><tr><td>cell</td></tr></table></p>`; got != want {
+	if got, want := SanitizeHTML(raw).html, `<h1>heading</h1><hr><p>safe<table><tr><td>cell</td></tr></table></p>`; got != want {
 		t.Fatalf("sanitized HTML = %q, want %q", got, want)
 	}
 }
@@ -95,6 +98,16 @@ func TestSanitizeHTMLRestrictsLinkSchemes(t *testing.T) {
 
 	if got := SanitizeHTML(raw).html; got != want {
 		t.Fatalf("sanitized HTML = %q, want %q", got, want)
+	}
+}
+
+func TestSanitizeHTMLPreservesEscapedLinkQueryExactly(t *testing.T) {
+	t.Parallel()
+
+	raw := `<p><a href="https://example.org/a?x=1&amp;y=2">https://example.org/a?x=1&amp;y=2</a></p>`
+	want := `<p><a href="https://example.org/a?x=1&amp;y=2" rel="nofollow noreferrer">https://example.org/a?x=1&amp;y=2</a></p>`
+	if got := SanitizeHTML(raw).html; got != want {
+		t.Fatalf("sanitized escaped query = %q, want %q", got, want)
 	}
 }
 

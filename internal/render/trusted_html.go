@@ -10,7 +10,10 @@ import (
 	"golang.org/x/net/html"
 )
 
-var trustedHTMLPolicy = newTrustedHTMLPolicy()
+var (
+	trustedHTMLPolicy = newTrustedHTMLPolicy()
+	legacyHTMLPolicy  = newLegacyHTMLPolicy()
+)
 
 // TrustedHTML is HTML that has crossed the sole persisted-content sanitizer
 // boundary. Its representation is private so arbitrary strings cannot opt out
@@ -30,6 +33,13 @@ func newTrustedHTMLPolicy() *bluemonday.Policy {
 	policy := bluemonday.NewPolicy()
 	policy.AllowElements(
 		"p",
+		"h1",
+		"h2",
+		"h3",
+		"h4",
+		"h5",
+		"h6",
+		"hr",
 		"em",
 		"strong",
 		"ul",
@@ -57,6 +67,24 @@ func newTrustedHTMLPolicy() *bluemonday.Policy {
 	policy.RequireNoFollowOnLinks(true)
 	policy.RequireNoReferrerOnLinks(true)
 	return policy
+}
+
+// newLegacyHTMLPolicy reconstructs the exact admitted p1 sanitizer so the
+// release migration can verify that a compatibility row preserves authentic
+// p1 output rather than blessing arbitrary persisted HTML.
+func newLegacyHTMLPolicy() *bluemonday.Policy {
+	policy := bluemonday.NewPolicy()
+	policy.AllowElements("p", "em", "strong", "ul", "ol", "li", "a", "blockquote", "pre", "code", "br")
+	policy.AllowAttrs("href").OnElements("a")
+	policy.AllowRelativeURLs(true)
+	policy.AllowURLSchemes("http", "https")
+	policy.RequireNoFollowOnLinks(true)
+	policy.RequireNoReferrerOnLinks(true)
+	return policy
+}
+
+func sanitizeLegacyHTML(raw string) string {
+	return legacyHTMLPolicy.Sanitize(raw)
 }
 
 // SanitizeHTML converts arbitrary persisted renderer output into the only type
@@ -90,12 +118,9 @@ func filterTaskListInputs(raw string) string {
 		}
 		if tokenType == html.StartTagToken || tokenType == html.SelfClosingTagToken {
 			rawToken := tokenizer.Raw()
-			var rawInput []byte
-			if len(rawToken) >= len("<input") && bytes.EqualFold(rawToken[:len("<input")], []byte("<input")) {
-				rawInput = append(rawInput, rawToken...)
-			}
-			token := tokenizer.Token()
-			if token.Data == "input" {
+			if isRawInputTag(rawToken) {
+				rawInput := append([]byte(nil), rawToken...)
+				token := tokenizer.Token()
 				if !containsASCIIUpper(rawInput) && validTaskListInput(token.Attr) {
 					output.Write(rawInput)
 				}
@@ -103,6 +128,26 @@ func filterTaskListInputs(raw string) string {
 			}
 		}
 		output.Write(tokenizer.Raw())
+	}
+}
+
+// isRawInputTag identifies an exact input tag spelling without asking the
+// tokenizer to decode attributes. Token() may normalize the tokenizer's raw
+// buffer, so non-input tags must bypass it to preserve entity spelling for the
+// real sanitizer.
+func isRawInputTag(raw []byte) bool {
+	const nameLength = len("input")
+	if len(raw) < 1+nameLength || raw[0] != '<' || !bytes.EqualFold(raw[1:1+nameLength], []byte("input")) {
+		return false
+	}
+	if len(raw) == 1+nameLength {
+		return true
+	}
+	switch raw[1+nameLength] {
+	case ' ', '\t', '\n', '\r', '\f', '/', '>':
+		return true
+	default:
+		return false
 	}
 }
 

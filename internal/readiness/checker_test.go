@@ -3,6 +3,7 @@ package readiness
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -59,8 +60,12 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 	if migrationCalls != 1 || !database.called || database.query != governanceInvariantSQL {
 		t.Fatalf("calls = (migrations %d, database %t, query %q)", migrationCalls, database.called, database.query)
 	}
-	if len(database.arguments) != 2 || database.arguments[0] != observedAt.UTC() || database.arguments[1] != contentrender.RendererVersion {
-		t.Fatalf("query arguments = %+v, want UTC observation time and renderer version", database.arguments)
+	if len(database.arguments) != 4 || database.arguments[0] != observedAt.UTC() || database.arguments[1] != contentrender.RendererVersion ||
+		database.arguments[2] != rendererConstraintDefinition || database.arguments[3] != renderedSizeConstraintDefinition {
+		t.Fatalf("query arguments = %+v, want UTC observation time, renderer version, and exact constraint definitions", database.arguments)
+	}
+	if want := fmt.Sprintf("CHECK ((octet_length(rendered_html) <= %d))", contentrender.MaximumRenderedHTMLBytes); renderedSizeConstraintDefinition != want {
+		t.Fatalf("rendered-size readiness definition = %q, want %q", renderedSizeConstraintDefinition, want)
 	}
 }
 

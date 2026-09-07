@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -18,9 +19,14 @@ import (
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/microcosm-cc/bluemonday"
+	"github.com/yuin/goldmark"
 )
 
-const rerenderTestDatabase = "gotth_bb_alpha3_rerender_test"
+const (
+	rerenderTestDatabase            = "gotth_bb_alpha3_rerender_test"
+	rerenderPerformanceTestDatabase = "gotth_bb_alpha3_rerender_performance_test"
+)
 
 type failingWriter struct{}
 
@@ -84,7 +90,7 @@ func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("connect renderer contention probe: %v", err)
 	}
 	t.Cleanup(func() { _ = contentionConnection.Close(context.Background()) })
-	var userID, areaID, topicID, rootID, replyID, currentID int64
+	var userID, areaID, topicID, rootID, replyID, currentID, denseTaskID, denseTableID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Renderer owner', 'administrator') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatalf("insert renderer owner: %v", err)
 	}
@@ -98,16 +104,31 @@ func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 	if err := tx.QueryRow(ctx, `SELECT nextval(pg_get_serial_sequence('public.topics', 'id')),
 nextval(pg_get_serial_sequence('public.posts', 'id')),
 nextval(pg_get_serial_sequence('public.posts', 'id')),
-nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, &replyID, &currentID); err != nil {
+nextval(pg_get_serial_sequence('public.posts', 'id')),
+nextval(pg_get_serial_sequence('public.posts', 'id')),
+nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, &replyID, &currentID, &denseTaskID, &denseTableID); err != nil {
 		t.Fatalf("allocate renderer fixture identifiers: %v", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number) VALUES ($1, $2, $3, 'Renderer topic', $4, $5, 2, 4)`, topicID, areaID, userID, rootID, currentID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number) VALUES ($1, $2, $3, 'Renderer topic', $4, $5, 4, 6)`, topicID, areaID, userID, rootID, denseTableID); err != nil {
 		t.Fatalf("insert renderer topic: %v", err)
 	}
+	denseTasks := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
+	tableHeader := "|a|b|c|d|\n|-|-|-|-|\n"
+	tableRow := "|x|x|x|x|\n"
+	denseTable := tableHeader + strings.Repeat(tableRow, (contentrender.MaximumMarkdownBytes-len(tableHeader))/len(tableRow))
+	rootLegacyHTML := exactLegacyHTML(t, "~~root~~")
+	replyLegacyHTML := exactLegacyHTML(t, "- [x] reply")
+	denseTaskLegacyHTML := exactLegacyHTML(t, denseTasks)
+	denseTableLegacyHTML := exactLegacyHTML(t, denseTable)
 	if _, err := tx.Exec(ctx, `INSERT INTO public.posts (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, parent_post_id, thread_path) VALUES
-        ($1, $2, $3, 1, '~~root~~', '<p>~~root~~</p>', 'legacy-p1', NULL, ARRAY[1]),
-		($4, $2, $3, 2, '- [x] reply', '<p>- [x] reply</p>', 'legacy-p1', $1, ARRAY[1,2]),
-		($5, $2, $3, 3, 'current', '<p>current</p>', $6, $1, ARRAY[1,3])`, rootID, topicID, userID, replyID, currentID, contentrender.RendererVersion); err != nil {
+		($1, $2, $3, 1, '~~root~~', $4, $5, NULL, ARRAY[1]),
+		($6, $2, $3, 2, '- [x] reply', $7, $5, $1, ARRAY[1,2]),
+		($8, $2, $3, 3, 'current', '<p>current</p>', $9, $1, ARRAY[1,3]),
+		($10, $2, $3, 4, $11, $12, $5, $1, ARRAY[1,4]),
+		($13, $2, $3, 5, $14, $15, $5, $1, ARRAY[1,5])`,
+		rootID, topicID, userID, rootLegacyHTML, contentrender.LegacyRendererVersion,
+		replyID, replyLegacyHTML, currentID, contentrender.RendererVersion,
+		denseTaskID, denseTasks, denseTaskLegacyHTML, denseTableID, denseTable, denseTableLegacyHTML); err != nil {
 		t.Fatalf("insert renderer posts: %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -117,9 +138,17 @@ nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, 
 		t.Fatalf("apply alpha.3 schema: %v", err)
 	}
 
-	var validated bool
-	if err := connection.QueryRow(ctx, `SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'`).Scan(&validated); err != nil || validated {
-		t.Fatalf("new writer constraint = (validated %t, %v), want false/nil", validated, err)
+	var rendererValidated, sizeValidated bool
+	var sizeDefinition string
+	wantSizeDefinition := fmt.Sprintf("CHECK ((octet_length(rendered_html) <= %d))", contentrender.MaximumRenderedHTMLBytes)
+	if err := connection.QueryRow(ctx, `SELECT
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'),
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size'),
+(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size')`).Scan(&rendererValidated, &sizeValidated, &sizeDefinition); err != nil || rendererValidated || !sizeValidated || sizeDefinition != wantSizeDefinition {
+		t.Fatalf("new constraints = (renderer %t, size %t, definition %q, %v), want false/true/exact/nil", rendererValidated, sizeValidated, sizeDefinition, err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.posts SET rendered_html = $1 WHERE id = $2`, strings.Repeat("x", contentrender.MaximumRenderedHTMLBytes+1), currentID); err == nil {
+		t.Fatal("NOT VALID rendered-size constraint accepted an oversized changed row")
 	}
 	if _, err := connection.Exec(ctx, `UPDATE public.posts SET rendered_html = rendered_html WHERE id = $1`, rootID); err == nil {
 		t.Fatal("NOT VALID constraint accepted an old-version update")
@@ -180,8 +209,8 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 		t.Fatal("Run() accepted a failed progress write")
 	}
 	var staleCount int
-	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE redacted_at IS NULL AND renderer_version <> $1`, contentrender.RendererVersion).Scan(&staleCount); err != nil || staleCount != 0 {
-		t.Fatalf("post-output-failure stale rows = (%d, %v), want zero/nil", staleCount, err)
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE redacted_at IS NULL AND renderer_version <> $1`, contentrender.RendererVersion).Scan(&staleCount); err != nil || staleCount != 2 {
+		t.Fatalf("post-output-failure stale rows = (%d, %v), want two/nil", staleCount, err)
 	}
 	var output bytes.Buffer
 	if err := Run(ctx, runnerConnection, &output, 1); err != nil {
@@ -202,12 +231,26 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if err := connection.QueryRow(ctx, `SELECT completed_at FROM public.content_renderer_state WHERE singleton`).Scan(&repeatedCompletedAt); err != nil || !repeatedCompletedAt.Equal(completedAt) {
 		t.Fatalf("idempotent completion time = (%s, %v), want %s/nil", repeatedCompletedAt, err, completedAt)
 	}
-	if err := connection.QueryRow(ctx, `SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'`).Scan(&validated); err != nil || !validated {
-		t.Fatalf("completed writer constraint = (validated %t, %v), want true/nil", validated, err)
+	if err := connection.QueryRow(ctx, `SELECT
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'),
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size')`).Scan(&rendererValidated, &sizeValidated); err != nil || !rendererValidated || !sizeValidated {
+		t.Fatalf("completed constraints = (renderer %t, size %t, %v), want true/true/nil", rendererValidated, sizeValidated, err)
 	}
 	var rootHTML string
 	if err := connection.QueryRow(ctx, `SELECT rendered_html FROM public.posts WHERE id = $1`, rootID).Scan(&rootHTML); err != nil || rootHTML != "<p><del>root</del></p>\n" {
 		t.Fatalf("rerendered root = (%q, %v)", rootHTML, err)
+	}
+	var denseTaskHTML, denseTaskVersion, denseTableHTML, denseTableVersion string
+	if err := connection.QueryRow(ctx, `SELECT
+	(SELECT rendered_html FROM public.posts WHERE id = $1),
+	(SELECT renderer_version FROM public.posts WHERE id = $1),
+	(SELECT rendered_html FROM public.posts WHERE id = $2),
+	(SELECT renderer_version FROM public.posts WHERE id = $2)`, denseTaskID, denseTableID).Scan(&denseTaskHTML, &denseTaskVersion, &denseTableHTML, &denseTableVersion); err != nil {
+		t.Fatalf("inspect dense legacy migration output: %v", err)
+	}
+	if denseTaskHTML != denseTaskLegacyHTML || denseTableHTML != denseTableLegacyHTML ||
+		denseTaskVersion != legacyPreservedRendererVersion || denseTableVersion != legacyPreservedRendererVersion {
+		t.Fatalf("dense compatibility rows = (task %d bytes/%q, table %d bytes/%q), want exact preserved p1 HTML and marker", len(denseTaskHTML), denseTaskVersion, len(denseTableHTML), denseTableVersion)
 	}
 
 	lockTx, err := connection.Begin(ctx)
@@ -248,4 +291,162 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if err := Run(ctx, runnerConnection, io.Discard, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "lock renderer migration state") {
 		t.Fatalf("missing renderer state failure = %v", err)
 	}
+}
+
+func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
+	if os.Getenv("GOTTH_BB_RUN_PERFORMANCE") != "1" {
+		t.Skip("set GOTTH_BB_RUN_PERFORMANCE=1 to run the bounded compatibility-batch admission")
+	}
+	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	adminConfig, err := pgx.ParseConfig(databaseURL)
+	if err != nil {
+		t.Fatalf("pgx.ParseConfig() returned error: %v", err)
+	}
+	adminConfig.Database = "postgres"
+	admin, err := pgx.ConnectConfig(ctx, adminConfig)
+	if err != nil {
+		t.Fatalf("connect PostgreSQL administrator: %v", err)
+	}
+	t.Cleanup(func() { _ = admin.Close(context.Background()) })
+	_, _ = admin.Exec(ctx, "DROP DATABASE IF EXISTS "+rerenderPerformanceTestDatabase+" WITH (FORCE)")
+	if _, err := admin.Exec(ctx, "CREATE DATABASE "+rerenderPerformanceTestDatabase); err != nil {
+		t.Fatalf("create renderer performance database: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = admin.Exec(cleanupContext, "DROP DATABASE IF EXISTS "+rerenderPerformanceTestDatabase+" WITH (FORCE)")
+	})
+	testConfig := adminConfig.Copy()
+	testConfig.Database = rerenderPerformanceTestDatabase
+	legacy := fstest.MapFS{}
+	for _, name := range []string{
+		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
+		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
+		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+	} {
+		body, readErr := fs.ReadFile(migrations.Files(), name)
+		if readErr != nil {
+			t.Fatalf("read %s: %v", name, readErr)
+		}
+		legacy[name] = &fstest.MapFile{Data: body}
+	}
+	if err := migration.Apply(ctx, testConfig, legacy); err != nil {
+		t.Fatalf("apply pre-alpha.3 schema: %v", err)
+	}
+	connection, err := pgx.ConnectConfig(ctx, testConfig)
+	if err != nil {
+		t.Fatalf("connect renderer performance database: %v", err)
+	}
+	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+
+	var userID, areaID, topicID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Renderer performance owner', 'administrator') RETURNING id`).Scan(&userID); err != nil {
+		t.Fatalf("insert renderer performance owner: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `INSERT INTO public.areas (slug, name, created_by, updated_by) VALUES ('renderer-performance', 'Renderer performance', $1, $1) RETURNING id`, userID).Scan(&areaID); err != nil {
+		t.Fatalf("insert renderer performance area: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `SELECT nextval(pg_get_serial_sequence('public.topics', 'id'))`).Scan(&topicID); err != nil {
+		t.Fatalf("allocate renderer performance topic: %v", err)
+	}
+	postIDs := make([]int64, MaximumBatchSize)
+	rows, err := connection.Query(ctx, `SELECT nextval(pg_get_serial_sequence('public.posts', 'id')) FROM generate_series(1, $1)`, MaximumBatchSize)
+	if err != nil {
+		t.Fatalf("allocate renderer performance posts: %v", err)
+	}
+	for index := 0; rows.Next(); index++ {
+		if index >= len(postIDs) {
+			rows.Close()
+			t.Fatal("allocated more renderer performance posts than requested")
+		}
+		if err := rows.Scan(&postIDs[index]); err != nil {
+			rows.Close()
+			t.Fatalf("scan renderer performance post %d: %v", index, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatalf("iterate renderer performance post identifiers: %v", err)
+	}
+	rows.Close()
+	if postIDs[len(postIDs)-1] == 0 {
+		t.Fatalf("allocated renderer performance posts = %v, want %d identifiers", postIDs, MaximumBatchSize)
+	}
+	denseSource := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
+	denseLegacyHTML := exactLegacyHTML(t, denseSource)
+	fixtureTx, err := connection.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin renderer performance fixture: %v", err)
+	}
+	if _, err := fixtureTx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number) VALUES ($1, $2, $3, 'Renderer performance topic', $4, $5, $6, $7)`, topicID, areaID, userID, postIDs[0], postIDs[len(postIDs)-1], MaximumBatchSize-1, MaximumBatchSize+1); err != nil {
+		_ = fixtureTx.Rollback(ctx)
+		t.Fatalf("insert renderer performance topic: %v", err)
+	}
+	for index, postID := range postIDs {
+		var parentID any
+		if index > 0 {
+			parentID = postIDs[0]
+		}
+		if _, err := fixtureTx.Exec(ctx, `INSERT INTO public.posts (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, parent_post_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, postID, topicID, userID, index+1, denseSource, denseLegacyHTML, contentrender.LegacyRendererVersion, parentID); err != nil {
+			_ = fixtureTx.Rollback(ctx)
+			t.Fatalf("insert renderer performance post %d: %v", index+1, err)
+		}
+	}
+	if err := fixtureTx.Commit(ctx); err != nil {
+		t.Fatalf("commit renderer performance fixture: %v", err)
+	}
+	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
+		t.Fatalf("apply alpha.3 schema: %v", err)
+	}
+
+	started := time.Now()
+	result, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+	elapsed := time.Since(started)
+	if err != nil || retryable || result.Converted != MaximumBatchSize || result.Complete {
+		t.Fatalf("maximum compatibility batch = (%+v, retryable %t, %v), want %d/incomplete/nil", result, retryable, err, MaximumBatchSize)
+	}
+	var preservedCount, exactHTMLCount int
+	var convertedCount int64
+	var completedAt *time.Time
+	if err := connection.QueryRow(ctx, `SELECT
+	(SELECT count(*) FROM public.posts WHERE renderer_version = $1),
+	(SELECT count(*) FROM public.posts WHERE renderer_version = $1 AND rendered_html = $2),
+	(SELECT converted_count FROM public.content_renderer_state WHERE singleton),
+	(SELECT completed_at FROM public.content_renderer_state WHERE singleton)`, legacyPreservedRendererVersion, denseLegacyHTML).Scan(&preservedCount, &exactHTMLCount, &convertedCount, &completedAt); err != nil {
+		t.Fatalf("inspect maximum compatibility batch: %v", err)
+	}
+	if preservedCount != MaximumBatchSize || exactHTMLCount != MaximumBatchSize || convertedCount != MaximumBatchSize || completedAt != nil {
+		t.Fatalf("maximum compatibility output = (%d preserved, %d exact, %d converted, completed %v), want %d/%d/%d/nil", preservedCount, exactHTMLCount, convertedCount, completedAt, MaximumBatchSize, MaximumBatchSize, MaximumBatchSize)
+	}
+	completion, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+	if err != nil || retryable || !completion.Complete || completion.Converted != 0 {
+		t.Fatalf("maximum compatibility completion = (%+v, retryable %t, %v), want complete/nil", completion, retryable, err)
+	}
+	var rendererValidated bool
+	if err := connection.QueryRow(ctx, `SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'`).Scan(&rendererValidated); err != nil || !rendererValidated {
+		t.Fatalf("maximum compatibility renderer constraint = (%t, %v), want true/nil", rendererValidated, err)
+	}
+	t.Logf("compatibility_batch rows=%d elapsed=%s preserved=%d exact_html=%d converted=%d", MaximumBatchSize, elapsed, preservedCount, exactHTMLCount, convertedCount)
+}
+
+func exactLegacyHTML(t *testing.T, source string) string {
+	t.Helper()
+	var rendered bytes.Buffer
+	if err := goldmark.New().Convert([]byte(source), &rendered); err != nil {
+		t.Fatalf("render legacy fixture: %v", err)
+	}
+	policy := bluemonday.NewPolicy()
+	policy.AllowElements("p", "em", "strong", "ul", "ol", "li", "a", "blockquote", "pre", "code", "br")
+	policy.AllowAttrs("href").OnElements("a")
+	policy.AllowRelativeURLs(true)
+	policy.AllowURLSchemes("http", "https")
+	policy.RequireNoFollowOnLinks(true)
+	policy.RequireNoReferrerOnLinks(true)
+	return policy.Sanitize(rendered.String())
 }

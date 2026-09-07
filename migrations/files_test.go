@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"io/fs"
+	"strings"
 	"testing"
 )
 
@@ -31,6 +32,36 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestGFMRendererSchemaStepIsMetadataOnlyAndIncomplete(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000007_gfm_renderer.sql")
+	if err != nil {
+		t.Fatalf("read renderer migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"FROM public.posts",
+		"VALIDATE CONSTRAINT",
+		"DROP CONSTRAINT posts_rendered_size",
+		"1310720",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("renderer schema step contains forbidden populated-table work %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2',\n    NULL",
+		"goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved",
+		"ADD CONSTRAINT posts_renderer_version_current",
+		") NOT VALID",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("renderer schema step lacks required contract %q", required)
 		}
 	}
 }

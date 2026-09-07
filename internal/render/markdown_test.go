@@ -3,6 +3,7 @@ package render
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -12,6 +13,7 @@ func TestRenderMarkdownSupportsGFM(t *testing.T) {
 	t.Parallel()
 
 	source := "Hello *careful* **world** 👋\n\n" +
+		"# Heading one\n\n###### Heading six\n\n---\n\n" +
 		"- one\n- two\n\n" +
 		"1. first\n2. second\n\n" +
 		"> quote\n\n" +
@@ -31,6 +33,7 @@ func TestRenderMarkdownSupportsGFM(t *testing.T) {
 	}
 	for _, required := range []string{
 		`<p>Hello <em>careful</em> <strong>world</strong> 👋</p>`,
+		"<h1>Heading one</h1>", "<h6>Heading six</h6>", "<hr>",
 		"<ul>", "<li>one</li>", "<li>two</li>", "<blockquote>", "<p>quote</p>",
 		"<ol>", "<li>first</li>", "<li>second</li>",
 		"<p><code>inline</code></p>", "<pre><code>if x &lt; y {}\n</code></pre>",
@@ -55,6 +58,47 @@ func TestRenderMarkdownSupportsGFM(t *testing.T) {
 	}
 	if output.String() != html {
 		t.Fatalf("trusted HTML = %q, want persisted %q", output.String(), html)
+	}
+}
+
+func TestRenderMarkdownPreservesCommonMarkHeadingsAndThematicBreaksSafely(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := RenderMarkdown("# One <script>bad</script>\n\nTwo\n---\n\n***\n\n### Three {#not-an-id}\n\n#### Four\n\n##### Five\n\n###### Six\n")
+	if err != nil {
+		t.Fatalf("RenderMarkdown() returned error: %v", err)
+	}
+	html, _, err := rendered.PersistenceValues()
+	if err != nil {
+		t.Fatalf("PersistenceValues() returned error: %v", err)
+	}
+	for _, required := range []string{"<h1>One bad</h1>", "<h2>Two</h2>", "<hr>", "<h3>Three {#not-an-id}</h3>", "<h4>Four</h4>", "<h5>Five</h5>", "<h6>Six</h6>"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("rendered HTML lacks %q: %s", required, html)
+		}
+	}
+	for _, forbidden := range []string{"<script", " id=", "onclick", "style="} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("rendered heading HTML contains %q: %s", forbidden, html)
+		}
+	}
+}
+
+func TestRenderMarkdownPreservesAdaptiveToolbarCodeContent(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := RenderMarkdown("`` a`b ``\n\n````\nbefore\n```\nafter\n````\n")
+	if err != nil {
+		t.Fatalf("RenderMarkdown() returned error: %v", err)
+	}
+	html, _, err := rendered.PersistenceValues()
+	if err != nil {
+		t.Fatalf("PersistenceValues() returned error: %v", err)
+	}
+	for _, required := range []string{"<p><code>a`b</code></p>", "<pre><code>before\n```\nafter\n</code></pre>"} {
+		if !strings.Contains(html, required) {
+			t.Fatalf("adaptive code rendering lacks %q: %s", required, html)
+		}
 	}
 }
 
@@ -167,11 +211,47 @@ func TestRenderMarkdownAcceptsMaximumSource(t *testing.T) {
 func TestRenderMarkdownRejectsExpandedOutputBeyondSchemaBound(t *testing.T) {
 	t.Parallel()
 
-	source := strings.Repeat("*\n", MaximumMarkdownBytes/2)
-	rendered, err := RenderMarkdown(source)
-	if err == nil || rendered.valid() {
-		html, _, _ := rendered.PersistenceValues()
-		t.Fatalf("expanded RenderMarkdown() = (HTML bytes %d, %v), want invalid/error", len(html), err)
+	tableHeader := "|a|b|c|d|\n|-|-|-|-|\n"
+	tableRow := "|x|x|x|x|\n"
+	tableRows := (MaximumMarkdownBytes - len(tableHeader)) / len(tableRow)
+	fixtures := map[string]string{
+		"dense checked tasks": strings.Repeat("- [x]\n", MaximumMarkdownBytes/len("- [x]\n")),
+		"dense table":         tableHeader + strings.Repeat(tableRow, tableRows),
+	}
+	for name, source := range fixtures {
+		name, source := name, source
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var legacy bytes.Buffer
+			if err := legacyCommonMarkRenderer.Convert([]byte(source), &legacy); err != nil {
+				t.Fatalf("legacy renderer returned error: %v", err)
+			}
+			legacyHTML := sanitizeLegacyHTML(legacy.String())
+			if len(legacyHTML) == 0 || len(legacyHTML) > MaximumRenderedHTMLBytes {
+				t.Fatalf("legacy rendered bytes = %d, want 1..%d", len(legacyHTML), MaximumRenderedHTMLBytes)
+			}
+			rendered, err := RenderMarkdown(source)
+			if !errors.Is(err, ErrRenderedHTMLTooLarge) || rendered.valid() {
+				t.Fatalf("RenderMarkdown(legacy-valid dense fixture) = (%+v, %v), want oversized sentinel", rendered, err)
+			}
+			if err := ValidateLegacyRenderedHTML(source, legacyHTML); err != nil {
+				t.Fatalf("ValidateLegacyRenderedHTML(exact) returned error: %v", err)
+			}
+			if err := ValidateLegacyRenderedHTML(source, legacyHTML+"tampered"); err == nil {
+				t.Fatal("ValidateLegacyRenderedHTML() accepted noncanonical persisted HTML")
+			}
+		})
+	}
+}
+
+func TestRenderedHTMLTooLargeSentinelIsNarrow(t *testing.T) {
+	t.Parallel()
+
+	if rendered, err := RenderMarkdown(""); err == nil || errors.Is(err, ErrRenderedHTMLTooLarge) || rendered.valid() {
+		t.Fatalf("invalid source = (%+v, %v), want non-size failure", rendered, err)
+	}
+	if err := ValidateLegacyRenderedHTML("", "<p>x</p>\n"); err == nil || errors.Is(err, ErrRenderedHTMLTooLarge) {
+		t.Fatalf("invalid legacy source error = %v, want non-size failure", err)
 	}
 }
 

@@ -21,19 +21,25 @@ Affected files:
 Explanation:
 
 Add a release-owned, bounded re-render pass after schema migration. One locked
-singleton serializes runners, each transaction rebuilds at most 100 ordinary
+singleton serializes runners, each transaction handles at most 100 ordinary
 posts from canonical Markdown, and an immediately enforced `NOT VALID` writer
 constraint prevents a stopped old release from leaving mixed renderer writes.
 The final empty transaction validates the constraint and records one stable
 completion time. Readiness checks that constant-shaped state rather than
-scanning posts.
+scanning posts. The 262,144-byte persisted-output ceiling remains unchanged.
+Only an exact application-valid p1 row whose p2 expansion exceeds that ceiling
+retains its byte-verified p1 HTML under an explicit p1-preserved compatibility
+marker; every other render or legacy-integrity error fails closed.
 
 Verification:
 
 - focused migration-command, readiness, re-render, and migration-file tests
-- PostgreSQL 17.10 fresh, upgrade, restart, writer enforcement, edit/runner
-  contention, runner serialization, validation-failure, missing-state, and
-  idempotence checks
+- PostgreSQL 17.10 fresh, upgrade, exact p1 preservation, restart, writer
+  enforcement, edit/runner contention, runner serialization,
+  validation-failure, missing-state, and idempotence checks
+- opt-in pinned-PostgreSQL admission of one actual 100-row worst-case
+  compatibility transaction, exact output/state verification, peak-RSS
+  sampling, and bounded cancellation between renderer phases
 
 Risks / non-goals:
 

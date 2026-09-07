@@ -368,10 +368,15 @@ plus the singleton renderer-state row that serializes competing runners,
 renders current canonical source, updates only those locked identities, and
 commits before selecting more. The schema installs a `NOT VALID` writer
 constraint that immediately rejects obsolete-version inserts and updates while
-the application is stopped and old rows are rebuilt. The final empty batch
-validates that constraint and records completion. Readiness checks the exact
-completed target and validated catalog constraint in constant-shaped SQL;
-restarting the migration safely resumes from the remaining stale rows.
+the application is stopped and old rows are rebuilt. The schema transaction
+does not scan `posts`; the later final empty batch validates that constraint and
+records completion. A legacy row whose exact admitted p1 HTML would exceed the
+unchanged persistence limit under p2 keeps that verified p1 HTML under an
+explicit p1-preserved compatibility marker. Every other row moves to p2, and
+every other failure stops the batch. Readiness checks the exact completed
+target and validated catalog constraints in constant-shaped SQL; restarting
+the migration safely resumes from remaining stale rows while treating current
+p2 and p1-preserved rows as handled.
 
 ### 8.4 Soft deletion and audit
 

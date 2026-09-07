@@ -398,9 +398,11 @@ part of this surface-and-threading increment.
 `1.0.0-alpha.3` completes the version 1.0 Markdown authoring and persisted
 renderer boundary. It is acceptable when all of the following hold:
 
-1. Create, reply, edit, preview, publish, migration, and read paths use one
-   deterministic Goldmark v1.8.5 GFM renderer followed by the exact
-   Bluemonday v1.0.27 forum sanitizer.
+1. Create, reply, edit, preview, and publish paths use one deterministic
+   Goldmark v1.8.5 GFM renderer followed by the exact Bluemonday v1.0.27 forum
+   sanitizer. The migration uses that same p2 path, with one explicit
+   compatibility exception for exact admitted p1 HTML that would exceed the
+   unchanged persistence bound under p2.
 2. Raw HTML stays disabled. Only the elements and attributes emitted by the
    enabled CommonMark/GFM features survive sanitization; style, event-handler,
    arbitrary form, and unsafe URL content remains forbidden.
@@ -408,8 +410,11 @@ renderer boundary. It is acceptable when all of the following hold:
    checkboxes remain disabled and cannot become interactive controls.
 4. The persisted renderer version changes immutably. A bounded, transactional,
    idempotent, restart-safe migration rebuilds old derived HTML from canonical
-   Markdown without overwriting a concurrent edit, and readiness fails closed
-   until no ordinary post mixes renderer versions.
+   Markdown without overwriting a concurrent edit. When exact application-valid
+   p1 HTML cannot fit after p2 expansion, it is preserved byte-for-byte under a
+   distinct compatibility marker rather than stranding the release. Readiness
+   fails closed until every ordinary post is current p2 or explicitly
+   p1-preserved and the exact writer constraints are validated.
 5. The native authoring toolbar provides bold, italic, link, block quote,
    inline code, fenced code, ordered-list, unordered-list, table, task-list,
    and strikethrough shortcuts with selection, caret, multiline, and

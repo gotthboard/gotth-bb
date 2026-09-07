@@ -1069,7 +1069,8 @@ rendered core pages for root-relative application links that omit `/bb`.
 
 - Canonical input is nonblank UTF-8 Markdown source from 1 through 65,536
   bytes. Sanitized rendered HTML must be nonblank and no larger than 262,144
-  bytes before persistence.
+  bytes before persistence. Alpha.3 does not enlarge that admitted persistence
+  or public-page envelope.
 - Alpha.3 uses Goldmark v1.8.5 with the four components bundled by GFM:
   tables, strikethrough, task lists, and linkification. They are registered
   explicitly so table alignment output is disabled and linkification accepts
@@ -1095,31 +1096,54 @@ rendered core pages for root-relative application links that omit `/bb`.
 ### 13.1 Renderer migration
 
 - Migration `000007_gfm_renderer.sql` creates one renderer-state singleton for
-  the alpha.3 target. Fresh empty databases start complete; upgraded databases
-  with ordinary stale posts start incomplete. Redacted tombstones retain the
-  separate immutable `moderation-redaction-v1` renderer contract.
+  the alpha.3 target. Fresh and upgraded databases start incomplete; the
+  mandatory release re-render phase must execute its empty completion batch in
+  both cases. Redacted tombstones retain the separate immutable
+  `moderation-redaction-v1` renderer contract.
 - The application is stopped before this migration. A `NOT VALID` check
   constraint immediately rejects obsolete-version inserts and updates without
-  first scanning old rows. Only the exact current version or an exact
-  `moderation-redaction-v1` row with `redacted_at` set can be written.
+  first scanning old rows. The schema transaction performs no `posts` scan or
+  constraint validation while retaining its table lock. The constraint admits
+  the exact current version, an exact `moderation-redaction-v1` row with
+  `redacted_at` set, or an ordinary unredacted
+  `goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved` compatibility row.
 - The release migration command applies schema migrations, then repeatedly
   processes at most 100 stale posts in one transaction ordered by post ID. It
   first locks the renderer-state singleton, mechanically serializing multiple
   migration runners, then locks the selected posts. Rendering uses the same
-  `RenderMarkdown` function as preview and publication. A render or database
-  failure rolls back the entire batch.
-- The final empty batch proves no stale ordinary post remains and marks the
-  singleton complete and validates the writer constraint in the same
-  transaction. An already-recorded completion timestamp is never rewritten.
-  Process interruption or an
+  `RenderMarkdown` function as preview and publication. If and only if p2
+  rendering of an exact application-valid p1 row exceeds the unchanged
+  262,144-byte persistence limit, the migration verifies its existing HTML
+  byte-for-byte by reconstructing the admitted p1 Goldmark/Bluemonday output,
+  preserves that HTML, and records the explicit p1-preserved compatibility
+  marker. An unknown old renderer, invalid source, mismatched p1 HTML, empty
+  output, or any non-size render failure rolls back the batch. Runtime create,
+  reply, and edit services receive renderer metadata only from the private p2
+  rendered-value type and cannot produce the compatibility marker.
+- The command observes cancellation before each p2 render and before and after
+  the exceptional p1 reconstruction. Cancellation therefore stops before the
+  next row and is bounded by one in-progress renderer phase; the transaction
+  rolls back rather than publishing a partial batch.
+- The final empty batch proves no unhandled stale ordinary post remains,
+  validates the writer constraint, and marks the singleton complete in the
+  same transaction. Current-p2 and exact p1-preserved rows are both handled.
+  An already-recorded completion timestamp is never rewritten. Process
+  interruption or an
   unknown commit outcome is recovered by rerunning the command: already
-  converted rows no longer match, while an edit serialized by the row lock
-  either precedes the batch render or persists the new renderer itself.
+  converted or preserved rows no longer match, while an edit serialized by the
+  row lock either precedes the batch render or persists the new p2 renderer
+  itself.
 - Progress output contains only bounded counts, target renderer version, and
   completion state; it never logs Markdown, rendered HTML, identities, or
   connection secrets. Readiness requires the exact completed target and the
   exact validated writer constraint through a constant-shaped catalog query;
   it does not scan the posts table on every probe.
+- A deliberately worst-case 100-row compatibility transaction on the pinned
+  PostgreSQL 17.10 image took 21.286 seconds and the test process peaked at
+  78,572 KiB RSS. All 100 selected post rows remain locked for that
+  maintenance transaction. This cost is admitted only because the application
+  is stopped and drained before migration; it is not an online/background
+  workload and the batch limit must not increase without new evidence.
 
 ### 13.2 Native toolbar
 

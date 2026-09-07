@@ -308,8 +308,17 @@ required sequence is:
    resume afterward and write an obsolete renderer version.
 9. Run migrations once with an explicit result. The alpha.3 `NOT VALID`
    renderer constraint rejects new obsolete-version inserts and updates as soon
-   as it is installed; the migration validates it only after the bounded
-   re-render completion oracle succeeds.
+   as it is installed; its schema transaction does not scan the posts table.
+   The mandatory re-render phase runs even for a fresh empty database and
+   validates the constraint only after the bounded completion oracle succeeds.
+   Its progress count includes both p2 conversions and byte-verified
+   p1-preserved compatibility rows; it never logs their content.
+   The admitted worst case is a 100-row compatibility transaction lasting
+   about 21 seconds with about 77 MiB test-process peak RSS on the development
+   host. Those selected post rows remain locked for the transaction. Run this
+   only while the application is stopped and drained. Cancellation is checked
+   between rows and renderer phases, rolls back the current transaction, and
+   may still wait for one in-progress render phase to return.
 10. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 11. Validate the resolved Compose model without printing its environment.
