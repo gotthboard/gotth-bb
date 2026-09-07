@@ -162,6 +162,10 @@ func (tx *commitUnknownTx) Commit(ctx context.Context) error {
 }
 
 func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (selectionPlanEvidence, error) {
+	const cursorPlanName = "alpha3_population_mutation_cursor_explain"
+	if _, err := connection.Exec(ctx, "PREPARE "+cursorPlanName+"(text, text, bigint, integer) AS "+selectStalePostsAfterCursorSQL); err != nil {
+		return selectionPlanEvidence{}, fmt.Errorf("prepare generic renderer mutation cursor plan: %w", err)
+	}
 	var evidence selectionPlanEvidence
 	var cursor *int64
 	for {
@@ -170,7 +174,14 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 		if cursor == nil {
 			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectInitialStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, int32(batchSize))
 		} else {
-			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectStalePostsAfterCursorSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, *cursor, int32(batchSize))
+			row = connection.QueryRow(ctx, fmt.Sprintf(
+				"EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE %s(%s, %s, %d, %d)",
+				cursorPlanName,
+				postgresStringLiteral(contentrender.RendererVersion),
+				postgresStringLiteral(legacyPreservedRendererVersion),
+				*cursor,
+				batchSize,
+			))
 		}
 		if err := row.Scan(&encoded); err != nil {
 			return selectionPlanEvidence{}, fmt.Errorf("explain renderer mutation selection after %v: %w", cursor, err)
@@ -188,7 +199,7 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 		}
 		evidence.examinedRows += examined
 		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$3") {
-			return selectionPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v did not retain id > $3 as a generic-plan index condition", cursor)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v did not retain id > $3 as a generic-plan index condition; observed %q", cursor, postIndexConditions(documents[0].Plan))
 		}
 		if returned == 0 {
 			return evidence, nil
@@ -202,6 +213,10 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 }
 
 func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (selectionPlanEvidence, error) {
+	const cursorPlanName = "alpha3_population_preflight_cursor_explain"
+	if _, err := connection.Exec(ctx, "PREPARE "+cursorPlanName+"(bigint, integer) AS "+selectPreflightPostsAfterCursorSQL); err != nil {
+		return selectionPlanEvidence{}, fmt.Errorf("prepare generic renderer preflight cursor plan: %w", err)
+	}
 	var evidence selectionPlanEvidence
 	var cursor *int64
 	for {
@@ -210,7 +225,12 @@ func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, r
 		if cursor == nil {
 			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectInitialPreflightPostsSQL, int32(batchSize))
 		} else {
-			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectPreflightPostsAfterCursorSQL, *cursor, int32(batchSize))
+			row = connection.QueryRow(ctx, fmt.Sprintf(
+				"EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE %s(%d, %d)",
+				cursorPlanName,
+				*cursor,
+				batchSize,
+			))
 		}
 		if err := row.Scan(&encoded); err != nil {
 			return selectionPlanEvidence{}, fmt.Errorf("explain renderer preflight selection after %v: %w", cursor, err)
@@ -228,7 +248,7 @@ func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, r
 		}
 		evidence.examinedRows += examined
 		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$1") {
-			return selectionPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v did not retain id > $1 as a generic-plan index condition", cursor)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v did not retain id > $1 as a generic-plan index condition; observed %q", cursor, postIndexConditions(documents[0].Plan))
 		}
 		if returned == 0 {
 			return evidence, nil
@@ -264,6 +284,21 @@ func postIndexConditionContains(node explainNode, compactFragment string) bool {
 		}
 	}
 	return false
+}
+
+func postIndexConditions(node explainNode) []string {
+	var conditions []string
+	if node.NodeType == "Index Scan" && node.RelationName == "posts" && node.IndexName == "posts_pkey" {
+		conditions = append(conditions, node.IndexCond)
+	}
+	for _, child := range node.Plans {
+		conditions = append(conditions, postIndexConditions(child)...)
+	}
+	return conditions
+}
+
+func postgresStringLiteral(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func (tx *countedPreflightTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
