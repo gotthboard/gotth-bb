@@ -247,6 +247,8 @@ func (*fakeDatabasePool) QueryRow(_ context.Context, query string, _ ...any) pgx
 		return fakeBooleanRow(true)
 	case strings.Contains(query, "FROM public.governance_state"):
 		return fakeBooleanRow(true)
+	case strings.Contains(query, "FROM public.search_projection_state"):
+		return fakeBooleanRow(true)
 	default:
 		panic("unexpected database row query")
 	}

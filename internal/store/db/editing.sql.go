@@ -197,11 +197,13 @@ WITH updated AS (
     SET markdown_source = $1,
         rendered_html = $2,
         renderer_version = $3,
+        search_vector = to_tsvector('pg_catalog.simple'::regconfig, $4::text),
+        search_projection_version = $5,
         revision = post.revision + 1,
-        updated_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
-        edited_at = GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
-    WHERE post.id = $5
-      AND post.revision = $6
+        updated_at = GREATEST($6::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
+        edited_at = GREATEST($6::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))
+    WHERE post.id = $7
+      AND post.revision = $8
       AND post.deleted_at IS NULL
     RETURNING post.id AS post_id, post.topic_id, post.post_number, post.thread_path, post.revision
 )
@@ -230,12 +232,14 @@ FROM updated
 `
 
 type UpdatePostRevisionParams struct {
-	MarkdownSource   string
-	RenderedHtml     string
-	RendererVersion  string
-	AtTime           pgtype.Timestamptz
-	PostID           int64
-	ExpectedRevision int32
+	MarkdownSource          string
+	RenderedHtml            string
+	RendererVersion         string
+	PostSearchText          string
+	SearchProjectionVersion pgtype.Text
+	AtTime                  pgtype.Timestamptz
+	PostID                  int64
+	ExpectedRevision        int32
 }
 
 type UpdatePostRevisionRow struct {
@@ -251,6 +255,8 @@ func (q *Queries) UpdatePostRevision(ctx context.Context, arg UpdatePostRevision
 		arg.MarkdownSource,
 		arg.RenderedHtml,
 		arg.RendererVersion,
+		arg.PostSearchText,
+		arg.SearchProjectionVersion,
 		arg.AtTime,
 		arg.PostID,
 		arg.ExpectedRevision,

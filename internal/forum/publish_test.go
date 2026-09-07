@@ -30,15 +30,16 @@ func TestCreateTopicCommitsAuthorizedRenderedFirstPost(t *testing.T) {
 	tx := &publishTestTx{areaID: 7, visibility: "groups", postingMode: "normal", groupIDs: []int64{4, 9}, topicID: 101, postID: 201, postNumber: 1}
 	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, func() time.Time { return at },
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{9}},
-		"member-news", "A careful title", "Hello **world**")
+		"member-news", "A careful Cafe\u0301", "Hello **world**")
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 201, PostNumber: 1, NodeOrdinal: 1}) {
 		t.Fatalf("CreateTopic() = (%+v, %v)", result, err)
 	}
 	if !tx.committed || tx.rolledBack || tx.createdTopic != 1 || tx.createdReply != 0 {
 		t.Fatalf("transaction = (commit %t rollback %t topic %d reply %d)", tx.committed, tx.rolledBack, tx.createdTopic, tx.createdReply)
 	}
-	if tx.authorID != 11 || tx.areaIDArgument != 7 || tx.title != "A careful title" || tx.markdown != "Hello **world**" ||
+	if tx.authorID != 11 || tx.areaIDArgument != 7 || tx.title != "A careful Cafe\u0301" || tx.markdown != "Hello **world**" ||
 		tx.rendererVersion != render.RendererVersion || tx.renderedHTML != "<p>Hello <strong>world</strong></p>\n" ||
+		tx.topicSearchText != "A careful Café" || tx.postSearchText != "Hello world" || tx.searchProjectionVersion != render.SearchProjectionVersion ||
 		!tx.atTime.Equal(at.UTC().Truncate(time.Microsecond)) {
 		t.Fatalf("persisted topic = %+v", tx)
 	}
@@ -57,6 +58,7 @@ func TestCreateReplyCommitsAuthorizedOrderedPost(t *testing.T) {
 	if !tx.committed || tx.rolledBack || tx.createdTopic != 0 || tx.createdReply != 1 || tx.topicIDArgument != 101 || tx.authorID != 12 ||
 		tx.parentPostID != 201 ||
 		tx.markdown != "A `reply`" || tx.renderedHTML != "<p>A <code>reply</code></p>\n" || tx.rendererVersion != render.RendererVersion ||
+		tx.postSearchText != "A reply" || tx.searchProjectionVersion != render.SearchProjectionVersion ||
 		!tx.atTime.Equal(at.UTC().Truncate(time.Microsecond)) {
 		t.Fatalf("persisted reply = %+v", tx)
 	}
@@ -303,7 +305,8 @@ type publishTestTx struct {
 	pgx.Tx
 	areaID, areaIDArgument, topicID, topicIDArgument, postID, parentPostID, authorID int64
 	visibility, postingMode, topicState, title, markdown                             string
-	renderedHTML, rendererVersion                                                    string
+	renderedHTML, rendererVersion, topicSearchText, postSearchText                   string
+	searchProjectionVersion                                                          string
 	groupIDs                                                                         []int64
 	postNumber                                                                       int32
 	parentDepth                                                                      int32
@@ -343,7 +346,11 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		}
 		tx.createdTopic++
 		tx.areaIDArgument, tx.authorID, tx.title = arguments[0].(int64), arguments[1].(int64), arguments[2].(string)
-		tx.captureBody(arguments[3:])
+		tx.atTime = arguments[3].(pgtype.Timestamptz).Time
+		tx.topicSearchText = arguments[4].(string)
+		tx.searchProjectionVersion = arguments[5].(pgtype.Text).String
+		tx.markdown, tx.renderedHTML, tx.rendererVersion = arguments[6].(string), arguments[7].(string), arguments[8].(string)
+		tx.postSearchText = arguments[9].(string)
 		if tx.failure == "invalid-topic" {
 			return publishTestRow{values: []any{int64(0), tx.postID, tx.postNumber, int64(1)}}
 		}
@@ -355,8 +362,11 @@ func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...
 		tx.createdReply++
 		tx.authorID = arguments[0].(int64)
 		tx.parentPostID = arguments[4].(pgtype.Int8).Int64
-		tx.captureBody([]any{arguments[5], arguments[1], arguments[2], arguments[3]})
-		tx.topicIDArgument = arguments[6].(int64)
+		tx.atTime = arguments[5].(pgtype.Timestamptz).Time
+		tx.markdown, tx.renderedHTML, tx.rendererVersion = arguments[1].(string), arguments[2].(string), arguments[3].(string)
+		tx.postSearchText = arguments[6].(string)
+		tx.searchProjectionVersion = arguments[7].(pgtype.Text).String
+		tx.topicIDArgument = arguments[8].(int64)
 		if tx.failure == "invalid-reply" {
 			return publishTestRow{values: []any{tx.topicID, int64(0), tx.postNumber, int64(tx.postNumber)}}
 		}
@@ -378,11 +388,6 @@ func (tx *publishTestTx) Query(_ context.Context, query string, arguments ...any
 		values[index] = []any{groupID}
 	}
 	return &publishTestRows{values: values}, nil
-}
-
-func (tx *publishTestTx) captureBody(arguments []any) {
-	tx.atTime = arguments[0].(pgtype.Timestamptz).Time
-	tx.markdown, tx.renderedHTML, tx.rendererVersion = arguments[1].(string), arguments[2].(string), arguments[3].(string)
 }
 
 func (tx *publishTestTx) Commit(context.Context) error {

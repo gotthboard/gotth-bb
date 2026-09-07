@@ -48,10 +48,10 @@ func TestEditingQueriesBindScanAndPreserveGuards(t *testing.T) {
 		},
 		{
 			name: "update", rowValues: []any{int64(91), int64(41), int32(2), int32(4), int64(7)},
-			wantArgs: []any{"edited", "<p>edited</p>", "renderer-v1", atTime, int64(91), int32(3)},
-			required: []string{"revision = post.revision + 1", "post.revision = $6", "GREATEST($4::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))", "post.deleted_at IS NULL"},
+			wantArgs: []any{"edited", "<p>edited</p>", "renderer-v1", "edited", pgtype.Text{String: "search-v1", Valid: true}, atTime, int64(91), int32(3)},
+			required: []string{"revision = post.revision + 1", "post.revision = $8", "GREATEST($6::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))", "post.deleted_at IS NULL", "to_tsvector('pg_catalog.simple'::regconfig, $4::text)"},
 			invoke: func(q *Queries) (any, error) {
-				return q.UpdatePostRevision(context.Background(), UpdatePostRevisionParams{MarkdownSource: "edited", RenderedHtml: "<p>edited</p>", RendererVersion: "renderer-v1", AtTime: atTime, PostID: 91, ExpectedRevision: 3})
+				return q.UpdatePostRevision(context.Background(), UpdatePostRevisionParams{MarkdownSource: "edited", RenderedHtml: "<p>edited</p>", RendererVersion: "renderer-v1", PostSearchText: "edited", SearchProjectionVersion: pgtype.Text{String: "search-v1", Valid: true}, AtTime: atTime, PostID: 91, ExpectedRevision: 3})
 			},
 			wantResult: UpdatePostRevisionRow{PostID: 91, TopicID: 41, PostNumber: 2, Revision: 4, NodeOrdinal: 7},
 		},

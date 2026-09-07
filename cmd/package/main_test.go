@@ -133,7 +133,7 @@ func packageRunner() releaseartifact.Runner {
 		case name == "git" && len(args) > 0 && args[0] == "status":
 			return nil, nil
 		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/postgresql/runtime-grants.sql"):
-			return []byte("GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";\n"), nil
+			return []byte("GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";\n\nGRANT SELECT\nON TABLE public.search_projection_state\nTO :\"runtime_role\";\n"), nil
 		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/container/Containerfile"):
 			return []byte("FROM alpine@sha256:fake\n"), nil
 		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/container/compose.yml"):

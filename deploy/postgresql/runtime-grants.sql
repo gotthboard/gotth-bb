@@ -15,3 +15,9 @@ TO :"runtime_role";
 GRANT SELECT
 ON TABLE public.content_renderer_state
 TO :"runtime_role";
+
+-- Readiness observes the migration-owned search projection singleton. Runtime
+-- writers maintain topic/post tuples but never mutate migration progress.
+GRANT SELECT
+ON TABLE public.search_projection_state
+TO :"runtime_role";

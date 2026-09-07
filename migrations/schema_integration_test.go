@@ -90,8 +90,8 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 7 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 7, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 8 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 8, 1)", serverVersion, migrationCount, governanceCount)
 	}
 
 	var administratorID int64

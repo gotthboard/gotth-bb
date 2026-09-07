@@ -39,19 +39,19 @@ func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 		},
 		{
 			name: "create topic", rowValues: []any{int64(9), int64(17), int32(1), int64(1)},
-			wantArgs: []any{int64(7), int64(11), "Title", atTime, "source", "<p>source</p>", "renderer-v1"},
-			required: []string{"pg_get_serial_sequence('public.topics', 'id')", "inserted_topic AS", "inserted_post AS"},
+			wantArgs: []any{int64(7), int64(11), "Title", atTime, "Title", pgtype.Text{String: "search-v1", Valid: true}, "source", "<p>source</p>", "renderer-v1", "source"},
+			required: []string{"pg_get_serial_sequence('public.topics', 'id')", "inserted_topic AS", "inserted_post AS", "to_tsvector('pg_catalog.simple'::regconfig, $5::text)"},
 			invoke: func(q *Queries) (any, error) {
-				return q.CreateTopicAndFirstPost(context.Background(), CreateTopicAndFirstPostParams{AreaID: 7, AuthorID: 11, Title: "Title", AtTime: atTime, MarkdownSource: "source", RenderedHtml: "<p>source</p>", RendererVersion: "renderer-v1"})
+				return q.CreateTopicAndFirstPost(context.Background(), CreateTopicAndFirstPostParams{AreaID: 7, AuthorID: 11, Title: "Title", AtTime: atTime, TopicSearchText: "Title", SearchProjectionVersion: pgtype.Text{String: "search-v1", Valid: true}, MarkdownSource: "source", RenderedHtml: "<p>source</p>", RendererVersion: "renderer-v1", PostSearchText: "source"})
 			},
 			wantResult: CreateTopicAndFirstPostRow{TopicID: 9, PostID: 17, PostNumber: 1, NodeOrdinal: 1},
 		},
 		{
 			name: "create reply", rowValues: []any{int64(9), int64(18), int32(2), int64(2)},
-			wantArgs: []any{int64(11), "reply", "<p>reply</p>", "renderer-v1", pgtype.Int8{Int64: 17, Valid: true}, atTime, int64(9)},
-			required: []string{"topic.next_post_number", "reply_count = inserted_post.post_number - 1", "next_post_number = inserted_post.post_number + 1"},
+			wantArgs: []any{int64(11), "reply", "<p>reply</p>", "renderer-v1", pgtype.Int8{Int64: 17, Valid: true}, atTime, "reply", pgtype.Text{String: "search-v1", Valid: true}, int64(9)},
+			required: []string{"topic.next_post_number", "reply_count = inserted_post.post_number - 1", "next_post_number = inserted_post.post_number + 1", "to_tsvector('pg_catalog.simple'::regconfig, $7::text)"},
 			invoke: func(q *Queries) (any, error) {
-				return q.CreateReplyAndAdvanceTopic(context.Background(), CreateReplyAndAdvanceTopicParams{AuthorID: 11, MarkdownSource: "reply", RenderedHtml: "<p>reply</p>", RendererVersion: "renderer-v1", ParentPostID: pgtype.Int8{Int64: 17, Valid: true}, AtTime: atTime, TopicID: 9})
+				return q.CreateReplyAndAdvanceTopic(context.Background(), CreateReplyAndAdvanceTopicParams{AuthorID: 11, MarkdownSource: "reply", RenderedHtml: "<p>reply</p>", RendererVersion: "renderer-v1", ParentPostID: pgtype.Int8{Int64: 17, Valid: true}, AtTime: atTime, PostSearchText: "reply", SearchProjectionVersion: pgtype.Text{String: "search-v1", Valid: true}, TopicID: 9})
 			},
 			wantResult: CreateReplyAndAdvanceTopicRow{TopicID: 9, PostID: 18, PostNumber: 2, NodeOrdinal: 2},
 		},

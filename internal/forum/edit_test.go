@@ -25,6 +25,7 @@ func TestEditPostCommitsAuthorizedExpectedRevision(t *testing.T) {
 	}
 	if !tx.committed || tx.rolledBack || tx.updateCalls != 1 || tx.markdown != "Edited **body**" ||
 		tx.renderedHTML != "<p>Edited <strong>body</strong></p>\n" || tx.rendererVersion != render.RendererVersion ||
+		tx.postSearchText != "Edited body" || tx.searchProjectionVersion != render.SearchProjectionVersion ||
 		!tx.atTime.Equal(at.UTC().Truncate(time.Microsecond)) || tx.expectedRevision != 3 {
 		t.Fatalf("edit transaction = %+v", tx)
 	}
@@ -161,20 +162,19 @@ func (beginner editTestBeginner) Begin(context.Context) (pgx.Tx, error) {
 
 type editTestTx struct {
 	pgx.Tx
-	postID, authorID, topicID, areaID int64
-	revision, postNumber              int32
-	visibility, postingMode           string
-	topicState                        string
-	groupIDs                          []int64
-	markdown, renderedHTML            string
-	rendererVersion                   string
-	atTime                            time.Time
-	expectedRevision                  int32
-	updateCalls                       int
-	deleteCalls                       int
-	deletedBy                         int64
-	failure                           string
-	committed, rolledBack             bool
+	postID, authorID, topicID, areaID                                                int64
+	revision, postNumber                                                             int32
+	visibility, postingMode                                                          string
+	topicState                                                                       string
+	groupIDs                                                                         []int64
+	markdown, renderedHTML, rendererVersion, postSearchText, searchProjectionVersion string
+	atTime                                                                           time.Time
+	expectedRevision                                                                 int32
+	updateCalls                                                                      int
+	deleteCalls                                                                      int
+	deletedBy                                                                        int64
+	failure                                                                          string
+	committed, rolledBack                                                            bool
 }
 
 func (tx *editTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
@@ -197,8 +197,10 @@ func (tx *editTestTx) QueryRow(_ context.Context, query string, arguments ...any
 		}
 		tx.updateCalls++
 		tx.markdown, tx.renderedHTML, tx.rendererVersion = arguments[0].(string), arguments[1].(string), arguments[2].(string)
-		tx.atTime = arguments[3].(pgtype.Timestamptz).Time
-		tx.expectedRevision = arguments[5].(int32)
+		tx.postSearchText = arguments[3].(string)
+		tx.searchProjectionVersion = arguments[4].(pgtype.Text).String
+		tx.atTime = arguments[5].(pgtype.Timestamptz).Time
+		tx.expectedRevision = arguments[7].(int32)
 		if tx.failure == "invalid-update" {
 			return publishTestRow{values: []any{tx.postID, tx.topicID, tx.postNumber, tx.revision + 2, int64(tx.postNumber)}}
 		}

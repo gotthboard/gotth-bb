@@ -413,6 +413,8 @@ WITH changed AS (
     SET markdown_source = '[Content removed by moderation]',
         rendered_html = '<p>Content removed by moderation.</p>',
         renderer_version = 'moderation-redaction-v1',
+        search_vector = to_tsvector('pg_catalog.simple'::regconfig, ''),
+        search_projection_version = 'search-v1-pg17-simple-u15-p2',
         revision = post.revision + 1,
         edited_at = GREATEST($1::timestamptz, post.updated_at),
         deleted_at = GREATEST($1::timestamptz, post.updated_at),

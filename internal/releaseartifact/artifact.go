@@ -317,7 +317,7 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 2 {
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 3 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
 	statements := make([]string, 0, 6)
@@ -327,7 +327,7 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 		}
 		statements = append(statements, line)
 	}
-	const required = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";"
+	const required = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";\nGRANT SELECT\nON TABLE public.search_projection_state\nTO :\"runtime_role\";"
 	if strings.Join(statements, "\n") != required {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}

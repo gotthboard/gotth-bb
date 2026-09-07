@@ -15,6 +15,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/text/unicode/norm"
 )
 
 var (
@@ -157,6 +158,10 @@ func CreateTopic(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create topic body persistence: %w", err)
 	}
+	postSearchText, searchProjectionVersion, err := rendered.SearchProjectionValues()
+	if err != nil {
+		return PublishResult{}, fmt.Errorf("create topic search projection: %w", err)
+	}
 	atTime, err := publishingTime(clock)
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create topic: %w", err)
@@ -180,7 +185,8 @@ func CreateTopic(
 		}
 		created, err := queries.CreateTopicAndFirstPost(ctx, db.CreateTopicAndFirstPostParams{
 			AreaID: area.ID, AuthorID: actor.UserID, Title: title, AtTime: atTime,
-			MarkdownSource: markdownSource, RenderedHtml: renderedHTML, RendererVersion: rendererVersion,
+			TopicSearchText: norm.NFC.String(title), SearchProjectionVersion: pgtype.Text{String: searchProjectionVersion, Valid: true},
+			MarkdownSource: markdownSource, RenderedHtml: renderedHTML, RendererVersion: rendererVersion, PostSearchText: postSearchText,
 		})
 		if err != nil {
 			return fmt.Errorf("insert topic and first post: %w", err)
@@ -246,6 +252,10 @@ func CreateReply(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create reply body persistence: %w", err)
 	}
+	postSearchText, searchProjectionVersion, err := rendered.SearchProjectionValues()
+	if err != nil {
+		return PublishResult{}, fmt.Errorf("create reply search projection: %w", err)
+	}
 	atTime, err := publishingTime(clock)
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create reply: %w", err)
@@ -269,7 +279,8 @@ func CreateReply(
 		}
 		created, err := queries.CreateReplyAndAdvanceTopic(ctx, db.CreateReplyAndAdvanceTopicParams{
 			AuthorID: actor.UserID, MarkdownSource: markdownSource, RenderedHtml: renderedHTML,
-			RendererVersion: rendererVersion, ParentPostID: pgtype.Int8{Int64: parentPostID, Valid: true}, AtTime: atTime, TopicID: topicID,
+			RendererVersion: rendererVersion, ParentPostID: pgtype.Int8{Int64: parentPostID, Valid: true}, AtTime: atTime,
+			PostSearchText: postSearchText, SearchProjectionVersion: pgtype.Text{String: searchProjectionVersion, Valid: true}, TopicID: topicID,
 		})
 		if err != nil {
 			return fmt.Errorf("insert reply and advance topic: %w", err)

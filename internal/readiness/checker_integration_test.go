@@ -12,6 +12,7 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/rerender"
+	"github.com/gotthboard/gotth-bb/internal/searchprojection"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -91,6 +92,9 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if err := rerender.Run(ctx, connection, rerender.MaximumBatchSize); err != nil {
 		t.Fatalf("rerender.Run() returned error: %v", err)
 	}
+	if err := searchprojection.Run(ctx, connection, searchprojection.MaximumBatchSize); err != nil {
+		t.Fatalf("searchprojection.Run() returned error: %v", err)
+	}
 	release, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
 		t.Fatalf("migration.NewReleaseVerifier() returned error: %v", err)
@@ -157,8 +161,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 2 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 2", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 3 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 3", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -185,8 +189,44 @@ WHERE namespace.nspname = 'public' AND renderer_state.relname = 'content_rendere
 	if rendererOwner != testConfig.User || rendererOwner == readinessRestrictedRole || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete {
 		t.Fatalf("renderer-state boundary = (owner %q, select %t, insert %t, update %t, delete %t), migration owner %q/runtime %q", rendererOwner, rendererSelect, rendererInsert, rendererUpdate, rendererDelete, testConfig.User, readinessRestrictedRole)
 	}
+	var searchOwner string
+	var searchSelect, searchInsert, searchUpdate, searchDelete bool
+	if err := connection.QueryRow(ctx, `SELECT
+owner.rolname,
+pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'SELECT'),
+pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'INSERT'),
+pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'UPDATE'),
+pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'DELETE')
+FROM pg_catalog.pg_class AS search_state
+JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = search_state.relnamespace
+JOIN pg_catalog.pg_roles AS owner ON owner.oid = search_state.relowner
+WHERE namespace.nspname = 'public' AND search_state.relname = 'search_projection_state'`, readinessRestrictedRole).Scan(
+		&searchOwner, &searchSelect, &searchInsert, &searchUpdate, &searchDelete,
+	); err != nil {
+		t.Fatalf("inspect search-state ownership and privileges: %v", err)
+	}
+	if searchOwner != testConfig.User || searchOwner == readinessRestrictedRole || !searchSelect || searchInsert || searchUpdate || searchDelete {
+		t.Fatalf("search-state boundary = (owner %q, select %t, insert %t, update %t, delete %t), migration owner %q/runtime %q", searchOwner, searchSelect, searchInsert, searchUpdate, searchDelete, testConfig.User, readinessRestrictedRole)
+	}
 	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("restricted Check() rejected exact release after packaged grant: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `DROP INDEX public.posts_activity_current_idx;
+CREATE INDEX posts_activity_current_idx ON public.posts (id)`); err != nil {
+		t.Fatalf("replace search activity index with same-name impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted a same-name search activity index impostor")
+	}
+	if _, err := connection.Exec(ctx, `DROP INDEX public.posts_activity_current_idx;
+CREATE INDEX posts_activity_current_idx ON public.posts (created_at DESC, id DESC)
+WHERE deleted_at IS NULL
+  AND redacted_at IS NULL
+  AND search_projection_version = 'search-v1-pg17-simple-u15-p2'`); err != nil {
+		t.Fatalf("restore exact search activity index: %v", err)
+	}
+	if err := checker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored exact search activity index: %v", err)
 	}
 
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state DROP CONSTRAINT content_renderer_state_cursor_progress,

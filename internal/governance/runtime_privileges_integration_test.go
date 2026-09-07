@@ -119,8 +119,8 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		t.Fatalf("read runtime grant contract: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if strings.Count(string(grantTemplate), rolePlaceholder) != 2 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 2", strings.Count(string(grantTemplate), rolePlaceholder))
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 3 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 3", strings.Count(string(grantTemplate), rolePlaceholder))
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	if _, err := connection.Exec(ctx, grantSQL); err != nil {
@@ -128,6 +128,7 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 	}
 
 	var tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete bool
+	var searchSelect, searchInsert, searchUpdate, searchDelete bool
 	if err := connection.QueryRow(ctx, `SELECT
 		pg_catalog.has_table_privilege($1, 'public.governance_state', 'UPDATE'),
 		pg_catalog.has_column_privilege($1, 'public.governance_state', 'singleton', 'UPDATE'),
@@ -136,13 +137,18 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'SELECT'),
 		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'INSERT'),
 		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'UPDATE'),
-		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'DELETE')`, runtimePrivilegeTestRole).Scan(
+		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'DELETE'),
+		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'SELECT'),
+		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'INSERT'),
+		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'UPDATE'),
+		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'DELETE')`, runtimePrivilegeTestRole).Scan(
 		&tableUpdate, &singletonUpdate, &createdAtUpdate, &tableDelete, &rendererSelect, &rendererInsert, &rendererUpdate, &rendererDelete,
+		&searchSelect, &searchInsert, &searchUpdate, &searchDelete,
 	); err != nil {
 		t.Fatalf("inspect packaged runtime privileges: %v", err)
 	}
-	if tableUpdate || !singletonUpdate || createdAtUpdate || tableDelete || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete {
-		t.Fatalf("runtime privileges = (governance table update %t, singleton update %t, created_at update %t, delete %t; renderer select %t, insert %t, update %t, delete %t)", tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete)
+	if tableUpdate || !singletonUpdate || createdAtUpdate || tableDelete || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete || !searchSelect || searchInsert || searchUpdate || searchDelete {
+		t.Fatalf("runtime privileges = (governance table update %t, singleton update %t, created_at update %t, delete %t; renderer select %t, insert %t, update %t, delete %t; search select %t, insert %t, update %t, delete %t)", tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete, searchSelect, searchInsert, searchUpdate, searchDelete)
 	}
 
 	if _, err := connection.Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {

@@ -8,6 +8,7 @@ import (
 	"github.com/a-h/templ"
 	"github.com/microcosm-cc/bluemonday"
 	"golang.org/x/net/html"
+	"golang.org/x/text/unicode/norm"
 )
 
 var (
@@ -96,6 +97,74 @@ func sanitizeLegacyHTML(raw string) string {
 // background work occurs.
 func SanitizeHTML(raw string) TrustedHTML {
 	return TrustedHTML{html: trustedHTMLPolicy.Sanitize(filterTaskListInputs(raw))}
+}
+
+// VisibleText derives the sole search projection input from sanitized HTML.
+// Text nodes contribute in render order; the contract's block elements add
+// boundaries; attributes, comments, and all markup contribute no text.
+// Unicode 15 White_Space runs collapse to one ASCII space before NFC.
+//
+// Complexity: for n HTML bytes, time and returned/auxiliary space are O(n),
+// Omega(1), and tight Theta(n) when text survives. The tokenizer and builder
+// perform no I/O, retry, shared mutation, or background work.
+func (trusted TrustedHTML) VisibleText() string {
+	tokenizer := html.NewTokenizer(strings.NewReader(trusted.html))
+	var output strings.Builder
+	output.Grow(len(trusted.html))
+	wroteText := false
+	pendingSpace := false
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			return norm.NFC.String(output.String())
+		}
+		switch tokenType {
+		case html.TextToken:
+			for _, character := range tokenizer.Token().Data {
+				if isUnicode15WhiteSpace(character) {
+					pendingSpace = wroteText
+					continue
+				}
+				if pendingSpace {
+					output.WriteByte(' ')
+					pendingSpace = false
+				}
+				output.WriteRune(character)
+				wroteText = true
+			}
+		case html.StartTagToken, html.EndTagToken, html.SelfClosingTagToken:
+			name, _ := tokenizer.TagName()
+			if isVisibleTextBoundary(string(name)) {
+				pendingSpace = wroteText
+			}
+		}
+	}
+}
+
+// isVisibleTextBoundary pins the exact HTML elements that separate visible
+// search text. Inline and unknown elements deliberately add no boundary.
+//
+// Complexity: time and auxiliary space are tight Theta(1).
+func isVisibleTextBoundary(name string) bool {
+	switch name {
+	case "p", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "ul", "ol", "li", "blockquote", "pre", "br", "table", "thead", "tbody", "tr", "th", "td":
+		return true
+	default:
+		return false
+	}
+}
+
+// isUnicode15WhiteSpace recognizes the frozen Unicode 15 White_Space
+// property rather than inheriting future behavior from unicode.IsSpace.
+//
+// Complexity: time and auxiliary space are tight Theta(1).
+func isUnicode15WhiteSpace(character rune) bool {
+	switch character {
+	case '\u0009', '\u000a', '\u000b', '\u000c', '\u000d', '\u0020', '\u0085', '\u00a0', '\u1680', '\u2028', '\u2029', '\u202f', '\u205f', '\u3000':
+		return true
+	default:
+		return character >= '\u2000' && character <= '\u200a'
+	}
 }
 
 // filterTaskListInputs removes every raw input except Goldmark's exact disabled

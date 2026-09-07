@@ -9,6 +9,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
@@ -75,6 +76,10 @@ func EditPost(
 	if err != nil {
 		return EditResult{}, fmt.Errorf("edit post body persistence: %w", err)
 	}
+	postSearchText, searchProjectionVersion, err := rendered.SearchProjectionValues()
+	if err != nil {
+		return EditResult{}, fmt.Errorf("edit post search projection: %w", err)
+	}
 	atTime, err := publishingTime(clock)
 	if err != nil {
 		return EditResult{}, fmt.Errorf("edit post: %w", err)
@@ -102,6 +107,7 @@ func EditPost(
 		}
 		updated, err := queries.UpdatePostRevision(ctx, db.UpdatePostRevisionParams{
 			MarkdownSource: markdownSource, RenderedHtml: renderedHTML, RendererVersion: rendererVersion,
+			PostSearchText: postSearchText, SearchProjectionVersion: pgtype.Text{String: searchProjectionVersion, Valid: true},
 			AtTime: atTime, PostID: postID, ExpectedRevision: expectedRevision,
 		})
 		if err != nil {

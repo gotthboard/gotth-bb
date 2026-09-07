@@ -137,6 +137,38 @@ func TestTrustedHTMLZeroValueRendersEmpty(t *testing.T) {
 	}
 }
 
+func TestTrustedHTMLVisibleTextUsesOnlyTextAndDocumentedBoundaries(t *testing.T) {
+	t.Parallel()
+
+	trusted := SanitizeHTML(`<h1 title="ignored">Head<strong>ing</strong></h1>` +
+		`<p>one<a href="https://secret.example/path">two</a><br>three</p>` +
+		`<ul><li>four</li><li>five</li></ul><hr>` +
+		`<table><thead><tr><th>six</th><th>seven</th></tr></thead>` +
+		`<tbody><tr><td>eight</td><td>nine</td></tr></tbody></table>` +
+		`<input checked="" disabled="" type="checkbox">ten<!-- ignored -->`)
+	if got, want := trusted.VisibleText(), "Heading onetwo three four five six seven eight nine ten"; got != want {
+		t.Fatalf("visible text = %q, want %q", got, want)
+	}
+}
+
+func TestTrustedHTMLVisibleTextPinsUnicode15WhitespaceAndNFC(t *testing.T) {
+	t.Parallel()
+
+	trusted := SanitizeHTML("<p>  Cafe\u0301\t\n\u0085\u00a0\u1680\u2000\u200a\u2028\u2029\u202f\u205f\u3000next\u200bword  </p>")
+	if got, want := trusted.VisibleText(), "Café next\u200bword"; got != want {
+		t.Fatalf("visible text = %q, want %q", got, want)
+	}
+}
+
+func TestTrustedHTMLZeroValueHasEmptyVisibleText(t *testing.T) {
+	t.Parallel()
+
+	var trusted TrustedHTML
+	if got := trusted.VisibleText(); got != "" {
+		t.Fatalf("zero visible text = %q, want empty", got)
+	}
+}
+
 func TestSanitizeHTMLPolicyIsConcurrent(t *testing.T) {
 	for index := range 64 {
 		index := index

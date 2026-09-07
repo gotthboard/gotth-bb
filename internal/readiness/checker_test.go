@@ -25,16 +25,20 @@ func (row readinessRow) Scan(destinations ...any) error {
 }
 
 type readinessDatabase struct {
-	row       pgx.Row
-	called    bool
-	query     string
-	arguments []any
+	row          pgx.Row
+	called       bool
+	query        string
+	arguments    []any
+	queries      []string
+	allArguments [][]any
 }
 
 func (database *readinessDatabase) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	database.called = true
 	database.query = query
 	database.arguments = arguments
+	database.queries = append(database.queries, query)
+	database.allArguments = append(database.allArguments, append([]any(nil), arguments...))
 	return database.row
 }
 
@@ -57,13 +61,14 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 	if err := checker.Check(context.Background()); err != nil {
 		t.Fatalf("Check() returned error: %v", err)
 	}
-	if migrationCalls != 1 || !database.called || database.query != governanceInvariantSQL {
-		t.Fatalf("calls = (migrations %d, database %t, query %q)", migrationCalls, database.called, database.query)
+	if migrationCalls != 1 || !database.called || len(database.queries) != 3 || database.queries[0] != governanceInvariantSQL {
+		t.Fatalf("calls = (migrations %d, database %t, queries %d)", migrationCalls, database.called, len(database.queries))
 	}
-	if len(database.arguments) != 5 || database.arguments[0] != observedAt.UTC() || database.arguments[1] != contentrender.RendererVersion ||
-		database.arguments[2] != rendererConstraintDefinition || database.arguments[3] != renderedSizeConstraintDefinition ||
-		database.arguments[4] != rendererCursorConstraintDefinition {
-		t.Fatalf("query arguments = %+v, want UTC observation time, renderer version, and exact constraint definitions", database.arguments)
+	arguments := database.allArguments[0]
+	if len(arguments) != 5 || arguments[0] != observedAt.UTC() || arguments[1] != contentrender.RendererVersion ||
+		arguments[2] != rendererConstraintDefinition || arguments[3] != renderedSizeConstraintDefinition ||
+		arguments[4] != rendererCursorConstraintDefinition {
+		t.Fatalf("query arguments = %+v, want UTC observation time, renderer version, and exact constraint definitions", arguments)
 	}
 	if want := fmt.Sprintf("CHECK ((octet_length(rendered_html) <= %d))", contentrender.MaximumRenderedHTMLBytes); renderedSizeConstraintDefinition != want {
 		t.Fatalf("rendered-size readiness definition = %q, want %q", renderedSizeConstraintDefinition, want)

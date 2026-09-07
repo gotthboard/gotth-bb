@@ -23,7 +23,8 @@ WITH identifiers AS (
 inserted_topic AS (
     INSERT INTO public.topics (
         id, area_id, author_id, title, state, first_post_id, latest_post_id,
-        reply_count, next_post_number, created_at, updated_at, last_activity_at
+        reply_count, next_post_number, created_at, updated_at, last_activity_at,
+        search_vector, search_projection_version
     )
     SELECT
         identifiers.topic_id,
@@ -37,14 +38,17 @@ inserted_topic AS (
         2,
         sqlc.arg(at_time),
         sqlc.arg(at_time),
-        sqlc.arg(at_time)
+        sqlc.arg(at_time),
+        to_tsvector('pg_catalog.simple'::regconfig, sqlc.arg(topic_search_text)::text),
+        sqlc.arg(search_projection_version)
     FROM identifiers
     RETURNING id
 ),
 inserted_post AS (
     INSERT INTO public.posts (
         id, topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at
+        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at,
+        search_vector, search_projection_version
     )
     SELECT
         identifiers.post_id,
@@ -58,7 +62,9 @@ inserted_post AS (
         NULL,
         ARRAY[1]::integer[],
         sqlc.arg(at_time),
-        sqlc.arg(at_time)
+        sqlc.arg(at_time),
+        to_tsvector('pg_catalog.simple'::regconfig, sqlc.arg(post_search_text)::text),
+        sqlc.arg(search_projection_version)
     FROM identifiers
     JOIN inserted_topic ON inserted_topic.id = identifiers.topic_id
     RETURNING id, topic_id, post_number
@@ -90,7 +96,8 @@ FOR SHARE OF area, parent;
 WITH inserted_post AS (
     INSERT INTO public.posts (
         topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, parent_post_id, created_at, updated_at
+        renderer_version, revision, parent_post_id, created_at, updated_at,
+        search_vector, search_projection_version
     )
     SELECT
         topic.id,
@@ -102,7 +109,9 @@ WITH inserted_post AS (
         1,
         sqlc.arg(parent_post_id),
         GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at),
-        GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at)
+        GREATEST(sqlc.arg(at_time)::timestamptz, topic.last_activity_at),
+        to_tsvector('pg_catalog.simple'::regconfig, sqlc.arg(post_search_text)::text),
+        sqlc.arg(search_projection_version)
     FROM public.topics AS topic
     WHERE topic.id = sqlc.arg(topic_id)
     RETURNING id, topic_id, post_number, thread_path, created_at AS post_created_at

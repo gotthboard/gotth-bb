@@ -88,11 +88,11 @@ func TestApplyReleasePreflightRechecksCurrentOutputOnIdempotentRunOnPostgreSQL17
 		t.Fatalf("fresh applyRelease() returned error: %v", err)
 	}
 	const source = "valid **source**"
-	insertMigrationPreflightPost(t, ctx, connection, -3, source, migrationCurrentHTML(t, source), contentrender.RendererVersion)
+	insertMigrationPreflightPost(t, ctx, connection, 9_000_003, source, migrationCurrentHTML(t, source), contentrender.RendererVersion)
 	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
 		t.Fatalf("exact current applyRelease() returned error: %v", err)
 	}
-	if _, err := connection.Exec(ctx, `UPDATE public.posts SET rendered_html = '<p>forged</p>' WHERE id = -3`); err != nil {
+	if _, err := connection.Exec(ctx, `UPDATE public.posts SET rendered_html = '<p>forged</p>' WHERE id = 9000003`); err != nil {
 		t.Fatalf("forge current renderer output: %v", err)
 	}
 	if err := applyRelease(ctx, configured, migrations.Files()); err == nil || !strings.Contains(err.Error(), "does not match canonical Markdown") {
@@ -149,12 +149,12 @@ func TestApplyReleasePreflightMigratesAndRechecksValidP1CompatibilityOnPostgreSQ
 	}
 	denseSource := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
 	denseLegacyHTML := migrationLegacyHTML(t, denseSource)
-	insertMigrationPreflightPost(t, ctx, connection, -2, denseSource, denseLegacyHTML, contentrender.LegacyRendererVersion)
+	insertMigrationPreflightPost(t, ctx, connection, 9_000_002, denseSource, denseLegacyHTML, contentrender.LegacyRendererVersion)
 	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
 		t.Fatalf("compatibility applyRelease() returned error: %v", err)
 	}
 	var html, version string
-	if err := connection.QueryRow(ctx, `SELECT rendered_html, renderer_version FROM public.posts WHERE id = -2`).Scan(&html, &version); err != nil {
+	if err := connection.QueryRow(ctx, `SELECT rendered_html, renderer_version FROM public.posts WHERE id = 9000002`).Scan(&html, &version); err != nil {
 		t.Fatalf("inspect compatibility row: %v", err)
 	}
 	if html != denseLegacyHTML || version != "goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved" {

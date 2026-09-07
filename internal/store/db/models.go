@@ -100,25 +100,27 @@ type OidcLoginAttempt struct {
 }
 
 type Post struct {
-	ID              int64
-	TopicID         int64
-	AuthorID        int64
-	PostNumber      int32
-	MarkdownSource  string
-	RenderedHtml    string
-	RendererVersion string
-	Revision        int32
-	CreatedAt       pgtype.Timestamptz
-	UpdatedAt       pgtype.Timestamptz
-	EditedAt        pgtype.Timestamptz
-	DeletedAt       pgtype.Timestamptz
-	DeletedBy       pgtype.Int8
-	DeletionReason  pgtype.Text
-	ParentPostID    pgtype.Int8
-	ThreadPath      []int32
-	RedactedAt      pgtype.Timestamptz
-	RedactedBy      pgtype.Int8
-	RedactionReason pgtype.Text
+	ID                      int64
+	TopicID                 int64
+	AuthorID                int64
+	PostNumber              int32
+	MarkdownSource          string
+	RenderedHtml            string
+	RendererVersion         string
+	Revision                int32
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+	EditedAt                pgtype.Timestamptz
+	DeletedAt               pgtype.Timestamptz
+	DeletedBy               pgtype.Int8
+	DeletionReason          pgtype.Text
+	ParentPostID            pgtype.Int8
+	ThreadPath              []int32
+	RedactedAt              pgtype.Timestamptz
+	RedactedBy              pgtype.Int8
+	RedactionReason         pgtype.Text
+	SearchVector            interface{}
+	SearchProjectionVersion pgtype.Text
 }
 
 type Report struct {
@@ -145,6 +147,16 @@ type ReportNote struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type SearchProjectionState struct {
+	Singleton            bool
+	TargetVersion        string
+	Phase                string
+	LastProcessedID      pgtype.Int8
+	TopicsConvertedCount int64
+	PostsConvertedCount  int64
+	CompletedAt          pgtype.Timestamptz
+}
+
 type Session struct {
 	ID            int64
 	TokenHash     []byte
@@ -159,21 +171,23 @@ type Session struct {
 }
 
 type Topic struct {
-	ID             int64
-	AreaID         int64
-	AuthorID       int64
-	Title          string
-	Slug           pgtype.Text
-	State          string
-	PinnedAt       pgtype.Timestamptz
-	FirstPostID    int64
-	LatestPostID   int64
-	ReplyCount     int32
-	NextPostNumber int32
-	CreatedAt      pgtype.Timestamptz
-	UpdatedAt      pgtype.Timestamptz
-	LastActivityAt pgtype.Timestamptz
-	DeletedAt      pgtype.Timestamptz
+	ID                      int64
+	AreaID                  int64
+	AuthorID                int64
+	Title                   string
+	Slug                    pgtype.Text
+	State                   string
+	PinnedAt                pgtype.Timestamptz
+	FirstPostID             int64
+	LatestPostID            int64
+	ReplyCount              int32
+	NextPostNumber          int32
+	CreatedAt               pgtype.Timestamptz
+	UpdatedAt               pgtype.Timestamptz
+	LastActivityAt          pgtype.Timestamptz
+	DeletedAt               pgtype.Timestamptz
+	SearchVector            interface{}
+	SearchProjectionVersion pgtype.Text
 }
 
 type TopicRead struct {

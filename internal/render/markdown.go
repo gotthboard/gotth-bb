@@ -16,6 +16,7 @@ const (
 	MaximumRenderedHTMLBytes = 262_144
 	RendererVersion          = "goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2"
 	LegacyRendererVersion    = "goldmark-v1.8.5-bluemonday-v1.0.27-p1"
+	SearchProjectionVersion  = "search-v1-pg17-simple-u15-p2"
 )
 
 // ErrRenderedHTMLTooLarge identifies the sole render failure for which the
@@ -37,7 +38,8 @@ var legacyCommonMarkRenderer = goldmark.New()
 // presentation values without crossing RenderMarkdown. The zero value is safe
 // for presentation but cannot be persisted.
 type RenderedMarkdown struct {
-	html string
+	html       string
+	searchText string
 }
 
 // RenderMarkdown validates bounded canonical source, renders plain CommonMark
@@ -57,14 +59,14 @@ func RenderMarkdown(source string) (RenderedMarkdown, error) {
 	if err := commonMarkRenderer.Convert([]byte(source), &rendered); err != nil {
 		return RenderedMarkdown{}, fmt.Errorf("render Markdown: %w", err)
 	}
-	sanitized := SanitizeHTML(rendered.String()).html
-	if len(sanitized) > MaximumRenderedHTMLBytes {
-		return RenderedMarkdown{}, fmt.Errorf("%w: %d bytes exceeds %d", ErrRenderedHTMLTooLarge, len(sanitized), MaximumRenderedHTMLBytes)
+	sanitized := SanitizeHTML(rendered.String())
+	if len(sanitized.html) > MaximumRenderedHTMLBytes {
+		return RenderedMarkdown{}, fmt.Errorf("%w: %d bytes exceeds %d", ErrRenderedHTMLTooLarge, len(sanitized.html), MaximumRenderedHTMLBytes)
 	}
-	if len(sanitized) == 0 || strings.TrimSpace(sanitized) == "" {
+	if len(sanitized.html) == 0 || strings.TrimSpace(sanitized.html) == "" {
 		return RenderedMarkdown{}, fmt.Errorf("rendered Markdown has an invalid size or content")
 	}
-	return RenderedMarkdown{html: sanitized}, nil
+	return RenderedMarkdown{html: sanitized.html, searchText: sanitized.VisibleText()}, nil
 }
 
 // ValidateLegacyRenderedHTML proves that source and persisted HTML are the
@@ -110,6 +112,18 @@ func (rendered RenderedMarkdown) PersistenceValues() (string, string, error) {
 		return "", "", fmt.Errorf("rendered Markdown is not initialized")
 	}
 	return rendered.html, RendererVersion, nil
+}
+
+// SearchProjectionValues returns the inseparable visible text and exact
+// projection version only for a value produced by RenderMarkdown.
+//
+// Complexity: time and auxiliary space are tight Theta(1); returned strings
+// share their immutable backing storage and are not copied.
+func (rendered RenderedMarkdown) SearchProjectionValues() (string, string, error) {
+	if !rendered.valid() {
+		return "", "", fmt.Errorf("rendered Markdown is not initialized")
+	}
+	return rendered.searchText, SearchProjectionVersion, nil
 }
 
 // TrustedHTML converts already-sanitized renderer output to the opaque

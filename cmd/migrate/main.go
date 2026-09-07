@@ -15,6 +15,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/rerender"
+	"github.com/gotthboard/gotth-bb/internal/searchprojection"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -75,11 +76,17 @@ func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs
 	if err := rerender.Preflight(ctx, connection, rerender.MaximumBatchSize); err != nil {
 		return fmt.Errorf("preflight persisted Markdown: %w", err)
 	}
+	if err := searchprojection.Preflight(ctx, connection, searchprojection.MaximumBatchSize); err != nil {
+		return fmt.Errorf("preflight search projection: %w", err)
+	}
 	if err := migration.Apply(ctx, configured, filesystem); err != nil {
 		return err
 	}
 	if err := rerender.Run(ctx, connection, rerender.MaximumBatchSize); err != nil {
 		return fmt.Errorf("re-render persisted Markdown: %w", err)
+	}
+	if err := searchprojection.Run(ctx, connection, searchprojection.MaximumBatchSize); err != nil {
+		return fmt.Errorf("populate search projection: %w", err)
 	}
 	return nil
 }

@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Build the AN-02 search projection gate
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- renderer-owned visible-text projection and writer bindings
+- migration 000008, restart-safe population, readiness, and runtime grants
+- focused unit and PostgreSQL 17 integration tests
+
+Explanation:
+
+Add the exact `search-v1-pg17-simple-u15-p2` topic/post projection without
+storing a duplicate visible-text column. Migration 000008 adds nullable vector
+tuples, six initially unvalidated invariants, five exact partial indexes, a
+database-owned topic/post progress singleton, and six narrowed deferred
+topic/post consistency triggers. The ordinary migration command performs a
+complete read-only candidate-server preflight, resumes atomic batches of at
+most 100 rows, explicitly analyzes both tables, validates and attests the
+schema, and preserves the first completion time. Publish, reply, edit, and
+redact operations maintain projection tuples in their existing transactions.
+Readiness fails closed unless the migration is complete and every catalog
+definition remains exact; runtime receives read-only access to progress state.
+
+Verification:
+
+- renderer, generated-query, writer, migration, readiness, grant, and release
+  artifact unit tests
+- PostgreSQL 17.10 fresh/upgrade migration and exact catalog checks
+- PostgreSQL failure rollback, 100-row restart cursor, concurrent-runner,
+  completion, idempotence, and restricted-runtime readiness coverage
+
+Risks / non-goals:
+
+- schema application and final validation take population-dependent locks and
+  scans inside the documented stopped/drained maintenance window
+- this unit adds no search/activity/direct-post HTTP route, cursor keyring,
+  PR, push, tag, release, or deployment
+
 ### 2026-09-07 — Admit the bounded AN-02 discovery contract
 
 Commit: current commit; hash assigned by Git after commit

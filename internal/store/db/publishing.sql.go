@@ -15,7 +15,8 @@ const createReplyAndAdvanceTopic = `-- name: CreateReplyAndAdvanceTopic :one
 WITH inserted_post AS (
     INSERT INTO public.posts (
         topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, parent_post_id, created_at, updated_at
+        renderer_version, revision, parent_post_id, created_at, updated_at,
+        search_vector, search_projection_version
     )
     SELECT
         topic.id,
@@ -27,9 +28,11 @@ WITH inserted_post AS (
         1,
         $5,
         GREATEST($6::timestamptz, topic.last_activity_at),
-        GREATEST($6::timestamptz, topic.last_activity_at)
+        GREATEST($6::timestamptz, topic.last_activity_at),
+        to_tsvector('pg_catalog.simple'::regconfig, $7::text),
+        $8
     FROM public.topics AS topic
-    WHERE topic.id = $7
+    WHERE topic.id = $9
     RETURNING id, topic_id, post_number, thread_path, created_at AS post_created_at
 ),
 advanced_topic AS (
@@ -68,13 +71,15 @@ FROM advanced_topic
 `
 
 type CreateReplyAndAdvanceTopicParams struct {
-	AuthorID        int64
-	MarkdownSource  string
-	RenderedHtml    string
-	RendererVersion string
-	ParentPostID    pgtype.Int8
-	AtTime          pgtype.Timestamptz
-	TopicID         int64
+	AuthorID                int64
+	MarkdownSource          string
+	RenderedHtml            string
+	RendererVersion         string
+	ParentPostID            pgtype.Int8
+	AtTime                  pgtype.Timestamptz
+	PostSearchText          string
+	SearchProjectionVersion pgtype.Text
+	TopicID                 int64
 }
 
 type CreateReplyAndAdvanceTopicRow struct {
@@ -92,6 +97,8 @@ func (q *Queries) CreateReplyAndAdvanceTopic(ctx context.Context, arg CreateRepl
 		arg.RendererVersion,
 		arg.ParentPostID,
 		arg.AtTime,
+		arg.PostSearchText,
+		arg.SearchProjectionVersion,
 		arg.TopicID,
 	)
 	var i CreateReplyAndAdvanceTopicRow
@@ -113,7 +120,8 @@ WITH identifiers AS (
 inserted_topic AS (
     INSERT INTO public.topics (
         id, area_id, author_id, title, state, first_post_id, latest_post_id,
-        reply_count, next_post_number, created_at, updated_at, last_activity_at
+        reply_count, next_post_number, created_at, updated_at, last_activity_at,
+        search_vector, search_projection_version
     )
     SELECT
         identifiers.topic_id,
@@ -127,28 +135,33 @@ inserted_topic AS (
         2,
         $4,
         $4,
-        $4
+        $4,
+        to_tsvector('pg_catalog.simple'::regconfig, $5::text),
+        $6
     FROM identifiers
     RETURNING id
 ),
 inserted_post AS (
     INSERT INTO public.posts (
         id, topic_id, author_id, post_number, markdown_source, rendered_html,
-        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at
+        renderer_version, revision, parent_post_id, thread_path, created_at, updated_at,
+        search_vector, search_projection_version
     )
     SELECT
         identifiers.post_id,
         inserted_topic.id,
         $2,
         1,
-        $5,
-        $6,
         $7,
+        $8,
+        $9,
         1,
         NULL,
         ARRAY[1]::integer[],
         $4,
-        $4
+        $4,
+        to_tsvector('pg_catalog.simple'::regconfig, $10::text),
+        $6
     FROM identifiers
     JOIN inserted_topic ON inserted_topic.id = identifiers.topic_id
     RETURNING id, topic_id, post_number
@@ -158,13 +171,16 @@ FROM inserted_post
 `
 
 type CreateTopicAndFirstPostParams struct {
-	AreaID          int64
-	AuthorID        int64
-	Title           string
-	AtTime          pgtype.Timestamptz
-	MarkdownSource  string
-	RenderedHtml    string
-	RendererVersion string
+	AreaID                  int64
+	AuthorID                int64
+	Title                   string
+	AtTime                  pgtype.Timestamptz
+	TopicSearchText         string
+	SearchProjectionVersion pgtype.Text
+	MarkdownSource          string
+	RenderedHtml            string
+	RendererVersion         string
+	PostSearchText          string
 }
 
 type CreateTopicAndFirstPostRow struct {
@@ -180,9 +196,12 @@ func (q *Queries) CreateTopicAndFirstPost(ctx context.Context, arg CreateTopicAn
 		arg.AuthorID,
 		arg.Title,
 		arg.AtTime,
+		arg.TopicSearchText,
+		arg.SearchProjectionVersion,
 		arg.MarkdownSource,
 		arg.RenderedHtml,
 		arg.RendererVersion,
+		arg.PostSearchText,
 	)
 	var i CreateTopicAndFirstPostRow
 	err := row.Scan(

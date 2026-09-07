@@ -24,6 +24,8 @@ WITH updated AS (
     SET markdown_source = sqlc.arg(markdown_source),
         rendered_html = sqlc.arg(rendered_html),
         renderer_version = sqlc.arg(renderer_version),
+        search_vector = to_tsvector('pg_catalog.simple'::regconfig, sqlc.arg(post_search_text)::text),
+        search_projection_version = sqlc.arg(search_projection_version),
         revision = post.revision + 1,
         updated_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz)),
         edited_at = GREATEST(sqlc.arg(at_time)::timestamptz, post.updated_at, COALESCE(post.edited_at, '-infinity'::timestamptz))

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
+	"github.com/gotthboard/gotth-bb/internal/searchprojection"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -161,6 +162,9 @@ func (checker *Checker) Check(ctx context.Context) error {
 	}
 	if !valid {
 		return fmt.Errorf("governance readiness invariants are not satisfied")
+	}
+	if err := searchprojection.Ready(probeContext, checker.database); err != nil {
+		return fmt.Errorf("search projection readiness failed: %w", err)
 	}
 	return nil
 }

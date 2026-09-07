@@ -348,6 +348,28 @@ func TestRenderedMarkdownZeroValueCannotPersistAndRendersEmpty(t *testing.T) {
 	if err := rendered.TrustedHTML().Component().Render(context.Background(), &output); err != nil || output.Len() != 0 {
 		t.Fatalf("zero trusted HTML = (%q, %v), want empty/nil", output.String(), err)
 	}
+	if text, version, err := rendered.SearchProjectionValues(); err == nil || text != "" || version != "" {
+		t.Fatalf("zero SearchProjectionValues() = (%q, %q, %v), want empty/empty/error", text, version, err)
+	}
+}
+
+func TestRenderedMarkdownReturnsInseparableSearchProjectionValues(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := RenderMarkdown("# Cafe\u0301\n\nHello *careful*  world.\n\n- [x] done\n\n| Left | Right |\n| --- | --- |\n| one | two |\n")
+	if err != nil {
+		t.Fatalf("RenderMarkdown() returned error: %v", err)
+	}
+	text, version, err := rendered.SearchProjectionValues()
+	if err != nil {
+		t.Fatalf("SearchProjectionValues() returned error: %v", err)
+	}
+	if want := "Café Hello careful world. done Left Right one two"; text != want {
+		t.Fatalf("search projection text = %q, want %q", text, want)
+	}
+	if version != SearchProjectionVersion {
+		t.Fatalf("search projection version = %q, want %q", version, SearchProjectionVersion)
+	}
 }
 
 func TestRenderMarkdownIsConcurrent(t *testing.T) {
