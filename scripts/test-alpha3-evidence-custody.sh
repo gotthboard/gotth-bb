@@ -4,8 +4,8 @@ set -euo pipefail
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/alpha3-evidence-custody.sh"
 
-readonly test_scratch="$(mktemp -d "${TMPDIR:-/tmp}/gotth-bb-alpha3-custody-test.XXXXXX")"
-trap 'rm -rf -- "$test_scratch"' EXIT HUP INT TERM
+readonly test_scratch="$(mktemp -d /tmp/gotth-bb-alpha3-custody-test.XXXXXX)"
+trap 'alpha3_remove_scratch "$test_scratch"' EXIT HUP INT TERM
 readonly repository="$test_scratch/repository"
 /usr/bin/mkdir -p "$repository/internal/rerender"
 (

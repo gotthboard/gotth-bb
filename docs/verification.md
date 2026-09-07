@@ -398,10 +398,12 @@ It captures HEAD and tree, writes exactly one deterministic committed archive,
 and extracts that captured archive into private scratch. Compilation occurs
 only inside the extracted tree, never inside the live worktree. The compile
 uses fixed `/usr/bin/go` under `env -i`, `GOENV=off`, `GOWORK=off`, empty
-`GOFLAGS`, the local toolchain, disabled CGO, fixed Linux/amd64/v1 targets,
+`GOFLAGS`, the exact checksum-verified Go 1.26.6 toolchain, disabled CGO,
+fixed Linux/amd64/v1 targets,
 isolated build/module/temp caches, and checksum-verified public module
 downloads. The measured binary also starts under `env -i`. The script refuses
-ambient shell/loader injection, records the Go binary path and digest, refuses
+ambient shell/loader injection, records both the bootstrap and selected
+compiler paths and digests, refuses
 a dirty source tree, and requires the same HEAD/tree/archive identities plus a
 clean tree after the measured process exits. It requires
 `GOTTH_BB_TEST_DATABASE_URL`,
@@ -425,8 +427,8 @@ measured SQL connection must return that exact identifier while also requiring
 test database. The script compiles the committed
 integration test, runs it once with `GOMAXPROCS=4`, and samples the test
 process's `VmRSS` from `/proc` every 50 ms. It prints the before/after source
-identities and cleanliness, extracted-archive execution mode, OS, Go binary
-digest/version/environment, container endpoint/image identity, container and
+identities and cleanliness, extracted-archive execution mode, OS, Go bootstrap
+and compiler digests/version/environment, container endpoint/image identity, container and
 live-SQL system identifier, fixture digests, transaction elapsed time, result
 state, and sampled peak RSS without printing the database URL. A committed
 negative test places syntax-invalid `_test.go` files behind both `.gitignore`

@@ -32,7 +32,7 @@ if [ -e "$evidence_output" ] || [ -L "$evidence_output" ] || [ ! -d "$(dirname -
 fi
 
 evidence_scratch=$(mktemp -d /tmp/gotth-bb-alpha3-population.XXXXXX)
-trap 'rm -rf -- "$evidence_scratch"' EXIT HUP INT TERM
+trap 'alpha3_remove_scratch "$evidence_scratch"' EXIT HUP INT TERM
 alpha3_capture_committed_source "$evidence_scratch"
 readonly source_head_before=$ALPHA3_SOURCE_HEAD
 readonly source_tree_before=$ALPHA3_SOURCE_TREE
@@ -107,10 +107,12 @@ fi
   printf 'source_execution_root=%s\n' "$ALPHA3_SOURCE_ROOT"
   printf 'source_execution_kind=extracted_captured_git_archive\n'
   printf 'environment=%s\n' "$(uname -srvmo)"
-  printf 'go_binary=%s\n' "$ALPHA3_GO_BINARY"
-  printf 'go_binary_sha256=%s\n' "$ALPHA3_GO_BINARY_SHA256"
+  printf 'go_bootstrap_binary=%s\n' "$ALPHA3_GO_BOOTSTRAP_BINARY"
+  printf 'go_bootstrap_sha256=%s\n' "$ALPHA3_GO_BOOTSTRAP_SHA256"
+  printf 'go_compiler_binary=%s\n' "$ALPHA3_GO_COMPILER_BINARY"
+  printf 'go_compiler_sha256=%s\n' "$ALPHA3_GO_COMPILER_SHA256"
   printf 'go_version=%s\n' "$ALPHA3_GO_VERSION"
-  printf 'go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=local;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches\n'
+  printf 'go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=go1.26.6;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches\n'
   printf 'gomaxprocs=4\n'
   printf 'postgres_container=%s\n' "$container_name"
   printf 'postgres_container_running=%s\n' "$container_running"
