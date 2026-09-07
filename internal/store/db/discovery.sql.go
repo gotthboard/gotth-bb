@@ -395,6 +395,12 @@ WITH candidate AS MATERIALIZED (
             AND post.id = topic.first_post_id
             AND topic.search_vector @@ $6::text::tsquery
             AND ($7::bigint = 0 OR topic.author_id = $7::bigint)
+            AND (NOT $9::boolean OR topic.created_at >= $10::timestamptz)
+            AND (
+                NOT $11::boolean
+                OR ($12::boolean AND topic.created_at <= $13::timestamptz)
+                OR (NOT $12::boolean AND topic.created_at < $13::timestamptz)
+            )
           )
     ) AS identity
     ORDER BY identity.created_at DESC, identity.kind_order, identity.result_id DESC

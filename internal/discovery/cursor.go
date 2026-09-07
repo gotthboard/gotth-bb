@@ -63,6 +63,7 @@ type AuthenticatedCursor struct {
 	keyID    uint32
 	issuedAt time.Time
 	previous bool
+	keyStart time.Time
 	keyEnd   time.Time
 }
 
@@ -149,7 +150,7 @@ func (ring CursorKeyring) VerifyCursor(encoded string) (AuthenticatedCursor, err
 	}
 	authenticated := AuthenticatedCursor{
 		boundary: ActivityBoundary{CreatedAt: createdAt, PostID: postID}, secret: key.secret,
-		keyID: key.ID, issuedAt: issuedAt, previous: previous, keyEnd: key.IssueNotAfter,
+		keyID: key.ID, issuedAt: issuedAt, previous: previous, keyStart: key.NotBefore, keyEnd: key.IssueNotAfter,
 	}
 	copy(authenticated.audience[:], record[29:45])
 	return authenticated, nil
@@ -161,7 +162,8 @@ func (ring CursorKeyring) VerifyCursor(encoded string) (AuthenticatedCursor, err
 // Complexity: time and auxiliary space are tight Theta(1).
 func (cursor AuthenticatedCursor) belongsTo(ring CursorKeyring) bool {
 	key, previous := ring.key(cursor.keyID)
-	return key != nil && previous == cursor.previous && subtle.ConstantTimeCompare(key.secret[:], cursor.secret[:]) == 1 && key.IssueNotAfter.Equal(cursor.keyEnd)
+	return key != nil && previous == cursor.previous && subtle.ConstantTimeCompare(key.secret[:], cursor.secret[:]) == 1 &&
+		key.NotBefore.Equal(cursor.keyStart) && key.IssueNotAfter.Equal(cursor.keyEnd)
 }
 
 // ValidateTime applies database-authoritative cursor age/future and previous-

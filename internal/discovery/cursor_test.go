@@ -104,6 +104,11 @@ func TestCursorRotationAndKeyringIdentity(t *testing.T) {
 	if authenticated.belongsTo(CursorKeyring{Active: rotated.Active, Previous: &wrongPrevious}) {
 		t.Fatal("belongsTo() accepted a different keyring with the same key ID")
 	}
+	changedWindow := previous
+	changedWindow.NotBefore = changedWindow.NotBefore.Add(time.Second)
+	if authenticated.belongsTo(CursorKeyring{Active: rotated.Active, Previous: &changedWindow}) {
+		t.Fatal("belongsTo() accepted changed key-window metadata")
+	}
 }
 
 func TestCursorRejectsMalformedTamperedAndInvalidTimes(t *testing.T) {

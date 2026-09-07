@@ -91,6 +91,12 @@ WITH candidate AS MATERIALIZED (
             AND post.id = topic.first_post_id
             AND topic.search_vector @@ sqlc.arg(parsed_query)::text::tsquery
             AND (sqlc.arg(author_id)::bigint = 0 OR topic.author_id = sqlc.arg(author_id)::bigint)
+            AND (NOT sqlc.arg(has_from)::boolean OR topic.created_at >= sqlc.arg(from_time)::timestamptz)
+            AND (
+                NOT sqlc.arg(has_to)::boolean
+                OR (sqlc.arg(to_inclusive)::boolean AND topic.created_at <= sqlc.arg(to_time)::timestamptz)
+                OR (NOT sqlc.arg(to_inclusive)::boolean AND topic.created_at < sqlc.arg(to_time)::timestamptz)
+            )
           )
     ) AS identity
     ORDER BY identity.created_at DESC, identity.kind_order, identity.result_id DESC

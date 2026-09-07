@@ -146,6 +146,18 @@ func TestDiscoveryAuthorizationCursorAndDirectPostOnPostgreSQL17(t *testing.T) {
 	if _, err := connection.Exec(ctx, `UPDATE public.posts SET search_vector = to_tsvector('pg_catalog.simple'::regconfig, 'needle public body'), search_projection_version = 'search-v1-pg17-simple-u15-p2' WHERE id = $1`, publicTopic.PostID); err != nil {
 		t.Fatal(err)
 	}
+	dateBoundary := createDiscoveryTopic(t, ctx, connection, member, publicArea, base, "Boundary match", "boundary match")
+	if _, err := connection.Exec(ctx, `UPDATE public.posts SET created_at = $2, updated_at = $2 WHERE id = $1`, dateBoundary.PostID, base.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	dateRequest, err := ParseSearchRequest("q=boundary&from=2026-09-08&to=2026-09-08")
+	if err != nil {
+		t.Fatal(err)
+	}
+	datePage, err := Search(ctx, connection, dateRequest, visitor)
+	if err != nil || len(datePage.Results) != 1 || datePage.Results[0].Kind != "post" || datePage.Results[0].PostID != dateBoundary.PostID {
+		t.Fatalf("date-filtered root dedup = (%+v, %v), want root post", datePage, err)
+	}
 
 	for index := 0; index < 51; index++ {
 		createDiscoveryTopic(t, ctx, connection, member, publicArea, base.Add(time.Duration(100+index)*time.Second), fmt.Sprintf("Fence %02d", index), "fence body")
