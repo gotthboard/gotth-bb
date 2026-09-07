@@ -395,9 +395,9 @@ local result is represented as that evidence.
 ### 18.1 Native-toolbar IME evidence
 
 The exact clean executable-and-methodology commit
-`adde56b4a59e314abd5838c5e47da2b1ca5491e7`, tree
-`5198dc4fae9fdbfaaf9bd6bb3615d57e33c84f06`, was tested from a detached
-bundle clone on `development`. Node 26.7.0 passed all 16 deterministic toolbar
+`be72f0a8861b0a4a3daee2cb56c276c0ccd7e854`, tree
+`f57ea4631851a3b7b7a7ce23d74beed9632c4ee8`, was tested from a detached
+bundle clone on `development`. Node 26.7.0 passed all 18 deterministic toolbar
 tests. Chromium 151.0.7922.71 was then driven through the DevTools protocol
 without a browser-testing dependency: `Input.imeSetComposition` began a real
 composition in the focused textarea and physical mouse press/release events
@@ -405,12 +405,16 @@ activated Bold. The pointer gesture left the browser-owned value, active
 element, and selection byte-for-byte unchanged and did not emit
 `compositionend` or textarea `blur`. After `Input.insertText` committed the
 composition, native Tab and Space activation formatted the selected text and
-returned focus to the textarea. The test also requires observed `pointerdown`
-and `click`, while deterministic tests force the adverse
-pointerdown-to-compositionend-to-mousedown-to-click order and cover HTMX
-replacement plus independent simultaneous editors. The generated toolbar
-equals its source byte-for-byte at SHA-256
-`553afc5f8db379f396515dc8c85b3d5c83274810941ea744167fb0684bfe8fe0`.
+returned focus to the textarea. A second physical gesture was moved and
+released away from the button, proving no click, composition end, blur, value
+change, or selection change; after the release timer retired that gesture,
+native Tab plus Space applied Bold and Tab plus Enter removed it. The test also
+requires observed `pointerdown` and `click`. Deterministic tests force the
+adverse pointerdown-to-compositionend-to-mousedown-to-click order and cover
+pointer cancellation, lost capture, mouse fallback, multiple pointer
+identities, button/editor isolation, HTMX cleanup, and later independent
+gestures. The generated toolbar equals its source byte-for-byte at SHA-256
+`50d0bbc38e289ea2dcab8d74ae8b7d7124f90154e5eadcd0ec334909b7f9af6c`.
 
 ### 18.2 Renderer migration evidence
 
@@ -504,23 +508,23 @@ valid p1 source.
 
 The exact clean executable-and-methodology commit tested on `development` on
 2026-09-07 was
-`adde56b4a59e314abd5838c5e47da2b1ca5491e7`, with tree
-`5198dc4fae9fdbfaaf9bd6bb3615d57e33c84f06` and deterministic source-archive
+`be72f0a8861b0a4a3daee2cb56c276c0ccd7e854`, with tree
+`f57ea4631851a3b7b7a7ce23d74beed9632c4ee8` and deterministic source-archive
 SHA-256
-`3c67a96189cff7009ae461371daccce759dad197378d238af32907400a1e369e`.
+`e0b03484e746986653784834e2b91c1f69695f087ed4c7220265d324c8f5d7fb`.
 The fixture source was 65,532 bytes with SHA-256
 `5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c`;
 its exact p1 HTML was 141,997 bytes with SHA-256
 `8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a`.
-The real 100-row transaction took `20.265108315s`; all 100 rows were
+The real 100-row transaction took `20.194381887s`; all 100 rows were
 p1-preserved with exact HTML, `converted_count` became 100, the subsequent
 empty batch validated the exact writer constraint and completed the singleton,
-and the test process's sampled peak RSS was 78,576 KiB. The run used
+and the test process's sampled peak RSS was 74,072 KiB. The run used
 `GOMAXPROCS=4`, Go 1.26.6, Linux 7.1.5 x86-64, PostgreSQL 17.10, and the exact
 image reference and ID above. The complete retained transcript is
-[`docs/evidence/alpha3-dense-adde56b.txt`](evidence/alpha3-dense-adde56b.txt),
+[`docs/evidence/alpha3-dense-be72f0a.txt`](evidence/alpha3-dense-be72f0a.txt),
 SHA-256
-`eb0352cf2b3b63cb41504629c2ef07bc28b678fe02ddd77e9329efc905c622f3`.
+`dba6eddfc0ccc2d8d4f054e6e0fe8a46dd42b954c2f9afc05a3d62920b41992f`.
 This documentation-and-evidence commit is the direct child of the tested
 executable commit; it changes no executable source, fixture, or methodology.
 
@@ -543,22 +547,22 @@ is a representative 1,000-page measurement point, not a universal timing bound
 or capacity promise.
 
 The exact clean executable-and-methodology commit for this population run was
-`adde56b4a59e314abd5838c5e47da2b1ca5491e7`, with tree
-`5198dc4fae9fdbfaaf9bd6bb3615d57e33c84f06` and deterministic source-archive
+`be72f0a8861b0a4a3daee2cb56c276c0ccd7e854`, with tree
+`f57ea4631851a3b7b7a7ce23d74beed9632c4ee8` and deterministic source-archive
 SHA-256
-`3c67a96189cff7009ae461371daccce759dad197378d238af32907400a1e369e`.
+`e0b03484e746986653784834e2b91c1f69695f087ed4c7220265d324c8f5d7fb`.
 The 25,000-row fixture used 35-byte source with SHA-256
 `dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98`
 and 56-byte exact p1 HTML with SHA-256
 `3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970`.
-Complete preflight took `1.553482818s`, schema apply took `53.858258ms`,
-250 conversion batches took `16.399604237s`, and final full-table validation
-plus completion took `40.383974ms`. Total re-render time was `16.439988211s`;
-the measured release path was `18.047331077s`; sampled test-process peak RSS
-was 21,848 KiB. The exact final state contained 25,000 current rows,
+Complete preflight took `1.625826748s`, schema apply took `38.811207ms`,
+250 conversion batches took `16.752017848s`, and final full-table validation
+plus completion took `46.025574ms`. Total re-render time was `16.798043422s`;
+the measured release path was `18.462683327s`; sampled test-process peak RSS
+was 19,980 KiB. The exact final state contained 25,000 current rows,
 `converted_count=25000`, one non-null completion time, and a validated writer
 constraint. The environment and pinned PostgreSQL/Go identities were identical
 to the dense compatibility run above. The complete retained transcript is
-[`docs/evidence/alpha3-population-adde56b.txt`](evidence/alpha3-population-adde56b.txt),
+[`docs/evidence/alpha3-population-be72f0a.txt`](evidence/alpha3-population-be72f0a.txt),
 SHA-256
-`357fd8af489909f46958c467a1235a44d73052835c5e3c732c422f8f586186b5`.
+`0f648824c0a1e6ba886211bc459c96b97f6f786879b4644c0ce6bff98317833d`.
