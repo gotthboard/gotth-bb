@@ -395,8 +395,8 @@ local result is represented as that evidence.
 ### 18.1 Native-toolbar IME evidence
 
 The exact clean executable-and-methodology commit
-`583b9b4ed214f791effe87fbb14ff5497d408bd7`, tree
-`3ffa5882021e428161fc23480cb9f8c7ebeb9f70`, was tested from a detached
+`01c0247a05d65e2e2dd08483d1202cd4ca4ff01b`, tree
+`20986e97fdd8c8cfd1deabe5745810d0595099fb`, was tested from a detached
 bundle clone on `development`. Node 26.7.0 passed all 19 deterministic toolbar
 tests. Chromium 151.0.7922.71 was then driven through the DevTools protocol
 without a browser-testing dependency: `Input.imeSetComposition` began a real
@@ -517,23 +517,23 @@ valid p1 source.
 
 The exact clean executable-and-methodology commit tested on `development` on
 2026-09-07 was
-`cc0e34fe74e9e48e351dc7c761975b087a5219c6`, with tree
-`9d8ed5cdec3feece34deb55233b11b5c8fcc78ba` and deterministic source-archive
+`01c0247a05d65e2e2dd08483d1202cd4ca4ff01b`, with tree
+`20986e97fdd8c8cfd1deabe5745810d0595099fb` and deterministic source-archive
 SHA-256
-`480bb97cc323020862ac27eeea194b0fffe3b74af4b002b5662b3e844e0f3472`.
+`fb6daa4d48da5fb9df02ae1d48f151417e8b49f0c86eca756e47a68ca8fef878`.
 The fixture source was 65,532 bytes with SHA-256
 `5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c`;
 its exact p1 HTML was 141,997 bytes with SHA-256
 `8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a`.
-The real 100-row transaction took `21.162677103s`; all 100 rows were
+The real 100-row transaction took `20.644660958s`; all 100 rows were
 p1-preserved with exact HTML, `converted_count` became 100, the subsequent
 empty batch validated the exact writer constraint and completed the singleton,
-and the test process's sampled peak RSS was 84,676 KiB. The run used
+and the test process's sampled peak RSS was 74,368 KiB. The run used
 `GOMAXPROCS=4`, Go 1.26.6, Linux 7.1.5 x86-64, PostgreSQL 17.10, and the exact
 image reference and ID above. The complete retained transcript is
-[`docs/evidence/alpha3-dense-cc0e34f.txt`](evidence/alpha3-dense-cc0e34f.txt),
+[`docs/evidence/alpha3-dense-01c0247.txt`](evidence/alpha3-dense-01c0247.txt),
 SHA-256
-`d443c84061a08f0b0ada27e7b149ba25ae86a7283e810053ce57fbb920f33c1f`.
+`870ee5a73e5a64387a3a2538ac17732b52598ba51624243e4a3adb28aaf87bb6`.
 This documentation-and-evidence commit is the direct child of the tested
 executable commit; it changes no executable source, fixture, or methodology.
 
@@ -563,23 +563,31 @@ representative 1,000-page measurement point, not a universal timing bound or
 capacity promise.
 
 The exact clean executable-and-methodology commit for this population run was
-`cc0e34fe74e9e48e351dc7c761975b087a5219c6`, with tree
-`9d8ed5cdec3feece34deb55233b11b5c8fcc78ba` and deterministic source-archive
+`01c0247a05d65e2e2dd08483d1202cd4ca4ff01b`, with tree
+`20986e97fdd8c8cfd1deabe5745810d0595099fb` and deterministic source-archive
 SHA-256
-`480bb97cc323020862ac27eeea194b0fffe3b74af4b002b5662b3e844e0f3472`.
+`fb6daa4d48da5fb9df02ae1d48f151417e8b49f0c86eca756e47a68ca8fef878`.
 The 25,000-row fixture used 35-byte source with SHA-256
 `dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98`
 and 56-byte exact p1 HTML with SHA-256
 `3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970`.
-Complete preflight took `1.554417769s`, schema apply took `37.189173ms`,
-250 conversion batches took `14.225123821s`, and final full-table validation
-plus completion took `23.105229ms`. Total re-render time was `14.24822905s`;
-the measured release path was `15.839837112s`; sampled test-process peak RSS
-was 21,940 KiB. The exact final state contained 25,000 current rows,
+Complete preflight took `1.715047016s`, schema apply took `47.585931ms`,
+250 conversion batches took `15.350866698s`, and final full-table validation
+plus completion took `27.560897ms`. Total re-render time was `15.378427595s`;
+the measured release path was `17.141062512s`; sampled test-process peak RSS
+was 20,632 KiB. The exact final state contained 25,000 current rows,
 `converted_count=25000`, `last_processed_post_id=25000`, one non-null
 completion time, and a validated writer
 constraint. The environment and pinned PostgreSQL/Go identities were identical
 to the dense compatibility run above. The complete retained transcript is
-[`docs/evidence/alpha3-population-cc0e34f.txt`](evidence/alpha3-population-cc0e34f.txt),
+[`docs/evidence/alpha3-population-01c0247.txt`](evidence/alpha3-population-01c0247.txt),
 SHA-256
-`4d3c360c2f4c54ce2d916463af31d0a0b4245ec0dc6e1ae22a7603f349dc55a6`.
+`f07c2a27b8cf35eb2a78318df7674661b044d13a6f483a386c8075d1e2d80d54`.
+
+The same exact `01c0247` source passed deterministic generation, the
+adversarial custody suite, `go vet`, full non-integration race/coverage, full
+PostgreSQL 17.10 integration race, and integration coverage on `development`.
+The integration coverage run reported 93.7% for `internal/render`, 56.7% for
+`internal/rerender`, and 100% for both `internal/readiness` and `migrations`.
+This documentation-and-evidence commit changes no executable source, fixture,
+or evidence methodology.
