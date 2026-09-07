@@ -553,7 +553,8 @@ query round trips; schema time; 250 ordinary conversion batches;
 251 instrumented mutation selections returning exactly 25,000 unique rows
 without revisiting a committed prefix. With PostgreSQL
 `plan_cache_mode = force_generic_plan`, it also performs 251
-`EXPLAIN ANALYZE` probes on each exact preflight and mutation selection shape.
+`EXPLAIN ANALYZE` probes in each phase across that phase's exact initial and
+cursor selection shapes.
 Both phases must examine exactly the 25,000 returned rows through `posts_pkey`,
 and every cursor-bearing plan must retain its direct primary-key lower-bound
 index condition. The test then records the final whole-table
