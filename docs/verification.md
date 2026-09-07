@@ -603,8 +603,8 @@ substitute for the required population/plan gate.
 ### AN-02-02 representative plan checkpoint
 
 The exact executable and plan-methodology commit
-`aff08252cbe283ecd9365f85b78c8a2c44a8b064`, tree
-`fb2e8f0b0374b740f4f288f4f473be034393fc7c`, populated 25,000 topics and
+`9034e63c4953d5a21c55b02a5fe0d371064a5d3f`, tree
+`2ac6f53defc8b0757c35a1fd454126fb1a33d5ec`, populated 25,000 topics and
 25,000 posts across public and group-restricted areas on PostgreSQL 17.10.
 The corpus includes common and rare terms plus a one-percent author
 distribution. The exact generated search, cursor-bearing activity, and direct
@@ -627,9 +627,9 @@ TestDiscoveryPlansOnPostgreSQL17 -count=1 -v ./internal/store/db` on
 `development` with Go 1.26.6 and PostgreSQL 17.10 Alpine image ID
 `sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193`.
 The complete retained transcript is
-[`docs/evidence/an02-02-plans-aff0825.txt`](evidence/an02-02-plans-aff0825.txt),
+[`docs/evidence/an02-02-plans-9034e63.txt`](evidence/an02-02-plans-9034e63.txt),
 SHA-256
-`1aed451c29ab2132a7ce75194c6a252f59ca0daa5ab19ca931219684e50c4b16`.
+`e8750a76a06a6d31e8afb5300037d3f6e2fc4d66ef3f4d9385e504138a6c6bfe`.
 
 ### 19.1 Functional and authorization matrix
 
