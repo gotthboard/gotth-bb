@@ -9,7 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -19,6 +21,7 @@ import (
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 )
@@ -311,9 +314,9 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	adminConfig, err := pgx.ParseConfig(databaseURL)
+	adminConfig, err := parsePerformanceDatabaseConfig(databaseURL, os.Getenv("GOTTH_BB_EXPECTED_DATABASE_HOST"), os.Getenv("GOTTH_BB_EXPECTED_DATABASE_PORT"))
 	if err != nil {
-		t.Fatalf("pgx.ParseConfig() returned error: %v", err)
+		t.Fatalf("parse bounded performance database target: %v", err)
 	}
 	adminConfig.Database = "postgres"
 	admin, err := pgx.ConnectConfig(ctx, adminConfig)
@@ -443,9 +446,9 @@ func TestPopulationMigrationPerformanceOnPostgreSQL17(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	adminConfig, err := pgx.ParseConfig(databaseURL)
+	adminConfig, err := parsePerformanceDatabaseConfig(databaseURL, os.Getenv("GOTTH_BB_EXPECTED_DATABASE_HOST"), os.Getenv("GOTTH_BB_EXPECTED_DATABASE_PORT"))
 	if err != nil {
-		t.Fatalf("pgx.ParseConfig() returned error: %v", err)
+		t.Fatalf("parse bounded population database target: %v", err)
 	}
 	adminConfig.Database = "postgres"
 	admin, err := pgx.ConnectConfig(ctx, adminConfig)
@@ -643,21 +646,94 @@ func preAlpha3MigrationFS(t *testing.T) fs.FS {
 	return legacy
 }
 
+func TestPerformanceDatabaseConfigRejectsAlternateTargets(t *testing.T) {
+	t.Parallel()
+
+	const (
+		wantHost = "127.0.0.1"
+		wantPort = "32797"
+	)
+	for _, test := range []struct {
+		name       string
+		connection string
+	}{
+		{name: "query host override", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=disable&host=10.0.0.42"},
+		{name: "query port override", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=disable&port=5432"},
+		{name: "multiple hosts", connection: "postgres://user:pass@127.0.0.1:32797,10.0.0.42:5432/db?sslmode=disable"},
+		{name: "service override", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=disable&service=alternate"},
+		{name: "service file override", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=disable&servicefile=/tmp/alternate.conf&service=alternate"},
+		{name: "target session fallback", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=disable&target_session_attrs=prefer-standby"},
+		{name: "TLS fallback", connection: "postgres://user:pass@127.0.0.1:32797/db?sslmode=prefer"},
+		{name: "alternate authority", connection: "postgres://user:pass@10.0.0.42:5432/db?sslmode=disable"},
+		{name: "keyword settings", connection: "host=127.0.0.1 port=32797 database=db sslmode=disable"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := parsePerformanceDatabaseConfig(test.connection, wantHost, wantPort); err == nil {
+				t.Fatalf("parsePerformanceDatabaseConfig(%q) succeeded, want rejection", test.connection)
+			}
+		})
+	}
+
+	config, err := parsePerformanceDatabaseConfig("postgres://user:pass@127.0.0.1:32797/db?sslmode=disable", wantHost, wantPort)
+	if err != nil {
+		t.Fatalf("parse exact performance target: %v", err)
+	}
+	if config.Host != wantHost || config.Port != 32797 || config.Database != "db" || len(config.Fallbacks) != 0 || config.TLSConfig != nil {
+		t.Fatalf("exact performance target = host %q/port %d/database %q/fallbacks %d/TLS %t", config.Host, config.Port, config.Database, len(config.Fallbacks), config.TLSConfig != nil)
+	}
+}
+
+func parsePerformanceDatabaseConfig(connectionString, wantHost, wantPortText string) (*pgx.ConnConfig, error) {
+	if !strings.HasPrefix(connectionString, "postgres://") && !strings.HasPrefix(connectionString, "postgresql://") {
+		return nil, errors.New("performance database target must be a PostgreSQL URI")
+	}
+	parsedURL, err := url.Parse(connectionString)
+	if err != nil {
+		return nil, fmt.Errorf("parse performance database URI: %w", err)
+	}
+	query := parsedURL.Query()
+	for key, values := range query {
+		if key != "sslmode" || len(values) != 1 || values[0] != "disable" {
+			return nil, fmt.Errorf("performance database URI query key %q is not the single required sslmode=disable setting", key)
+		}
+	}
+	if query.Get("sslmode") != "disable" {
+		return nil, errors.New("performance database URI requires sslmode=disable")
+	}
+	wantPort, err := strconv.ParseUint(wantPortText, 10, 16)
+	if err != nil || wantPort == 0 || wantHost != "127.0.0.1" {
+		return nil, fmt.Errorf("invalid inspected container endpoint %q:%q", wantHost, wantPortText)
+	}
+	config, err := pgx.ParseConfigWithOptions(connectionString, pgx.ParseConfigOptions{ParseConfigOptions: pgconn.ParseConfigOptions{ConnStringAllowedKeys: []string{"host", "port", "database", "user", "password", "sslmode"}}})
+	if err != nil {
+		return nil, fmt.Errorf("parse effective pgx target: %w", err)
+	}
+	if config.Host != wantHost || config.Port != uint16(wantPort) || len(config.Fallbacks) != 0 || config.TLSConfig != nil {
+		return nil, fmt.Errorf("effective pgx target = host %q/port %d/fallbacks %d/TLS %t, want %q/%d/0/false", config.Host, config.Port, len(config.Fallbacks), config.TLSConfig != nil, wantHost, wantPort)
+	}
+	return config, nil
+}
+
 func logPerformanceServerIdentity(t *testing.T, ctx context.Context, connection *pgx.Conn, wantDatabase string) {
 	t.Helper()
 	var versionNumber, serverPort int
-	var serverAddress, database string
+	var serverAddress, database, systemIdentifier string
 	if err := connection.QueryRow(ctx, `SELECT
 current_setting('server_version_num')::integer,
 COALESCE(inet_server_addr()::text, ''),
 COALESCE(inet_server_port(), 0),
-current_database()`).Scan(&versionNumber, &serverAddress, &serverPort, &database); err != nil {
+current_database(),
+system_identifier::text
+FROM pg_control_system()`).Scan(&versionNumber, &serverAddress, &serverPort, &database, &systemIdentifier); err != nil {
 		t.Fatalf("query live PostgreSQL identity: %v", err)
 	}
-	if versionNumber != 170010 || serverAddress == "" || serverPort != 5432 || database != wantDatabase {
-		t.Fatalf("live PostgreSQL identity = version %d/address %q/port %d/database %q, want 170010/nonempty/5432/%q", versionNumber, serverAddress, serverPort, database, wantDatabase)
+	wantSystemIdentifier := os.Getenv("GOTTH_BB_EXPECTED_DATABASE_SYSTEM_IDENTIFIER")
+	if versionNumber != 170010 || serverAddress == "" || serverPort != 5432 || database != wantDatabase || wantSystemIdentifier == "" || systemIdentifier != wantSystemIdentifier {
+		t.Fatalf("live PostgreSQL identity = version %d/address %q/port %d/database %q/system %q, want 170010/nonempty/5432/%q/%q", versionNumber, serverAddress, serverPort, database, systemIdentifier, wantDatabase, wantSystemIdentifier)
 	}
-	t.Logf("sql_server_identity version_num=%d address=%s port=%d database=%s", versionNumber, serverAddress, serverPort, database)
+	t.Logf("sql_server_identity version_num=%d address=%s port=%d database=%s system_identifier=%s", versionNumber, serverAddress, serverPort, database, systemIdentifier)
 }
 
 func exactLegacyHTML(t *testing.T, source string) string {

@@ -56,6 +56,9 @@ Verification:
   complete-preflight transaction/round-trip counts, conversion,
   final-validation, total-time, row-state, and
   sampled test-process RSS evidence retained as a hashed canonical transcript
+- evidence scripts that admit only the inspected loopback target after pinned
+  pgx effective-config parsing and require the same PostgreSQL system
+  identifier through both the inspected container and measured SQL connection
 - restricted-login-role integration of the exact idempotent packaged grants,
   proving the migration owner remains owner, renderer state stays read-only,
   and migration verification plus readiness pass after the narrow grant

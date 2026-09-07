@@ -37,22 +37,13 @@ if [[ ! "$published_endpoint" =~ ^127\.0\.0\.1:[0-9]+$ ]]; then
   printf 'PostgreSQL container must publish exactly one loopback endpoint, got %s\n' "$published_endpoint" >&2
   exit 2
 fi
-case "$GOTTH_BB_TEST_DATABASE_URL" in
-  postgres://*|postgresql://*) ;;
-  *) printf '%s\n' 'database URL must use the postgres or postgresql scheme' >&2; exit 2 ;;
-esac
-database_authority=${GOTTH_BB_TEST_DATABASE_URL#*://}
-if [ "$database_authority" = "$GOTTH_BB_TEST_DATABASE_URL" ] || [ "$database_authority" = "${database_authority#*/}" ]; then
-  printf '%s\n' 'database URL must contain an authority and database path' >&2
+readonly expected_database_host=${published_endpoint%:*}
+readonly expected_database_port=${published_endpoint#*:}
+container_system_identifier=$(sudo -n docker exec "$container_name" sh -ceu 'exec psql -XAt --dbname "$POSTGRES_DB" --username "$POSTGRES_USER" -c "SELECT system_identifier FROM pg_control_system()"')
+if [[ ! "$container_system_identifier" =~ ^[0-9]+$ ]]; then
+  printf 'inspected container returned invalid PostgreSQL system identifier %s\n' "$container_system_identifier" >&2
   exit 2
 fi
-database_authority=${database_authority%%/*}
-database_endpoint=${database_authority##*@}
-if [ "$database_endpoint" != "$published_endpoint" ]; then
-  printf 'database URL endpoint does not match inspected container endpoint %s\n' "$published_endpoint" >&2
-  exit 2
-fi
-
 evidence_scratch=$(mktemp -d "${TMPDIR:-/tmp}/gotth-bb-alpha3-population.XXXXXX")
 trap 'rm -rf -- "$evidence_scratch"' EXIT HUP INT TERM
 readonly test_binary="$evidence_scratch/rerender-population.test"
@@ -60,7 +51,9 @@ readonly test_log="$evidence_scratch/result.log"
 readonly transcript="$evidence_scratch/evidence.txt"
 
 GOMAXPROCS=4 go test -mod=readonly -tags=integration -c -o "$test_binary" ./internal/rerender
-GOTTH_BB_RUN_POPULATION_PERFORMANCE=1 GOTTH_BB_TEST_DATABASE_URL="$GOTTH_BB_TEST_DATABASE_URL" GOMAXPROCS=4 "$test_binary" \
+GOTTH_BB_RUN_POPULATION_PERFORMANCE=1 GOTTH_BB_TEST_DATABASE_URL="$GOTTH_BB_TEST_DATABASE_URL" \
+  GOTTH_BB_EXPECTED_DATABASE_HOST="$expected_database_host" GOTTH_BB_EXPECTED_DATABASE_PORT="$expected_database_port" \
+  GOTTH_BB_EXPECTED_DATABASE_SYSTEM_IDENTIFIER="$container_system_identifier" GOMAXPROCS=4 "$test_binary" \
   -test.run '^TestPopulationMigrationPerformanceOnPostgreSQL17$' \
   -test.count=1 -test.v >"$test_log" 2>&1 &
 test_pid=$!
@@ -106,6 +99,7 @@ fi
   printf 'postgres_container=%s\n' "$container_name"
   printf 'postgres_container_running=%s\n' "$container_running"
   printf 'postgres_published_endpoint=%s\n' "$published_endpoint"
+  printf 'postgres_system_identifier=%s\n' "$container_system_identifier"
   printf 'postgres_image_ref=%s\n' "$image_ref"
   printf 'postgres_image_id=%s\n' "$image_id"
   printf 'postgres_version=%s\n' "$(sudo -n docker exec "$container_name" postgres --version)"
@@ -125,4 +119,4 @@ if [ "$test_status" -ne 0 ]; then
 fi
 grep -F 'population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250' "$transcript" >/dev/null
 grep -F 'current=25000 converted=25000 completed=true validated=true' "$transcript" >/dev/null
-grep -F 'sql_server_identity version_num=170010 ' "$transcript" >/dev/null
+grep -F 'sql_server_identity version_num=170010 ' "$transcript" | grep -F " system_identifier=$container_system_identifier" >/dev/null
