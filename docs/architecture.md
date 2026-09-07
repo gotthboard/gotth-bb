@@ -364,11 +364,14 @@ Posts keep Markdown source as canonical content. Sanitized HTML may be stored
 as a derived cache with a renderer-version marker. A renderer change can rebuild
 the cache from source. Alpha.3 performs that rebuild through a release-owned,
 bounded batch transaction. Each batch locks only its selected stale post rows,
-renders their current canonical source, updates only those locked identities,
-and commits before selecting more. A singleton renderer-state row records the
-target and completion boundary; readiness rejects traffic until the state is
-complete and no non-redacted post carries another renderer version. Restarting
-the migration safely resumes from the remaining stale rows.
+plus the singleton renderer-state row that serializes competing runners,
+renders current canonical source, updates only those locked identities, and
+commits before selecting more. The schema installs a `NOT VALID` writer
+constraint that immediately rejects obsolete-version inserts and updates while
+the application is stopped and old rows are rebuilt. The final empty batch
+validates that constraint and records completion. Readiness checks the exact
+completed target and validated catalog constraint in constant-shaped SQL;
+restarting the migration safely resumes from the remaining stale rows.
 
 ### 8.4 Soft deletion and audit
 

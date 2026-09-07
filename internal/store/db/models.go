@@ -31,6 +31,13 @@ type AreaGroup struct {
 	CreatedAt pgtype.Timestamptz
 }
 
+type ContentRendererState struct {
+	Singleton      bool
+	TargetVersion  string
+	ConvertedCount int64
+	CompletedAt    pgtype.Timestamptz
+}
+
 type ExternalIdentity struct {
 	UserID         int64
 	Issuer         string

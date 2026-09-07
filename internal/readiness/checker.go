@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -23,6 +24,25 @@ const governanceInvariantSQL = `SELECT
               OR suspended_at > $1::timestamptz
               OR suspended_until <= $1::timestamptz
           )
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM public.content_renderer_state
+        WHERE singleton
+          AND target_version = $2::text
+          AND completed_at IS NOT NULL
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS constraint_state
+        JOIN pg_catalog.pg_class AS constrained_table
+          ON constrained_table.oid = constraint_state.conrelid
+        JOIN pg_catalog.pg_namespace AS constrained_schema
+          ON constrained_schema.oid = constrained_table.relnamespace
+        WHERE constrained_schema.nspname = 'public'
+          AND constrained_table.relname = 'posts'
+          AND constraint_state.conname = 'posts_renderer_version_current'
+          AND constraint_state.convalidated
     )`
 
 type database interface {
@@ -84,7 +104,7 @@ func (checker *Checker) Check(ctx context.Context) error {
 		return fmt.Errorf("readiness clock returned zero time")
 	}
 	var valid bool
-	if err := checker.database.QueryRow(probeContext, governanceInvariantSQL, observedAt).Scan(&valid); err != nil {
+	if err := checker.database.QueryRow(probeContext, governanceInvariantSQL, observedAt, contentrender.RendererVersion).Scan(&valid); err != nil {
 		return fmt.Errorf("query governance readiness: %w", err)
 	}
 	if !valid {

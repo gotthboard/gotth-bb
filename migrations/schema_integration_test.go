@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
@@ -89,8 +90,8 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 6 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 6, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 7 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 7, 1)", serverVersion, migrationCount, governanceCount)
 	}
 
 	var administratorID int64
@@ -439,7 +440,7 @@ VALUES ($1, $2, $3, 'First topic', $4, $4)`, topicID, areaID, memberID, firstPos
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO public.posts
     (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version)
-VALUES ($1, $2, $3, 1, 'First post', '<p>First post</p>', 'test-v1')`, firstPostID, topicID, memberID); err != nil {
+VALUES ($1, $2, $3, 1, 'First post', '<p>First post</p>', $4)`, firstPostID, topicID, memberID, contentrender.RendererVersion); err != nil {
 		t.Fatalf("insert first post: %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -453,7 +454,7 @@ VALUES ($1, $2, $3, 1, 'First post', '<p>First post</p>', 'test-v1')`, firstPost
 	var replyID int64
 	if err := tx.QueryRow(ctx, `INSERT INTO public.posts
     (topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version)
-VALUES ($1, $2, 2, 'Reply', '<p>Reply</p>', 'test-v1') RETURNING id`, topicID, memberID).Scan(&replyID); err != nil {
+VALUES ($1, $2, 2, 'Reply', '<p>Reply</p>', $3) RETURNING id`, topicID, memberID, contentrender.RendererVersion).Scan(&replyID); err != nil {
 		t.Fatalf("insert reply: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE public.topics
@@ -480,7 +481,7 @@ WHERE id = $1`, topicID, replyID); err != nil {
 	}
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.posts
     (topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version)
-VALUES ($1, $2, 2, 'Duplicate', '<p>Duplicate</p>', 'test-v1')`, topicID, memberID)
+VALUES ($1, $2, 2, 'Duplicate', '<p>Duplicate</p>', $3)`, topicID, memberID, contentrender.RendererVersion)
 	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET post_number = 3 WHERE id = $1", replyID)
 	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET parent_post_id = NULL WHERE id = $1", replyID)
 	expectExecutionFailure(t, conn, ctx, "UPDATE public.posts SET thread_path = ARRAY[1, 99] WHERE id = $1", replyID)

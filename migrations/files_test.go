@@ -19,6 +19,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000004_reports_and_audit.sql",
 		"000005_threaded_posts.sql",
 		"000006_reports_moderation_completion.sql",
+		"000007_gfm_renderer.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -58,8 +59,8 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 	if migrationCalls != 1 || !database.called || database.query != governanceInvariantSQL {
 		t.Fatalf("calls = (migrations %d, database %t, query %q)", migrationCalls, database.called, database.query)
 	}
-	if len(database.arguments) != 1 || database.arguments[0] != observedAt.UTC() {
-		t.Fatalf("query arguments = %+v, want UTC observation time", database.arguments)
+	if len(database.arguments) != 2 || database.arguments[0] != observedAt.UTC() || database.arguments[1] != contentrender.RendererVersion {
+		t.Fatalf("query arguments = %+v, want UTC observation time and renderer version", database.arguments)
 	}
 }
 

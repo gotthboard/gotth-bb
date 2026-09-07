@@ -301,16 +301,24 @@ required sequence is:
 6. Put the new artifact beside the current artifact; do not overwrite the only
    rollback copy.
 7. Run preflight checks and inspect pending migrations.
-8. Run migrations once with an explicit result.
-9. Build the application image from the verified archive and verify labels and
+8. For alpha.3 or any later renderer-version migration, enter a visible
+   maintenance window, stop the current application, drain in-flight requests,
+   and prove the old listener is closed before applying schema or content
+   changes. Do not rely on row locks to protect against an old binary that can
+   resume afterward and write an obsolete renderer version.
+9. Run migrations once with an explicit result. The alpha.3 `NOT VALID`
+   renderer constraint rejects new obsolete-version inserts and updates as soon
+   as it is installed; the migration validates it only after the bounded
+   re-render completion oracle succeeds.
+10. Build the application image from the verified archive and verify labels and
    database-free binary identities.
-10. Validate the resolved Compose model without printing its environment.
-11. Preserve the running PostgreSQL container and durable bind mount, stop the
-   native application unit, and start only the application container.
-12. Wait for container health and application readiness.
-13. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
-14. Record result, version, image ID, migration head, and evidence.
-15. If any gate fails, stop and execute the documented rollback/repair decision.
+11. Validate the resolved Compose model without printing its environment.
+12. Preserve the running PostgreSQL container and durable bind mount and start
+   only the new application container.
+13. Wait for container health and application readiness.
+14. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
+15. Record result, version, image ID, migration head, and evidence.
+16. If any gate fails, stop and execute the documented rollback/repair decision.
 
 Deploy commands must be safe to rerun or must detect completed state. A retry
 must not duplicate migrations, seed users, or moderation data.
@@ -347,6 +355,10 @@ Decision order after failure:
    and configuration.
 2. If migrations ran and are backward-compatible, restore the previous
    artifact and keep the expanded schema.
+   Alpha.3's renderer writer constraint is not backward-compatible with an old
+   binary that persists the previous renderer version; do not restart that
+   binary after migration. Use forward repair, or restore the pre-migration
+   database backup before restoring the old artifact.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the

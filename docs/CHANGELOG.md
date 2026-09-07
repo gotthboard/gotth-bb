@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 21:04 CDT — Add restart-safe renderer migration
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `migrations/000007_gfm_renderer.sql` and migration tests
+- `internal/rerender/`
+- `cmd/migrate/main.go` and tests
+- `internal/readiness/checker.go` and tests
+- `docs/architecture.md`, `docs/implementation-spec.md`, and
+  `docs/release-operations.md`
+
+Explanation:
+
+Add a release-owned, bounded re-render pass after schema migration. One locked
+singleton serializes runners, each transaction rebuilds at most 100 ordinary
+posts from canonical Markdown, and an immediately enforced `NOT VALID` writer
+constraint prevents a stopped old release from leaving mixed renderer writes.
+The final empty transaction validates the constraint and records one stable
+completion time. Readiness checks that constant-shaped state rather than
+scanning posts.
+
+Verification:
+
+- focused migration-command, readiness, re-render, and migration-file tests
+- PostgreSQL 17.10 fresh, upgrade, restart, writer enforcement, edit/runner
+  contention, runner serialization, validation-failure, missing-state, and
+  idempotence checks
+
+Risks / non-goals:
+
+- deployment requires a visible maintenance stop before schema and content
+  migration; an old artifact must not restart against this schema
+- commit errors are not retried because the durable outcome may be unknown;
+  operators inspect state and safely rerun the idempotent command
+
 ### 2026-09-06 20:02 CDT — Implement the bounded GFM renderer
 
 Commit: current commit; hash assigned by Git after commit

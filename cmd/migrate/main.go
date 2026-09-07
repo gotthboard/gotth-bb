@@ -2,22 +2,27 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/migration"
+	"github.com/gotthboard/gotth-bb/internal/rerender"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
 
 type migrationRunner func(context.Context, *pgx.ConnConfig, fs.FS) error
 type releaseIdentityLoader func() (buildinfo.Info, error)
+
+const rendererConnectionCloseTimeout = 5 * time.Second
 
 // main binds process termination signals to the one-shot migration runner and
 // emits one bounded top-level failure before returning a nonzero status.
@@ -27,10 +32,53 @@ type releaseIdentityLoader func() (buildinfo.Info, error)
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := command(ctx, os.Args[1:], os.Stdout, buildinfo.Current, os.LookupEnv, migrations.Files(), migration.Apply); err != nil {
+	if err := command(ctx, os.Args[1:], os.Stdout, buildinfo.Current, os.LookupEnv, migrations.Files(), func(runContext context.Context, configured *pgx.ConnConfig, filesystem fs.FS) error {
+		return applyRelease(runContext, configured, filesystem, os.Stdout)
+	}); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb-migrate: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// applyRelease applies the immutable SQL ledger, then resumes the bounded
+// derived-content rebuild using the same release and migration-role database
+// configuration. The application remains stopped throughout this command.
+//
+// Complexity: for migration work m and p stale posts containing n source and h
+// rendered bytes, delegated time is O(m+p+n+h), Omega(m), with no tighter
+// Theta bound because database I/O varies; auxiliary space is bounded by one
+// renderer batch plus the migration runner's state.
+func applyRelease(ctx context.Context, configured *pgx.ConnConfig, filesystem fs.FS, output io.Writer) (resultErr error) {
+	if ctx == nil {
+		return fmt.Errorf("release migration context is required")
+	}
+	if configured == nil {
+		return fmt.Errorf("release migration database configuration is required")
+	}
+	if filesystem == nil {
+		return fmt.Errorf("release migration filesystem is required")
+	}
+	if output == nil {
+		return fmt.Errorf("release migration output is required")
+	}
+	if err := migration.Apply(ctx, configured, filesystem); err != nil {
+		return err
+	}
+	connection, err := pgx.ConnectConfig(ctx, configured)
+	if err != nil {
+		return fmt.Errorf("connect for renderer migration: %w", err)
+	}
+	defer func() {
+		closeContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), rendererConnectionCloseTimeout)
+		defer cancel()
+		if closeErr := connection.Close(closeContext); closeErr != nil {
+			resultErr = errors.Join(resultErr, fmt.Errorf("close renderer migration connection: %w", closeErr))
+		}
+	}()
+	if err := rerender.Run(ctx, connection, output, rerender.MaximumBatchSize); err != nil {
+		return fmt.Errorf("re-render persisted Markdown: %w", err)
+	}
+	return nil
 }
 
 // command exposes the database-free release identity or delegates the

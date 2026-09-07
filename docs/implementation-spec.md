@@ -1098,20 +1098,28 @@ rendered core pages for root-relative application links that omit `/bb`.
   the alpha.3 target. Fresh empty databases start complete; upgraded databases
   with ordinary stale posts start incomplete. Redacted tombstones retain the
   separate immutable `moderation-redaction-v1` renderer contract.
+- The application is stopped before this migration. A `NOT VALID` check
+  constraint immediately rejects obsolete-version inserts and updates without
+  first scanning old rows. Only the exact current version or an exact
+  `moderation-redaction-v1` row with `redacted_at` set can be written.
 - The release migration command applies schema migrations, then repeatedly
-  processes at most 100 stale posts in one transaction ordered by post ID with
-  `FOR UPDATE SKIP LOCKED`. Rendering uses the same `RenderMarkdown` function
-  as preview and publication. A render or database failure rolls back the
-  entire batch.
+  processes at most 100 stale posts in one transaction ordered by post ID. It
+  first locks the renderer-state singleton, mechanically serializing multiple
+  migration runners, then locks the selected posts. Rendering uses the same
+  `RenderMarkdown` function as preview and publication. A render or database
+  failure rolls back the entire batch.
 - The final empty batch proves no stale ordinary post remains and marks the
-  singleton complete in the same transaction. Process interruption or an
+  singleton complete and validates the writer constraint in the same
+  transaction. An already-recorded completion timestamp is never rewritten.
+  Process interruption or an
   unknown commit outcome is recovered by rerunning the command: already
   converted rows no longer match, while an edit serialized by the row lock
   either precedes the batch render or persists the new renderer itself.
 - Progress output contains only bounded counts, target renderer version, and
   completion state; it never logs Markdown, rendered HTML, identities, or
-  connection secrets. Readiness requires the exact completed target and a
-  zero-stale-row oracle.
+  connection secrets. Readiness requires the exact completed target and the
+  exact validated writer constraint through a constant-shaped catalog query;
+  it does not scan the posts table on every probe.
 
 ### 13.2 Native toolbar
 
