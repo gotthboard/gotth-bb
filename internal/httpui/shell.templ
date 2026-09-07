@@ -55,6 +55,7 @@ templ document(view pageView, content templ.Component) {
 			@content
 			@footer(view, footerLoadTimesFromContext(ctx))
 			<script src={ view.HTMXURL } defer></script>
+			<script src={ view.MarkdownToolbarURL } defer></script>
 		</body>
 	</html>
 }
@@ -586,14 +587,29 @@ templ reportActionForm(actionURL string, csrfToken string, field string, label s
 	</form>
 }
 
+templ markdownToolbarButtons() {
+	<button type="button" data-markdown-action="bold" aria-label="Bold" title="Bold" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Bold</button>
+	<button type="button" data-markdown-action="italic" aria-label="Italic" title="Italic" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Italic</button>
+	<button type="button" data-markdown-action="link" aria-label="Link" title="Link" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Link</button>
+	<button type="button" data-markdown-action="quote" aria-label="Block quote" title="Block quote" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Quote</button>
+	<button type="button" data-markdown-action="inline-code" aria-label="Inline code" title="Inline code" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Code</button>
+	<button type="button" data-markdown-action="fenced-code" aria-label="Fenced code block" title="Fenced code block" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Code block</button>
+	<button type="button" data-markdown-action="ordered-list" aria-label="Ordered list" title="Ordered list" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Numbered list</button>
+	<button type="button" data-markdown-action="unordered-list" aria-label="Unordered list" title="Unordered list" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Bullet list</button>
+	<button type="button" data-markdown-action="table" aria-label="Table" title="Table" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Table</button>
+	<button type="button" data-markdown-action="task-list" aria-label="Task list" title="Task list" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Task list</button>
+	<button type="button" data-markdown-action="strike" aria-label="Strikethrough" title="Strikethrough" class="rounded-md border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">Strike</button>
+}
+
 templ inlineReplyForm(form publishingFormView) {
 	<form method="post" action={ form.ActionURL } hx-post={ form.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-3 grid gap-3">
 		<input type="hidden" name="_csrf" value={ form.CSRFToken }/>
 		<input type="hidden" name="parent_post_id" value={ form.ParentPostID }/>
-		<label class="grid gap-1 text-sm font-semibold text-slate-200">
-			{ form.Heading }
-			<textarea name="markdown" required maxlength="65536" rows="6" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white"></textarea>
-		</label>
+		<div data-markdown-editor class="grid gap-2">
+			<label for={ "markdown-reply-" + form.ParentPostID } class="text-sm font-semibold text-slate-200">{ form.Heading }</label>
+			<div data-markdown-toolbar hidden role="group" aria-label="Markdown formatting" class="flex flex-wrap gap-2">@markdownToolbarButtons()</div>
+			<textarea id={ "markdown-reply-" + form.ParentPostID } name="markdown" required maxlength="65536" rows="6" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white"></textarea>
+		</div>
 		<div class="flex flex-wrap gap-2">
 			<button type="submit" class="rounded bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">Post reply</button>
 			<button type="submit" formaction={ form.PreviewURL } hx-post={ form.PreviewURL } class="rounded border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800">Preview</button>
@@ -686,14 +702,17 @@ templ publishingFormSection(form publishingFormView) {
 						<p role="alert" class="text-sm text-rose-300">{ form.TitleError }</p>
 					}
 				}
-				<label class="grid gap-2 font-semibold text-slate-200">
-					Markdown body
-					<textarea name="markdown" required maxlength="65536" rows="14"
+				<div data-markdown-editor class="grid gap-2">
+					<label for="markdown-body" class="font-semibold text-slate-200">Markdown body</label>
+					<div data-markdown-toolbar hidden role="group" aria-label="Markdown formatting" class="flex flex-wrap gap-2">
+						@markdownToolbarButtons()
+					</div>
+					<textarea id="markdown-body" name="markdown" required maxlength="65536" rows="14"
 						if form.MarkdownError != "" {
 							aria-invalid="true"
 						}
 						class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white">{ form.Markdown }</textarea>
-				</label>
+				</div>
 				if form.MarkdownError != "" {
 					<p role="alert" class="text-sm text-rose-300">{ form.MarkdownError }</p>
 				}

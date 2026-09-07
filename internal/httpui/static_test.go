@@ -12,7 +12,7 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "0a190b2010937a7f775df82d43ddf8882f662d156338beeff7d6e71762a0c46c"
+	const stylesheetSHA256 = "884dd01428d7d3d5fc8389301fe159dd5b4475f466007c268363c69dfd03e821"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
@@ -25,6 +25,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
+		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: "42e3116e77a503b8dca0c127a20aaaeb9f99e98f80db2a9315d57987982c2352", contains: "gotthMarkdownToolbar"},
 	}
 	for _, test := range tests {
 		test := test

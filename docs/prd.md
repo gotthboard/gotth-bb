@@ -411,9 +411,12 @@ renderer boundary. It is acceptable when all of the following hold:
    Markdown without overwriting a concurrent edit, and readiness fails closed
    until no ordinary post mixes renderer versions.
 5. The native authoring toolbar provides bold, italic, link, block quote,
-   inline code, fenced code, image, ordered-list, unordered-list, table,
-   task-list, and strikethrough shortcuts with selection, caret, multiline,
-   and applicable toggle behavior.
+   inline code, fenced code, ordered-list, unordered-list, table, task-list,
+   and strikethrough shortcuts with selection, caret, multiline, and
+   applicable toggle behavior. Image authoring remains excluded with
+   attachments and arbitrary embeds; it is deferred to version 2 and
+   `gotth-media`, where upload, scanning, privacy, quota, retention, and
+   failure behavior can be defined together.
 6. Toolbar buttons use native semantics, accessible names and tooltips, visible
    focus, and document-order keyboard navigation. Plain Markdown submission
    remains fully usable with JavaScript absent or failed.

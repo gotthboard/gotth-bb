@@ -42,6 +42,42 @@ Risks / non-goals:
 - commit errors are not retried because the durable outcome may be unknown;
   operators inspect state and safely rerun the idempotent command
 
+### 2026-09-06 20:28 CDT — Add the progressive Markdown toolbar
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `assets/scripts/markdown-toolbar.js`
+- `assets/scripts/markdown-toolbar.test.mjs`
+- `internal/httpui/shell.templ` and generated `shell_templ.go`
+- `internal/httpui/static.go` and `internal/httpui/static/`
+- `internal/httpui/handler.go`, `internal/httpui/view.go`, and focused tests
+- `Makefile`, `package.json`, and `docs/CHANGELOG.md`
+
+Explanation:
+
+Progressively enhance both full-page and inline reply Markdown composers with
+small first-party selection/caret transformations, native labeled buttons,
+visible keyboard focus, unique textarea labels, and HTMX replacement wiring.
+Serve the script as an immutable same-origin asset while leaving the ordinary
+textarea, preview, CSRF, validation, and publication paths independent of
+JavaScript.
+
+Verification:
+
+- `node --test assets/scripts/markdown-toolbar.test.mjs`
+- `GOMAXPROCS=2 go test -p=1 ./internal/httpui`
+- Templ and Tailwind generation plus static asset SHA-256 checks
+
+Risks / non-goals:
+
+- no Image shortcut is exposed: version 1 forbids attachments and arbitrary
+  embeds, so image authoring is deferred to version 2 plus `gotth-media`, where
+  upload, scanning, privacy, quota, retention, and failure policy belong
+- no client-side rendering, sanitizing, rich-text editor, or new dependency is
+  introduced
+
 ### 2026-09-06 20:02 CDT — Implement the bounded GFM renderer
 
 Commit: current commit; hash assigned by Git after commit

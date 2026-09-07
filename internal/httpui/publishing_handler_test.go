@@ -170,10 +170,27 @@ func TestPublishingHandlerRendersCanonicalNewTopicForm(t *testing.T) {
 	for _, required := range []string{
 		`action="/bb/topics"`, `name="area" value="member-news"`, `name="_csrf"`,
 		`name="title"`, `name="markdown"`, `maxlength="200"`, `maxlength="65536"`,
+		`data-markdown-editor`, `data-markdown-toolbar hidden role="group" aria-label="Markdown formatting"`,
+		`id="markdown-body"`, `for="markdown-body"`, `type="button"`,
+		`data-markdown-action="bold" aria-label="Bold" title="Bold"`,
+		`data-markdown-action="italic" aria-label="Italic" title="Italic"`,
+		`data-markdown-action="link" aria-label="Link" title="Link"`,
+		`data-markdown-action="quote" aria-label="Block quote" title="Block quote"`,
+		`data-markdown-action="inline-code" aria-label="Inline code" title="Inline code"`,
+		`data-markdown-action="fenced-code" aria-label="Fenced code block" title="Fenced code block"`,
+		`data-markdown-action="ordered-list" aria-label="Ordered list" title="Ordered list"`,
+		`data-markdown-action="unordered-list" aria-label="Unordered list" title="Unordered list"`,
+		`data-markdown-action="table" aria-label="Table" title="Table"`,
+		`data-markdown-action="task-list" aria-label="Task list" title="Task list"`,
+		`data-markdown-action="strike" aria-label="Strikethrough" title="Strikethrough"`,
+		`focus-visible:outline-2`,
 	} {
 		if !strings.Contains(body, required) {
 			t.Fatalf("new-topic form lacks %q: %s", required, body)
 		}
+	}
+	if strings.Contains(body, `data-markdown-action="image"`) {
+		t.Fatalf("new-topic form unexpectedly exposes an Image action: %s", body)
 	}
 }
 
@@ -212,6 +229,11 @@ func TestReadablePagesExposeOnlyEligiblePublishingActions(t *testing.T) {
 	if topicResponse.Code != http.StatusOK || !strings.Contains(topicResponse.Body.String(), `action="/bb/topics/42/replies"`) ||
 		!strings.Contains(topicResponse.Body.String(), `formaction="/bb/topics/42/replies/preview"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="parent_post_id" value="101"`) ||
+		!strings.Contains(topicResponse.Body.String(), `for="markdown-reply-101"`) ||
+		!strings.Contains(topicResponse.Body.String(), `id="markdown-body" name="markdown"`) ||
+		!strings.Contains(topicResponse.Body.String(), `id="markdown-reply-101" name="markdown"`) ||
+		!strings.Contains(topicResponse.Body.String(), `id="markdown-reply-127" name="markdown"`) ||
+		strings.Count(topicResponse.Body.String(), `data-markdown-editor`) != 3 ||
 		!strings.Contains(topicResponse.Body.String(), `action="/bb/posts/101/delete"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="revision" value="2"`) ||
 		!strings.Contains(topicResponse.Body.String(), `name="_csrf" value="`+validCSRFTokenForTest(0x51)+`"`) {

@@ -7,13 +7,16 @@ import (
 	"time"
 )
 
-const appStylesheetFilename = "app-0a190b2010937a7f775df82d43ddf8882f662d156338beeff7d6e71762a0c46c.css"
+const appStylesheetFilename = "app-884dd01428d7d3d5fc8389301fe159dd5b4475f466007c268363c69dfd03e821.css"
 
-//go:embed static/app-0a190b2010937a7f775df82d43ddf8882f662d156338beeff7d6e71762a0c46c.css
+//go:embed static/app-884dd01428d7d3d5fc8389301fe159dd5b4475f466007c268363c69dfd03e821.css
 var appStylesheet []byte
 
 //go:embed static/htmx-2.0.10.min.js
 var htmxScript []byte
+
+//go:embed static/markdown-toolbar-v1.js
+var markdownToolbarScript []byte
 
 // staticAssetHandler serves one release-versioned immutable byte slice with a
 // fixed media type. net/http owns HEAD, range, and conditional semantics.

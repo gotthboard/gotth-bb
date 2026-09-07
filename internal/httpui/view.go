@@ -9,17 +9,18 @@ import (
 const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"409","swap":true,"error":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`
 
 type pageView struct {
-	SiteName      string
-	Title         string
-	CanonicalURL  string
-	HomeURL       string
-	LoginURL      string
-	RegisterURL   string
-	LogoutURL     string
-	AdminURL      string
-	ReportsURL    string
-	StylesheetURL string
-	HTMXURL       string
+	SiteName           string
+	Title              string
+	CanonicalURL       string
+	HomeURL            string
+	LoginURL           string
+	RegisterURL        string
+	LogoutURL          string
+	AdminURL           string
+	ReportsURL         string
+	StylesheetURL      string
+	HTMXURL            string
+	MarkdownToolbarURL string
 }
 
 type administratorSetupView struct {
@@ -231,6 +232,10 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build HTMX URL: %w", err)
 	}
+	markdownToolbarURL, err := builder.Path("static", "markdown-toolbar-v1.js")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build Markdown toolbar URL: %w", err)
+	}
 	loginURL, err := builder.Path("login")
 	if err != nil {
 		return pageView{}, fmt.Errorf("build login URL: %w", err)
@@ -256,16 +261,17 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
 	}
 	return pageView{
-		SiteName:      "GOTTH Board",
-		Title:         title,
-		CanonicalURL:  canonicalURL,
-		HomeURL:       homeURL,
-		LoginURL:      loginURL,
-		RegisterURL:   registerURL,
-		LogoutURL:     logoutURL,
-		AdminURL:      adminURL,
-		ReportsURL:    reportsURL,
-		StylesheetURL: stylesheetURL,
-		HTMXURL:       htmxURL,
+		SiteName:           "GOTTH Board",
+		Title:              title,
+		CanonicalURL:       canonicalURL,
+		HomeURL:            homeURL,
+		LoginURL:           loginURL,
+		RegisterURL:        registerURL,
+		LogoutURL:          logoutURL,
+		AdminURL:           adminURL,
+		ReportsURL:         reportsURL,
+		StylesheetURL:      stylesheetURL,
+		HTMXURL:            htmxURL,
+		MarkdownToolbarURL: markdownToolbarURL,
 	}, nil
 }

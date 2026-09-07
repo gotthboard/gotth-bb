@@ -13,6 +13,7 @@ generate: frontend-dependencies
 	go tool sqlc generate --no-remote
 	npm run generate:css
 	install -m 0644 node_modules/htmx.org/dist/htmx.min.js internal/httpui/static/htmx-2.0.10.min.js
+	install -m 0644 assets/scripts/markdown-toolbar.js internal/httpui/static/markdown-toolbar-v1.js
 
 release: verify
 	go run -mod=readonly ./cmd/package --version "$${RELEASE_VERSION-}" --commit "$${RELEASE_COMMIT-}" --goos "$${RELEASE_GOOS-}" --goarch "$${RELEASE_GOARCH-}" --output "$${RELEASE_OUTPUT-}"

@@ -1127,9 +1127,13 @@ rendered core pages for root-relative application links that omit `/bb`.
   `[data-markdown-editor]` container. The source textarea remains a normal
   required form control and is usable without the script.
 - Native `button type="button"` controls provide bold, italic, link, block
-  quote, inline code, fenced code, image, ordered list, unordered list, table,
-  task list, and strikethrough actions. `aria-label` and `title` describe each
+  quote, inline code, fenced code, ordered list, unordered list, table, task
+  list, and strikethrough actions. `aria-label` and `title` describe each
   action; no custom keyboard interception replaces browser tab order.
+- Version 1 exposes no Image action. Image authoring is deferred to version 2
+  and `gotth-media`, where same-origin upload, scanning, privacy, quota,
+  retention, and bounded failure behavior can be specified and implemented as
+  one honest media boundary.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Line actions add/remove prefixes across the complete touched lines.
   Empty selections insert bounded placeholders and select the useful editable

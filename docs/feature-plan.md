@@ -337,7 +337,10 @@ Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
 - Extend the one renderer/sanitizer boundary with tables, strikethrough, task
   lists, and GFM autolinks; preserve Markdown as authoritative source.
 - Add a release-versioned first-party progressive-enhancement toolbar with the
-  twelve required shortcuts and accessible native controls.
+  eleven required shortcuts and accessible native controls. Do not expose an
+  Image shortcut while version 1 forbids attachments and arbitrary embeds;
+  defer image authoring to version 2 plus `gotth-media` so the media security,
+  privacy, quota, retention, and failure contracts exist first.
 - Add the renderer-state migration plus bounded restart-safe re-render command,
   edit serialization, completion oracle, readiness gate, and rollback record.
 - Prove every create/reply/edit/preview/publish/read path uses the same policy;

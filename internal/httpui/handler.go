@@ -78,9 +78,11 @@ func newHandler(
 	router.Get("/health/ready", readinessHandler(checkReadiness))
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)
 	htmx := staticAssetHandler("text/javascript; charset=utf-8", htmxScript)
+	markdownToolbar := staticAssetHandler("text/javascript; charset=utf-8", markdownToolbarScript)
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		router.Method(method, "/static/"+appStylesheetFilename, stylesheet)
 		router.Method(method, "/static/htmx-2.0.10.min.js", htmx)
+		router.Method(method, "/static/markdown-toolbar-v1.js", markdownToolbar)
 	}
 	router.NotFound(func(response http.ResponseWriter, request *http.Request) {
 		if err := renderResponse(
