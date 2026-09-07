@@ -1,0 +1,95 @@
+AN-02-03 HTTP/UI admission evidence
+
+Executable source
+  commit: 9092ed0acf52017ff929ec4abc9702da7132b2f9
+  tree: aae0587ed2f2287a7cf613ca25ef4414112571f9
+  parent: d9372eb9b37fa9637d6b6eeba67ce8f33a2f3d23
+  git archive SHA-256: 5eb85463087677aef39595ceecc8bc0d377f14e4fb22278b7d579279538ffc71
+
+Scope
+  This evidence admits AN-02-03 only: exact optional-session search,
+  recent-activity, and direct-post HTTP routes; progressive full-page/HTMX
+  presentation; startup keyring wiring; bounded request concurrency,
+  deadlines, rendering, and response envelopes; route-only application logs;
+  and browser-through-Caddy behavior. It does not admit AN-02-04 population,
+  merge, release, or deployment work.
+
+Generation gate (local pinned toolchain)
+  Node: v26.7.0
+  npm: 12.0.2
+  templ: v0.3.1020
+  command: make generate
+  result: PASS; generated binary diff unchanged
+  diff SHA-256 before/after:
+    4a8b6b05b27fb2ca9c6ced75dc34af8d51581df2d04e36f3563b1bd3b0d50157
+  generated CSS SHA-256 and content-addressed filename:
+    1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b
+
+Designated evidence host
+  host role: development
+  OS: Linux 7.1.5-arch1-2 x86_64 GNU/Linux
+  Go: go1.26.6 linux/amd64
+  GOMAXPROCS: 4
+  package parallelism: 2 (1 for browser gate)
+
+Repository-wide static/race/coverage gate
+  command: GOTOOLCHAIN=go1.26.6 GOMAXPROCS=4 go vet ./...
+  result: PASS
+  command: GOTOOLCHAIN=go1.26.6 GOMAXPROCS=4 go test -p=2 -race
+           -covermode=atomic -coverprofile=/tmp/gotth-bb-an02-03-full.cover ./...
+  result: PASS
+  total statement coverage: 74.1%
+
+Changed-boundary function coverage
+  config.ParseActivityCursorKeyringFile: 100.0%
+  httpui.renderDiscoveryResponse: 100.0%
+  httpui.boundedDiscoveryBuffer.Write: 100.0%
+  httpui.NewFooterLoadTimesHandler: 100.0%
+  httpui.newDiscoveryPreflightHandler: 100.0%
+  httpui.newDiscoveryPreflightHandlerWithTimeouts: 94.9%
+  httpui discovery presentation/handler functions: 75.0%-94.1%
+  Explicit gap: the remaining handler branches are defensive constructor,
+  URL-builder, impossible typed-state, and malformed delegated-output paths.
+  The security/failure surface is covered directly by focused malformed-row,
+  overflow, cancellation, deadline, session-order, and write-failure tests;
+  forcing every URL-builder impossibility would add test scaffolding rather
+  than useful confidence.
+
+Repeated focused gate
+  command: GOTOOLCHAIN=go1.26.6 GOMAXPROCS=4 go test -p=2
+           -shuffle=on -count=50 ./internal/httpui ./internal/config
+           ./internal/discovery ./cmd/forum ./deploy/container
+  result: PASS
+
+Browser-through-Caddy gate
+  Caddy: v2.11.4
+  Chromium: 151.0.7922.71 Arch Linux
+  command: GOTTH_BB_BROWSER_CADDY=1 GOTOOLCHAIN=go1.26.6
+           GOMAXPROCS=4 go test -p=1 -tags=integration
+           -run=TestDiscoveryBrowserThroughCaddy -v ./internal/httpui
+  result: PASS (0.85s)
+  rendered DOM: 6,564 bytes
+  assertions: real reverse proxy at /bb; semantic navigation/main/form labels;
+  full base-path-safe links; escaped excerpt; direct-post link; no root-path
+  escape; no active script material.
+
+Focused failure and policy evidence
+  PASS: malformed search/activity/direct-post input stops before cursor,
+        session, or delegated service work
+  PASS: cursor MAC verification stops before session lookup
+  PASS: a third concurrent search/activity request receives immediate 503
+        with Retry-After: 1
+  PASS: one of two permits remains held through a blocking response write
+  PASS: search/activity downstream contexts carry five-/two-second bounds
+  PASS: render completes before headers and rejects >256 KiB or cancellation
+  PASS: full-page and HTMX modes share canonical typed presentation state
+  PASS: direct-post absence and denial both use the fixed 404 envelope
+  PASS: application access logs retain the route pattern but omit raw query,
+        filters, cursor, identity, results, snippets, and body material
+  PASS: malformed keyring startup fails before PostgreSQL without exposing
+        keyring path or loader cause
+
+Performance claim
+  N/A. AN-02-03 adds bounded HTTP/UI orchestration and browser evidence, not a
+  new database plan or population claim. AN-02-02 retains the PostgreSQL 17
+  store/plan evidence; AN-02-04 owns the integrated population/resource gate.
