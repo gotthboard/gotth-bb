@@ -1209,6 +1209,11 @@ rendered core pages for root-relative application links that omit `/bb`.
   and `gotth-media`, where same-origin upload, scanning, privacy, quota,
   retention, and bounded failure behavior can be specified and implemented as
   one honest media boundary.
+- Each enhanced textarea owns composition state from `compositionstart` through
+  `compositionend`. Every toolbar activation in that interval is a strict
+  content, focus, and selection no-op. The state is local to the editor's
+  listener closure, so separate editors and an HTMX-created replacement start
+  independently; once composition ends, the existing action path resumes.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Bold and italic inspect complete adjacent star runs: applying one to
   the other composes a three-star strong-plus-emphasis delimiter, removing one

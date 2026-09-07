@@ -542,9 +542,17 @@
       const textarea = editor.querySelector("textarea");
       const toolbar = editor.querySelector("[data-markdown-toolbar]");
       if (!textarea || !toolbar) return;
+      let composing = false;
+      textarea.addEventListener("compositionstart", () => {
+        composing = true;
+      });
+      textarea.addEventListener("compositionend", () => {
+        composing = false;
+      });
       editor.querySelectorAll("[data-markdown-action]").forEach((button) => {
         button.addEventListener("click", (event) => {
           event.preventDefault();
+          if (composing) return;
           const result = transform(textarea.value, textarea.selectionStart, textarea.selectionEnd, button.dataset.markdownAction);
           textarea.value = result.value;
           textarea.focus();

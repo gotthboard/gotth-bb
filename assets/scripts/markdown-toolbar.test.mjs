@@ -278,18 +278,36 @@ test("unsupported Image action is a no-op", () => {
 });
 
 test("enhancement wires buttons without replacing ordinary textarea behavior", () => {
-  let click;
+  const editor = editorHarness();
+  const document = {
+    querySelectorAll: () => [editor.root],
+    addEventListener: () => {},
+  };
+  load(document);
+  assert.equal(editor.toolbar.hidden, false);
+  editor.click();
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
+  assert.equal(editor.root.dataset.markdownEnhanced, "true");
+  assert.equal(typeof editor.textareaListeners.compositionstart, "function");
+  assert.equal(typeof editor.textareaListeners.compositionend, "function");
+});
+
+function editorHarness(value = "word", action = "bold") {
+  const textareaListeners = {};
+  const buttonListeners = {};
   const textarea = {
-    value: "word",
+    value,
     selectionStart: 0,
-    selectionEnd: 4,
+    selectionEnd: value.length,
     focusCalls: 0,
     focus() { this.focusCalls += 1; },
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
+    addEventListener(name, listener) { textareaListeners[name] = listener; },
   };
   const button = {
-    dataset: { markdownAction: "bold" },
-    addEventListener(name, listener) { if (name === "click") click = listener; },
+    dataset: { markdownAction: action },
+    addEventListener(name, listener) { buttonListeners[name] = listener; },
   };
   const toolbar = { hidden: true };
   const root = {
@@ -301,14 +319,64 @@ test("enhancement wires buttons without replacing ordinary textarea behavior", (
     },
     querySelectorAll: () => [button],
   };
+  const click = () => {
+    let prevented = 0;
+    buttonListeners.click({ preventDefault() { prevented += 1; } });
+    return prevented;
+  };
+  return { root, textarea, toolbar, textareaListeners, buttonListeners, click };
+}
+
+test("live IME composition makes toolbar actions strict editor-local no-ops", () => {
+  const first = editorHarness("provisional", "bold");
+  const second = editorHarness("stable", "italic");
+  let afterSwap;
   const document = {
-    querySelectorAll: () => [root],
-    addEventListener: () => {},
+    querySelectorAll: () => [first.root, second.root],
+    addEventListener(name, listener) { if (name === "htmx:afterSwap") afterSwap = listener; },
   };
   load(document);
-  assert.equal(toolbar.hidden, false);
-  click({ preventDefault() {} });
-  assert.equal(textarea.value, "**word**");
-  assert.equal(textarea.focusCalls, 1);
-  assert.equal(root.dataset.markdownEnhanced, "true");
+
+  first.textarea.selectionStart = 2;
+  first.textarea.selectionEnd = 7;
+  first.textareaListeners.compositionstart();
+  assert.equal(first.click(), 1);
+  assert.equal(first.textarea.value, "provisional");
+  assert.equal(first.textarea.selectionStart, 2);
+  assert.equal(first.textarea.selectionEnd, 7);
+  assert.equal(first.textarea.focusCalls, 0);
+
+  assert.equal(second.click(), 1);
+  assert.equal(second.textarea.value, "*stable*");
+  assert.equal(second.textarea.focusCalls, 1);
+
+  first.textareaListeners.compositionend();
+  assert.equal(first.click(), 1);
+  assert.equal(first.textarea.value, "pr**ovisi**onal");
+  assert.equal(first.textarea.selectionStart, 4);
+  assert.equal(first.textarea.selectionEnd, 9);
+  assert.equal(first.textarea.focusCalls, 1);
+
+  const replacement = editorHarness("fresh", "strike");
+  const swappedContainer = { querySelectorAll: () => [replacement.root] };
+  first.textareaListeners.compositionstart();
+  afterSwap({ target: swappedContainer });
+  assert.equal(replacement.toolbar.hidden, false);
+  replacement.click();
+  assert.equal(replacement.textarea.value, "~~fresh~~");
+  replacement.click();
+  assert.equal(replacement.textarea.value, "fresh");
+  replacement.textarea.focusCalls = 0;
+  replacement.textarea.selectionStart = 1;
+  replacement.textarea.selectionEnd = 4;
+  replacement.textareaListeners.compositionstart();
+  replacement.click();
+  assert.equal(replacement.textarea.value, "fresh");
+  assert.equal(replacement.textarea.selectionStart, 1);
+  assert.equal(replacement.textarea.selectionEnd, 4);
+  assert.equal(replacement.textarea.focusCalls, 0);
+  replacement.textareaListeners.compositionend();
+  replacement.click();
+  assert.equal(replacement.textarea.value, "f~~res~~h");
+  assert.equal(replacement.textarea.focusCalls, 1);
 });

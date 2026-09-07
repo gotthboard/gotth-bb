@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Preserve live IME composition in the Markdown toolbar
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `assets/scripts/markdown-toolbar.js` and its DOM tests
+- generated `internal/httpui/static/markdown-toolbar-v1.js`
+- `internal/httpui/static_test.go`
+
+Explanation:
+
+Track composition state independently for every enhanced textarea. A toolbar
+activation delivered between `compositionstart` and `compositionend` now
+returns without reading or replacing provisional text, moving the selection,
+or forcing focus. A completed composition restores the ordinary transform
+path. The state belongs only to the editor listener closure, so a detached
+HTMX editor cannot contaminate its replacement or another editor.
+
+Verification:
+
+- browser-shaped DOM tests for start, guarded click, end, and normal click
+- multiple-editor isolation and HTMX replacement while the old editor remains
+  in composition
+- generated toolbar byte equality and pinned SHA-256
+
+Risks / non-goals:
+
+- composition text remains entirely browser-owned; the toolbar neither commits
+  nor cancels it
+
 ### 2026-09-07 — Close pre-Bash evidence custody
 
 Commit: current commit; hash assigned by Git after commit
