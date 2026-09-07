@@ -1,27 +1,27 @@
 === RUN   TestPopulationMigrationPerformanceOnPostgreSQL17
     rerender_integration_test.go:478: sql_server_identity version_num=170010 address=172.17.0.7/32 port=5432 database=gotth_bb_alpha3_rerender_population_test system_identifier=7682637991496687654
     rerender_integration_test.go:482: population_fixture rows=25000 full_pages_25=1000 source_bytes=35 source_sha256=dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98 legacy_html_bytes=56 legacy_html_sha256=3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970
-    rerender_integration_test.go:629: population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250 preflight_elapsed=1.66539773s schema_elapsed=30.855326ms conversion_elapsed=16.290059399s validation_elapsed=44.801191ms rerender_total_elapsed=16.33486059s release_total_elapsed=18.031115406s current=25000 converted=25000 completed=true validated=true
---- PASS: TestPopulationMigrationPerformanceOnPostgreSQL17 (18.93s)
+    rerender_integration_test.go:629: population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250 preflight_elapsed=1.697514415s schema_elapsed=49.413304ms conversion_elapsed=16.404474259s validation_elapsed=42.377426ms rerender_total_elapsed=16.446851685s release_total_elapsed=18.193780804s current=25000 converted=25000 completed=true validated=true
+--- PASS: TestPopulationMigrationPerformanceOnPostgreSQL17 (18.97s)
 PASS
-source_head_before=ea0e24f85c721351996d1eab238e04bb32fe5328
-source_tree_before=58f51b55bc39f5a456c359b7b7ebfb86e9d8c9df
-source_archive_sha256_before=ed33fac5991e446b85dc2e979d4779984c0a5baf3bdec7de7a9ebbcbab80ec29
+source_head_before=205ac5f5460de45da85ddb680669c31f26a3412c
+source_tree_before=cac3fa117a0e972c2878c59605a43b1ea53476b2
+source_archive_sha256_before=eafb8d8165e9d992ef4eafe73545b38d23ecb3fb40944a09ee096efc7d9f8c1c
 source_clean_before=true
-source_head_after=ea0e24f85c721351996d1eab238e04bb32fe5328
-source_tree_after=58f51b55bc39f5a456c359b7b7ebfb86e9d8c9df
-source_archive_sha256_after=ed33fac5991e446b85dc2e979d4779984c0a5baf3bdec7de7a9ebbcbab80ec29
+source_head_after=205ac5f5460de45da85ddb680669c31f26a3412c
+source_tree_after=cac3fa117a0e972c2878c59605a43b1ea53476b2
+source_archive_sha256_after=eafb8d8165e9d992ef4eafe73545b38d23ecb3fb40944a09ee096efc7d9f8c1c
 source_clean_after=true
-source_execution_root=/tmp/gotth-bb-alpha3-population.m9Cw5c/source
+source_execution_root=/tmp/gotth-bb-alpha3-population.HlSTAb/source
 source_execution_kind=extracted_captured_git_archive
-evidence_launcher_path=/tmp/gotth-bb-alpha3-custody-ea0e24f.NRDS1H/source/scripts/alpha3-evidence-launcher
+evidence_launcher_path=/tmp/gotth-bb-alpha3-ime-205ac5f.ixsDuB/source/scripts/alpha3-evidence-launcher
 evidence_launcher_sha256=2bc8ae699ce63232345cc54671935e858bb16833dca0d6b642b7b68c95b3f547
 evidence_launcher_linkage=static-linux-amd64
 evidence_shell=/usr/bin/bash;--noprofile;--norc;-p;environment-allowlist
 environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
 go_bootstrap_binary=/usr/bin/go
 go_bootstrap_sha256=1eefba0e588df5775114c8e9d1805dc806be761c12061454c9aad655d2e171e3
-go_compiler_binary=/tmp/gotth-bb-alpha3-population.m9Cw5c/go-mod-cache/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64/bin/go
+go_compiler_binary=/tmp/gotth-bb-alpha3-population.HlSTAb/go-mod-cache/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64/bin/go
 go_compiler_sha256=29e6e0b8be61beb1489ceae62b304343566de8a1dc700af74bde7aeb9c80ad45
 go_version=go1.26.6
 go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=go1.26.6;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches
@@ -33,4 +33,4 @@ postgres_system_identifier=7682637991496687654
 postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
-sampled_peak_rss_kib=19324
+sampled_peak_rss_kib=22252
