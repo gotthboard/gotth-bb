@@ -85,6 +85,19 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	if err != nil || topic.TopicID <= 0 || topic.PostID <= 0 || topic.PostNumber != 1 || topic.NodeOrdinal != 1 {
 		t.Fatalf("CreateTopic() = (%+v, %v)", topic, err)
 	}
+	var topicProjectionExact, firstPostProjectionExact bool
+	if err := connections[0].QueryRow(ctx, `SELECT
+    topic.search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, 'Concurrent replies')
+        AND topic.search_projection_version = $3,
+    post.search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, 'First post')
+        AND post.search_projection_version = $3
+FROM public.topics AS topic
+JOIN public.posts AS post ON post.id = topic.first_post_id
+WHERE topic.id = $1 AND post.id = $2`, topic.TopicID, topic.PostID, render.SearchProjectionVersion).Scan(
+		&topicProjectionExact, &firstPostProjectionExact,
+	); err != nil || !topicProjectionExact || !firstPostProjectionExact {
+		t.Fatalf("atomic topic projections = (%t, %t, %v), want true/true/nil", topicProjectionExact, firstPostProjectionExact, err)
+	}
 	editable, err := store.GetEditablePost(ctx, db.New(connections[0]), topic.PostID, actor)
 	if err != nil || editable != (store.EditablePost{PostID: topic.PostID, TopicID: topic.TopicID, PostNumber: 1, NodeOrdinal: 1, MarkdownSource: "First **post**", Revision: 1}) {
 		t.Fatalf("GetEditablePost() = (%+v, %v)", editable, err)
@@ -114,13 +127,17 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("foreign EditPost() = (%+v, %v), want denied", foreign, foreignErr)
 	}
 	var editedSource, editedHTML, editedRenderer string
+	var editedProjectionExact bool
 	var editedRevision int32
 	var postCreatedAt, postUpdatedAt, postEditedAt time.Time
-	if err := connections[0].QueryRow(ctx, `SELECT markdown_source, rendered_html, renderer_version, revision, created_at, updated_at, edited_at FROM public.posts WHERE id = $1`, topic.PostID).Scan(
-		&editedSource, &editedHTML, &editedRenderer, &editedRevision, &postCreatedAt, &postUpdatedAt, &postEditedAt,
+	if err := connections[0].QueryRow(ctx, `SELECT markdown_source, rendered_html, renderer_version, revision, created_at, updated_at, edited_at,
+    search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, 'Edited again')
+        AND search_projection_version = $2
+FROM public.posts WHERE id = $1`, topic.PostID, render.SearchProjectionVersion).Scan(
+		&editedSource, &editedHTML, &editedRenderer, &editedRevision, &postCreatedAt, &postUpdatedAt, &postEditedAt, &editedProjectionExact,
 	); err != nil || editedSource != "Edited **again**" || editedHTML != "<p>Edited <strong>again</strong></p>\n" ||
-		editedRenderer != render.RendererVersion || editedRevision != 3 || postUpdatedAt.Before(postCreatedAt) || postEditedAt.Before(postCreatedAt) {
-		t.Fatalf("persisted edit = (%q, %q, %q, %d, %s/%s/%s, %v)", editedSource, editedHTML, editedRenderer, editedRevision, postCreatedAt, postUpdatedAt, postEditedAt, err)
+		editedRenderer != render.RendererVersion || editedRevision != 3 || postUpdatedAt.Before(postCreatedAt) || postEditedAt.Before(postCreatedAt) || !editedProjectionExact {
+		t.Fatalf("persisted edit = (%q, %q, %q, %d, %s/%s/%s, projected=%t, %v)", editedSource, editedHTML, editedRenderer, editedRevision, postCreatedAt, postUpdatedAt, postEditedAt, editedProjectionExact, err)
 	}
 
 	start := make(chan struct{})
@@ -167,23 +184,24 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	}
 
 	var firstPostID, latestPostID int64
-	var replyCount, nextPostNumber, postCount, distinctNumbers, renderedCount int
+	var replyCount, nextPostNumber, postCount, distinctNumbers, renderedCount, projectedCount int
 	if err := connections[0].QueryRow(ctx, `
 SELECT topic.first_post_id, topic.latest_post_id, topic.reply_count, topic.next_post_number,
        count(post.id)::integer, count(DISTINCT post.post_number)::integer,
-       count(*) FILTER (WHERE post.renderer_version = $2 AND post.rendered_html <> '')::integer
+       count(*) FILTER (WHERE post.renderer_version = $2 AND post.rendered_html <> '')::integer,
+       count(*) FILTER (WHERE post.search_vector IS NOT NULL AND post.search_projection_version = $3)::integer
 FROM public.topics AS topic
 JOIN public.posts AS post ON post.topic_id = topic.id
 WHERE topic.id = $1
-GROUP BY topic.id`, topic.TopicID, render.RendererVersion).Scan(
-		&firstPostID, &latestPostID, &replyCount, &nextPostNumber, &postCount, &distinctNumbers, &renderedCount,
+GROUP BY topic.id`, topic.TopicID, render.RendererVersion, render.SearchProjectionVersion).Scan(
+		&firstPostID, &latestPostID, &replyCount, &nextPostNumber, &postCount, &distinctNumbers, &renderedCount, &projectedCount,
 	); err != nil {
 		t.Fatalf("inspect published topic: %v", err)
 	}
 	if firstPostID != topic.PostID || latestPostID == topic.PostID || replyCount != concurrentReplies || nextPostNumber != concurrentReplies+2 ||
-		postCount != concurrentReplies+1 || distinctNumbers != concurrentReplies+1 || renderedCount != concurrentReplies+1 {
-		t.Fatalf("published state = (first %d latest %d replies %d next %d posts %d distinct %d rendered %d)",
-			firstPostID, latestPostID, replyCount, nextPostNumber, postCount, distinctNumbers, renderedCount)
+		postCount != concurrentReplies+1 || distinctNumbers != concurrentReplies+1 || renderedCount != concurrentReplies+1 || projectedCount != concurrentReplies+1 {
+		t.Fatalf("published state = (first %d latest %d replies %d next %d posts %d distinct %d rendered %d projected %d)",
+			firstPostID, latestPostID, replyCount, nextPostNumber, postCount, distinctNumbers, renderedCount, projectedCount)
 	}
 
 	timestampTopic, err := CreateTopic(ctx, connections[0], func() time.Time { return createdAt }, actor, "normal", "Monotonic timestamps", "first")

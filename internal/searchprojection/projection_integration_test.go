@@ -4,7 +4,9 @@ package searchprojection
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -13,9 +15,23 @@ import (
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const projectionTestDatabase = "gotth_bb_an02_projection_test"
+
+type analyzeFailureDatabase struct {
+	*pgx.Conn
+	failed bool
+}
+
+func (database *analyzeFailureDatabase) Exec(ctx context.Context, query string, arguments ...any) (pgconn.CommandTag, error) {
+	if query == `ANALYZE public.topics` && !database.failed {
+		database.failed = true
+		return pgconn.CommandTag{}, errors.New("forced ANALYZE failure")
+	}
+	return database.Conn.Exec(ctx, query, arguments...)
+}
 
 func TestProjectionFailureRestartAndConcurrentRunnersOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -29,6 +45,9 @@ func TestProjectionFailureRestartAndConcurrentRunnersOnPostgreSQL17(t *testing.T
 		t.Fatalf("apply migrations: %v", err)
 	}
 	seedProjectionRows(t, ctx, owner, 205)
+	if err := Preflight(ctx, owner, MaximumBatchSize); err != nil {
+		t.Fatalf("Preflight() rejected incomplete nullable projection: %v", err)
+	}
 	if _, err := owner.Exec(ctx, `CREATE FUNCTION public.reject_projection_test() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.id = 50 AND NEW.search_projection_version IS NOT NULL THEN
@@ -66,6 +85,20 @@ FROM public.search_projection_state WHERE singleton`).Scan(&topicCount, &cursor,
 	}
 	if topicCount != 100 || cursor == nil || *cursor != 100 {
 		t.Fatalf("first durable state = (count %d, cursor %v), want 100/100", topicCount, cursor)
+	}
+	failing := &analyzeFailureDatabase{Conn: owner}
+	if err := Run(ctx, failing, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "forced ANALYZE failure") {
+		t.Fatalf("Run() ANALYZE failure = %v, want forced failure", err)
+	}
+	var phaseBeforeRetry string
+	var completedBeforeRetry *time.Time
+	var postsBeforeRetry int64
+	if err := owner.QueryRow(ctx, `SELECT phase, topics_converted_count, posts_converted_count, last_processed_id, completed_at
+FROM public.search_projection_state WHERE singleton`).Scan(&phaseBeforeRetry, &topicCount, &postsBeforeRetry, &cursor, &completedBeforeRetry); err != nil {
+		t.Fatalf("inspect ANALYZE failure state: %v", err)
+	}
+	if phaseBeforeRetry != "posts" || topicCount != 205 || postsBeforeRetry != 205 || cursor == nil || *cursor != 1205 || completedBeforeRetry != nil {
+		t.Fatalf("ANALYZE failure state = (%s topics=%d posts=%d cursor=%v completed=%v)", phaseBeforeRetry, topicCount, postsBeforeRetry, cursor, completedBeforeRetry)
 	}
 
 	connections := make([]*pgx.Conn, 2)
@@ -117,6 +150,64 @@ FROM public.search_projection_state WHERE singleton`, contentrender.SearchProjec
 	}
 	if err := Ready(ctx, owner); err != nil {
 		t.Fatalf("Ready() rejected completed projection: %v", err)
+	}
+	if err := Preflight(ctx, owner, MaximumBatchSize); err != nil {
+		t.Fatalf("Preflight() rejected completed current projection: %v", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE public.search_projection_state
+SET phase = 'posts', completed_at = NULL, topics_converted_count = 204
+WHERE singleton`); err != nil {
+		t.Fatalf("install completion count mismatch: %v", err)
+	}
+	if err := complete(ctx, owner); err == nil || !strings.Contains(err.Error(), "completion oracle is not satisfied") {
+		t.Fatalf("complete() count mismatch error = %v, want oracle rejection", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE public.search_projection_state
+SET topics_converted_count = 205, last_processed_id = 1204
+WHERE singleton`); err != nil {
+		t.Fatalf("install completion cursor mismatch: %v", err)
+	}
+	if err := complete(ctx, owner); err == nil || !strings.Contains(err.Error(), "completion oracle is not satisfied") {
+		t.Fatalf("complete() cursor mismatch error = %v, want oracle rejection", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE public.search_projection_state SET last_processed_id = 1205 WHERE singleton`); err != nil {
+		t.Fatalf("restore completion cursor: %v", err)
+	}
+	if err := complete(ctx, owner); err != nil {
+		t.Fatalf("complete() rejected repaired state: %v", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE public.topics SET search_vector = NULL, search_projection_version = NULL WHERE id = 1`); err != nil {
+		t.Fatalf("clear completed projection tuple: %v", err)
+	}
+	if err := Preflight(ctx, owner, MaximumBatchSize); err == nil || !strings.Contains(err.Error(), "missing projection") {
+		t.Fatalf("completed Preflight() error = %v, want missing projection rejection", err)
+	}
+	if _, err := owner.Exec(ctx, `UPDATE public.topics
+SET search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, title),
+    search_projection_version = $1
+WHERE id = 1`, contentrender.SearchProjectionVersion); err != nil {
+		t.Fatalf("restore completed projection tuple: %v", err)
+	}
+	for name, statement := range map[string]string{
+		"same-name state constraint impostor": `ALTER TABLE public.search_projection_state DROP CONSTRAINT search_projection_state_shape;
+ALTER TABLE public.search_projection_state ADD CONSTRAINT search_projection_state_shape CHECK (true)`,
+		"state nullability":  `ALTER TABLE public.search_projection_state ALTER COLUMN phase DROP NOT NULL`,
+		"state default":      `ALTER TABLE public.search_projection_state ALTER COLUMN phase SET DEFAULT 'posts'`,
+		"projection default": `ALTER TABLE public.topics ALTER COLUMN search_projection_version SET DEFAULT 'bad'`,
+	} {
+		t.Run("readiness rejects "+name, func(t *testing.T) {
+			tx, err := owner.Begin(ctx)
+			if err != nil {
+				t.Fatalf("begin schema drift: %v", err)
+			}
+			defer func() { _ = tx.Rollback(context.Background()) }()
+			if _, err := tx.Exec(ctx, statement); err != nil {
+				t.Fatalf("install schema drift: %v", err)
+			}
+			if err := Ready(ctx, tx); err == nil || !strings.Contains(err.Error(), "schema attestation failed") {
+				t.Fatalf("Ready() schema drift error = %v, want attestation failure", err)
+			}
+		})
 	}
 }
 

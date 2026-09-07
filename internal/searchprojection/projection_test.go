@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type unusableDatabase struct{}
@@ -77,6 +79,23 @@ func TestBatchQueriesUseDirectPositiveKeysets(t *testing.T) {
 	} {
 		if !strings.Contains(query, "id > $1") || strings.Contains(query, "IS NULL OR") || !strings.Contains(query, "LIMIT $2") {
 			t.Fatalf("%s cursor query is not a direct bounded keyset: %s", name, query)
+		}
+	}
+}
+
+func TestFiniteTimestampMatchesPostgreSQLFiniteBoundary(t *testing.T) {
+	t.Parallel()
+
+	if !finiteTimestamp(pgtype.Timestamptz{Time: time.Time{}, Valid: true}) {
+		t.Fatal("finiteTimestamp() rejected PostgreSQL's finite year-one instant")
+	}
+	for _, value := range []pgtype.Timestamptz{
+		{},
+		{Valid: true, InfinityModifier: pgtype.Infinity},
+		{Valid: true, InfinityModifier: pgtype.NegativeInfinity},
+	} {
+		if finiteTimestamp(value) {
+			t.Fatalf("finiteTimestamp(%+v) accepted a null or infinite timestamp", value)
 		}
 	}
 }

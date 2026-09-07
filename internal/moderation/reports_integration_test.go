@@ -12,6 +12,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -196,13 +197,22 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 		}
 	}
 	var areaSlug, markdown, rendered, renderer string
-	var redacted bool
+	var redacted, redactionProjectionExact bool
 	var warningCount, auditCount int64
-	if err := connection.QueryRow(ctx, `SELECT area.slug, post.markdown_source, post.rendered_html, post.renderer_version, post.redacted_at IS NOT NULL, (SELECT count(*) FROM public.user_warnings WHERE user_id=$2), (SELECT count(*) FROM public.moderation_actions) FROM public.topics topic JOIN public.areas area ON area.id=topic.area_id JOIN public.posts post ON post.id=$3 WHERE topic.id=$1`, topic.TopicID, targetUserID, reply.PostID).Scan(&areaSlug, &markdown, &rendered, &renderer, &redacted, &warningCount, &auditCount); err != nil {
+	if err := connection.QueryRow(ctx, `SELECT area.slug, post.markdown_source, post.rendered_html, post.renderer_version,
+post.redacted_at IS NOT NULL,
+post.search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, '')
+    AND post.search_projection_version = $4,
+(SELECT count(*) FROM public.user_warnings WHERE user_id=$2),
+(SELECT count(*) FROM public.moderation_actions)
+FROM public.topics topic
+JOIN public.areas area ON area.id=topic.area_id
+JOIN public.posts post ON post.id=$3
+WHERE topic.id=$1`, topic.TopicID, targetUserID, reply.PostID, render.SearchProjectionVersion).Scan(&areaSlug, &markdown, &rendered, &renderer, &redacted, &redactionProjectionExact, &warningCount, &auditCount); err != nil {
 		t.Fatal(err)
 	}
-	if areaSlug != "destination" || markdown != "[Content removed by moderation]" || rendered != "<p>Content removed by moderation.</p>" || renderer != "moderation-redaction-v1" || !redacted || warningCount != 1 || auditCount != 11 {
-		t.Fatalf("persisted state = %q %q %q %q redacted=%t warnings=%d audits=%d", areaSlug, markdown, rendered, renderer, redacted, warningCount, auditCount)
+	if areaSlug != "destination" || markdown != "[Content removed by moderation]" || rendered != "<p>Content removed by moderation.</p>" || renderer != "moderation-redaction-v1" || !redacted || !redactionProjectionExact || warningCount != 1 || auditCount != 11 {
+		t.Fatalf("persisted state = %q %q %q %q redacted=%t projected=%t warnings=%d audits=%d", areaSlug, markdown, rendered, renderer, redacted, redactionProjectionExact, warningCount, auditCount)
 	}
 	staffPage, err := store.GetVisibleTopicPostPage(ctx, queries, topic.TopicID, 1, staff)
 	if err != nil || len(staffPage.Rows) != 2 || !staffPage.Rows[1].IsTombstone.Valid || !staffPage.Rows[1].IsTombstone.Bool || !staffPage.Rows[1].IsRedacted.Valid || !staffPage.Rows[1].IsRedacted.Bool {

@@ -122,6 +122,21 @@ func TestApplyReleasePreflightRechecksCurrentOutputOnIdempotentRunOnPostgreSQL17
 	}
 	const source = "valid **source**"
 	insertMigrationPreflightPost(t, ctx, connection, 9_000_003, source, migrationCurrentHTML(t, source), contentrender.RendererVersion)
+	if err := applyRelease(ctx, configured, migrations.Files()); err == nil || !strings.Contains(err.Error(), "missing projection") {
+		t.Fatalf("null completed projection applyRelease() error = %v, want missing-projection rejection", err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.topics
+SET search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, title),
+    search_projection_version = $1
+WHERE first_post_id = 9000003`, contentrender.SearchProjectionVersion); err != nil {
+		t.Fatalf("install exact current topic projection: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.posts
+SET search_vector = pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, 'valid source'),
+    search_projection_version = $1
+WHERE id = 9000003`, contentrender.SearchProjectionVersion); err != nil {
+		t.Fatalf("install exact current post projection: %v", err)
+	}
 	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
 		t.Fatalf("exact current applyRelease() returned error: %v", err)
 	}

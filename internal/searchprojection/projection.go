@@ -120,14 +120,14 @@ func Preflight(ctx context.Context, database preflightDatabase, batchSize int) e
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("search projection preflight canceled: %w", err)
 	}
-	present, err := inspectServer(ctx, database)
+	present, requireCurrent, err := inspectServer(ctx, database)
 	if err != nil || !present {
 		return err
 	}
-	if err := preflightKind(ctx, database, batchSize, "topic"); err != nil {
+	if err := preflightKind(ctx, database, batchSize, "topic", requireCurrent); err != nil {
 		return err
 	}
-	return preflightKind(ctx, database, batchSize, "post")
+	return preflightKind(ctx, database, batchSize, "post", requireCurrent)
 }
 
 // Run resumes topic then post population solely from the locked singleton,
@@ -183,9 +183,9 @@ func Run(ctx context.Context, database database, batchSize int) error {
 	}
 }
 
-// Ready attests the exact PostgreSQL major, completed singleton, six checks,
-// five indexes, six narrowed triggers, and unchanged validation function used
-// by every serving process.
+// Ready attests the exact PostgreSQL major, completed singleton, projection
+// columns, nine checks, state primary key, five indexes, six narrowed triggers,
+// and unchanged validation function used by every serving process.
 //
 // Complexity: local time/space are tight Theta(1); PostgreSQL performs two
 // constant-shape catalog statements and no population scan.
@@ -220,26 +220,45 @@ func Ready(ctx context.Context, database readinessDatabase) error {
 //
 // Complexity: tight Theta(1) local time/space plus one read-only transaction
 // and two constant-shape statements.
-func inspectServer(ctx context.Context, database preflightDatabase) (present bool, resultErr error) {
+func inspectServer(ctx context.Context, database preflightDatabase) (present bool, requireCurrent bool, resultErr error) {
 	tx, err := database.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
-		return false, fmt.Errorf("begin search projection server inspection: %w", err)
+		return false, false, fmt.Errorf("begin search projection server inspection: %w", err)
 	}
 	if tx == nil {
-		return false, fmt.Errorf("begin search projection server inspection returned no transaction")
+		return false, false, fmt.Errorf("begin search projection server inspection returned no transaction")
 	}
 	defer rollback(ctx, tx, "search projection server inspection", &resultErr)
 	var major int
 	if err := tx.QueryRow(ctx, `SELECT current_setting('server_version_num')::integer / 10000`).Scan(&major); err != nil {
-		return false, fmt.Errorf("inspect search projection PostgreSQL version: %w", err)
+		return false, false, fmt.Errorf("inspect search projection PostgreSQL version: %w", err)
 	}
 	if major != 17 {
-		return false, fmt.Errorf("search projection requires PostgreSQL major 17")
+		return false, false, fmt.Errorf("search projection requires PostgreSQL major 17")
 	}
 	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.topics') IS NOT NULL AND pg_catalog.to_regclass('public.posts') IS NOT NULL`).Scan(&present); err != nil {
-		return false, fmt.Errorf("inspect search projection schema: %w", err)
+		return false, false, fmt.Errorf("inspect search projection schema: %w", err)
 	}
-	return present, nil
+	if !present {
+		return false, false, nil
+	}
+	var statePresent bool
+	if err := tx.QueryRow(ctx, `SELECT pg_catalog.to_regclass('public.search_projection_state') IS NOT NULL`).Scan(&statePresent); err != nil {
+		return false, false, fmt.Errorf("inspect search projection state schema: %w", err)
+	}
+	if !statePresent {
+		return true, false, nil
+	}
+	var stateRows, completedRows int
+	if err := tx.QueryRow(ctx, `SELECT count(*)::integer,
+    count(*) FILTER (WHERE phase = 'complete')::integer
+FROM public.search_projection_state`).Scan(&stateRows, &completedRows); err != nil {
+		return false, false, fmt.Errorf("inspect search projection state: %w", err)
+	}
+	if stateRows != 1 || completedRows > 1 {
+		return false, false, fmt.Errorf("search projection state cardinality is invalid")
+	}
+	return true, completedRows == 1, nil
 }
 
 // preflightKind walks one table in bounded read-only keyset transactions and
@@ -247,10 +266,10 @@ func inspectServer(ctx context.Context, database preflightDatabase) (present boo
 //
 // Complexity: for q rows and n source bytes, time is O(q+n), Omega(q), and
 // space is O(b+n), Omega(1), for b <= 100.
-func preflightKind(ctx context.Context, database preflightDatabase, batchSize int, kind string) error {
+func preflightKind(ctx context.Context, database preflightDatabase, batchSize int, kind string, requireCurrent bool) error {
 	var afterID *int64
 	for {
-		count, cursor, err := preflightBatch(ctx, database, batchSize, kind, afterID)
+		count, cursor, err := preflightBatch(ctx, database, batchSize, kind, afterID, requireCurrent)
 		if err != nil {
 			return err
 		}
@@ -266,7 +285,7 @@ func preflightKind(ctx context.Context, database preflightDatabase, batchSize in
 //
 // Complexity: for b rows and n bytes, time/space are O(b+n), Omega(1), bounded
 // by b <= 100 and persisted field limits.
-func preflightBatch(ctx context.Context, database preflightDatabase, batchSize int, kind string, afterID *int64) (count int, cursor *int64, resultErr error) {
+func preflightBatch(ctx context.Context, database preflightDatabase, batchSize int, kind string, afterID *int64, requireCurrent bool) (count int, cursor *int64, resultErr error) {
 	tx, err := database.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return 0, nil, fmt.Errorf("begin search projection %s preflight: %w", kind, err)
@@ -290,6 +309,9 @@ func preflightBatch(ctx context.Context, database preflightDatabase, batchSize i
 		}
 		if (candidate.storedVector == nil) != (candidate.storedVersion == nil) {
 			return 0, nil, fmt.Errorf("search projection %s %d: partial projection tuple", kind, candidate.id)
+		}
+		if requireCurrent && candidate.storedVersion == nil {
+			return 0, nil, fmt.Errorf("search projection %s %d: missing projection after completion", kind, candidate.id)
 		}
 		if candidate.storedVersion != nil && (*candidate.storedVersion != contentrender.SearchProjectionVersion || *candidate.storedVector != vectors[index]) {
 			return 0, nil, fmt.Errorf("search projection %s %d: stale or mismatched projection", kind, candidate.id)
@@ -689,7 +711,23 @@ const schemaAttestationSQL = `WITH expected_constraints(name, relation_name, def
       ('topics_search_created_finite', 'public.topics', 'CHECK (isfinite(created_at))'),
       ('posts_search_created_finite', 'public.posts', 'CHECK (isfinite(created_at))'),
       ('topics_search_id_positive', 'public.topics', 'CHECK ((id > 0))'),
-      ('posts_search_id_positive', 'public.posts', 'CHECK ((id > 0))')
+      ('posts_search_id_positive', 'public.posts', 'CHECK ((id > 0))'),
+      ('search_projection_state_target_current', 'public.search_projection_state', 'CHECK ((target_version = ''search-v1-pg17-simple-u15-p2''::text))'),
+      ('search_projection_state_shape', 'public.search_projection_state', 'CHECK ((singleton AND (phase = ANY (ARRAY[''topics''::text, ''posts''::text, ''complete''::text])) AND ((last_processed_id IS NULL) OR (last_processed_id > 0)) AND (topics_converted_count >= 0) AND (posts_converted_count >= 0) AND (((phase = ''topics''::text) AND (posts_converted_count = 0) AND (completed_at IS NULL) AND ((topics_converted_count = 0) = (last_processed_id IS NULL))) OR ((phase = ''posts''::text) AND (completed_at IS NULL) AND ((posts_converted_count = 0) = (last_processed_id IS NULL))) OR ((phase = ''complete''::text) AND (completed_at IS NOT NULL) AND ((posts_converted_count = 0) = (last_processed_id IS NULL))))))'),
+      ('search_projection_state_completion_finite', 'public.search_projection_state', 'CHECK (((completed_at IS NULL) OR isfinite(completed_at)))')
+), expected_columns(relation_name, name, type_name, not_null, default_expression, identity_kind, generated_kind) AS (
+    VALUES
+      ('public.topics', 'search_vector', 'tsvector', false, '', '', ''),
+      ('public.topics', 'search_projection_version', 'text', false, '', '', ''),
+      ('public.posts', 'search_vector', 'tsvector', false, '', '', ''),
+      ('public.posts', 'search_projection_version', 'text', false, '', '', ''),
+      ('public.search_projection_state', 'singleton', 'boolean', true, 'true', '', ''),
+      ('public.search_projection_state', 'target_version', 'text', true, '', '', ''),
+      ('public.search_projection_state', 'phase', 'text', true, '''topics''::text', '', ''),
+      ('public.search_projection_state', 'last_processed_id', 'bigint', false, '', '', ''),
+      ('public.search_projection_state', 'topics_converted_count', 'bigint', true, '0', '', ''),
+      ('public.search_projection_state', 'posts_converted_count', 'bigint', true, '0', '', ''),
+      ('public.search_projection_state', 'completed_at', 'timestamp with time zone', false, '', '', '')
 ), expected_indexes(name, definition) AS (
     VALUES
       ('topics_search_vector_current_idx', 'CREATE INDEX topics_search_vector_current_idx ON public.topics USING gin (search_vector) WHERE ((deleted_at IS NULL) AND (search_projection_version = ''search-v1-pg17-simple-u15-p2''::text))'),
@@ -713,7 +751,32 @@ SELECT
       AND actual.conrelid = expected.relation_name::regclass
       AND actual.contype = 'c'
       AND actual.convalidated
-      AND pg_catalog.pg_get_constraintdef(actual.oid, false) = expected.definition) = 6
+      AND pg_catalog.pg_get_constraintdef(actual.oid, false) = expected.definition) = 9
+    AND (SELECT count(*) FROM expected_columns AS expected
+         JOIN pg_catalog.pg_attribute AS actual
+           ON actual.attrelid = expected.relation_name::regclass
+          AND actual.attname = expected.name
+          AND actual.attnum > 0
+          AND NOT actual.attisdropped
+         LEFT JOIN pg_catalog.pg_attrdef AS default_value
+           ON default_value.adrelid = actual.attrelid
+          AND default_value.adnum = actual.attnum
+         WHERE pg_catalog.format_type(actual.atttypid, actual.atttypmod) = expected.type_name
+           AND actual.attnotnull = expected.not_null
+           AND COALESCE(pg_catalog.pg_get_expr(default_value.adbin, default_value.adrelid), '') = expected.default_expression
+           AND actual.attidentity::text = expected.identity_kind
+           AND actual.attgenerated::text = expected.generated_kind) = 11
+    AND (SELECT count(*) FROM pg_catalog.pg_attribute
+         WHERE attrelid = 'public.search_projection_state'::regclass
+           AND attnum > 0 AND NOT attisdropped) = 7
+    AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_constraint
+        WHERE conname = 'search_projection_state_pkey'
+          AND conrelid = 'public.search_projection_state'::regclass
+          AND contype = 'p'
+          AND convalidated
+          AND pg_catalog.pg_get_constraintdef(oid, false) = 'PRIMARY KEY (singleton)'
+    )
     AND (SELECT count(*) FROM expected_indexes AS expected
          JOIN pg_catalog.pg_class AS actual ON actual.relname = expected.name
          JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = actual.relnamespace AND namespace.nspname = 'public'
@@ -800,7 +863,7 @@ func rollback(ctx context.Context, tx pgx.Tx, operation string, resultErr *error
 //
 // Complexity: time and auxiliary space are tight Theta(1).
 func finiteTimestamp(value pgtype.Timestamptz) bool {
-	return value.Valid && value.InfinityModifier == pgtype.Finite && !value.Time.IsZero()
+	return value.Valid && value.InfinityModifier == pgtype.Finite
 }
 
 // isRetryable recognizes only deadlock and serialization aborts known not to

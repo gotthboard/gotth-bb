@@ -404,7 +404,7 @@ nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, 
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatalf("commit renderer fixture: %v", err)
 	}
-	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
+	if err := migration.Apply(ctx, testConfig, alpha3MigrationFS(t)); err != nil {
 		t.Fatalf("apply alpha.3 schema: %v", err)
 	}
 	var cursorTypeExact, cursorNullable, cursorPlain, cursorNoDefault bool
@@ -707,7 +707,7 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 	if err := fixtureTx.Commit(ctx); err != nil {
 		t.Fatalf("commit renderer performance fixture: %v", err)
 	}
-	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
+	if err := migration.Apply(ctx, testConfig, alpha3MigrationFS(t)); err != nil {
 		t.Fatalf("apply alpha.3 schema: %v", err)
 	}
 
@@ -914,7 +914,7 @@ CROSS JOIN LATERAL (
 	}
 	preflightElapsed := time.Since(preflightStarted)
 	schemaStarted := time.Now()
-	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
+	if err := migration.Apply(ctx, testConfig, alpha3MigrationFS(t)); err != nil {
 		t.Fatalf("apply alpha.3 schema: %v", err)
 	}
 	schemaElapsed := time.Since(schemaStarted)
@@ -997,6 +997,24 @@ func preAlpha3MigrationFS(t *testing.T) fs.FS {
 		legacy[name] = &fstest.MapFile{Data: body}
 	}
 	return legacy
+}
+
+func alpha3MigrationFS(t *testing.T) fs.FS {
+	t.Helper()
+	result := fstest.MapFS{}
+	for _, name := range []string{
+		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
+		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
+		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+		"000007_gfm_renderer.sql",
+	} {
+		body, err := fs.ReadFile(migrations.Files(), name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		result[name] = &fstest.MapFile{Data: body}
+	}
+	return result
 }
 
 func TestPerformanceDatabaseConfigRejectsAlternateTargets(t *testing.T) {
