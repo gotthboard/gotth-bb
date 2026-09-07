@@ -1129,10 +1129,15 @@ rendered core pages for root-relative application links that omit `/bb`.
   the complete preflight still performs O(all posts) rendering. One initial
   read-only transaction inspects the schema and migration ledger, followed by
   one read-only transaction and row query per batch plus a final empty batch.
-  Transaction and round-trip counts therefore grow with population. The
-  required application stop/drain makes keyset traversal complete across
-  snapshots and excludes a writer in the gap before the later schema
-  transaction; no atomic guarantee is claimed. A fresh database with no
+  The initial query and cursor-bearing query are distinct SQL statements: the
+  former has no cursor predicate and the latter exposes `post.id > $1`
+  directly. A nullable `IS NULL OR` predicate is forbidden because PostgreSQL
+  may otherwise select a generic prepared-statement plan that cannot retain the
+  primary-key lower bound as an index condition. Transaction and round-trip
+  counts therefore grow with population. The required application stop/drain
+  makes keyset traversal complete across snapshots and excludes a writer in the
+  gap before the later schema transaction; no atomic guarantee is claimed. A
+  fresh database with no
   `posts` relation passes. A
   current-p2 marker before the Alpha.3 ledger is impossible and rejected. On
   an idempotent Alpha.3 rerun, every current-p2 source is rendered again and its
@@ -1147,8 +1152,11 @@ rendered core pages for root-relative application links that omit `/bb`.
   signed 64-bit identity, including `MinInt64`. The command first locks that
   singleton, mechanically serializing multiple migration runners, then selects
   and locks stale rows with `id > last_processed_post_id ORDER BY id LIMIT 100`.
-  It advances the cursor to the last selected identity and increments the
-  converted count in the same transaction as every post update. A rollback
+  As in preflight, the initial no-cursor selection and the cursor-bearing
+  selection are separate statements; the latter exposes `id > $3` directly so
+  a PostgreSQL generic plan preserves the `posts_pkey` lower bound. It advances
+  the cursor to the last selected identity and increments the converted count
+  in the same transaction as every post update. A rollback
   advances neither posts nor state. A committed transaction whose
   acknowledgement is lost returns an outcome-unknown error; a later invocation
   observes the committed cursor and resumes after it. Rendering uses the same
@@ -1204,10 +1212,13 @@ rendered core pages for root-relative application links that omit `/bb`.
   transaction, and query-round-trip counts, schema time, 250 conversion
   batches, the final validation/completion transaction, total re-render/release
   time, RSS, row count, and exact result state. It also instruments every
-  returned mutation identity and uses `EXPLAIN ANALYZE` on the exact selection
-  query to prove 251 primary-key selections examine exactly 25,000 rows rather
-  than repeatedly scanning converted prefixes. Total maintenance time and I/O
-  grow with population; no universal timing bound is claimed.
+  returned mutation identity and forces PostgreSQL generic plans while using
+  `EXPLAIN ANALYZE` on both exact preflight and mutation selection statements.
+  Each phase performs 251 primary-key selections that return and examine
+  exactly 25,000 rows, with every cursor-bearing plan retaining its direct
+  `posts_pkey` lower-bound condition rather than rescanning prior prefixes.
+  Total maintenance time and I/O grow with population; no universal timing
+  bound is claimed.
 
 ### 13.2 Native toolbar
 

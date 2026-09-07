@@ -371,10 +371,13 @@ The application stop/drain, not a fake atomic claim, protects traversal across
 those snapshots and the gap before schema apply. Alpha.3 then performs the
 rebuild through release-owned, bounded batch transactions. The singleton owns
 a nullable `last_processed_post_id`: `NULL` means before every possible bigint
-identity, including `MinInt64`, and each selection is a primary-key keyset
-query strictly greater than the committed cursor. Each batch locks only its
-selected stale post rows plus the singleton renderer-state row that serializes
-competing runners,
+identity, including `MinInt64`. Initial and cursor-bearing selections use
+separate SQL statements: the initial shape has no cursor predicate, while the
+cursor shape exposes a direct primary-key lower bound. This keeps `id > cursor`
+as an index condition even after pgx prepares the statement and PostgreSQL
+chooses a generic plan; a nullable `cursor IS NULL OR id > cursor` predicate is
+not used. Each batch locks only its selected stale post rows plus the singleton
+renderer-state row that serializes competing runners,
 renders current canonical source, updates only those locked identities, and
 atomically commits the last selected ID and converted count before selecting
 more. A rollback advances nothing; an unknown commit outcome is resolved by

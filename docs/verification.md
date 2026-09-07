@@ -395,9 +395,9 @@ local result is represented as that evidence.
 ### 18.1 Native-toolbar IME evidence
 
 The exact clean executable-and-methodology commit
-`be72f0a8861b0a4a3daee2cb56c276c0ccd7e854`, tree
-`f57ea4631851a3b7b7a7ce23d74beed9632c4ee8`, was tested from a detached
-bundle clone on `development`. Node 26.7.0 passed all 18 deterministic toolbar
+`583b9b4ed214f791effe87fbb14ff5497d408bd7`, tree
+`3ffa5882021e428161fc23480cb9f8c7ebeb9f70`, was tested from a detached
+bundle clone on `development`. Node 26.7.0 passed all 19 deterministic toolbar
 tests. Chromium 151.0.7922.71 was then driven through the DevTools protocol
 without a browser-testing dependency: `Input.imeSetComposition` began a real
 composition in the focused textarea and physical mouse press/release events
@@ -413,8 +413,10 @@ requires observed `pointerdown` and `click`. Deterministic tests force the
 adverse pointerdown-to-compositionend-to-mousedown-to-click order and cover
 pointer cancellation, lost capture, mouse fallback, multiple pointer
 identities, button/editor isolation, HTMX cleanup, and later independent
-gestures. The generated toolbar equals its source byte-for-byte at SHA-256
-`50d0bbc38e289ea2dcab8d74ae8b7d7124f90154e5eadcd0ec334909b7f9af6c`.
+gestures, including a second pointer acting without consuming the first
+pointer's guarded trailing click. The generated toolbar equals its source
+byte-for-byte at SHA-256
+`9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848`.
 
 ### 18.2 Renderer migration evidence
 
@@ -495,7 +497,7 @@ static launcher byte-for-byte from the captured committed archive. A
 synchronized Go regression replaces a runner pathname after capture and proves
 the sealed original bytes, not the replacement, are what Bash executes. The admitted
 launcher SHA-256 is
-`973f1a57b0cabdd43cef8650d5dd43d0df048661d885591a90aa520f61b2125e`.
+`9fcf2d27f3e420b41c4b02e5d5acd787cf23e1c51eab1c1cdd486a15a524dba9`.
 Finally, the test places
 syntax-invalid `_test.go` files behind both `.gitignore`
 and `.git/info/exclude`, supplies hostile ambient Go workspace, overlay,
@@ -549,12 +551,16 @@ release phases. The test separately records complete preflight time, 251
 row-batch transactions, the initial schema/ledger transaction, and all 254
 query round trips; schema time; 250 ordinary conversion batches;
 251 instrumented mutation selections returning exactly 25,000 unique rows
-without revisiting a committed prefix; 251 `EXPLAIN ANALYZE` probes on the
-exact keyset query examining exactly 25,000 rows through `posts_pkey`; the
-final whole-table validation/completion transaction, total re-render and
-release time, exact final row/state/cursor counts, and sampled test-process RSS. This
-is a representative 1,000-page measurement point, not a universal timing bound
-or capacity promise.
+without revisiting a committed prefix. With PostgreSQL
+`plan_cache_mode = force_generic_plan`, it also performs 251
+`EXPLAIN ANALYZE` probes on each exact preflight and mutation selection shape.
+Both phases must examine exactly the 25,000 returned rows through `posts_pkey`,
+and every cursor-bearing plan must retain its direct primary-key lower-bound
+index condition. The test then records the final whole-table
+validation/completion transaction, total re-render and release time, exact
+final row/state/cursor counts, and sampled test-process RSS. This is a
+representative 1,000-page measurement point, not a universal timing bound or
+capacity promise.
 
 The exact clean executable-and-methodology commit for this population run was
 `cc0e34fe74e9e48e351dc7c761975b087a5219c6`, with tree

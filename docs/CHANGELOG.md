@@ -5,6 +5,38 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Preserve cursor bounds under generic PostgreSQL plans
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/rerender/rerender.go` and its unit/integration tests
+- the population-performance runner and static evidence launcher
+- Alpha.3 architecture, implementation, and verification evidence
+
+Explanation:
+
+Split both preflight and mutation selection into explicit initial and
+cursor-bearing SQL statements. The cursor shapes now expose `post.id > $1` and
+`id > $3` directly; the former nullable `cursor IS NULL OR id > cursor`
+predicate could produce a PostgreSQL generic prepared-statement plan without a
+usable primary-key lower bound. The production traversal, committed-cursor
+restart contract, row locks, and batch limits are otherwise unchanged.
+
+Verification:
+
+- unit rejection of nullable-OR cursor SQL
+- PostgreSQL 17.10 population evidence with `plan_cache_mode` forced to generic
+- 251 preflight and 251 mutation `EXPLAIN ANALYZE` selections, each phase
+  returning and examining exactly 25,000 rows through `posts_pkey`
+- direct cursor index-condition assertions for every noninitial selection
+
+Risks / non-goals:
+
+- the representative 25,000-row measurement remains an admission point, not a
+  universal timing or capacity promise
+
 ### 2026-09-07 — Preserve live IME composition in the Markdown toolbar
 
 Commit: current commit; hash assigned by Git after commit
