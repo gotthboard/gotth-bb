@@ -398,8 +398,14 @@ The committed statically linked launcher is the only supported entry point;
 direct `bash scripts/verify-alpha3-rerender-performance.sh` invocation is
 rejected. Before Bash exists, the launcher retains only the database URL,
 new evidence path, and optional container name, clears the environment, fixes
-the repository working directory and Git configuration boundary, requires its
-own exact worktree to be clean through fixed `/usr/bin/git`, then starts
+the repository working directory and Git configuration boundary, and hashes
+both live runners plus their shared custody library against compiled exact
+SHA-256, byte-size, and mode identities. It rejects symlinks, special
+assume-unchanged or skip-worktree index flags, repository/worktree settings
+that can hide status changes or alter archives, and nonempty
+`$GIT_DIR/info/attributes`; every custody Git command explicitly disables
+fsmonitor, untracked-cache, and ignore-stat behavior. Only after those checks
+and an exact clean-tree check through fixed `/usr/bin/git` does it start
 `/usr/bin/bash --noprofile --norc -p` with an explicit environment allowlist.
 The runner requires that launcher as its live direct parent through `/proc`,
 rechecks static linkage, and records its resolved path and SHA-256. It then
@@ -448,8 +454,16 @@ malicious `BASH_ENV` before it can reject the caller. It then invokes both
 canonical launcher modes with the same payload, imported `dirname`/`sudo`/
 `docker` functions, `SHELLOPTS=xtrace`, hostile shell paths and loader values,
 and a secret URL sentinel, and requires no payload/function marker, spoofed
-value, evidence file, or secret output. It also rebuilds the static launcher
-byte-for-byte from the captured committed archive. Finally, it places
+value, evidence file, or secret output while proving that the exact attested
+runner and library entered Bash. Separate disposable-clone cases modify the
+runner or library behind assume-unchanged and skip-worktree bits, install a
+hostile repository fsmonitor, retain exact bytes with each forbidden bit, and
+add a highest-precedence `info/attributes`; all must fail before Bash, secret
+exposure, payload execution, or evidence creation. The test also rebuilds the
+static launcher byte-for-byte from the captured committed archive. The admitted
+launcher SHA-256 is
+`2bc8ae699ce63232345cc54671935e858bb16833dca0d6b642b7b68c95b3f547`.
+Finally, the test places
 syntax-invalid `_test.go` files behind both `.gitignore`
 and `.git/info/exclude`, supplies hostile ambient Go workspace, overlay,
 toolchain, cache, target, and compiler settings, and proves only the committed
@@ -468,23 +482,23 @@ valid p1 source.
 
 The exact clean executable-and-methodology commit tested on `development` on
 2026-09-07 was
-`ba9d04567419c3e040bb05cf767c8a96ec15d192`, with tree
-`b279add1feb1ffcd340a177f400600a65b79a4ec` and deterministic source-archive
+`ea0e24f85c721351996d1eab238e04bb32fe5328`, with tree
+`58f51b55bc39f5a456c359b7b7ebfb86e9d8c9df` and deterministic source-archive
 SHA-256
-`d221609050462d690f7e3ca6758b57d19a32560f311cef7a71223d83944fbde2`.
+`ed33fac5991e446b85dc2e979d4779984c0a5baf3bdec7de7a9ebbcbab80ec29`.
 The fixture source was 65,532 bytes with SHA-256
 `5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c`;
 its exact p1 HTML was 141,997 bytes with SHA-256
 `8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a`.
-The real 100-row transaction took `20.827136449s`; all 100 rows were
+The real 100-row transaction took `20.912355329s`; all 100 rows were
 p1-preserved with exact HTML, `converted_count` became 100, the subsequent
 empty batch validated the exact writer constraint and completed the singleton,
-and the test process's sampled peak RSS was 80,716 KiB. The run used
+and the test process's sampled peak RSS was 78,072 KiB. The run used
 `GOMAXPROCS=4`, Go 1.26.6, Linux 7.1.5 x86-64, PostgreSQL 17.10, and the exact
 image reference and ID above. The complete retained transcript is
-[`docs/evidence/alpha3-dense-ba9d045.txt`](evidence/alpha3-dense-ba9d045.txt),
+[`docs/evidence/alpha3-dense-ea0e24f.txt`](evidence/alpha3-dense-ea0e24f.txt),
 SHA-256
-`c7df90ade7e7d548586f3bf07e38322bc6afc52a47ef1722e914533e88c83ed4`.
+`09298a71dcde0c20cddc3f89f3a81b6071da1eaaf9b3eb1fadaf4f9c35bc35ab`.
 This documentation-and-evidence commit is the direct child of the tested
 executable commit; it changes no executable source, fixture, or methodology.
 
@@ -507,22 +521,22 @@ is a representative 1,000-page measurement point, not a universal timing bound
 or capacity promise.
 
 The exact clean executable-and-methodology commit for this population run was
-`ba9d04567419c3e040bb05cf767c8a96ec15d192`, with tree
-`b279add1feb1ffcd340a177f400600a65b79a4ec` and deterministic source-archive
+`ea0e24f85c721351996d1eab238e04bb32fe5328`, with tree
+`58f51b55bc39f5a456c359b7b7ebfb86e9d8c9df` and deterministic source-archive
 SHA-256
-`d221609050462d690f7e3ca6758b57d19a32560f311cef7a71223d83944fbde2`.
+`ed33fac5991e446b85dc2e979d4779984c0a5baf3bdec7de7a9ebbcbab80ec29`.
 The 25,000-row fixture used 35-byte source with SHA-256
 `dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98`
 and 56-byte exact p1 HTML with SHA-256
 `3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970`.
-Complete preflight took `1.561202255s`, schema apply took `48.521934ms`,
-250 conversion batches took `16.532292852s`, and final full-table validation
-plus completion took `43.469017ms`. Total re-render time was `16.575761869s`;
-the measured release path was `18.185487818s`; sampled test-process peak RSS
-was 19,704 KiB. The exact final state contained 25,000 current rows,
+Complete preflight took `1.66539773s`, schema apply took `30.855326ms`,
+250 conversion batches took `16.290059399s`, and final full-table validation
+plus completion took `44.801191ms`. Total re-render time was `16.33486059s`;
+the measured release path was `18.031115406s`; sampled test-process peak RSS
+was 19,324 KiB. The exact final state contained 25,000 current rows,
 `converted_count=25000`, one non-null completion time, and a validated writer
 constraint. The environment and pinned PostgreSQL/Go identities were identical
 to the dense compatibility run above. The complete retained transcript is
-[`docs/evidence/alpha3-population-ba9d045.txt`](evidence/alpha3-population-ba9d045.txt),
+[`docs/evidence/alpha3-population-ea0e24f.txt`](evidence/alpha3-population-ea0e24f.txt),
 SHA-256
-`240946461c186df6a26e311e77398a4f01465a02f884208fa94ae4223cb3df76`.
+`ec17e5491292ddf88c891bc8f48f55eb4ef0fa22cd6b4d7d2e02b7f8e04be925`.

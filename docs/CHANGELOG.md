@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Close pre-Bash evidence custody
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `scripts/alpha3-evidence-launcher` and its Go source
+- both Alpha.3 performance runners and their shared custody library
+- `scripts/test-alpha3-evidence-custody.sh`
+- `docs/verification.md` and retained Alpha.3 evidence transcripts
+
+Explanation:
+
+Bind every live Bash input to the reviewed static launcher before Bash starts.
+The launcher now verifies the exact SHA-256, byte size, and mode of both
+performance runners and the shared custody library; rejects symlinks, Git
+index flags and local configuration that can conceal mutations, and nonempty
+highest-precedence `info/attributes`; and reads no database secret until those
+checks and a clean-tree check pass. Custody Git calls explicitly disable
+fsmonitor, untracked-cache, and ignore-stat behavior. This removes the former
+circular runner-to-launcher digest claim while preserving a reproducible,
+byte-identical static launcher as the reviewed trust boundary.
+
+Verification:
+
+- positive canonical execution of both exact runner/library paths under the
+  hostile startup environment
+- pre-Bash refusal of changed runner/library bytes behind assume-unchanged,
+  skip-worktree, and hostile repository fsmonitor state
+- pre-Bash refusal of exact files with either special index flag, hostile
+  fsmonitor configuration alone, and nonempty `info/attributes`
+- byte-identical launcher rebuild from one captured committed archive
+- full development-host generation, vet, race, coverage, and PostgreSQL 17.10
+  integration-race suites
+- fresh dense 100-row and representative 25,000-row migration evidence from
+  the exact repaired methodology commit
+
+Risks / non-goals:
+
+- the static launcher remains Linux/amd64-specific and the only canonical
+  entry point; direct Bash execution remains deliberately unsupported
+
 ### 2026-09-06 21:04 CDT — Add restart-safe renderer migration
 
 Commit: current commit; hash assigned by Git after commit
