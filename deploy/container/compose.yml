@@ -13,10 +13,12 @@ services:
       LISTEN_ADDR: 127.0.0.1:18082
       DATABASE_URL_FILE: /run/secrets/database_runtime_url
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
     network_mode: host
     secrets:
       - database_runtime_url
       - oidc_client_secret
+      - activity_cursor_keyring
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
@@ -68,3 +70,5 @@ secrets:
     file: ${GOTTH_BB_DATABASE_URL_FILE:?GOTTH_BB_DATABASE_URL_FILE is required}
   oidc_client_secret:
     file: ${GOTTH_BB_OIDC_CLIENT_SECRET_FILE:?GOTTH_BB_OIDC_CLIENT_SECRET_FILE is required}
+  activity_cursor_keyring:
+    file: ${GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE:?GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE is required}

@@ -88,6 +88,8 @@ func TestContainerAndComposeContractsRemainHardened(t *testing.T) {
 		"app:",
 		"postgresql:",
 		"LISTEN_ADDR: 127.0.0.1:18082",
+		"ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring",
+		"GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE",
 		"network_mode: host",
 		"read_only: true",
 		"cap_drop:",

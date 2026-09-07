@@ -18,6 +18,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 	"github.com/gotthboard/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/discovery"
 	forumservice "github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/governance"
 	"github.com/gotthboard/gotth-bb/internal/httpui"
@@ -27,6 +28,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,11 +37,13 @@ const shutdownTimeout = 15 * time.Second
 
 type databasePool interface {
 	auth.SessionDatabase
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 	Close()
 }
 
 type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
+type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
 
 // newLoggedInitialAdministratorClaimer preserves the exact claim result while
 // recording an operator-visible failure cause. It deliberately logs no user,
@@ -92,7 +96,7 @@ func main() {
 		return store.OpenPool(poolContext, poolConfig)
 	}, func(authContext context.Context, configured config.Config, database auth.SessionDatabase, builder httpui.URLBuilder) (httpui.AuthenticationService, error) {
 		return configured.NewAuthenticationService(authContext, nil, database, rand.Reader, time.Now, builder.ValidateReturnPath)
-	}, net.Listen); err != nil {
+	}, discovery.LoadCursorKeyring, net.Listen); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb: %v\n", err)
 		os.Exit(1)
 	}
@@ -115,6 +119,7 @@ func run(
 	logOutput io.Writer,
 	openPool poolFactory,
 	newAuthentication authenticationFactory,
+	loadCursorKeyring cursorKeyringFactory,
 	listen func(string, string) (net.Listener, error),
 ) error {
 	if ctx == nil {
@@ -129,6 +134,9 @@ func run(
 	if newAuthentication == nil {
 		return fmt.Errorf("authentication factory is required")
 	}
+	if loadCursorKeyring == nil {
+		return fmt.Errorf("activity cursor keyring factory is required")
+	}
 	if listen == nil {
 		return fmt.Errorf("service listener factory is required")
 	}
@@ -138,6 +146,10 @@ func run(
 	configured, err := config.Load(lookup)
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
+	}
+	cursorKeyring, err := loadCursorKeyring(configured.ActivityCursorKeyringFile)
+	if err != nil {
+		return fmt.Errorf("load activity cursor keyring failed")
 	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	release, err := buildinfo.Current()
@@ -193,7 +205,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct administrator claim service: %w", err)
 	}
-	applicationHandler, err := httpui.NewAuthenticatedReportedForumHandler(
+	applicationHandler, err := httpui.NewAuthenticatedDiscoveredForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
@@ -260,6 +272,18 @@ func run(
 				return moderationservice.ApplyExtendedAction(moderationContext, pool, time.Now, access, input, requestID)
 			},
 		},
+		httpui.DiscoveryHTTPServices{
+			Search: func(searchContext context.Context, request discovery.SearchRequest, access auth.AccessContext) (discovery.SearchPage, error) {
+				return discovery.Search(searchContext, pool, request, access)
+			},
+			Activity: func(activityContext context.Context, cursor *discovery.AuthenticatedCursor, access auth.AccessContext) (discovery.ActivityPage, error) {
+				return discovery.RecentActivity(activityContext, pool, cursor, cursorKeyring, access)
+			},
+			DirectPost: func(postContext context.Context, postID int64, access auth.AccessContext) (discovery.DirectPost, error) {
+				return discovery.GetDirectPost(postContext, queries, postID, access)
+			},
+		},
+		cursorKeyring.VerifyCursor,
 		configured.RegistrationURL,
 		configured.RegistrationEnabled,
 		func(setupContext context.Context, authentication auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {

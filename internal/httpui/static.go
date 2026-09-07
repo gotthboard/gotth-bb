@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	appStylesheetFilename   = "app-9afa2317c68d3a66849cac2afac6a0ade0abe70fd02ae8b65d9d850202f34d58.css"
+	appStylesheetFilename   = "app-1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b.css"
 	markdownToolbarFilename = "markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js"
 )
 
-//go:embed static/app-9afa2317c68d3a66849cac2afac6a0ade0abe70fd02ae8b65d9d850202f34d58.css
+//go:embed static/app-1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b.css
 var appStylesheet []byte
 
 //go:embed static/htmx-2.0.10.min.js

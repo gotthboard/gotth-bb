@@ -39,6 +39,7 @@ func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
 		return value
 	}
 	downstream := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		request.Pattern = "GET /"
 		if renderErr := renderResponse(
 			response,
 			request,
@@ -55,10 +56,14 @@ func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
 	}
 
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	handler.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK || clockIndex != len(times) {
 		t.Fatalf("response status/clock reads = (%d, %d), want (%d, %d)", response.Code, clockIndex, http.StatusOK, len(times))
+	}
+	if request.Pattern != "GET /" {
+		t.Fatalf("route pattern = %q, want propagation", request.Pattern)
 	}
 	for _, expected := range []string{
 		"Powered by",

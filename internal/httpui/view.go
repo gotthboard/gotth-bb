@@ -18,6 +18,8 @@ type pageView struct {
 	LogoutURL          string
 	AdminURL           string
 	ReportsURL         string
+	SearchURL          string
+	ActivityURL        string
 	StylesheetURL      string
 	HTMXURL            string
 	MarkdownToolbarURL string
@@ -210,6 +212,55 @@ type publishingFormView struct {
 	ShowPreview   bool
 }
 
+type discoverySearchPageView struct {
+	ActionURL     string
+	Query         string
+	Author        string
+	Area          string
+	From          string
+	To            string
+	Results       []discoverySearchResultView
+	PreviousURL   string
+	NextURL       string
+	ScopeLabel    string
+	ValidationErr string
+}
+
+type discoverySearchResultView struct {
+	KindLabel  string
+	URL        string
+	AreaName   string
+	TopicTitle string
+	AuthorName string
+	Created    string
+	Excerpt    string
+}
+
+type discoveryActivityPageView struct {
+	Results []discoveryActivityResultView
+	NextURL string
+}
+
+type discoveryActivityResultView struct {
+	URL        string
+	AreaName   string
+	TopicTitle string
+	AuthorName string
+	Created    string
+}
+
+type discoveryDirectPostView struct {
+	AreaName   string
+	AreaURL    string
+	TopicTitle string
+	TopicURL   string
+	Permalink  string
+	AuthorName string
+	Created    string
+	Edited     string
+	Body       contentrender.TrustedHTML
+}
+
 // newPageView resolves every application-owned shell URL through one validated
 // builder and binds the page title to the fixed product identity.
 //
@@ -256,6 +307,14 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build moderation reports URL: %w", err)
 	}
+	searchURL, err := builder.Path("search")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build search URL: %w", err)
+	}
+	activityURL, err := builder.Path("activity")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build activity URL: %w", err)
+	}
 	canonicalURL, err := builder.Absolute(canonicalSegments...)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
@@ -270,6 +329,8 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		LogoutURL:          logoutURL,
 		AdminURL:           adminURL,
 		ReportsURL:         reportsURL,
+		SearchURL:          searchURL,
+		ActivityURL:        activityURL,
 		StylesheetURL:      stylesheetURL,
 		HTMXURL:            htmxURL,
 		MarkdownToolbarURL: markdownToolbarURL,

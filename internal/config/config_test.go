@@ -46,6 +46,9 @@ func TestLoad(t *testing.T) {
 	if got.LogLevel != slog.LevelDebug {
 		t.Fatalf("LogLevel = %s", got.LogLevel)
 	}
+	if got.ActivityCursorKeyringFile != "/run/secrets/activity-cursor-keyring" {
+		t.Fatalf("ActivityCursorKeyringFile = %q", got.ActivityCursorKeyringFile)
+	}
 }
 
 func TestLoadUsesOptionalDefaultsAndAllowsDevelopmentPublicClient(t *testing.T) {
@@ -91,6 +94,7 @@ func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 		"SESSION_MAX_AGE",
 		"SESSION_IDLE_TIMEOUT",
 		"AUTH_REVALIDATE_INTERVAL",
+		"ACTIVITY_CURSOR_KEYRING_FILE",
 	}
 	for _, name := range required {
 		name := name
@@ -134,6 +138,9 @@ func TestLoadRejectsInvalidRelationships(t *testing.T) {
 		{name: "revalidation exceeds maximum", change: func(values map[string]string) { values["AUTH_REVALIDATE_INTERVAL"] = "25h" }},
 		{name: "invalid cookie name", change: func(values map[string]string) { values["SESSION_COOKIE_NAME"] = "session name" }},
 		{name: "invalid log level", change: func(values map[string]string) { values["LOG_LEVEL"] = "warning" }},
+		{name: "relative activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "cursor.json" }},
+		{name: "unclean activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "/run/secrets/../cursor.json" }},
+		{name: "root activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "/" }},
 	}
 
 	for _, test := range tests {
@@ -173,22 +180,23 @@ func TestLoadRedactsMalformedSetting(t *testing.T) {
 
 func validConfigEnvironment() map[string]string {
 	return map[string]string{
-		"APP_ENV":                  "production",
-		"LISTEN_ADDR":              "127.0.0.1:8080",
-		"PUBLIC_BASE_URL":          "https://alhstudios.com/bb",
-		"BASE_PATH":                "/bb",
-		"DATABASE_URL":             "postgres://gotth:database-password@127.0.0.1/gotth_bb",
-		"OIDC_ISSUER_URL":          "https://auth.example.com/application/o/gotth-bb/",
-		"OIDC_CLIENT_ID":           "gotth-bb",
-		"OIDC_CLIENT_SECRET":       "oidc-client-secret",
-		"BOOTSTRAP_ADMIN_SUBJECT":  "fixed-opaque-subject",
-		"REGISTRATION_URL":         "https://auth.example.com/if/flow/gotth-bb-enrollment/",
-		"REGISTRATION_ENABLED":     "true",
-		"SESSION_COOKIE_NAME":      "",
-		"SESSION_MAX_AGE":          "24h",
-		"SESSION_IDLE_TIMEOUT":     "30m",
-		"AUTH_REVALIDATE_INTERVAL": "15m",
-		"LOG_LEVEL":                "debug",
+		"APP_ENV":                      "production",
+		"LISTEN_ADDR":                  "127.0.0.1:8080",
+		"PUBLIC_BASE_URL":              "https://alhstudios.com/bb",
+		"BASE_PATH":                    "/bb",
+		"DATABASE_URL":                 "postgres://gotth:database-password@127.0.0.1/gotth_bb",
+		"OIDC_ISSUER_URL":              "https://auth.example.com/application/o/gotth-bb/",
+		"OIDC_CLIENT_ID":               "gotth-bb",
+		"OIDC_CLIENT_SECRET":           "oidc-client-secret",
+		"BOOTSTRAP_ADMIN_SUBJECT":      "fixed-opaque-subject",
+		"REGISTRATION_URL":             "https://auth.example.com/if/flow/gotth-bb-enrollment/",
+		"REGISTRATION_ENABLED":         "true",
+		"SESSION_COOKIE_NAME":          "",
+		"SESSION_MAX_AGE":              "24h",
+		"SESSION_IDLE_TIMEOUT":         "30m",
+		"AUTH_REVALIDATE_INTERVAL":     "15m",
+		"ACTIVITY_CURSOR_KEYRING_FILE": "/run/secrets/activity-cursor-keyring",
+		"LOG_LEVEL":                    "debug",
 	}
 }
 

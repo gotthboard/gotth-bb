@@ -53,7 +53,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -84,7 +84,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -116,7 +116,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -162,7 +162,7 @@ func NewAuthenticatedModeratedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil, nil, nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -205,7 +205,56 @@ func NewAuthenticatedReportedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, nil, nil,
+		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		sessionCookieName, secure, checkReadiness,
+	)
+}
+
+// NewAuthenticatedDiscoveredForumHandler adds the bounded AN-02 search,
+// recent-activity, and direct-post reads while preserving the older
+// constructor contracts.
+func NewAuthenticatedDiscoveredForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
+	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
+	reports ReportHTTPServices,
+	discovery DiscoveryHTTPServices,
+	verifyActivityCursor ActivityCursorVerifier,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
+	sessionCookieName string,
+	secure bool,
+	checkReadiness ReadinessChecker,
+) (http.Handler, error) {
+	if verifyActivityCursor == nil {
+		return nil, fmt.Errorf("browser discovery cursor verifier is required")
+	}
+	if reports.Create == nil || reports.List == nil || reports.Load == nil || reports.Process == nil || reports.Extended == nil {
+		return nil, fmt.Errorf("browser report services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -240,6 +289,8 @@ func newAuthenticatedHandler(
 	createArea AreaCreator,
 	updateArea AreaUpdater,
 	reports *ReportHTTPServices,
+	discovery *DiscoveryHTTPServices,
+	verifyActivityCursor activityCursorVerifier,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -452,6 +503,24 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct report session boundary: %w", reportErr)
 		}
 	}
+	var discoveryHandler http.Handler
+	if discovery != nil {
+		if verifyActivityCursor == nil {
+			return nil, fmt.Errorf("browser discovery cursor verifier is required")
+		}
+		inner, discoveryErr := newDiscoveryHandler(builder, *discovery)
+		if discoveryErr != nil {
+			return nil, fmt.Errorf("construct discovery routes: %w", discoveryErr)
+		}
+		authenticated, discoveryErr := newSessionAuthenticationHandler(inner, service.AuthenticateSession, sessionCookieName, builder, secure)
+		if discoveryErr != nil {
+			return nil, fmt.Errorf("construct discovery session boundary: %w", discoveryErr)
+		}
+		discoveryHandler, discoveryErr = newDiscoveryPreflightHandler(builder, authenticated, verifyActivityCursor)
+		if discoveryErr != nil {
+			return nil, fmt.Errorf("construct discovery preflight boundary: %w", discoveryErr)
+		}
+	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -498,9 +567,24 @@ func newAuthenticatedHandler(
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
+		case "/search", "/activity":
+			if discoveryHandler != nil && request.Method == http.MethodGet && request.URL.RawPath == "" {
+				discoveryHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if discoveryHandler != nil && request.Method == http.MethodGet && request.URL.RawPath == "" {
+				identifier, directPostPath := strings.CutPrefix(request.URL.Path, "/posts/")
+				if directPostPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseCanonicalPositiveID(identifier); identifierErr == nil {
+						discoveryHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if authenticatedReportHandler != nil && request.URL.RawPath == "" &&
 				(request.Method == http.MethodGet || request.Method == http.MethodPost) {
 				suffix, reportPath := strings.CutPrefix(request.URL.Path, "/moderation/reports/")
@@ -617,7 +701,7 @@ func newAuthenticatedHandler(
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		ctx := context.WithValue(request.Context(), registrationEnabledContextKey{}, registrationEnabled)
 		contextualRequest := request.WithContext(ctx)
+		defer func() { request.Pattern = contextualRequest.Pattern }()
 		dispatch.ServeHTTP(response, contextualRequest)
-		request.Pattern = contextualRequest.Pattern
 	}), nil
 }

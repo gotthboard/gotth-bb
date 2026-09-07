@@ -5,6 +5,48 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Add bounded AN-02 discovery routes and progressive UI
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- optional-session search, recent-activity, and direct-post HTTP routes
+- full-page/HTMX discovery views, primary navigation, and content-addressed CSS
+- cursor-keyring startup wiring and container secret mount
+- focused route, failure, resource, log-redaction, and browser-through-Caddy tests
+
+Explanation:
+
+Add the AN-02-03 presentation boundary without changing the admitted stores or
+deployment lifecycle. Strict query parsing and cursor MAC verification happen
+before optional-session work. Search and activity share two non-waiting permits
+and five/two-second contexts; complete responses render into a 256 KiB ceiling
+before headers, release database work before network output, and hold permits
+through the write. Full pages and `#main-content` fragments share one typed
+presentation model with base-path-safe canonical links, fixed statuses, escaped
+excerpts, and semantic navigation/form landmarks. Startup loads the immutable
+cursor keyring before opening PostgreSQL, and application access logs retain the
+route pattern while omitting raw query material.
+
+Verification:
+
+- strict pre-session grammar/MAC/session-order and exact-route dispatch tests
+- full/HTMX, canonical-link, fixed-status, safe-excerpt, malformed-row,
+  cancellation, overflow, two-permit saturation, and slow-writer tests
+- keyring startup failure/redaction and container secret-mount tests
+- real ephemeral Caddy plus headless Chromium accessibility/base-path gate on
+  the designated development host
+- deterministic Templ/sqlc/Tailwind/static regeneration and content-addressed
+  CSS digest verification
+
+Risks / non-goals:
+
+- the route contexts schedule cancellation; the existing 30-second HTTP server
+  write deadline remains the outer slow-client bound
+- this unit does not perform the million-post integrated admission, PR, merge,
+  push, tag, release, or deployment; those remain AN-02-04/later authority
+
 ### 2026-09-07 — Add authorization-first AN-02 discovery stores
 
 Commit: current commit; hash assigned by Git after commit

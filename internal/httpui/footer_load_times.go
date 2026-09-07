@@ -53,7 +53,9 @@ func NewFooterLoadTimesHandler(next http.Handler, version string, clock func() t
 			clock:       clock,
 		}
 		ctx := context.WithValue(request.Context(), footerLoadTimesContextKey{}, loadTimes)
-		next.ServeHTTP(response, request.WithContext(ctx))
+		downstreamRequest := request.WithContext(ctx)
+		defer func() { request.Pattern = downstreamRequest.Pattern }()
+		next.ServeHTTP(response, downstreamRequest)
 	}), nil
 }
 

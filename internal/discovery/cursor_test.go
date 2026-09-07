@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,21 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/policy"
 )
+
+func TestActivityCursorUserFailuresExposeOnlyTypedClassification(t *testing.T) {
+	t.Parallel()
+
+	if _, err := (CursorKeyring{}).VerifyCursor("invalid"); !errors.Is(err, ErrInvalidActivityCursor) {
+		t.Fatalf("VerifyCursor() error = %v", err)
+	}
+	cursor := AuthenticatedCursor{issuedAt: time.Date(2026, 9, 7, 18, 0, 0, 0, time.UTC)}
+	if err := cursor.ValidateTime(time.Date(2026, 9, 9, 18, 0, 1, 0, time.UTC)); !errors.Is(err, ErrInvalidActivityCursor) {
+		t.Fatalf("ValidateTime() error = %v", err)
+	}
+	if _, err := cursor.BindAudience(policy.AccessContext{}); !errors.Is(err, ErrInvalidActivityCursor) {
+		t.Fatalf("BindAudience() error = %v", err)
+	}
+}
 
 func TestCursorRoundTripAndAudienceBinding(t *testing.T) {
 	t.Parallel()

@@ -6,12 +6,15 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/policy"
 )
+
+var ErrInvalidActivityCursor = errors.New("invalid activity cursor")
 
 const (
 	cursorVersion       = byte(1)
@@ -111,29 +114,29 @@ func (ring CursorKeyring) EncodeCursor(databaseNow time.Time, boundary ActivityB
 // Complexity: time and auxiliary space are tight Theta(1) over fixed input.
 func (ring CursorKeyring) VerifyCursor(encoded string) (AuthenticatedCursor, error) {
 	if len(encoded) != EncodedCursorLength {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
+		return AuthenticatedCursor{}, ErrInvalidActivityCursor
 	}
 	record, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil || len(record) != cursorRecordBytes || base64.RawURLEncoding.EncodeToString(record) != encoded || record[0] != cursorVersion {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
+		return AuthenticatedCursor{}, ErrInvalidActivityCursor
 	}
 	keyID := binary.BigEndian.Uint32(record[1:5])
 	key, previous := ring.key(keyID)
 	if key == nil || !validCursorKey(*key) {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
+		return AuthenticatedCursor{}, ErrInvalidActivityCursor
 	}
 	mac := hmac.New(sha256.New, key.secret[:])
 	_, _ = io.WriteString(mac, cursorDomain)
 	_, _ = mac.Write(record[:cursorPayloadBytes])
 	if subtle.ConstantTimeCompare(record[cursorPayloadBytes:], mac.Sum(nil)) != 1 {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
+		return AuthenticatedCursor{}, ErrInvalidActivityCursor
 	}
 	issuedAt := time.Unix(int64(binary.BigEndian.Uint64(record[5:13])), 0).UTC()
 	createdAt := time.UnixMicro(int64(binary.BigEndian.Uint64(record[13:21]))).UTC()
 	postID := int64(binary.BigEndian.Uint64(record[21:29]))
 	if !validSecondTime(issuedAt) || !validMicrosecondTime(createdAt) || postID <= 0 ||
 		issuedAt.Before(key.NotBefore) || issuedAt.After(key.IssueNotAfter) {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
+		return AuthenticatedCursor{}, ErrInvalidActivityCursor
 	}
 	authenticated := AuthenticatedCursor{
 		boundary: ActivityBoundary{CreatedAt: createdAt, PostID: postID}, secret: key.secret,
@@ -161,7 +164,7 @@ func (cursor AuthenticatedCursor) ValidateTime(databaseNow time.Time) error {
 	if !validMicrosecondTime(databaseNow) || !validSecondTime(cursor.issuedAt) ||
 		cursor.issuedAt.After(databaseNow.Add(cursorFutureSkew)) || databaseNow.Sub(cursor.issuedAt) > cursorMaximumAge ||
 		cursor.previous && databaseNow.After(cursor.keyEnd.Add(cursorMaximumAge+cursorFutureSkew)) {
-		return fmt.Errorf("invalid activity cursor")
+		return ErrInvalidActivityCursor
 	}
 	return nil
 }
@@ -174,7 +177,7 @@ func (cursor AuthenticatedCursor) ValidateTime(databaseNow time.Time) error {
 func (cursor AuthenticatedCursor) BindAudience(actor policy.AccessContext) (ActivityBoundary, error) {
 	digest, err := audienceDigest(cursor.secret, actor)
 	if err != nil || subtle.ConstantTimeCompare(digest[:], cursor.audience[:]) != 1 {
-		return ActivityBoundary{}, fmt.Errorf("invalid activity cursor")
+		return ActivityBoundary{}, ErrInvalidActivityCursor
 	}
 	return cursor.boundary, nil
 }

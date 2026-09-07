@@ -15,22 +15,23 @@ type LookupEnv func(string) (string, bool)
 // Config is the loaded immutable startup contract. The PostgreSQL driver must
 // still validate the opaque database connection string before serving.
 type Config struct {
-	Environment            Environment
-	ListenAddr             netip.AddrPort
-	PublicBaseURL          url.URL
-	BasePath               string
-	databaseURL            secret
-	OIDCIssuerURL          url.URL
-	OIDCClientID           string
-	oidcClientSecret       secret
-	BootstrapAdminSubject  string
-	RegistrationURL        url.URL
-	RegistrationEnabled    bool
-	SessionCookieName      string
-	SessionMaxAge          time.Duration
-	SessionIdleTimeout     time.Duration
-	AuthRevalidateInterval time.Duration
-	LogLevel               slog.Level
+	Environment               Environment
+	ListenAddr                netip.AddrPort
+	PublicBaseURL             url.URL
+	BasePath                  string
+	databaseURL               secret
+	OIDCIssuerURL             url.URL
+	OIDCClientID              string
+	oidcClientSecret          secret
+	BootstrapAdminSubject     string
+	RegistrationURL           url.URL
+	RegistrationEnabled       bool
+	SessionCookieName         string
+	SessionMaxAge             time.Duration
+	SessionIdleTimeout        time.Duration
+	AuthRevalidateInterval    time.Duration
+	ActivityCursorKeyringFile string
+	LogLevel                  slog.Level
 }
 
 // Format prevents recursive fmt traversal from exposing unexported secret
@@ -187,6 +188,14 @@ func Load(lookup LookupEnv) (Config, error) {
 	if authRevalidateInterval > sessionMaxAge {
 		return Config{}, fmt.Errorf("AUTH_REVALIDATE_INTERVAL must not exceed SESSION_MAX_AGE")
 	}
+	activityCursorKeyringRaw, err := required("ACTIVITY_CURSOR_KEYRING_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	activityCursorKeyringFile, err := ParseActivityCursorKeyringFile(activityCursorKeyringRaw)
+	if err != nil {
+		return Config{}, err
+	}
 
 	sessionCookieRaw, _ := lookup("SESSION_COOKIE_NAME")
 	sessionCookieName, err := ParseSessionCookieName(sessionCookieRaw)
@@ -200,21 +209,22 @@ func Load(lookup LookupEnv) (Config, error) {
 	}
 
 	return Config{
-		Environment:            environment,
-		ListenAddr:             listenAddr,
-		PublicBaseURL:          publicBaseURL,
-		BasePath:               basePath,
-		databaseURL:            secret{value: databaseURL},
-		OIDCIssuerURL:          oidcIssuerURL,
-		OIDCClientID:           oidcClientID,
-		oidcClientSecret:       secret{value: oidcClientSecret},
-		BootstrapAdminSubject:  bootstrapAdminSubject,
-		RegistrationURL:        registrationURL,
-		RegistrationEnabled:    registrationEnabled,
-		SessionCookieName:      sessionCookieName,
-		SessionMaxAge:          sessionMaxAge,
-		SessionIdleTimeout:     sessionIdleTimeout,
-		AuthRevalidateInterval: authRevalidateInterval,
-		LogLevel:               logLevel,
+		Environment:               environment,
+		ListenAddr:                listenAddr,
+		PublicBaseURL:             publicBaseURL,
+		BasePath:                  basePath,
+		databaseURL:               secret{value: databaseURL},
+		OIDCIssuerURL:             oidcIssuerURL,
+		OIDCClientID:              oidcClientID,
+		oidcClientSecret:          secret{value: oidcClientSecret},
+		BootstrapAdminSubject:     bootstrapAdminSubject,
+		RegistrationURL:           registrationURL,
+		RegistrationEnabled:       registrationEnabled,
+		SessionCookieName:         sessionCookieName,
+		SessionMaxAge:             sessionMaxAge,
+		SessionIdleTimeout:        sessionIdleTimeout,
+		AuthRevalidateInterval:    authRevalidateInterval,
+		ActivityCursorKeyringFile: activityCursorKeyringFile,
+		LogLevel:                  logLevel,
 	}, nil
 }

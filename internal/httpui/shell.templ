@@ -31,6 +31,8 @@ templ document(view pageView, content templ.Component) {
 						</div>
 						<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
 						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Board index</a>
+						<a href={ view.SearchURL } hx-get={ view.SearchURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Search</a>
+						<a href={ view.ActivityURL } hx-get={ view.ActivityURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Recent activity</a>
 						if sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator {
 							<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Manage areas</a>
 						}
@@ -737,6 +739,106 @@ templ publishingFormSection(form publishingFormView) {
 				</div>
 			</form>
 		</section>
+}
+
+templ discoverySearchPage(view pageView, search discoverySearchPageView) {
+	@document(view, discoverySearchContent(view, search))
+}
+
+templ discoverySearchContent(view pageView, search discoverySearchPageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Search</span></nav>
+		<section aria-labelledby="search-title" class="rounded border border-slate-700 bg-slate-900 p-4 sm:p-6">
+			<h1 id="search-title" class="text-2xl font-bold text-white">Search discussions</h1>
+			<p class="mt-2 text-sm text-slate-400">Search text or an exact author ID. Text supports terms, quoted phrases, OR, and unary -.</p>
+			if search.ValidationErr != "" {
+				<p role="alert" class="mt-4 rounded border border-rose-900 bg-rose-950/40 p-3 text-rose-200">{ search.ValidationErr }</p>
+			}
+			<form method="get" action={ search.ActionURL } hx-get={ search.ActionURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="mt-5 grid gap-4 md:grid-cols-2">
+				<label class="grid gap-1 font-semibold">Search text<input name="q" value={ search.Query } maxlength="256" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
+				<label class="grid gap-1 font-semibold">Author ID<input name="author" value={ search.Author } inputmode="numeric" pattern="[1-9][0-9]*" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
+				<label class="grid gap-1 font-semibold">Area slug<input name="area" value={ search.Area } pattern="[a-z0-9]+(-[a-z0-9]+)*" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
+				<div class="grid grid-cols-2 gap-3"><label class="grid gap-1 font-semibold">From (UTC)<input type="date" name="from" value={ search.From } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label><label class="grid gap-1 font-semibold">To (UTC)<input type="date" name="to" value={ search.To } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label></div>
+				<button type="submit" class="w-fit rounded bg-blue-600 px-4 py-2 font-bold text-white hover:bg-blue-500">Search</button>
+			</form>
+		</section>
+		<section aria-labelledby="search-results-title" class="mt-6">
+			<h2 id="search-results-title" class="text-xl font-bold text-white">Results</h2>
+			<p class="mt-1 text-sm text-slate-400">{ search.ScopeLabel }</p>
+			if len(search.Results) == 0 {
+				<p role="status" aria-live="polite" class="mt-4 rounded border border-dashed border-slate-700 p-5 text-slate-300">No authorized matches were found.</p>
+			} else {
+				<ol class="mt-4 grid gap-3">
+					for _, result := range search.Results {
+						<li>
+							<article class="rounded border border-slate-700 bg-slate-900 p-4">
+								<p class="text-xs font-bold uppercase tracking-wide text-cyan-300">{ result.KindLabel }</p>
+								<h3 class="mt-1 font-bold"><a href={ result.URL } hx-get={ result.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ result.TopicTitle }</a></h3>
+								<p class="mt-1 text-sm text-slate-400">{ result.AreaName } · { result.AuthorName } · { result.Created }</p>
+								if result.Excerpt != "" {
+									<p class="mt-3 break-words text-slate-200">{ result.Excerpt }</p>
+								}
+							</article>
+						</li>
+					}
+				</ol>
+			}
+		</section>
+		if search.PreviousURL != "" || search.NextURL != "" {
+			<nav aria-label="Search result pages" class="mt-6 flex gap-3">
+				if search.PreviousURL != "" {
+					<a href={ search.PreviousURL } hx-get={ search.PreviousURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded border border-slate-700 px-3 py-2 font-semibold text-blue-300">Previous</a>
+				}
+				if search.NextURL != "" {
+					<a href={ search.NextURL } hx-get={ search.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded border border-slate-700 px-3 py-2 font-semibold text-blue-300">Next</a>
+				}
+			</nav>
+		}
+	</main>
+}
+
+templ discoveryActivityPage(view pageView, activity discoveryActivityPageView) {
+	@document(view, discoveryActivityContent(view, activity))
+}
+
+templ discoveryActivityContent(view pageView, activity discoveryActivityPageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Recent activity</span></nav>
+		<h1 id="activity-title" class="text-2xl font-bold text-white">Recent activity</h1>
+		if len(activity.Results) == 0 {
+			<p role="status" aria-live="polite" class="mt-4 rounded border border-dashed border-slate-700 p-5 text-slate-300">No more authorized activity is available.</p>
+		} else {
+			<ol aria-labelledby="activity-title" class="mt-4 grid gap-3">
+				for _, result := range activity.Results {
+					<li><article class="rounded border border-slate-700 bg-slate-900 p-4"><h2 class="font-bold"><a href={ result.URL } hx-get={ result.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ result.TopicTitle }</a></h2><p class="mt-1 text-sm text-slate-400">{ result.AreaName } · { result.AuthorName } · { result.Created }</p></article></li>
+				}
+			</ol>
+		}
+		if activity.NextURL != "" {
+			<nav aria-label="Activity pages" class="mt-6"><a href={ activity.NextURL } hx-get={ activity.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded border border-slate-700 px-3 py-2 font-semibold text-blue-300">Older activity</a></nav>
+		}
+	</main>
+}
+
+templ discoveryDirectPostPage(view pageView, post discoveryDirectPostView) {
+	@document(view, discoveryDirectPostContent(view, post))
+}
+
+templ discoveryDirectPostContent(view pageView, post discoveryDirectPostView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-4xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12">
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.AreaURL } hx-get={ post.AreaURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ post.AreaName }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.TopicURL } hx-get={ post.TopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ post.TopicTitle }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Post</span></nav>
+		<article aria-labelledby="direct-post-author" class="rounded border border-slate-700 bg-slate-900">
+			<header class="border-b border-slate-700 bg-slate-800 p-4">
+				<h1 id="direct-post-author" class="font-bold text-blue-100">{ post.AuthorName }</h1>
+				<p class="mt-1 text-sm text-slate-400">Posted { post.Created }</p>
+				if post.Edited != "" {
+					<p class="mt-1 text-sm text-slate-400">{ post.Edited }</p>
+				}
+				<a href={ post.Permalink } class="mt-2 inline-block text-sm text-blue-300 hover:underline">Permalink</a>
+			</header>
+			<div class="rendered-post min-w-0 max-w-full space-y-4 break-words p-4 leading-7 text-slate-200">@post.Body.Component()</div>
+		</article>
+	</main>
 }
 
 templ errorPage(view pageView, status int, heading, message string) {
