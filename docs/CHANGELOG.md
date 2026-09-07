@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Complete AN-02 integrated admission
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- admission-only 100,000-topic/1,000,000-post PostgreSQL harness
+- retained custom/generic plan, resource, integration/race, browser, and
+  release-artifact transcripts
+- AN-02 verification result
+
+Explanation:
+
+Complete the AN-02-04 evidence boundary without changing production behavior.
+The admission harness preserves the smaller AN-02-02 checkpoint and adds one
+explicit million-post mode with the complete visibility, hidden, deleted,
+redacted, rare-term, author, and activity-skew distribution. It retains exact
+plans and measures database/process resources while two discovery statements
+coexist with an ordinary read and the production publication statement.
+
+Verification:
+
+- deterministic Templ/sqlc/Tailwind/static regeneration and Alpha.3 evidence
+  custody
+- repository-wide vet and race/coverage plus full PostgreSQL 17.10
+  integration/race, migration, readiness, and plan admission
+- 100,000 topics, 1,000,000 posts, custom/generic JSON plans, resource and
+  coexistence measurements
+- real Caddy 2.11.4 plus Chromium 151.0.7922.71 browser behavior
+- clean repository/integrity checks and byte-identical Linux/amd64 release
+  artifacts
+
+Risks / non-goals:
+
+- measurements are evidence-host observations, not publication quotas or
+  universal latency/capacity promises
+- this admission does not create a PR, merge, push, tag, release, deploy, or
+  begin AN-03
+
 ### 2026-09-07 — Add bounded AN-02 discovery routes and progressive UI
 
 Commit: current commit; hash assigned by Git after commit

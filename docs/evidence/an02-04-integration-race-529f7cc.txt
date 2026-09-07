@@ -1,0 +1,26 @@
+ok  	github.com/gotthboard/gotth-bb/cmd/forum	1.103s	coverage: 63.8% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/migrate	20.039s	coverage: 79.1% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/operator	2.309s	coverage: 90.8% of statements
+ok  	github.com/gotthboard/gotth-bb/cmd/package	1.062s	coverage: 89.1% of statements
+ok  	github.com/gotthboard/gotth-bb/deploy/container	1.042s	coverage: [no statements]
+ok  	github.com/gotthboard/gotth-bb/internal/administration	2.085s	coverage: 86.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/app	1.046s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/auth	2.805s	coverage: 97.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/buildinfo	1.029s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/config	1.074s	coverage: 99.7% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/discovery	2.210s	coverage: 88.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/forum	2.616s	coverage: 97.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/governance	2.326s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/httpui	1.410s	coverage: 74.3% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/migration	2.275s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/moderation	3.391s	coverage: 83.1% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/observability	1.026s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/policy	1.051s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/readiness	2.454s	coverage: 100.0% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/releaseartifact	1.101s	coverage: 95.4% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/render	4.239s	coverage: 95.2% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/rerender	9.632s	coverage: 56.7% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/searchprojection	2.938s	coverage: 77.5% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/store	1.135s	coverage: 97.4% of statements
+ok  	github.com/gotthboard/gotth-bb/internal/store/db	2.956s	coverage: 36.1% of statements
+ok  	github.com/gotthboard/gotth-bb/migrations	2.939s	coverage: 100.0% of statements

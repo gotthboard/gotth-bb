@@ -1,0 +1,5 @@
+=== RUN   TestDiscoveryBrowserThroughCaddy
+    discovery_browser_integration_test.go:137: browser-through-Caddy admitted: caddy=v2.11.4 chromium=Chromium 151.0.7922.71 Arch Linux bytes=6884
+--- PASS: TestDiscoveryBrowserThroughCaddy (1.52s)
+PASS
+ok  	github.com/gotthboard/gotth-bb/internal/httpui	1.539s

@@ -706,3 +706,61 @@ repository-integrity, and release-artifact reproducibility gates. Evidence
 records the exact commit/tree, commands, environment, versions, checksums,
 result, and explicit gaps. Two fresh independent cold reviews must both be
 CLEAN on that same exact state before handoff.
+
+### 19.4 AN-02 integrated admission result
+
+The exact executable and admission-methodology commit was
+`529f7cc0816c24ae0f3ae1eaadc625e8bb2c5afb`, tree
+`58e75e8c3844444c4472d46374cece1778986cdf`. Its deterministic source archive,
+with prefix `gotth-bb-529f7cc/`, has SHA-256
+`7fea68144e6c1b89923992f1611e82808df2388499fea604607eb9336e06f12b`.
+The designated `development` host used Go 1.26.6, Node 26.7.0, npm 12.0.2,
+PostgreSQL 17.10 image
+`sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193`,
+Caddy 2.11.4, and Chromium 151.0.7922.71.
+
+The generated corpus contained exactly 100,000 topics and 1,000,000 posts:
+33,333 public, 33,334 authenticated, and 33,333 group topics; 990 hidden and
+99 deleted topics; 1,978 deleted and 991 redacted posts; 100 rare-term topics,
+1,003 rare-term posts, and 10,000 distinct post timestamps. Population and
+analysis took 32.834 seconds. The resulting database was 596,850,355 bytes;
+topics consumed 49,192,960 bytes and posts 538,591,232 bytes. The complete
+custom- and forced-generic `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` plans
+retained the authorized 51-row search fence, both author indexes for custom
+author shapes, topic GIN for the custom rare-term shape, the strict activity
+tuple condition on `posts_activity_current_idx`, and the direct-post start on
+`posts_pkey`.
+
+The same run overlapped exact search and activity statements with an ordinary
+topic read and the production topic/first-post publication statement. They
+completed in 1.707 seconds, 17.514 milliseconds, 6.840 milliseconds, and
+38.245 milliseconds respectively. Connection count returned from one to one,
+cancellation failed closed, process RSS rose from 22,908 KiB to 24,264 KiB,
+and PostgreSQL reported nine temporary files totaling 294,707,246 bytes after
+all plans and coexistence work. These are observations on the evidence host,
+not universal latency or capacity promises.
+
+The exact commit also passed deterministic generation, Alpha.3 evidence
+custody, gofmt, vet, repository-wide race/coverage, full PostgreSQL 17
+integration/race including migration and readiness, browser-through-Caddy,
+secret/log-redaction, clean-tree and `git fsck --no-dangling` checks. Two
+independent Linux/amd64 package runs produced byte-identical artifacts with
+SHA-256 `407a936b9cb58d0e85c9e3f6031d3e147beb4b0386ad2886d04f20b99c6a0bf2`.
+
+Retained transcripts:
+
+- [`an02-04-admission-529f7cc.txt`](evidence/an02-04-admission-529f7cc.txt),
+  SHA-256 `dbd697850ee7ecc66c8f002e2afb7a614986bac7cd7703af94efffd6d7b7e0f5`;
+- [`an02-04-verify-529f7cc.txt`](evidence/an02-04-verify-529f7cc.txt),
+  SHA-256 `a28896aa4eec99acf26cb71f92744379f27c7d6d2f6feeeec74e310b017bcbe9`;
+- [`an02-04-integration-race-529f7cc.txt`](evidence/an02-04-integration-race-529f7cc.txt),
+  SHA-256 `d9d6f731c2abf02b47dbc3885f8aca1f2af43885c09f634bbef03e0421613666`;
+- [`an02-04-browser-529f7cc.txt`](evidence/an02-04-browser-529f7cc.txt),
+  SHA-256 `70fb58359507f5ae7da300e20707475e9ef7ab3c538c7618c660532caf21911e`;
+  and
+- [`an02-04-release-529f7cc.txt`](evidence/an02-04-release-529f7cc.txt),
+  SHA-256 `c4b5ddb8f190b91ed44df9e1a4b1cb5ee16be6210a1d6d09cdc83e06a08e992a`.
+
+The evidence contains no universal performance guarantee. The generated
+corpus and release artifacts were disposable verification state; the
+transcripts and exact source identities are the retained record.
