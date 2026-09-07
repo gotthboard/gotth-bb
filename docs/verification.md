@@ -600,6 +600,37 @@ migration, generated SQL/Templ/static files, application binary, test helpers,
 and retained transcripts are hash-bound. Passing smaller fixtures does not
 substitute for the required population/plan gate.
 
+### AN-02-02 representative plan checkpoint
+
+The exact executable and plan-methodology commit
+`aff08252cbe283ecd9365f85b78c8a2c44a8b064`, tree
+`fb2e8f0b0374b740f4f288f4f473be034393fc7c`, populated 25,000 topics and
+25,000 posts across public and group-restricted areas on PostgreSQL 17.10.
+The corpus includes common and rare terms plus a one-percent author
+distribution. The exact generated search, cursor-bearing activity, and direct
+post statements were prepared and retained through
+`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` under both
+`force_custom_plan` and `force_generic_plan`.
+
+The custom author shapes used both exact partial author indexes; the custom
+rare-term shape used the topic GIN index. Both plan modes retained the 51-row
+search limit and complete area/topic/post authorization tree. Both activity
+plans used `posts_activity_current_idx` with a direct strict tuple index
+condition, and both direct-post plans started at `posts_pkey`. This is a
+representative AN-02-02 plan checkpoint, not the required AN-02-04
+100,000-topic/1,000,000-post admission corpus and not a universal latency
+promise.
+
+The command was
+`GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE=1 go test -tags integration -run
+TestDiscoveryPlansOnPostgreSQL17 -count=1 -v ./internal/store/db` on
+`development` with Go 1.26.6 and PostgreSQL 17.10 Alpine image ID
+`sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193`.
+The complete retained transcript is
+[`docs/evidence/an02-02-plans-aff0825.txt`](evidence/an02-02-plans-aff0825.txt),
+SHA-256
+`1aed451c29ab2132a7ce75194c6a252f59ca0daa5ab19ca931219684e50c4b16`.
+
 ### 19.1 Functional and authorization matrix
 
 Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
