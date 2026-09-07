@@ -183,8 +183,9 @@ Requirements:
   URLs beneath the configured public base URL.
 - **CONTENT-001:** Authors shall write Markdown and preview the sanitized
   rendered result before publication.
-- **CONTENT-002:** Supported version 1.0 formatting shall include paragraphs,
-  emphasis, lists, links, quotes, fenced code, inline code, and basic emoji.
+- **CONTENT-002:** Supported version 1.0 formatting shall implement GitHub
+  Flavored Markdown: CommonMark plus tables, strikethrough, task lists, and
+  GFM autolinks/linkification. It shall also include fenced and inline code.
 - **CONTENT-003:** Raw HTML shall be disabled or sanitized to the documented
   allowlist.
 - **CONTENT-004:** Authors shall edit their own visible content and see an
@@ -392,7 +393,38 @@ Search, unread state, reports, new moderation transitions, group
 administration, site-setting administration, and public registration are not
 part of this surface-and-threading increment.
 
-## 9. Stable 1.0 acceptance boundary
+## 9. Alpha.3 acceptance boundary
+
+`1.0.0-alpha.3` completes the version 1.0 Markdown authoring and persisted
+renderer boundary. It is acceptable when all of the following hold:
+
+1. Create, reply, edit, preview, publish, migration, and read paths use one
+   deterministic Goldmark v1.8.5 GFM renderer followed by the exact
+   Bluemonday v1.0.27 forum sanitizer.
+2. Raw HTML stays disabled. Only the elements and attributes emitted by the
+   enabled CommonMark/GFM features survive sanitization; style, event-handler,
+   arbitrary form, and unsafe URL content remains forbidden.
+3. Tables, strikethrough, task lists, and GFM autolinks work, while task-list
+   checkboxes remain disabled and cannot become interactive controls.
+4. The persisted renderer version changes immutably. A bounded, transactional,
+   idempotent, restart-safe migration rebuilds old derived HTML from canonical
+   Markdown without overwriting a concurrent edit, and readiness fails closed
+   until no ordinary post mixes renderer versions.
+5. The native authoring toolbar provides bold, italic, link, block quote,
+   inline code, fenced code, image, ordered-list, unordered-list, table,
+   task-list, and strikethrough shortcuts with selection, caret, multiline,
+   and applicable toggle behavior.
+6. Toolbar buttons use native semantics, accessible names and tooltips, visible
+   focus, and document-order keyboard navigation. Plain Markdown submission
+   remains fully usable with JavaScript absent or failed.
+7. Normative GFM, sanitizer/XSS, dangerous-link, deterministic-rendering,
+   boundary-size, migration restart/concurrency, server integration, HTMX,
+   and toolbar behavior tests pass reproducibly.
+
+Mermaid, math, footnotes, emoji shortcodes, mentions, issue references, syntax
+highlighting, rich-text editors, and WYSIWYG behavior are not part of alpha.3.
+
+## 10. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -406,7 +438,7 @@ part of this surface-and-threading increment.
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 10. Constraints and assumptions
+## 11. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -417,7 +449,7 @@ part of this surface-and-threading increment.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 11. Open owner decisions
+## 12. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:

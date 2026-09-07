@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.2` |
+| Current target | `1.0.0-alpha.3` |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -327,6 +327,25 @@ CONTENT-006, READ-001, READ-005, READ-006.
 
 Additional alpha releases integrate the remaining version 1.0 behavior while
 the user surface may still change.
+
+### A3-01: GitHub Flavored Markdown and native toolbar
+
+Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
+
+- Pin the Goldmark v1.8.5 GFM and Bluemonday v1.0.27 contracts; keep raw HTML,
+  unsafe URLs, styles, event handlers, and arbitrary form controls forbidden.
+- Extend the one renderer/sanitizer boundary with tables, strikethrough, task
+  lists, and GFM autolinks; preserve Markdown as authoritative source.
+- Add a release-versioned first-party progressive-enhancement toolbar with the
+  twelve required shortcuts and accessible native controls.
+- Add the renderer-state migration plus bounded restart-safe re-render command,
+  edit serialization, completion oracle, readiness gate, and rollback record.
+- Prove every create/reply/edit/preview/publish/read path uses the same policy;
+  cover normative GFM, XSS, malformed and size boundaries, toolbar selection,
+  caret, multiline, toggle, keyboard/semantic, JavaScript-failure, HTMX, fresh
+  and populated upgrade, restart, idempotence, concurrency, and rollback cases.
+- Run performance admission and two independent fresh cold Judge passes before
+  alpha.3 may be admitted. No deployment or release is part of this feature.
 
 ### AN-01: reports and moderation queue
 

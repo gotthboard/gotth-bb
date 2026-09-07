@@ -362,7 +362,13 @@ immutable together and database-validated.
 
 Posts keep Markdown source as canonical content. Sanitized HTML may be stored
 as a derived cache with a renderer-version marker. A renderer change can rebuild
-the cache from source.
+the cache from source. Alpha.3 performs that rebuild through a release-owned,
+bounded batch transaction. Each batch locks only its selected stale post rows,
+renders their current canonical source, updates only those locked identities,
+and commits before selecting more. A singleton renderer-state row records the
+target and completion boundary; readiness rejects traffic until the state is
+complete and no non-redacted post carries another renderer version. Restarting
+the migration safely resumes from the remaining stale rows.
 
 ### 8.4 Soft deletion and audit
 
@@ -427,6 +433,13 @@ authorization boundary.
 Tailwind output is compiled at build time. No Tailwind runtime or arbitrary
 class construction from user input is permitted. Static assets are content-
 hashed or release-versioned and referenced through the URL builder.
+
+The Markdown toolbar is one small same-origin, release-versioned first-party
+script. It progressively enhances the ordinary labeled Markdown textarea using
+native buttons in document order. Transformations operate only on the current
+textarea value and selection; the script neither renders nor sanitizes. A
+missing or failed script leaves the existing server-rendered form, preview,
+validation, CSRF, and publication paths intact.
 
 ### 11.1 Alpha.2 forum presentation read model
 

@@ -1065,23 +1065,66 @@ One URL builder owns:
 The builder accepts route components, not arbitrary untrusted URLs. Tests scan
 rendered core pages for root-relative application links that omit `/bb`.
 
-## 13. Markdown rendering
+## 13. Markdown rendering and authoring
 
 - Canonical input is nonblank UTF-8 Markdown source from 1 through 65,536
   bytes. Sanitized rendered HTML must be nonblank and no larger than 262,144
   bytes before persistence.
-- Alpha.1 uses Goldmark v1.8.5 in plain CommonMark mode. Raw HTML and dangerous
-  links retain Goldmark's default disabled behavior; no GFM tables, task lists,
-  automatic heading IDs, linkifier, or runtime extension is enabled.
+- Alpha.3 uses Goldmark v1.8.5 with its bundled `extension.GFM`: CommonMark
+  plus tables, strikethrough, task lists, and linkification. Table alignment
+  output is disabled so user content never requires style or alignment
+  attributes. Raw HTML and dangerous links retain Goldmark's default disabled
+  behavior. Heading IDs and every non-GFM runtime extension stay disabled.
 - Link schemes are restricted to an allowlist.
 - Rendered HTML passes through a narrow sanitizer allowlist even when the parser
   claims safe output.
 - Every surviving link receives `nofollow noreferrer`, avoiding a second
   browser-versus-Go external-URL classification policy.
+- The sanitizer adds only `table`, `thead`, `tbody`, `tr`, `th`, `td`, `del`,
+  and `input`. An `input` survives only with Goldmark's exact empty `disabled`
+  and optional empty `checked` attributes plus `type="checkbox"`; no `name`,
+  `value`, `form`, style, class, event, URL, or other attribute is allowed.
 - Rendered output carries the exact renderer version
-  `goldmark-v1.8.5-bluemonday-v1.0.27-p1` for deterministic rebuilding.
+  `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2` for deterministic rebuilding.
 - Templates receive rendered content through one explicit trusted-HTML type;
   arbitrary strings cannot opt out of escaping.
+
+### 13.1 Renderer migration
+
+- Migration `000007_gfm_renderer.sql` creates one renderer-state singleton for
+  the alpha.3 target. Fresh empty databases start complete; upgraded databases
+  with ordinary stale posts start incomplete. Redacted tombstones retain the
+  separate immutable `moderation-redaction-v1` renderer contract.
+- The release migration command applies schema migrations, then repeatedly
+  processes at most 100 stale posts in one transaction ordered by post ID with
+  `FOR UPDATE SKIP LOCKED`. Rendering uses the same `RenderMarkdown` function
+  as preview and publication. A render or database failure rolls back the
+  entire batch.
+- The final empty batch proves no stale ordinary post remains and marks the
+  singleton complete in the same transaction. Process interruption or an
+  unknown commit outcome is recovered by rerunning the command: already
+  converted rows no longer match, while an edit serialized by the row lock
+  either precedes the batch render or persists the new renderer itself.
+- Progress output contains only bounded counts, target renderer version, and
+  completion state; it never logs Markdown, rendered HTML, identities, or
+  connection secrets. Readiness requires the exact completed target and a
+  zero-stale-row oracle.
+
+### 13.2 Native toolbar
+
+- One release-versioned same-origin script enhances each
+  `[data-markdown-editor]` container. The source textarea remains a normal
+  required form control and is usable without the script.
+- Native `button type="button"` controls provide bold, italic, link, block
+  quote, inline code, fenced code, image, ordered list, unordered list, table,
+  task list, and strikethrough actions. `aria-label` and `title` describe each
+  action; no custom keyboard interception replaces browser tab order.
+- Inline wrappers toggle only when the exact selected/caret-adjacent markers
+  match. Line actions add/remove prefixes across the complete touched lines.
+  Empty selections insert bounded placeholders and select the useful editable
+  portion. Every transformation restores focus and a deterministic selection.
+- The client script does not preview, parse, trust, or sanitize Markdown.
+  Server preview and publication remain the sole rendering boundary.
 
 ## 14. Moderation transitions
 
@@ -1305,6 +1348,11 @@ operator logs.
 - URL builder with empty/test/production prefixes and hostile segments.
 - Configuration validation.
 - Markdown sanitizer against XSS payloads and unsafe schemes.
+- Normative CommonMark/GFM examples, disabled task controls, deterministic
+  output, malformed/boundary inputs, and exact sanitizer allowlist.
+- Native toolbar transformations, caret/selection restoration, multiline and
+  repeated-toggle behavior, native semantics, labels/tooltips, focus styling,
+  script-failure fallback, and full-page/HTMX form replacement.
 - State transition and stale-revision behavior.
 
 ### 18.2 PostgreSQL integration tests
@@ -1316,6 +1364,9 @@ operator logs.
 - Topic-read monotonicity.
 - Search/count leakage checks.
 - Fresh and upgrade migrations.
+- Renderer migration batching, restart/idempotence, rollback, concurrent edit
+  serialization, completion oracle, progress redaction, and readiness failure
+  while stale renderer rows remain.
 
 ### 18.3 HTTP tests
 

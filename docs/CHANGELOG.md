@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 19:45 CDT — Define alpha.3 GFM and migration contracts
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `docs/prd.md`
+- `docs/architecture.md`
+- `docs/implementation-spec.md`
+- `docs/feature-plan.md`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Replace the incomplete alpha Markdown promise with the exact GitHub Flavored
+Markdown, sanitizer, progressive-enhancement toolbar, immutable renderer
+version, bounded re-render migration, concurrency, readiness, observability,
+and acceptance contracts required before implementation.
+
+Verification:
+
+- documentation whitespace and requirement terminology scans
+- direct review against Goldmark v1.8.5, Bluemonday v1.0.27, the current post
+  schema, migration runner, readiness checker, publishing/editing paths, and
+  static asset boundary
+
+Risks / non-goals:
+
+- no implementation, schema, dependency, remote, release, or deployment state
+  changes in this documentation-only slice
+- Mermaid, math, footnotes, emoji shortcodes, mentions, issue references,
+  syntax highlighting, rich-text editors, and WYSIWYG behavior remain excluded
+
 ### 2026-09-06 18:39 CDT — Complete AN-01 reports and moderation
 
 Commit: current commit; hash assigned by Git after commit
