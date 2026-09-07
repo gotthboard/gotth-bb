@@ -45,7 +45,8 @@ func TestDiscoverySearchRendersCanonicalFullAndHTMXPages(t *testing.T) {
 		body := response.Body.String()
 		if response.Code != http.StatusOK || !strings.Contains(body, `value="café"`) || !strings.Contains(body, `value="2"`) ||
 			strings.Contains(body, `<script>alert(1)</script>`) || !strings.Contains(body, `&lt;script&gt;alert(1)&lt;/script&gt; &amp; safe`) ||
-			!strings.Contains(body, `/bb/search?author=2&amp;page=2&amp;q=caf%C3%A9`) || response.Header().Get("Cache-Control") != "private, no-store" {
+			!strings.Contains(body, `/bb/search?author=2&amp;page=2&amp;q=caf%C3%A9`) || !strings.Contains(body, `href="/bb/posts/12"`) ||
+			!strings.Contains(body, `href="/bb/topics/11"`) || response.Header().Get("Cache-Control") != "private, no-store" || response.Header().Get(discoveryResponseHeader) != "1" {
 			t.Fatalf("HTMX=%t response = (%d, %v, %q)", htmx, response.Code, response.Header(), body)
 		}
 		if !htmx && !strings.Contains(body, `https://forum.example.test/bb/search?author=2&amp;q=caf%C3%A9`) {
@@ -85,7 +86,7 @@ func TestDiscoverySearchMapsFixedStatuses(t *testing.T) {
 			}
 			response := httptest.NewRecorder()
 			mustDiscoveryHTTPHandler(t, "", services).ServeHTTP(response, httptest.NewRequest(http.MethodGet, test.target, nil))
-			if response.Code != test.status || strings.Contains(response.Body.String(), "secret-filter") {
+			if response.Code != test.status || response.Header().Get(discoveryResponseHeader) != "1" || strings.Contains(response.Body.String(), "secret-filter") {
 				t.Fatalf("response = (%d, %q), want %d and redaction", response.Code, response.Body.String(), test.status)
 			}
 		})

@@ -19,8 +19,8 @@ func TestNewPageViewBuildsEveryApplicationURL(t *testing.T) {
 	if view.SiteName != "GOTTH Board" || view.Title != "Topic" {
 		t.Fatalf("page identity = (%q, %q)", view.SiteName, view.Title)
 	}
-	if view.HomeURL != "/community/board/" || view.StylesheetURL != "/community/board/static/"+appStylesheetFilename || view.HTMXURL != "/community/board/static/htmx-2.0.10.min.js" || view.MarkdownToolbarURL != "/community/board/static/"+markdownToolbarFilename {
-		t.Fatalf("application URLs = (%q, %q, %q, %q)", view.HomeURL, view.StylesheetURL, view.HTMXURL, view.MarkdownToolbarURL)
+	if view.HomeURL != "/community/board/" || view.StylesheetURL != "/community/board/static/"+appStylesheetFilename || view.HTMXURL != "/community/board/static/htmx-2.0.10.min.js" || view.DiscoveryResponseURL != "/community/board/static/"+discoveryResponseFilename || view.MarkdownToolbarURL != "/community/board/static/"+markdownToolbarFilename {
+		t.Fatalf("application URLs = (%q, %q, %q, %q, %q)", view.HomeURL, view.StylesheetURL, view.HTMXURL, view.DiscoveryResponseURL, view.MarkdownToolbarURL)
 	}
 	if view.CanonicalURL != "https://forum.example.test/community/board/topics/01JTEST" {
 		t.Fatalf("canonical URL = %q", view.CanonicalURL)

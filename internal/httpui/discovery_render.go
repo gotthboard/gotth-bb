@@ -11,6 +11,8 @@ import (
 
 const maximumDiscoveryResponseBytes = 256 << 10
 
+const discoveryResponseHeader = "X-GOTTH-Discovery-Response"
+
 var errDiscoveryResponseTooLarge = errors.New("discovery response exceeds bound")
 
 type discoveryBuffer struct {
@@ -62,6 +64,7 @@ func renderDiscoveryResponse(response http.ResponseWriter, request *http.Request
 	if err := request.Context().Err(); err != nil {
 		return err
 	}
+	response.Header().Set(discoveryResponseHeader, "1")
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
 	response.Header().Set("Cache-Control", "private, no-store")
 	response.WriteHeader(status)

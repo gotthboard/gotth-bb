@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	appStylesheetFilename   = "app-1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b.css"
-	markdownToolbarFilename = "markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js"
+	appStylesheetFilename     = "app-1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b.css"
+	discoveryResponseFilename = "discovery-response-83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b.js"
+	markdownToolbarFilename   = "markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js"
 )
 
 //go:embed static/app-1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b.css
@@ -17,6 +18,9 @@ var appStylesheet []byte
 
 //go:embed static/htmx-2.0.10.min.js
 var htmxScript []byte
+
+//go:embed static/discovery-response-83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b.js
+var discoveryResponseScript []byte
 
 //go:embed static/markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js
 var markdownToolbarScript []byte

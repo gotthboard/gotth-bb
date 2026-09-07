@@ -59,6 +59,7 @@ func newDiscoveryPreflightHandlerWithTimeouts(builder URLBuilder, next http.Hand
 	view.CanonicalURL = ""
 	permits := make(chan struct{}, discoveryPermitCount)
 	serveFixed := func(response http.ResponseWriter, request *http.Request, status int, heading, message string) {
+		response.Header().Set(discoveryResponseHeader, "1")
 		if renderErr := renderResponse(
 			response, request, status,
 			errorPage(view, status, heading, message),

@@ -58,6 +58,7 @@ func TestPublicShellRendersCompletePageFragmentAndHistoryPage(t *testing.T) {
 					`rel="canonical" href="https://forum.example.test/bb/"`,
 					`href="/bb/static/` + appStylesheetFilename + `"`,
 					`src="/bb/static/htmx-2.0.10.min.js"`,
+					`src="/bb/static/` + discoveryResponseFilename + `"`,
 					`name="htmx-config"`,
 				} {
 					if !strings.Contains(body, required) {
@@ -172,6 +173,7 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 		{name: "readiness", method: http.MethodGet, path: "/health/ready", wantStatus: http.StatusServiceUnavailable, wantType: "text/plain; charset=utf-8", bodyContains: "not ready\n"},
 		{name: "stylesheet", method: http.MethodGet, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "focus"},
 		{name: "HTMX", method: http.MethodGet, path: "/static/htmx-2.0.10.min.js", wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "htmx"},
+		{name: "discovery response", method: http.MethodGet, path: "/static/" + discoveryResponseFilename, wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: discoveryResponseHeader},
 		{name: "Markdown toolbar", method: http.MethodGet, path: "/static/" + markdownToolbarFilename, wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "gotthMarkdownToolbar"},
 		{name: "stylesheet HEAD", method: http.MethodHead, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 	}

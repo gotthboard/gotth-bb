@@ -20,6 +20,10 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	if want := "markdown-toolbar-" + toolbarSHA256 + ".js"; markdownToolbarFilename != want {
 		t.Fatalf("Markdown toolbar filename = %q, want content-addressed %q", markdownToolbarFilename, want)
 	}
+	const discoveryResponseSHA256 = "83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b"
+	if want := "discovery-response-" + discoveryResponseSHA256 + ".js"; discoveryResponseFilename != want {
+		t.Fatalf("discovery response filename = %q, want content-addressed %q", discoveryResponseFilename, want)
+	}
 
 	tests := []struct {
 		name       string
@@ -29,6 +33,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
+		{name: "Discovery response", content: discoveryResponseScript, wantSHA256: discoveryResponseSHA256, contains: discoveryResponseHeader},
 		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: toolbarSHA256, contains: "gotthMarkdownToolbar"},
 	}
 	for _, test := range tests {
@@ -43,6 +48,20 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 				t.Fatalf("asset does not contain %q", test.contains)
 			}
 		})
+	}
+}
+
+func TestDiscoveryResponseScriptNarrowsErrorSwapOptIn(t *testing.T) {
+	t.Parallel()
+
+	script := string(discoveryResponseScript)
+	for _, required := range []string{`new Set([400, 404, 503])`, `getResponseHeader(marker) !== "1"`, `detail.shouldSwap = true`, `detail.isError = true`} {
+		if !strings.Contains(script, required) {
+			t.Fatalf("discovery response script lacks %q", required)
+		}
+	}
+	if !strings.Contains(htmxConfiguration, `{"code":"[45]..","swap":false,"error":true}`) {
+		t.Fatalf("global HTMX error policy was widened: %s", htmxConfiguration)
 	}
 }
 

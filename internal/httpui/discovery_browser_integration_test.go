@@ -54,12 +54,25 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("construct discovery handler: %v", err)
 	}
-	application, err := newDiscoveryPreflightHandler(builder, inner, func(string) (discovery.AuthenticatedCursor, error) {
+	discoveryApplication, err := newDiscoveryPreflightHandler(builder, inner, func(string) (discovery.AuthenticatedCursor, error) {
 		return discovery.AuthenticatedCursor{}, discovery.ErrInvalidActivityCursor
 	})
 	if err != nil {
 		t.Fatalf("construct discovery preflight: %v", err)
 	}
+	application := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/static/htmx-2.0.10.min.js":
+			staticAssetHandler("text/javascript; charset=utf-8", htmxScript).ServeHTTP(response, request)
+		case "/static/" + discoveryResponseFilename:
+			staticAssetHandler("text/javascript; charset=utf-8", discoveryResponseScript).ServeHTTP(response, request)
+		case "/probe-discovery-error":
+			response.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = fmt.Fprintf(response, `<!doctype html><html lang="en"><body><main id="main-content" hx-get="%s/search?area=private" hx-trigger="load" hx-target="this" hx-swap="outerHTML">pending</main><script src="%s/static/htmx-2.0.10.min.js" defer></script><script src="%s/static/%s" defer></script></body></html>`, publicBase, publicBase, publicBase, discoveryResponseFilename)
+		default:
+			discoveryApplication.ServeHTTP(response, request)
+		}
+	})
 	upstream := httptest.NewServer(application)
 	defer upstream.Close()
 
@@ -87,7 +100,7 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	profile := filepath.Join(directory, "chromium-profile")
 	browser := exec.Command(chromium,
 		"--headless=new", "--disable-background-networking", "--disable-gpu", "--no-first-run", "--no-proxy-server",
-		"--user-data-dir="+profile, "--dump-dom", target,
+		"--user-data-dir="+profile, "--virtual-time-budget=2000", "--dump-dom", target,
 	)
 	var browserOutput, browserError bytes.Buffer
 	browser.Stdout, browser.Stderr = &browserOutput, &browserError
@@ -97,6 +110,7 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	document := browserOutput.String()
 	for _, required := range []string{
 		`<html lang="en"`, `aria-label="Primary"`, `href="/bb/search"`, `href="/bb/activity"`,
+		`src="/bb/static/` + discoveryResponseFilename + `"`,
 		`<main id="main-content" tabindex="-1"`, `<label class="grid gap-1 font-semibold">Search text`,
 		`<label class="grid gap-1 font-semibold">Author ID`, `<h1 id="search-title"`,
 		`A safe browser-visible excerpt.`, `href="/bb/posts/9"`,
@@ -107,6 +121,18 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	}
 	if strings.Contains(document, `href="/search`) || strings.Contains(document, `href="/activity`) || strings.Contains(document, `<script>alert`) {
 		t.Fatalf("browser DOM escaped base path or exposed unsafe markup")
+	}
+	errorProbe := exec.Command(chromium,
+		"--headless=new", "--disable-background-networking", "--disable-gpu", "--no-first-run", "--no-proxy-server",
+		"--user-data-dir="+filepath.Join(directory, "chromium-error-profile"), "--virtual-time-budget=2000", "--dump-dom", publicBase+"/probe-discovery-error",
+	)
+	var errorDOM, errorLog bytes.Buffer
+	errorProbe.Stdout, errorProbe.Stderr = &errorDOM, &errorLog
+	if err := errorProbe.Run(); err != nil {
+		t.Fatalf("Chromium discovery-error probe failed: %v; stderr: %s", err, errorLog.String())
+	}
+	if strings.Contains(errorDOM.String(), ">pending<") || !strings.Contains(errorDOM.String(), "Invalid search") || !strings.Contains(errorDOM.String(), `id="main-content"`) {
+		t.Fatalf("marked discovery 400 did not replace the HTMX target: %s", errorDOM.String())
 	}
 	t.Logf("browser-through-Caddy admitted: caddy=%s chromium=%s bytes=%d", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), len(document))
 }

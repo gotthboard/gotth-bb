@@ -158,7 +158,14 @@ func buildSearchPresentation(builder URLBuilder, request discovery.SearchRequest
 		if buildErr != nil {
 			return discoverySearchPageView{}, buildErr
 		}
-		presentation.Results[index] = discoverySearchResultView{KindLabel: kind, URL: resultURL, AreaName: result.AreaName, TopicTitle: result.TopicTitle, AuthorName: result.AuthorName, Created: result.CreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"), Excerpt: result.Excerpt}
+		topicURL := ""
+		if result.Kind == "post" {
+			topicURL, buildErr = builder.Path("topics", strconv.FormatInt(result.TopicID, 10))
+			if buildErr != nil {
+				return discoverySearchPageView{}, buildErr
+			}
+		}
+		presentation.Results[index] = discoverySearchResultView{KindLabel: kind, URL: resultURL, TopicURL: topicURL, AreaName: result.AreaName, TopicTitle: result.TopicTitle, AuthorName: result.AuthorName, Created: result.CreatedAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"), Excerpt: result.Excerpt}
 	}
 	if request.Page == 2 {
 		presentation.PreviousURL, err = builder.PathWithQuery([]string{"search"}, canonicalSearchQuery(request, true))
@@ -328,6 +335,7 @@ func renderDiscoveryOrFailure(response http.ResponseWriter, request *http.Reques
 // and HTMX modes.
 func serveDiscoveryFailure(response http.ResponseWriter, request *http.Request, view pageView, status int, heading, message string) {
 	view.CanonicalURL = ""
+	response.Header().Set(discoveryResponseHeader, "1")
 	failureRequest := request.Clone(context.WithoutCancel(request.Context()))
 	if err := renderResponse(response, failureRequest, status, errorPage(view, status, heading, message), errorContent(view, status, heading, message)); err != nil {
 		panic(err)

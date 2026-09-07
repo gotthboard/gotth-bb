@@ -13,6 +13,7 @@ generate: frontend-dependencies
 	go tool sqlc generate --no-remote
 	npm run generate:css
 	install -m 0644 node_modules/htmx.org/dist/htmx.min.js internal/httpui/static/htmx-2.0.10.min.js
+	install -m 0644 assets/scripts/discovery-response.js internal/httpui/static/discovery-response-83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b.js
 	install -m 0644 assets/scripts/markdown-toolbar.js internal/httpui/static/markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js
 
 release: verify

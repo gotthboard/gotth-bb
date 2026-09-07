@@ -9,20 +9,21 @@ import (
 const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCacheSize":0,"historyRestoreAsHxRequest":false,"includeIndicatorStyles":false,"reportValidityOfForms":true,"selfRequestsOnly":true,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"409","swap":true,"error":true},{"code":"422","swap":true,"error":true},{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}`
 
 type pageView struct {
-	SiteName           string
-	Title              string
-	CanonicalURL       string
-	HomeURL            string
-	LoginURL           string
-	RegisterURL        string
-	LogoutURL          string
-	AdminURL           string
-	ReportsURL         string
-	SearchURL          string
-	ActivityURL        string
-	StylesheetURL      string
-	HTMXURL            string
-	MarkdownToolbarURL string
+	SiteName             string
+	Title                string
+	CanonicalURL         string
+	HomeURL              string
+	LoginURL             string
+	RegisterURL          string
+	LogoutURL            string
+	AdminURL             string
+	ReportsURL           string
+	SearchURL            string
+	ActivityURL          string
+	StylesheetURL        string
+	HTMXURL              string
+	DiscoveryResponseURL string
+	MarkdownToolbarURL   string
 }
 
 type administratorSetupView struct {
@@ -229,6 +230,7 @@ type discoverySearchPageView struct {
 type discoverySearchResultView struct {
 	KindLabel  string
 	URL        string
+	TopicURL   string
 	AreaName   string
 	TopicTitle string
 	AuthorName string
@@ -283,6 +285,10 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build HTMX URL: %w", err)
 	}
+	discoveryResponseURL, err := builder.Path("static", discoveryResponseFilename)
+	if err != nil {
+		return pageView{}, fmt.Errorf("build discovery response URL: %w", err)
+	}
 	markdownToolbarURL, err := builder.Path("static", markdownToolbarFilename)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build Markdown toolbar URL: %w", err)
@@ -320,19 +326,20 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
 	}
 	return pageView{
-		SiteName:           "GOTTH Board",
-		Title:              title,
-		CanonicalURL:       canonicalURL,
-		HomeURL:            homeURL,
-		LoginURL:           loginURL,
-		RegisterURL:        registerURL,
-		LogoutURL:          logoutURL,
-		AdminURL:           adminURL,
-		ReportsURL:         reportsURL,
-		SearchURL:          searchURL,
-		ActivityURL:        activityURL,
-		StylesheetURL:      stylesheetURL,
-		HTMXURL:            htmxURL,
-		MarkdownToolbarURL: markdownToolbarURL,
+		SiteName:             "GOTTH Board",
+		Title:                title,
+		CanonicalURL:         canonicalURL,
+		HomeURL:              homeURL,
+		LoginURL:             loginURL,
+		RegisterURL:          registerURL,
+		LogoutURL:            logoutURL,
+		AdminURL:             adminURL,
+		ReportsURL:           reportsURL,
+		SearchURL:            searchURL,
+		ActivityURL:          activityURL,
+		StylesheetURL:        stylesheetURL,
+		HTMXURL:              htmxURL,
+		DiscoveryResponseURL: discoveryResponseURL,
+		MarkdownToolbarURL:   markdownToolbarURL,
 	}, nil
 }
