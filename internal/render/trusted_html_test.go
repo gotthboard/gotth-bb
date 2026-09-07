@@ -54,6 +54,24 @@ func TestSanitizeHTMLAcceptsOnlyExactDisabledTaskInputs(t *testing.T) {
 	}
 }
 
+func TestSanitizeHTMLRejectsMalformedTaskInputsWithoutEatingFollowingText(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{
+		`<input type="checkbox" disabled="`,
+		`<inp`,
+		`<input type="checkbox" disabled="" disabled="">`,
+		`<INPUT TYPE="checkbox" DISABLED="">`,
+	} {
+		if got := SanitizeHTML(raw).html; strings.Contains(got, "<input") {
+			t.Fatalf("malformed task input %q survived as %q", raw, got)
+		}
+	}
+	if got, want := SanitizeHTML(`<input type="checkbox" disabled="">following`).html, `<input type="checkbox" disabled="">following`; got != want {
+		t.Fatalf("task input trailing text = %q, want %q", got, want)
+	}
+}
+
 func TestSanitizeHTMLRestrictsLinkSchemes(t *testing.T) {
 	t.Parallel()
 

@@ -89,16 +89,33 @@ func filterTaskListInputs(raw string) string {
 			return output.String()
 		}
 		if tokenType == html.StartTagToken || tokenType == html.SelfClosingTagToken {
+			rawToken := tokenizer.Raw()
+			var rawInput []byte
+			if len(rawToken) >= len("<input") && bytes.EqualFold(rawToken[:len("<input")], []byte("<input")) {
+				rawInput = append(rawInput, rawToken...)
+			}
 			token := tokenizer.Token()
 			if token.Data == "input" {
-				if validTaskListInput(token.Attr) {
-					output.Write(tokenizer.Raw())
+				if !containsASCIIUpper(rawInput) && validTaskListInput(token.Attr) {
+					output.Write(rawInput)
 				}
 				continue
 			}
 		}
 		output.Write(tokenizer.Raw())
 	}
+}
+
+// containsASCIIUpper detects raw spellings that the HTML tokenizer would
+// normalize but that the project renderer never emits. For n bytes, time is
+// O(n), Omega(1), and tight Theta(n); auxiliary space is tight Theta(1).
+func containsASCIIUpper(value []byte) bool {
+	for _, character := range value {
+		if character >= 'A' && character <= 'Z' {
+			return true
+		}
+	}
+	return false
 }
 
 // validTaskListInput accepts exactly one checkbox type, one empty disabled
