@@ -60,6 +60,11 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+	var serverVersion string
+	if err := connection.QueryRow(ctx, `SELECT version()`).Scan(&serverVersion); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("postgres=%s database=%s", serverVersion, discoveryPlanTestDatabase)
 
 	var ownerID, authorID, groupID, publicAreaID, groupAreaID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
