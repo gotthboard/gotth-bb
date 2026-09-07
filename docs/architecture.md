@@ -490,7 +490,8 @@ rows, five exact partial indexes, and narrower deferred consistency-trigger
 events. The stopped release preflight validates every row before schema apply.
 Backfill commits batches of at most 100 with singleton/cursor/count state in the
 same transaction. Completion proves no NULL/partial/stale tuple, validates the
-checks, attests exact indexes/triggers, and alone marks the target complete.
+checks, reconciles persisted converted counts/final post cursor with exact table
+state, attests exact indexes/triggers, and alone marks the target complete.
 After the post cursor is exhausted and before completion, the release command
 runs explicit table-qualified `ANALYZE` for topics and posts; interruption
 repeats that safe operation rather than serving with stale planner statistics.

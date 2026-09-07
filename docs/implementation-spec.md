@@ -1727,6 +1727,18 @@ and the exact version. The checks are named
 `topics_search_id_positive`, and `posts_search_id_positive`. Completion
 validates all six.
 
+The singleton row is exactly `singleton=true` and the target literal. Its
+cursor is NULL or positive. In `topics`, post count is zero, completion is NULL,
+and topic count is zero exactly when the cursor is NULL. Transition to `posts`
+resets cursor to NULL; in `posts`, completion is NULL and post count is zero
+exactly when the cursor is NULL. In `complete`, completion is a finite UTC
+microsecond value and post count is zero exactly when the retained final-post
+cursor is NULL. `search_projection_state_target_current`,
+`search_projection_state_shape`, and
+`search_projection_state_completion_finite` enforce the target, relational
+shape, and time domain. Any other phase/count/cursor/time tuple is rejected by
+the database and readiness.
+
 The five exact partial indexes are:
 
 - `topics_search_vector_current_idx`: GIN `topics(search_vector)`;
@@ -1789,7 +1801,9 @@ on eventual autovacuum to make first-service plans usable.
 
 Completion proves zero NULL/partial/stale tuples, validates all six checks,
 attests exact indexes and six narrowed triggers plus unchanged function, and
-marks complete once while preserving first completion time on rerun. The
+reconciles both converted counts with exact table row counts and the retained
+post cursor with `max(posts.id)` (both NULL only for no posts). It then marks
+complete once while preserving first completion time on rerun. The
 zero-stale oracle and `VALIDATE CONSTRAINT` work scan complete affected tables;
 validation takes PostgreSQL `SHARE UPDATE EXCLUSIVE` locks. Completion I/O,
 lock duration, and total time are population-dependent and not batch-bounded.

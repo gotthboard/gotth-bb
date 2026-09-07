@@ -644,7 +644,8 @@ every topics/posts phase and nullable-cursor interruption boundary, batch size
 100, two concurrent runners, atomic cursor/count progress, trigger narrowing,
 writer atomicity, six-check validation, five exact partial indexes, completion
 idempotency, interrupted/repeated/concurrent explicit topic/post `ANALYZE`,
-readiness catalog drift, minor-PostgreSQL full-corpus comparison,
+every illegal singleton phase/cursor/count/time shape, completion count/max-ID
+reconciliation, readiness catalog drift, minor-PostgreSQL full-corpus comparison,
 and the honest forward/restore rollback boundary. Index-build heap passes and
 lock/I/O exposure are measured, not described away. Completion measurements
 separately cover explicit analysis, the zero-stale full-table oracle, and every
