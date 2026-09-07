@@ -2,7 +2,9 @@
 set +x
 set -euo pipefail
 
-if [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PID:-}" ] || [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PATH:-}" ]; then
+if [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PID:-}" ] || [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PATH:-}" ] ||
+   [ -z "${GOTTH_BB_EVIDENCE_REPOSITORY_ROOT:-}" ] || [ "${GOTTH_BB_EVIDENCE_RUNNER_FD:-}" != 3 ] ||
+   [ "${GOTTH_BB_EVIDENCE_LIBRARY_FD:-}" != 4 ] || [ "${BASH_SOURCE[0]}" != /proc/self/fd/3 ]; then
   printf '%s\n' 'unsupported direct invocation; use scripts/alpha3-evidence-launcher population' >&2
   exit 2
 fi
@@ -14,7 +16,16 @@ if [ "$PPID" != "$GOTTH_BB_EVIDENCE_LAUNCHER_PID" ]; then
   exit 2
 fi
 readonly evidence_launcher_path="$(/usr/bin/readlink -f -- "/proc/$PPID/exe")"
-readonly expected_launcher_path="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]%/*}/alpha3-evidence-launcher")"
+readonly repository_root="$GOTTH_BB_EVIDENCE_REPOSITORY_ROOT"
+case "$repository_root" in
+  /*) ;;
+  *) printf '%s\n' 'invalid Alpha.3 evidence repository root' >&2; exit 2 ;;
+esac
+if [ "$(pwd -P)" != "$repository_root" ]; then
+  printf '%s\n' 'Alpha.3 evidence repository root does not match the working directory' >&2
+  exit 2
+fi
+readonly expected_launcher_path="$(/usr/bin/readlink -f -- "$repository_root/scripts/alpha3-evidence-launcher")"
 readonly attested_launcher_path="$(/usr/bin/readlink -f -- "$GOTTH_BB_EVIDENCE_LAUNCHER_PATH")"
 if [ "$evidence_launcher_path" != "$expected_launcher_path" ] || [ "$attested_launcher_path" != "$expected_launcher_path" ] || [ "$(/usr/bin/basename -- "$evidence_launcher_path")" != alpha3-evidence-launcher ]; then
   printf '%s\n' 'Alpha.3 evidence launcher executable does not match its attestation' >&2
@@ -43,8 +54,7 @@ PATH=/usr/bin:/bin
 export PATH
 readonly PATH
 
-readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-source "$script_dir/lib/alpha3-evidence-custody.sh"
+source "/proc/self/fd/$GOTTH_BB_EVIDENCE_LIBRARY_FD"
 printf '%s\n' 'alpha3_custody_attested mode=population'
 
 readonly expected_image='postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d'

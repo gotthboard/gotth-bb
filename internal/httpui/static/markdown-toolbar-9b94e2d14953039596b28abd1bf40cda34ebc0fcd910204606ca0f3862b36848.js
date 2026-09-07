@@ -630,10 +630,13 @@
           event.preventDefault();
           let blockedPointerClick = false;
           if (Number(event.detail) > 0) {
-            const key = pointerKey(event);
-            if (blockedPointers.has(key)) {
-              blockedPointerClick = true;
-              finishPointer(key, true);
+            if (Number.isInteger(event.pointerId)) {
+              // An explicit pointer identity owns only its own guard. A
+              // different pointer must never consume or inherit it.
+              if (blockedPointers.has(event.pointerId)) {
+                blockedPointerClick = true;
+                finishPointer(event.pointerId, true);
+              }
             } else if (blockedPointers.size > 0) {
               // Legacy compatibility clicks may not expose pointerId. Retire
               // one local blocked pointer rather than letting that physical

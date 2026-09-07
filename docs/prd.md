@@ -429,7 +429,10 @@ renderer boundary. It is acceptable when all of the following hold:
    failure behavior can be defined together.
 6. Toolbar buttons use native semantics, accessible names and tooltips, visible
    focus, and document-order keyboard navigation. Plain Markdown submission
-   remains fully usable with JavaScript absent or failed.
+   remains fully usable with JavaScript absent or failed. The toolbar is named
+   by the full SHA-256 of its exact bytes so the immutable cache contract is
+   safe across upgrades and rollbacks; the former mutable `v1` asset URL is
+   not served.
 7. Normative GFM, sanitizer/XSS, dangerous-link, deterministic-rendering,
    boundary-size, migration restart/concurrency, server integration, HTMX,
    and toolbar behavior tests pass reproducibly.

@@ -978,7 +978,7 @@ session store is unavailable. No broader `/areas/`, `/topics/`, `/posts/`, or
   requests remain same-origin. It enables native form-validity reporting and
   explicitly swaps `422` validation fragments while retaining the non-success
   status/error classification. HTML responses are
-  `private, no-store`; release-versioned CSS and JavaScript are immutable for
+  `private, no-store`; content- or version-addressed CSS and JavaScript are immutable for
   one year.
 - Full-page successful form submission uses a `303` redirect.
 - Successful in-session HTMX mutations return a fragment directly or a
@@ -1211,9 +1211,12 @@ rendered core pages for root-relative application links that omit `/bb`.
 
 ### 13.2 Native toolbar
 
-- One release-versioned same-origin script enhances each
+- One full-SHA-256-content-addressed same-origin script enhances each
   `[data-markdown-editor]` container. The source textarea remains a normal
-  required form control and is usable without the script.
+  required form control and is usable without the script. The generated
+  filename digest must equal its embedded bytes; the old mutable
+  `markdown-toolbar-v1.js` route is not served. New HTML therefore selects the
+  new immutable object while a rollback selects its prior immutable object.
 - Native `button type="button"` controls provide bold, italic, link, block
   quote, inline code, fenced code, ordered list, unordered list, table, task
   list, and strikethrough actions. `aria-label` and `title` describe each
@@ -1230,6 +1233,10 @@ rendered core pages for root-relative application links that omit `/bb`.
   Pointer activation is intercepted before its focus-changing default action;
   per-button, per-pointer state also consumes the same gesture's trailing
   physical click if browser event ordering ends composition before that click.
+  A click carrying an integer `pointerId` may inspect and retire only that
+  exact pointer's guard; it cannot consume another pointer's state. The
+  pointer-less compatibility fallback is used only when the click truly lacks
+  an integer pointer identity.
   Cancellation, lost capture, and pointer/mouse release without click retire
   that gesture locally; HTMX cleanup removes any transient document listeners
   before an editor is discarded. Native keyboard activation is identified by

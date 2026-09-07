@@ -172,7 +172,7 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 		{name: "readiness", method: http.MethodGet, path: "/health/ready", wantStatus: http.StatusServiceUnavailable, wantType: "text/plain; charset=utf-8", bodyContains: "not ready\n"},
 		{name: "stylesheet", method: http.MethodGet, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "focus"},
 		{name: "HTMX", method: http.MethodGet, path: "/static/htmx-2.0.10.min.js", wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "htmx"},
-		{name: "Markdown toolbar", method: http.MethodGet, path: "/static/markdown-toolbar-v1.js", wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "gotthMarkdownToolbar"},
+		{name: "Markdown toolbar", method: http.MethodGet, path: "/static/" + markdownToolbarFilename, wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "gotthMarkdownToolbar"},
 		{name: "stylesheet HEAD", method: http.MethodHead, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 	}
 	for _, test := range tests {
@@ -193,6 +193,13 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 				t.Fatalf("request pattern = %q, want %q", request.Pattern, wantPattern)
 			}
 		})
+	}
+
+	staleRequest := httptest.NewRequest(http.MethodGet, "/static/markdown-toolbar-v1.js", nil)
+	staleResponse := httptest.NewRecorder()
+	handler.ServeHTTP(staleResponse, staleRequest)
+	if staleResponse.Code != http.StatusNotFound || staleRequest.Pattern != "" {
+		t.Fatalf("stale mutable toolbar route = (status %d, pattern %q), want unserved", staleResponse.Code, staleRequest.Pattern)
 	}
 }
 

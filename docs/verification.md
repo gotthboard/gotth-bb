@@ -424,15 +424,20 @@ The committed statically linked launcher is the only supported entry point;
 direct `bash scripts/verify-alpha3-rerender-performance.sh` invocation is
 rejected. Before Bash exists, the launcher retains only the database URL,
 new evidence path, and optional container name, clears the environment, fixes
-the repository working directory and Git configuration boundary, and hashes
-both live runners plus their shared custody library against compiled exact
-SHA-256, byte-size, and mode identities. It rejects symlinks, special
+the repository working directory and Git configuration boundary, and opens
+both live runners plus their shared custody library with `O_NOFOLLOW`. Each
+single opened stream is copied and hashed into a sealed Linux memfd against
+compiled exact SHA-256, byte-size, and mode identities; Bash executes the
+selected runner from inherited file descriptor 3 and sources the shared
+library from inherited file descriptor 4. No checked pathname is reopened for
+execution. It rejects symlinks, special
 assume-unchanged or skip-worktree index flags, repository/worktree settings
 that can hide status changes or alter archives, and nonempty
 `$GIT_DIR/info/attributes`; every custody Git command explicitly disables
 fsmonitor, untracked-cache, and ignore-stat behavior. Only after those checks
 and an exact clean-tree check through fixed `/usr/bin/git` does it start
-`/usr/bin/bash --noprofile --norc -p` with an explicit environment allowlist.
+`/usr/bin/bash --noprofile --norc -p /proc/self/fd/3` with an explicit
+environment allowlist and the two sealed descriptors.
 The runner requires that launcher as its live direct parent through `/proc`,
 rechecks static linkage, and records its resolved path and SHA-256. It then
 captures HEAD and tree, writes exactly one deterministic committed archive,
@@ -486,7 +491,9 @@ runner or library behind assume-unchanged and skip-worktree bits, install a
 hostile repository fsmonitor, retain exact bytes with each forbidden bit, and
 add a highest-precedence `info/attributes`; all must fail before Bash, secret
 exposure, payload execution, or evidence creation. The test also rebuilds the
-static launcher byte-for-byte from the captured committed archive. The admitted
+static launcher byte-for-byte from the captured committed archive. A
+synchronized Go regression replaces a runner pathname after capture and proves
+the sealed original bytes, not the replacement, are what Bash executes. The admitted
 launcher SHA-256 is
 `973f1a57b0cabdd43cef8650d5dd43d0df048661d885591a90aa520f61b2125e`.
 Finally, the test places

@@ -336,7 +336,7 @@ Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
   unsafe URLs, styles, event handlers, and arbitrary form controls forbidden.
 - Extend the one renderer/sanitizer boundary with tables, strikethrough, task
   lists, and GFM autolinks; preserve Markdown as authoritative source.
-- Add a release-versioned first-party progressive-enhancement toolbar with the
+- Add a full-SHA-256-content-addressed progressive-enhancement toolbar with the
   eleven required shortcuts and accessible native controls. Do not expose an
   Image shortcut while version 1 forbids attachments and arbitrary embeds;
   defer image authoring to version 2 plus `gotth-media` so the media security,

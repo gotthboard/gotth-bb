@@ -16,6 +16,10 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
+	const toolbarSHA256 = "9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848"
+	if want := "markdown-toolbar-" + toolbarSHA256 + ".js"; markdownToolbarFilename != want {
+		t.Fatalf("Markdown toolbar filename = %q, want content-addressed %q", markdownToolbarFilename, want)
+	}
 
 	tests := []struct {
 		name       string
@@ -25,7 +29,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
-		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: "50d0bbc38e289ea2dcab8d74ae8b7d7124f90154e5eadcd0ec334909b7f9af6c", contains: "gotthMarkdownToolbar"},
+		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: toolbarSHA256, contains: "gotthMarkdownToolbar"},
 	}
 	for _, test := range tests {
 		test := test

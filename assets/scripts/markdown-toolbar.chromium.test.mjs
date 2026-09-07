@@ -167,4 +167,25 @@ test("Chromium preserves live IME state across physical pointer activation", asy
   const enter = await evaluate(send, sessionId, "({value: draft.value, active: document.activeElement.id})");
   assert.equal(enter.value, "正在text");
   assert.equal(enter.active, "draft");
+
+  // A real Chromium IME session creates pointer A's composition guard. After
+  // composition ends, an explicit click from pointer B must act once without
+  // consuming A; A's trailing click must then be the sole suppressed click.
+  await evaluate(send, sessionId, "draft.value = 'text'; draft.focus(); draft.setSelectionRange(0, 4); toolbarEvents = []");
+  await send("Input.imeSetComposition", { text: "正在", selectionStart: 2, selectionEnd: 2 }, sessionId);
+  await evaluate(send, sessionId, `bold.dispatchEvent(new PointerEvent("pointerdown", {
+    pointerId: 31, pointerType: "touch", button: 0, bubbles: true, cancelable: true
+  }))`);
+  await send("Input.insertText", { text: "正在" }, sessionId);
+  await evaluate(send, sessionId, "draft.value = 'text'; draft.setSelectionRange(0, 4)");
+  const afterPointerB = await evaluate(send, sessionId, `(() => {
+    bold.dispatchEvent(new PointerEvent("click", {pointerId: 32, pointerType: "touch", detail: 1, bubbles: true, cancelable: true}));
+    return {value: draft.value, start: draft.selectionStart, end: draft.selectionEnd};
+  })()`);
+  assert.deepEqual(afterPointerB, { value: "**text**", start: 2, end: 6 });
+  const afterPointerA = await evaluate(send, sessionId, `(() => {
+    bold.dispatchEvent(new PointerEvent("click", {pointerId: 31, pointerType: "touch", detail: 1, bubbles: true, cancelable: true}));
+    return {value: draft.value, start: draft.selectionStart, end: draft.selectionEnd};
+  })()`);
+  assert.deepEqual(afterPointerA, { value: "**text**", start: 2, end: 6 });
 });

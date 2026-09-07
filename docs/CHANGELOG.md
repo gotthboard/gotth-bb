@@ -12,8 +12,8 @@ Commit: current commit; hash assigned by Git after commit
 Affected files:
 
 - `assets/scripts/markdown-toolbar.js` and its DOM tests
-- generated `internal/httpui/static/markdown-toolbar-v1.js`
-- `internal/httpui/static_test.go`
+- generated `internal/httpui/static/markdown-toolbar-<full-sha256>.js`
+- the static route, view URL, generation target, and cache regressions
 
 Explanation:
 
@@ -23,12 +23,22 @@ returns without reading or replacing provisional text, moving the selection,
 or forcing focus. A completed composition restores the ordinary transform
 path. The state belongs only to the editor listener closure, so a detached
 HTMX editor cannot contaminate its replacement or another editor.
+An explicit pointer click now owns only the matching pointer guard: a second
+pointer can act without consuming the first pointer's deferred click. The
+pointer-less mouse compatibility path remains isolated to clicks that truly
+lack an integer pointer identity. The toolbar filename is the full digest of
+its exact bytes; the stale mutable `markdown-toolbar-v1.js` URL is unserved, so
+immutable browser caches remain correct across upgrade and rollback.
 
 Verification:
 
 - browser-shaped DOM tests for start, guarded click, end, and normal click
 - multiple-editor isolation and HTMX replacement while the old editor remains
   in composition
+- deterministic and real-Chromium IME sequences with pointer A guarded,
+  pointer B acting once, and A's trailing click suppressed
+- current content-addressed route served immutably and the stale mutable route
+  rejected
 - generated toolbar byte equality and pinned SHA-256
 
 Risks / non-goals:
@@ -50,8 +60,13 @@ Affected files:
 Explanation:
 
 Bind every live Bash input to the reviewed static launcher before Bash starts.
-The launcher now verifies the exact SHA-256, byte size, and mode of both
-performance runners and the shared custody library; rejects symlinks, Git
+The launcher now opens each runner and the shared custody library without
+following symlinks, copies and hashes that single opened stream into a sealed
+Linux memfd, and gives Bash only those immutable descriptors as file 3 (the
+executed runner) and file 4 (the sourced library). Path replacement after
+capture therefore cannot change the bytes Bash executes. It also verifies the
+exact SHA-256, byte size, and mode of both performance runners and the shared
+custody library; rejects symlinks, Git
 index flags and local configuration that can conceal mutations, and nonempty
 highest-precedence `info/attributes`; and reads no database secret until those
 checks and a clean-tree check pass. Custody Git calls explicitly disable
@@ -68,6 +83,8 @@ Verification:
 - pre-Bash refusal of exact files with either special index flag, hostile
   fsmonitor configuration alone, and nonempty `info/attributes`
 - byte-identical launcher rebuild from one captured committed archive
+- synchronized path replacement after capture proving Bash executes the sealed
+  reviewed bytes rather than the replacement path
 - full development-host generation, vet, race, coverage, and PostgreSQL 17.10
   integration-race suites
 - fresh dense 100-row and representative 25,000-row migration evidence from

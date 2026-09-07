@@ -232,7 +232,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build HTMX URL: %w", err)
 	}
-	markdownToolbarURL, err := builder.Path("static", "markdown-toolbar-v1.js")
+	markdownToolbarURL, err := builder.Path("static", markdownToolbarFilename)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build Markdown toolbar URL: %w", err)
 	}

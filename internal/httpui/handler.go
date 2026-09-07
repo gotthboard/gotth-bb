@@ -82,7 +82,7 @@ func newHandler(
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		router.Method(method, "/static/"+appStylesheetFilename, stylesheet)
 		router.Method(method, "/static/htmx-2.0.10.min.js", htmx)
-		router.Method(method, "/static/markdown-toolbar-v1.js", markdownToolbar)
+		router.Method(method, "/static/"+markdownToolbarFilename, markdownToolbar)
 	}
 	router.NotFound(func(response http.ResponseWriter, request *http.Request) {
 		if err := renderResponse(

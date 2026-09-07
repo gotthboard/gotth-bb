@@ -459,12 +459,15 @@ Tailwind output is compiled at build time. No Tailwind runtime or arbitrary
 class construction from user input is permitted. Static assets are content-
 hashed or release-versioned and referenced through the URL builder.
 
-The Markdown toolbar is one small same-origin, release-versioned first-party
-script. It progressively enhances the ordinary labeled Markdown textarea using
-native buttons in document order. Transformations operate only on the current
-textarea value and selection; the script neither renders nor sanitizes. A
-missing or failed script leaves the existing server-rendered form, preview,
-validation, CSRF, and publication paths intact.
+The Markdown toolbar is one small same-origin, full-SHA-256-content-addressed
+first-party script. Each HTML response names the digest of the exact embedded
+bytes, so a one-year immutable response cannot make an upgraded binary reuse
+stale toolbar behavior; a rollback names its own prior digest. It progressively
+enhances the ordinary labeled Markdown textarea using native buttons in
+document order. Transformations operate only on the current textarea value and
+selection; the script neither renders nor sanitizes. A missing or failed script
+leaves the existing server-rendered form, preview, validation, CSRF, and
+publication paths intact.
 
 ### 11.1 Alpha.2 forum presentation read model
 

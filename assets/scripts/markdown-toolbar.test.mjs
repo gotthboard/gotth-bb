@@ -450,7 +450,8 @@ test("pointer activation that begins during composition stays inert after compos
   replacement.textareaListeners.compositionstart();
   assert.equal(replacement.dispatch("mousedown"), 1);
   replacement.textareaListeners.compositionend();
-  assert.equal(replacement.click(1, 1), 1);
+  // A mouse-only fallback click genuinely lacks pointerId.
+  assert.equal(replacement.click(1), 1);
   assert.equal(replacement.textarea.value, "fresh");
   assert.equal(replacement.textarea.selectionStart, 1);
   assert.equal(replacement.textarea.selectionEnd, 4);
@@ -539,6 +540,25 @@ test("mouse fallback, lost capture, multiple pointers, and buttons retire locall
   assert.equal(shared.textarea.value, "*shared*");
   shared.click(1, 21);
   assert.equal(shared.textarea.value, "*shared*");
+});
+
+test("an explicit pointer click cannot consume another pointer's composition guard", () => {
+  const editor = editorHarness("word", "bold");
+  const harness = documentHarness([editor]);
+  load(harness.document);
+
+  editor.textareaListeners.compositionstart();
+  assert.equal(editor.dispatch("pointerdown", { pointerId: 31 }), 1);
+  editor.textareaListeners.compositionend();
+
+  // Pointer B is independent. It performs the action once and leaves A's
+  // blocked activation available for A's own trailing compatibility click.
+  assert.equal(editor.click(1, 32), 1);
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
+  assert.equal(editor.click(1, 31), 1);
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
 });
 
 test("keyboard activation retains native click behavior outside composition", () => {

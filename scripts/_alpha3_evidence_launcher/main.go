@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"golang.org/x/sys/unix"
 )
 
 const launcherName = "alpha3-evidence-launcher"
@@ -29,14 +31,14 @@ type fileIdentity struct {
 var criticalFiles = []fileIdentity{
 	{
 		relativePath: "scripts/verify-alpha3-rerender-performance.sh",
-		size:         8493,
-		sha256:       "713ad41a854f084eb1b55f4f607e213e709d1df4a0d9836ab6c24faf3db6d9fa",
+		size:         8950,
+		sha256:       "1efb702d08ae94f6fc1a4db36bc4b4d9776d9bb6dc6eb58665f5b40944ddca26",
 		mode:         0o755,
 	},
 	{
 		relativePath: "scripts/verify-alpha3-population-performance.sh",
-		size:         8828,
-		sha256:       "e6eb50a93f4c7db72358fa5ed4e860c8b4548676b81d71eca42c886378357453",
+		size:         9285,
+		sha256:       "019fe49157bd71d7c2e752d05ef1d88ace9e91226095b45da6bb54968a4eb38f",
 		mode:         0o755,
 	},
 	{
@@ -90,9 +92,14 @@ func main() {
 
 	scriptsDir := filepath.Dir(executable)
 	repository := filepath.Dir(scriptsDir)
-	inner := filepath.Join(scriptsDir, innerName)
+	sealedFiles := make(map[string]*os.File, len(criticalFiles))
 	for _, identity := range criticalFiles {
-		verifyCriticalFile(repository, identity)
+		sealed, captureErr := captureCriticalFile(repository, identity)
+		if captureErr != nil {
+			fatalf("critical evidence file identity mismatch: %s: %v", identity.relativePath, captureErr)
+		}
+		defer sealed.Close()
+		sealedFiles[identity.relativePath] = sealed
 	}
 	gitEnvironment := []string{
 		"HOME=/nonexistent",
@@ -176,14 +183,23 @@ func main() {
 		"GOTTH_BB_EVIDENCE_OUTPUT="+evidenceOutput,
 		"GOTTH_BB_EVIDENCE_LAUNCHER_PID="+strconv.Itoa(os.Getpid()),
 		"GOTTH_BB_EVIDENCE_LAUNCHER_PATH="+executable,
+		"GOTTH_BB_EVIDENCE_REPOSITORY_ROOT="+repository,
+		"GOTTH_BB_EVIDENCE_RUNNER_FD=3",
+		"GOTTH_BB_EVIDENCE_LIBRARY_FD=4",
 	)
 	if container := os.Getenv("GOTTH_BB_POSTGRES_CONTAINER"); container != "" {
 		environment = append(environment, "GOTTH_BB_POSTGRES_CONTAINER="+container)
 	}
 
-	command := exec.Command("/usr/bin/bash", "--noprofile", "--norc", "-p", inner)
+	runner := sealedFiles[filepath.ToSlash(filepath.Join("scripts", innerName))]
+	library := sealedFiles["scripts/lib/alpha3-evidence-custody.sh"]
+	if runner == nil || library == nil {
+		fatalf("captured evidence input set is incomplete")
+	}
+	command := exec.Command("/usr/bin/bash", "--noprofile", "--norc", "-p", "/proc/self/fd/3")
 	command.Dir = repository
 	command.Env = environment
+	command.ExtraFiles = []*os.File{runner, library}
 	command.Stdin = os.Stdin
 	command.Stdout = os.Stdout
 	command.Stderr = os.Stderr
@@ -196,31 +212,65 @@ func main() {
 	}
 }
 
-func verifyCriticalFile(repository string, identity fileIdentity) {
+func captureCriticalFile(repository string, identity fileIdentity) (_ *os.File, resultErr error) {
 	path := filepath.Join(repository, filepath.FromSlash(identity.relativePath))
-	info, err := os.Lstat(path)
+	fileDescriptor, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
 	if err != nil {
-		fatalf("inspect critical evidence file %s: %v", identity.relativePath, err)
+		return nil, fmt.Errorf("open source without following symlinks: %w", err)
 	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		fatalf("critical evidence file is not a regular file: %s", identity.relativePath)
+	file := os.NewFile(uintptr(fileDescriptor), path)
+	if file == nil {
+		_ = unix.Close(fileDescriptor)
+		return nil, fmt.Errorf("construct source descriptor")
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("inspect opened source: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("source is not a regular file")
 	}
 	if info.Size() != identity.size || info.Mode().Perm() != identity.mode {
-		fatalf("critical evidence file identity mismatch: %s", identity.relativePath)
+		return nil, fmt.Errorf("source identity mismatch")
 	}
-	file, err := os.Open(path)
+	sealedDescriptor, err := unix.MemfdCreate("gotth-bb-alpha3-"+filepath.Base(identity.relativePath), unix.MFD_CLOEXEC|unix.MFD_ALLOW_SEALING)
 	if err != nil {
-		fatalf("open critical evidence file %s: %v", identity.relativePath, err)
+		return nil, fmt.Errorf("create sealed input: %w", err)
 	}
+	sealed := os.NewFile(uintptr(sealedDescriptor), "sealed:"+identity.relativePath)
+	if sealed == nil {
+		_ = unix.Close(sealedDescriptor)
+		return nil, fmt.Errorf("construct sealed input descriptor")
+	}
+	defer func() {
+		if resultErr != nil {
+			resultErr = errors.Join(resultErr, sealed.Close())
+		}
+	}()
 	hash := sha256.New()
-	bytesRead, copyErr := io.Copy(hash, file)
-	closeErr := file.Close()
-	if copyErr != nil || closeErr != nil {
-		fatalf("hash critical evidence file %s", identity.relativePath)
+	bytesRead, err := io.Copy(io.MultiWriter(hash, sealed), file)
+	if err != nil {
+		return nil, fmt.Errorf("capture source bytes: %w", err)
 	}
 	if bytesRead != identity.size || fmt.Sprintf("%x", hash.Sum(nil)) != identity.sha256 {
-		fatalf("critical evidence file identity mismatch: %s", identity.relativePath)
+		return nil, fmt.Errorf("source identity mismatch")
 	}
+	if _, err := sealed.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("rewind sealed input: %w", err)
+	}
+	const requiredSeals = unix.F_SEAL_SEAL | unix.F_SEAL_SHRINK | unix.F_SEAL_GROW | unix.F_SEAL_WRITE
+	if _, err := unix.FcntlInt(sealed.Fd(), unix.F_ADD_SEALS, requiredSeals); err != nil {
+		return nil, fmt.Errorf("seal captured input: %w", err)
+	}
+	observedSeals, err := unix.FcntlInt(sealed.Fd(), unix.F_GET_SEALS, 0)
+	if err != nil {
+		return nil, fmt.Errorf("inspect captured input seals: %w", err)
+	}
+	if observedSeals&requiredSeals != requiredSeals {
+		return nil, fmt.Errorf("captured input seals are incomplete")
+	}
+	return sealed, nil
 }
 
 func gitOutput(repository string, environment []string, arguments ...string) ([]byte, error) {
