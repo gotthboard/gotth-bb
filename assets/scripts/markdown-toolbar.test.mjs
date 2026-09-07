@@ -324,7 +324,12 @@ function editorHarness(value = "word", action = "bold") {
     buttonListeners.click({ preventDefault() { prevented += 1; } });
     return prevented;
   };
-  return { root, textarea, toolbar, textareaListeners, buttonListeners, click };
+  const dispatch = (name) => {
+    let prevented = 0;
+    buttonListeners[name]({ preventDefault() { prevented += 1; } });
+    return prevented;
+  };
+  return { root, textarea, toolbar, textareaListeners, buttonListeners, click, dispatch };
 }
 
 test("live IME composition makes toolbar actions strict editor-local no-ops", () => {
@@ -379,4 +384,71 @@ test("live IME composition makes toolbar actions strict editor-local no-ops", ()
   replacement.click();
   assert.equal(replacement.textarea.value, "f~~res~~h");
   assert.equal(replacement.textarea.focusCalls, 1);
+});
+
+test("pointer activation that begins during composition stays inert after compositionend", () => {
+  const first = editorHarness("provisional", "bold");
+  const second = editorHarness("stable", "italic");
+  let afterSwap;
+  const document = {
+    querySelectorAll: () => [first.root, second.root],
+    addEventListener(name, listener) { if (name === "htmx:afterSwap") afterSwap = listener; },
+  };
+  load(document);
+
+  first.textarea.selectionStart = 2;
+  first.textarea.selectionEnd = 7;
+  first.textareaListeners.compositionstart();
+  assert.equal(first.dispatch("pointerdown"), 1);
+  // A browser may end composition between pointerdown and its compatibility
+  // mousedown. That mousedown must not erase the blocked-gesture latch.
+  first.textareaListeners.compositionend();
+  assert.equal(first.dispatch("mousedown"), 0);
+  assert.equal(first.click(), 1);
+  assert.equal(first.textarea.value, "provisional");
+  assert.equal(first.textarea.selectionStart, 2);
+  assert.equal(first.textarea.selectionEnd, 7);
+  assert.equal(first.textarea.focusCalls, 0);
+
+  assert.equal(second.dispatch("pointerdown"), 0);
+  assert.equal(second.dispatch("mousedown"), 0);
+  assert.equal(second.click(), 1);
+  assert.equal(second.textarea.value, "*stable*");
+  assert.equal(second.textarea.focusCalls, 1);
+
+  // A later pointer gesture starts with a fresh non-composing pointerdown and
+  // therefore follows the ordinary action path.
+  assert.equal(first.dispatch("pointerdown"), 0);
+  assert.equal(first.dispatch("mousedown"), 0);
+  assert.equal(first.click(), 1);
+  assert.equal(first.textarea.value, "pr**ovisi**onal");
+  assert.equal(first.textarea.focusCalls, 1);
+
+  const replacement = editorHarness("fresh", "strike");
+  afterSwap({ target: { querySelectorAll: () => [replacement.root] } });
+  replacement.textarea.selectionStart = 1;
+  replacement.textarea.selectionEnd = 4;
+  replacement.textareaListeners.compositionstart();
+  assert.equal(replacement.dispatch("mousedown"), 1);
+  replacement.textareaListeners.compositionend();
+  assert.equal(replacement.click(), 1);
+  assert.equal(replacement.textarea.value, "fresh");
+  assert.equal(replacement.textarea.selectionStart, 1);
+  assert.equal(replacement.textarea.selectionEnd, 4);
+  assert.equal(replacement.textarea.focusCalls, 0);
+});
+
+test("keyboard activation retains native click behavior outside composition", () => {
+  const editor = editorHarness("word", "bold");
+  load({ querySelectorAll: () => [editor.root], addEventListener: () => {} });
+
+  editor.textareaListeners.compositionstart();
+  assert.equal(editor.click(), 1);
+  assert.equal(editor.textarea.value, "word");
+  assert.equal(editor.textarea.focusCalls, 0);
+
+  editor.textareaListeners.compositionend();
+  assert.equal(editor.click(), 1);
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
 });

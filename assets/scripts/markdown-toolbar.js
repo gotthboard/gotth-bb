@@ -550,9 +550,28 @@
         composing = false;
       });
       editor.querySelectorAll("[data-markdown-action]").forEach((button) => {
+        let suppressPointerClick = false;
+        const guardPointerDown = (event) => {
+          if (!composing) {
+            suppressPointerClick = false;
+            return;
+          }
+          suppressPointerClick = true;
+          event.preventDefault();
+        };
+        const guardMouseDown = (event) => {
+          if (!composing) return;
+          suppressPointerClick = true;
+          event.preventDefault();
+        };
+        button.addEventListener("pointerdown", guardPointerDown);
+        button.addEventListener("mousedown", guardMouseDown);
         button.addEventListener("click", (event) => {
           event.preventDefault();
-          if (composing) return;
+          if (composing || suppressPointerClick) {
+            suppressPointerClick = false;
+            return;
+          }
           const result = transform(textarea.value, textarea.selectionStart, textarea.selectionEnd, button.dataset.markdownAction);
           textarea.value = result.value;
           textarea.focus();

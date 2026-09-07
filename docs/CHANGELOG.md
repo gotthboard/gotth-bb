@@ -182,6 +182,8 @@ instead of consuming half of an existing delimiter.
 Verification:
 
 - `node --test assets/scripts/markdown-toolbar.test.mjs`
+- `node --test assets/scripts/markdown-toolbar.chromium.test.mjs` against the
+  admitted Chromium version when it is available on the verification host
 - `GOMAXPROCS=2 go test -p=1 ./internal/httpui`
 - Templ and Tailwind generation plus static asset SHA-256 checks
 
@@ -192,6 +194,11 @@ Risks / non-goals:
   upload, scanning, privacy, quota, retention, and failure policy belong
 - no client-side rendering, sanitizing, rich-text editor, or new dependency is
   introduced
+
+The toolbar's IME guard also intercepts pointer focus transfer before
+`compositionend` and consumes that gesture's trailing click. This keeps value,
+focus, and selection unchanged when a pointer gesture begins during live
+composition without replacing native keyboard button activation.
 
 ### 2026-09-06 20:02 CDT — Implement the bounded GFM renderer
 

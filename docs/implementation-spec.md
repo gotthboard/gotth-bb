@@ -1214,6 +1214,10 @@ rendered core pages for root-relative application links that omit `/bb`.
   content, focus, and selection no-op. The state is local to the editor's
   listener closure, so separate editors and an HTMX-created replacement start
   independently; once composition ends, the existing action path resumes.
+  Pointer activation is intercepted before its focus-changing default action;
+  a per-button latch also consumes the trailing click if browser event ordering
+  ends composition before that click. Native keyboard activation remains the
+  ordinary button click path.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Bold and italic inspect complete adjacent star runs: applying one to
   the other composes a three-star strong-plus-emphasis delimiter, removing one
@@ -1459,7 +1463,8 @@ operator logs.
   output, malformed/boundary inputs, and exact sanitizer allowlist.
 - Native toolbar transformations, caret/selection restoration, multiline and
   repeated-toggle behavior, native semantics, labels/tooltips, focus styling,
-  script-failure fallback, and full-page/HTMX form replacement.
+  script-failure fallback, full-page/HTMX form replacement, synthetic event
+  ordering, and a real Chromium IME pointer/keyboard regression.
 - State transition and stale-revision behavior.
 
 ### 18.2 PostgreSQL integration tests
