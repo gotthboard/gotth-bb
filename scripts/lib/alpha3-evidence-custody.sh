@@ -3,6 +3,14 @@
 # Capture exactly one committed source archive and prepare an isolated Go build
 # environment. Callers remain responsible for checking the repository identity
 # again after the measured process exits.
+alpha3_git() {
+  /usr/bin/git --no-optional-locks \
+    -c core.fsmonitor=false \
+    -c core.untrackedCache=false \
+    -c core.ignoreStat=false \
+    "$@"
+}
+
 alpha3_remove_scratch() {
   if [ "$#" -ne 1 ]; then
     printf '%s\n' 'alpha3_remove_scratch requires one exact scratch path' >&2
@@ -23,9 +31,9 @@ alpha3_capture_committed_source() {
   fi
 
   local scratch=$1
-  ALPHA3_SOURCE_HEAD=$(/usr/bin/git rev-parse HEAD)
-  ALPHA3_SOURCE_TREE=$(/usr/bin/git rev-parse 'HEAD^{tree}')
-  if [ -n "$(/usr/bin/git status --porcelain=v1)" ]; then
+  ALPHA3_SOURCE_HEAD=$(alpha3_git rev-parse HEAD)
+  ALPHA3_SOURCE_TREE=$(alpha3_git rev-parse 'HEAD^{tree}')
+  if [ -n "$(alpha3_git status --porcelain=v1 --untracked-files=all)" ]; then
     printf '%s\n' 'Alpha.3 evidence requires a clean committed source tree' >&2
     return 2
   fi
@@ -36,7 +44,7 @@ alpha3_capture_committed_source() {
   for directory in "$ALPHA3_SOURCE_ROOT" "$scratch/home" "$scratch/go-path" "$scratch/go-mod-cache" "$scratch/go-build-cache" "$scratch/go-tmp"; do
     /usr/bin/mkdir -m 0700 "$directory"
   done
-  /usr/bin/git archive --format=tar --output="$ALPHA3_SOURCE_ARCHIVE" "$ALPHA3_SOURCE_HEAD"
+  alpha3_git archive --format=tar --output="$ALPHA3_SOURCE_ARCHIVE" "$ALPHA3_SOURCE_HEAD"
   ALPHA3_SOURCE_ARCHIVE_SHA256=$(/usr/bin/sha256sum "$ALPHA3_SOURCE_ARCHIVE" | /usr/bin/cut -d' ' -f1)
   /usr/bin/tar -xf "$ALPHA3_SOURCE_ARCHIVE" -C "$ALPHA3_SOURCE_ROOT"
   ALPHA3_GO_BOOTSTRAP_SHA256=$(/usr/bin/sha256sum "$ALPHA3_GO_BOOTSTRAP_BINARY" | /usr/bin/cut -d' ' -f1)

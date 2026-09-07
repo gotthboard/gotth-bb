@@ -6,8 +6,10 @@
 package main
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,6 +18,44 @@ import (
 )
 
 const launcherName = "alpha3-evidence-launcher"
+
+type fileIdentity struct {
+	relativePath string
+	size         int64
+	sha256       string
+	mode         os.FileMode
+}
+
+var criticalFiles = []fileIdentity{
+	{
+		relativePath: "scripts/verify-alpha3-rerender-performance.sh",
+		size:         8493,
+		sha256:       "713ad41a854f084eb1b55f4f607e213e709d1df4a0d9836ab6c24faf3db6d9fa",
+		mode:         0o755,
+	},
+	{
+		relativePath: "scripts/verify-alpha3-population-performance.sh",
+		size:         8679,
+		sha256:       "85e446e8813ce096c118d219ad2a69326c21865671a0db69f9afbc74c4361096",
+		mode:         0o755,
+	},
+	{
+		relativePath: "scripts/lib/alpha3-evidence-custody.sh",
+		size:         4265,
+		sha256:       "068c32ee973723bb1f3803ecc63ac00f27f030b6377e25dfb4b4df1eae70778a",
+		mode:         0o644,
+	},
+}
+
+var forbiddenLocalGitConfiguration = map[string]bool{
+	"core.attributesfile":       true,
+	"core.checkstat":            true,
+	"core.fsmonitor":            true,
+	"core.fsmonitorhookversion": true,
+	"core.ignorestat":           true,
+	"core.trustctime":           true,
+	"core.untrackedcache":       true,
+}
 
 func main() {
 	if len(os.Args) != 2 {
@@ -51,12 +91,8 @@ func main() {
 	scriptsDir := filepath.Dir(executable)
 	repository := filepath.Dir(scriptsDir)
 	inner := filepath.Join(scriptsDir, innerName)
-	info, err := os.Lstat(inner)
-	if err != nil {
-		fatalf("inspect evidence runner: %v", err)
-	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		fatalf("evidence runner is not a regular file: %s", inner)
+	for _, identity := range criticalFiles {
+		verifyCriticalFile(repository, identity)
 	}
 	gitEnvironment := []string{
 		"HOME=/nonexistent",
@@ -67,18 +103,57 @@ func main() {
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_COUNT=0",
+		"GIT_OPTIONAL_LOCKS=0",
 	}
-	rootCommand := exec.Command("/usr/bin/git", "rev-parse", "--show-toplevel")
-	rootCommand.Dir = repository
-	rootCommand.Env = gitEnvironment
-	rootOutput, err := rootCommand.Output()
+	rootOutput, err := gitOutput(repository, gitEnvironment, "rev-parse", "--show-toplevel")
 	if err != nil || strings.TrimSpace(string(rootOutput)) != repository {
 		fatalf("launcher path is not inside its exact Git worktree")
 	}
-	statusCommand := exec.Command("/usr/bin/git", "status", "--porcelain=v1", "--untracked-files=all")
-	statusCommand.Dir = repository
-	statusCommand.Env = gitEnvironment
-	statusOutput, err := statusCommand.Output()
+	rejectLocalGitConfiguration(repository, gitEnvironment, "--local")
+	worktreeConfigOutput, worktreeConfigErr := gitOutput(repository, gitEnvironment, "rev-parse", "--git-path", "config.worktree")
+	if worktreeConfigErr != nil {
+		fatalf("resolve worktree Git configuration: %v", worktreeConfigErr)
+	}
+	worktreeConfig := strings.TrimSpace(string(worktreeConfigOutput))
+	if info, statErr := os.Lstat(worktreeConfig); statErr == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			fatalf("worktree Git configuration is not a regular file")
+		}
+		if info.Size() != 0 {
+			rejectGitConfigurationFile(repository, gitEnvironment, worktreeConfig)
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		fatalf("inspect worktree Git configuration: %v", statErr)
+	}
+
+	flagsOutput, err := gitOutput(repository, gitEnvironment, "ls-files", "-v", "-z")
+	if err != nil {
+		fatalf("inspect tracked-file index flags: %v", err)
+	}
+	for _, record := range strings.Split(string(flagsOutput), "\x00") {
+		if record == "" {
+			continue
+		}
+		tag := record[0]
+		if tag == 'S' || (tag >= 'a' && tag <= 'z') {
+			fatalf("tracked-file index flags may hide mutations: %q", record)
+		}
+	}
+
+	attributesOutput, err := gitOutput(repository, gitEnvironment, "rev-parse", "--git-path", "info/attributes")
+	if err != nil {
+		fatalf("resolve Git info/attributes: %v", err)
+	}
+	attributesPath := strings.TrimSpace(string(attributesOutput))
+	if info, statErr := os.Lstat(attributesPath); statErr == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() != 0 {
+			fatalf("Git info/attributes must be absent or an empty regular file")
+		}
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		fatalf("inspect Git info/attributes: %v", statErr)
+	}
+
+	statusOutput, err := gitOutput(repository, gitEnvironment, "status", "--porcelain=v1", "--untracked-files=all")
 	if err != nil {
 		fatalf("inspect committed source status: %v", err)
 	}
@@ -118,6 +193,75 @@ func main() {
 			os.Exit(exitError.ExitCode())
 		}
 		fatalf("run evidence process: %v", err)
+	}
+}
+
+func verifyCriticalFile(repository string, identity fileIdentity) {
+	path := filepath.Join(repository, filepath.FromSlash(identity.relativePath))
+	info, err := os.Lstat(path)
+	if err != nil {
+		fatalf("inspect critical evidence file %s: %v", identity.relativePath, err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		fatalf("critical evidence file is not a regular file: %s", identity.relativePath)
+	}
+	if info.Size() != identity.size || info.Mode().Perm() != identity.mode {
+		fatalf("critical evidence file identity mismatch: %s", identity.relativePath)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		fatalf("open critical evidence file %s: %v", identity.relativePath, err)
+	}
+	hash := sha256.New()
+	bytesRead, copyErr := io.Copy(hash, file)
+	closeErr := file.Close()
+	if copyErr != nil || closeErr != nil {
+		fatalf("hash critical evidence file %s", identity.relativePath)
+	}
+	if bytesRead != identity.size || fmt.Sprintf("%x", hash.Sum(nil)) != identity.sha256 {
+		fatalf("critical evidence file identity mismatch: %s", identity.relativePath)
+	}
+}
+
+func gitOutput(repository string, environment []string, arguments ...string) ([]byte, error) {
+	safeArguments := []string{
+		"--no-optional-locks",
+		"-c", "core.fsmonitor=false",
+		"-c", "core.untrackedCache=false",
+		"-c", "core.ignoreStat=false",
+	}
+	safeArguments = append(safeArguments, arguments...)
+	command := exec.Command("/usr/bin/git", safeArguments...)
+	command.Dir = repository
+	command.Env = environment
+	return command.Output()
+}
+
+func rejectLocalGitConfiguration(repository string, environment []string, scope string) {
+	output, err := gitOutput(repository, environment, "config", scope, "--includes", "--name-only", "--list")
+	if err != nil {
+		fatalf("inspect %s Git configuration: %v", scope, err)
+	}
+	rejectGitConfigurationNames(output)
+}
+
+func rejectGitConfigurationFile(repository string, environment []string, path string) {
+	output, err := gitOutput(repository, environment, "config", "--file", path, "--includes", "--name-only", "--list")
+	if err != nil {
+		fatalf("inspect worktree Git configuration: %v", err)
+	}
+	rejectGitConfigurationNames(output)
+}
+
+func rejectGitConfigurationNames(output []byte) {
+	for _, rawName := range strings.Split(string(output), "\n") {
+		name := strings.ToLower(strings.TrimSpace(rawName))
+		if name == "" {
+			continue
+		}
+		if forbiddenLocalGitConfiguration[name] || (strings.HasPrefix(name, "tar.") && strings.HasSuffix(name, ".command")) {
+			fatalf("local Git configuration may alter source custody: %s", name)
+		}
 	}
 }
 

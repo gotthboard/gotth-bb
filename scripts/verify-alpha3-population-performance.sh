@@ -25,11 +25,6 @@ if /usr/bin/readelf -l -- "$evidence_launcher_path" | /usr/bin/grep -q 'INTERP';
   exit 2
 fi
 readonly evidence_launcher_sha256="$(/usr/bin/sha256sum "/proc/$PPID/exe" | /usr/bin/cut -d' ' -f1)"
-readonly expected_launcher_sha256=b5b869a7ad2bbe1bd6969c8428621dc8644a84b89193d2397ec9f7342b47d859
-if [ "$evidence_launcher_sha256" != "$expected_launcher_sha256" ]; then
-  printf '%s\n' 'Alpha.3 evidence launcher digest does not match the admitted binary' >&2
-  exit 2
-fi
 if ! shopt -q -o privileged || [[ $- == *x* ]]; then
   printf '%s\n' 'Alpha.3 evidence Bash must be privileged with xtrace disabled' >&2
   exit 2
@@ -50,6 +45,7 @@ readonly PATH
 
 readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 source "$script_dir/lib/alpha3-evidence-custody.sh"
+printf '%s\n' 'alpha3_custody_attested mode=population'
 
 readonly expected_image='postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d'
 readonly container_name="${GOTTH_BB_POSTGRES_CONTAINER:-gotth-bb-alpha3-totality-pg}"
@@ -123,10 +119,10 @@ wait "$test_pid"
 test_status=$?
 set -e
 
-source_head_after=$(/usr/bin/git rev-parse HEAD)
-source_tree_after=$(/usr/bin/git rev-parse 'HEAD^{tree}')
-source_archive_after=$(/usr/bin/git archive --format=tar HEAD | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
-if [ -n "$(/usr/bin/git status --porcelain=v1)" ] || [ "$source_head_after" != "$source_head_before" ] || [ "$source_tree_after" != "$source_tree_before" ] || [ "$source_archive_after" != "$source_archive_before" ]; then
+source_head_after=$(alpha3_git rev-parse HEAD)
+source_tree_after=$(alpha3_git rev-parse 'HEAD^{tree}')
+source_archive_after=$(alpha3_git archive --format=tar HEAD | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
+if [ -n "$(alpha3_git status --porcelain=v1 --untracked-files=all)" ] || [ "$source_head_after" != "$source_head_before" ] || [ "$source_tree_after" != "$source_tree_before" ] || [ "$source_archive_after" != "$source_archive_before" ]; then
   printf '%s\n' 'source identity changed during population evidence run' >&2
   exit 2
 fi

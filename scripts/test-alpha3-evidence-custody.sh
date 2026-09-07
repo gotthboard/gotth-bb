@@ -57,7 +57,119 @@ for mode in rerender population; do
   ! /usr/bin/grep -F 'BASH_ENV_PAYLOAD_EXECUTED' "$inner_log" >/dev/null
   ! /usr/bin/grep -F "$secret_sentinel" "$inner_log" >/dev/null
   ! /usr/bin/grep -F 'spoofed' "$inner_log" >/dev/null
+  /usr/bin/grep -F "alpha3_custody_attested mode=$mode" "$inner_log" >/dev/null
 done
+
+make_attack_repository() {
+  if [ "$#" -ne 1 ]; then
+    printf '%s\n' 'make_attack_repository requires one destination' >&2
+    return 2
+  fi
+  /usr/bin/git clone -q --no-hardlinks "$repository_root" "$1"
+}
+
+require_pre_bash_rejection() {
+  if [ "$#" -ne 3 ]; then
+    printf '%s\n' 'require_pre_bash_rejection requires repository, case name, and expected diagnostic' >&2
+    return 2
+  fi
+  local attack_repository=$1
+  local case_name=$2
+  local expected_diagnostic=$3
+  local attack_log="$startup_scratch/attack-$case_name.log"
+  local attack_evidence="$startup_scratch/attack-$case_name-evidence.txt"
+
+  /usr/bin/rm -f -- "$bash_env_marker"
+  set +e
+  /usr/bin/env BASH_ENV="$bash_env_payload" ENV="$bash_env_payload" \
+    GOTTH_BB_TEST_DATABASE_URL="postgres://$secret_sentinel@example.invalid/test?sslmode=disable" \
+    GOTTH_BB_EVIDENCE_OUTPUT="$attack_evidence" \
+    GOTTH_BB_POSTGRES_CONTAINER=alpha3-custody-container-does-not-exist \
+    "$attack_repository/scripts/alpha3-evidence-launcher" rerender >"$attack_log" 2>&1
+  local attack_status=$?
+  set -e
+
+  test "$attack_status" -ne 0
+  /usr/bin/grep -F "$expected_diagnostic" "$attack_log" >/dev/null
+  test ! -e "$bash_env_marker"
+  test ! -e "$attack_evidence"
+  ! /usr/bin/grep -F 'BASH_ENV_PAYLOAD_EXECUTED' "$attack_log" >/dev/null
+  ! /usr/bin/grep -F 'alpha3_custody_attested' "$attack_log" >/dev/null
+  ! /usr/bin/grep -F "$secret_sentinel" "$attack_log" >/dev/null
+}
+
+# Every live Bash input is byte-attested before Bash starts. Git index flags
+# cannot turn a modified runner or shared library into accepted evidence.
+readonly assume_repository="$test_scratch/assume-repository"
+make_attack_repository "$assume_repository"
+(
+  cd "$assume_repository"
+  /usr/bin/printf '%s\n' '# hidden runner mutation' >>scripts/verify-alpha3-rerender-performance.sh
+  /usr/bin/git update-index --assume-unchanged scripts/verify-alpha3-rerender-performance.sh
+  test -z "$(/usr/bin/git status --porcelain=v1 --untracked-files=all)"
+)
+require_pre_bash_rejection "$assume_repository" assume-unchanged 'critical evidence file identity mismatch: scripts/verify-alpha3-rerender-performance.sh'
+
+readonly assume_flag_repository="$test_scratch/assume-flag-repository"
+make_attack_repository "$assume_flag_repository"
+(
+  cd "$assume_flag_repository"
+  /usr/bin/git update-index --assume-unchanged scripts/verify-alpha3-rerender-performance.sh
+)
+require_pre_bash_rejection "$assume_flag_repository" assume-unchanged-exact 'tracked-file index flags may hide mutations:'
+
+readonly skip_repository="$test_scratch/skip-repository"
+make_attack_repository "$skip_repository"
+(
+  cd "$skip_repository"
+  /usr/bin/git update-index --skip-worktree scripts/lib/alpha3-evidence-custody.sh
+  /usr/bin/printf '%s\n' '# hidden library mutation' >>scripts/lib/alpha3-evidence-custody.sh
+  test -z "$(/usr/bin/git status --porcelain=v1 --untracked-files=all)"
+)
+require_pre_bash_rejection "$skip_repository" skip-worktree 'critical evidence file identity mismatch: scripts/lib/alpha3-evidence-custody.sh'
+
+readonly skip_flag_repository="$test_scratch/skip-flag-repository"
+make_attack_repository "$skip_flag_repository"
+(
+  cd "$skip_flag_repository"
+  /usr/bin/git update-index --skip-worktree scripts/lib/alpha3-evidence-custody.sh
+)
+require_pre_bash_rejection "$skip_flag_repository" skip-worktree-exact 'tracked-file index flags may hide mutations:'
+
+# A repository-local fsmonitor is rejected before either Git status or Bash can
+# execute it. The runner mutation independently remains caught by byte identity.
+readonly fsmonitor_repository="$test_scratch/fsmonitor-repository"
+make_attack_repository "$fsmonitor_repository"
+readonly fsmonitor_hook="$fsmonitor_repository/.git/hostile-fsmonitor"
+readonly fsmonitor_marker="$startup_scratch/fsmonitor-ran"
+/usr/bin/printf '#!/usr/bin/bash\n: > %q\nexit 0\n' "$fsmonitor_marker" >"$fsmonitor_hook"
+/usr/bin/chmod 0700 "$fsmonitor_hook"
+(
+  cd "$fsmonitor_repository"
+  /usr/bin/git config core.fsmonitor "$fsmonitor_hook"
+  /usr/bin/printf '%s\n' '# fsmonitor-hidden runner mutation' >>scripts/verify-alpha3-rerender-performance.sh
+)
+require_pre_bash_rejection "$fsmonitor_repository" hostile-fsmonitor-runner 'critical evidence file identity mismatch: scripts/verify-alpha3-rerender-performance.sh'
+test ! -e "$fsmonitor_marker"
+
+readonly fsmonitor_config_repository="$test_scratch/fsmonitor-config-repository"
+make_attack_repository "$fsmonitor_config_repository"
+readonly fsmonitor_config_hook="$fsmonitor_config_repository/.git/hostile-fsmonitor"
+/usr/bin/printf '#!/usr/bin/bash\n: > %q\nexit 0\n' "$fsmonitor_marker" >"$fsmonitor_config_hook"
+/usr/bin/chmod 0700 "$fsmonitor_config_hook"
+(
+  cd "$fsmonitor_config_repository"
+  /usr/bin/git config core.fsmonitor "$fsmonitor_config_hook"
+)
+require_pre_bash_rejection "$fsmonitor_config_repository" hostile-fsmonitor-config 'local Git configuration may alter source custody: core.fsmonitor'
+test ! -e "$fsmonitor_marker"
+
+# Per-repository attributes have higher archive precedence than committed
+# attributes and therefore cannot participate in a reviewed source capture.
+readonly attributes_repository="$test_scratch/attributes-repository"
+make_attack_repository "$attributes_repository"
+/usr/bin/printf '%s\n' '* export-subst' >"$attributes_repository/.git/info/attributes"
+require_pre_bash_rejection "$attributes_repository" info-attributes 'Git info/attributes must be absent or an empty regular file'
 
 if /usr/bin/readelf -l -- "$script_dir/alpha3-evidence-launcher" | /usr/bin/grep -q 'INTERP'; then
   printf '%s\n' 'committed Alpha.3 evidence launcher is dynamically linked' >&2
