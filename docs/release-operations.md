@@ -390,6 +390,10 @@ required sequence is:
    post batches commit at most 100 rows with singleton phase/cursor/count state.
    Completion proves no NULL/partial/stale projection, validates all checks,
    attests the exact indexes and narrowed triggers, and alone marks readiness.
+   Its zero-stale oracle and constraint validations scan complete affected
+   tables; each validation takes `SHARE UPDATE EXCLUSIVE`, and this completion
+   work is population-dependent rather than batch-bounded. Measure it in the
+   maintenance-window evidence.
    A PostgreSQL minor update additionally performs the full-corpus byte
    comparison before service. Do not replace this with fixture sampling.
 10. Before starting the application, the migration owner must apply the exact

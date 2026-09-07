@@ -1772,7 +1772,11 @@ resets the cursor. Failure advances nothing.
 
 Completion proves zero NULL/partial/stale tuples, validates all six checks,
 attests exact indexes and six narrowed triggers plus unchanged function, and
-marks complete once while preserving first completion time on rerun. Startup
+marks complete once while preserving first completion time on rerun. The
+zero-stale oracle and `VALIDATE CONSTRAINT` work scan complete affected tables;
+validation takes PostgreSQL `SHARE UPDATE EXCLUSIVE` locks. Completion I/O,
+lock duration, and total time are population-dependent and not batch-bounded.
+Startup
 and `/health/ready` require exact migration head 000008, the one complete
 current singleton, exact validated checks/indexes/triggers/function, and the
 admitted Alpha.3 renderer. Startup also requires a structurally valid keyring;

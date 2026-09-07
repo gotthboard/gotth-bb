@@ -491,6 +491,8 @@ events. The stopped release preflight validates every row before schema apply.
 Backfill commits batches of at most 100 with singleton/cursor/count state in the
 same transaction. Completion proves no NULL/partial/stale tuple, validates the
 checks, attests exact indexes/triggers, and alone marks the target complete.
+Its zero-stale oracle and constraint validation perform population-wide scans;
+validation takes `SHARE UPDATE EXCLUSIVE` locks and is not batch-bounded.
 Index creation honestly performs heap passes even while its current-version
 predicates are initially empty. Rollback remains forward repair or the existing
 verified pre-migration restore; AN-02 adds no down-migration fiction or backup
