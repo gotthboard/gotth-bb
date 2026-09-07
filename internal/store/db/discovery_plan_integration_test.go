@@ -247,6 +247,7 @@ type explainPlanNode struct {
 	RelationName string            `json:"Relation Name"`
 	IndexName    string            `json:"Index Name"`
 	Filter       string            `json:"Filter"`
+	RecheckCond  string            `json:"Recheck Cond"`
 	Plans        []explainPlanNode `json:"Plans"`
 }
 
@@ -318,7 +319,7 @@ func planUsesAuthorizedTopicRelation(node explainPlanNode) bool {
 		if candidate.RelationName != "topics" || !strings.Contains(candidate.Filter, "state") {
 			return false
 		}
-		return strings.Contains(candidate.Filter, "deleted_at") ||
+		return strings.Contains(candidate.Filter, "deleted_at") || strings.Contains(candidate.RecheckCond, "deleted_at") ||
 			candidate.IndexName == "topics_search_author_current_idx" ||
 			candidate.IndexName == "topics_search_vector_current_idx"
 	}) != nil
@@ -329,7 +330,8 @@ func planUsesCurrentPostRelation(node explainPlanNode) bool {
 		if candidate.RelationName != "posts" {
 			return false
 		}
-		return (strings.Contains(candidate.Filter, "deleted_at") && strings.Contains(candidate.Filter, "redacted_at")) ||
+		conditions := candidate.Filter + candidate.RecheckCond
+		return (strings.Contains(conditions, "deleted_at") && strings.Contains(conditions, "redacted_at")) ||
 			candidate.IndexName == "posts_search_author_current_idx" ||
 			candidate.IndexName == "posts_search_vector_current_idx"
 	}) != nil
