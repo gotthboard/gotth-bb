@@ -51,7 +51,7 @@ exists.
 | CONTENT-001–CONTENT-007 | composer, renderer, post services | UT, DB, HTTP, SEC | Alpha.1 |
 | READ-001 | index/list/threaded-topic handlers | HTTP, E2E, A11Y | Alpha.1 baseline; Alpha.2 threaded |
 | READ-002 | read markers and unread views | UT, DB, HTTP | Beta.1 |
-| READ-003–READ-004 | PostgreSQL search/activity queries | DB, HTTP, SEC | Beta.1 |
+| READ-003–READ-004 | PostgreSQL search/activity queries | DB, HTTP, SEC, E2E, PERF | Alpha.N (AN-02) |
 | READ-005 | URL builder and templates | UT, HTTP, E2E | Alpha.1 |
 | READ-006 | tree-order paging and reply-to context | UT, DB, HTTP, E2E, A11Y | Alpha.2 |
 | MOD-001–MOD-002 | report service and queue | UT, DB, HTTP, E2E | Beta.1 |
@@ -592,3 +592,81 @@ The integration coverage run reported 93.7% for `internal/render`, 56.7% for
 `internal/rerender`, and 100% for both `internal/readiness` and `migrations`.
 This documentation-and-evidence commit changes no executable source, fixture,
 or evidence methodology.
+
+## 19. AN-02 search and recent-activity evidence contract
+
+AN-02 evidence is admitted only from one exact implementation tree whose
+migration, generated SQL/Templ/static files, application binary, test helpers,
+and retained transcripts are hash-bound. Passing smaller fixtures does not
+substitute for the required population/plan gate.
+
+### 19.1 Functional and authorization matrix
+
+Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
+
+- strict request keys/cardinality/wire bound, canonical links, NFC, web-search
+  terms/phrases/`OR`/negation, 31-node semantic bound, author/area/date/page
+  grammar, maximum-date handling, and fixed errors that never echo input;
+- typed topic/post results, root deduplication before the 51 fence, per-kind
+  filters, deterministic equal-time ties, `0..50`/`50+`, rank only within 50,
+  page 1/2 behavior, and concurrent-snapshot duplication/omission semantics;
+- visitor, member, group hit/miss, moderator, and administrator results proving
+  authorization precedes match identity, limit, count, rank, excerpt,
+  continuation, and direct-post fields;
+- deleted/redacted posts, deleted/hidden topics, title independence from the
+  root body, and a visibility distribution where restricted activity cannot
+  suppress older public rows or alter terminality;
+- activity 25/26 boundaries, strict equal-timestamp keysets, insertion,
+  deletion, and authority revocation between pages;
+- cursor exact-length/alphabet/re-encoding, integer endpoints, unknown key,
+  tamper, constant-time comparison path, issue/key windows, expiry/future skew,
+  audience role/group change, rotation overlap/removal, malformed keyring, and
+  database-time authority across ordinary restart;
+- direct post canonical ID, primary-key-started authorization, projection
+  independence, no tree enumeration, and indistinguishable missing/deleted/
+  redacted/inaccessible `404` behavior; and
+- full-page/HTMX parity, base path, navigation without JavaScript, keyboard/
+  screen-reader semantics, `private, no-store`, 256-KiB envelope, and no partial
+  response.
+
+Sanitizer goldens shall prove visible-text/excerpt output includes only text
+nodes in admitted render order and that raw Markdown, HTML, comments,
+attributes, URL destinations, event/style data, and sanitizer-removed bytes
+cannot match or appear. Block-boundary spaces, Unicode whitespace collapse,
+trim, NFC, first-300-rune truncation, redaction empty-vector behavior, and 25
+maximum-size rendered-post inputs are explicit cases.
+
+### 19.2 Migration, plan, and resource evidence
+
+Fresh and upgrade integration shall cover preflight failure before 000008,
+every topics/posts phase and nullable-cursor interruption boundary, batch size
+100, two concurrent runners, atomic cursor/count progress, trigger narrowing,
+writer atomicity, six-check validation, five exact partial indexes, completion
+idempotency, readiness catalog drift, minor-PostgreSQL full-corpus comparison,
+and the honest forward/restore rollback boundary. Index-build heap passes and
+lock/I/O exposure are measured, not described away.
+
+The generated admission corpus contains at least 100,000 topics and 1,000,000
+posts across public, authenticated, groups, hidden, deleted, redacted, common-
+term, rare-term, author, and activity-skew cases. Corpus size is test evidence,
+not a production quota. With PostgreSQL 17, retain `EXPLAIN (ANALYZE, BUFFERS,
+FORMAT JSON)` evidence for exact current-vector, author, date/area, common-term
+fallback, activity, and direct-primary-key shapes under custom and forced-
+generic plans. Unsafe plans reject the implementation; observations do not
+become fictional universal latency guarantees.
+
+Two concurrent discovery requests shall coexist with ordinary reads and
+publication while measurements record latency, allocations, RSS, temporary
+I/O, connection cleanup, cancellation, two-permit saturation, slow clients,
+and fixed failure responses. Full/race/population/browser work runs on the
+designated development host, not inside the gateway cgroup.
+
+### 19.3 Admission gates
+
+The exact final candidate must pass SQL generation, Templ/static regeneration,
+gofmt, vet, focused unit/HTTP, PostgreSQL integration/race, migration,
+population/plan/resource, browser-through-Caddy, secret/log-redaction,
+repository-integrity, and release-artifact reproducibility gates. Evidence
+records the exact commit/tree, commands, environment, versions, checksums,
+result, and explicit gaps. Two fresh independent cold reviews must both be
+CLEAN on that same exact state before handoff.

@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.5 |
+| Document version | 0.6 |
 | Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -203,10 +203,13 @@ Requirements:
   topic pages, recent activity, and bounded pagination or continuation.
 - **READ-002:** Signed-in members shall have new/unread indicators and a jump
   to first unread action.
-- **READ-003:** PostgreSQL full-text search shall support text, author, area,
-  and date filters.
-- **READ-004:** Search and activity queries shall apply the same access
-  predicate as direct reads before rows are returned or counted.
+- **READ-003:** PostgreSQL full-text search shall support bounded web-search
+  text syntax, author ID, area, and inclusive UTC date filters; return typed
+  topic/post results with honest bounded result and ranking semantics; and
+  provide access-filtered recent post activity with bounded continuation.
+- **READ-004:** Search, activity, counts, ranks, snippets, continuation, and
+  direct result targets shall apply the same area/topic access predicate as
+  direct reads before restricted rows contribute fields or terminality.
 - **READ-005:** Pages shall provide breadcrumbs and canonical URLs that include
   the configured external base path, including a root deployment.
 - **READ-006:** Threaded topic reads shall preserve deterministic parent/child
@@ -440,7 +443,43 @@ renderer boundary. It is acceptable when all of the following hold:
 Mermaid, math, footnotes, emoji shortcodes, mentions, issue references, syntax
 highlighting, rich-text editors, and WYSIWYG behavior are not part of alpha.3.
 
-## 10. Stable 1.0 acceptance boundary
+## 10. AN-02 acceptance boundary
+
+AN-02 admits search and recent activity under these visible constraints:
+
+1. `GET /search` accepts `q`, author ID, area slug, inclusive UTC `from`/`to`
+   dates, and page 1 or 2. At least `q` or author is required. Text uses
+   PostgreSQL web-search terms, quoted phrases, `OR`, and unary `-`; prefix and
+   fuzzy matching are not promised.
+2. Search considers at most the newest 50 authorized matches, presents 25 per
+   page, and labels only whether a 51st authorized match exists. Text relevance
+   is approximate and orders only those 50; it is not a global best-rank claim.
+   Page 2 is a new database snapshot and may duplicate or omit rows changed
+   concurrently.
+3. Topic titles and undeleted, unredacted post bodies are separate result
+   types. A matching topic title suppresses only its matching root-post body.
+   Post excerpts are the first at most 300 runes of escaped, unhighlighted
+   normalized visible text.
+4. `GET /activity` returns undeleted, unredacted posts newest first, 25 per
+   page. Its authenticated cursor is valid for at most 24 hours and is bound to
+   the visitor or the authenticated user's current role and complete local
+   group set. Authorization precedes the 26-row continuation fence; restricted
+   rows cannot suppress older public activity or reveal restricted occupancy.
+5. `GET /posts/{postID}` is a bounded direct result target. It performs a
+   primary-key-started authorized read and never enumerates a topic tree to
+   derive a page number.
+6. All three routes and their errors work as ordinary HTML and equivalent HTMX
+   responses, remain base-path aware, and are `private, no-store`. Search and
+   Recent activity are ordinary navigation links; JavaScript is optional.
+7. Common or hostile discovery queries may fail with a fixed `503` at their
+   bounded deadline. They never return partial or less-authorized results to
+   manufacture success. Saturation affects only search/activity, not publishing
+   or unrelated reads.
+8. AN-02 does not impose publication quotas, change `restart: unless-stopped`,
+   replace the service supervisor, add an external search service, or invent a
+   new backup/deployment authority.
+
+## 11. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -454,7 +493,7 @@ highlighting, rich-text editors, and WYSIWYG behavior are not part of alpha.3.
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 11. Constraints and assumptions
+## 12. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -465,7 +504,7 @@ highlighting, rich-text editors, and WYSIWYG behavior are not part of alpha.3.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 12. Open owner decisions
+## 13. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:
@@ -477,7 +516,7 @@ implementation begins:
 5. Content retention duration for soft-deleted posts and audit events.
 6. Initial rate-limit values and new-account period.
 
-## 11. Change control
+## 14. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update

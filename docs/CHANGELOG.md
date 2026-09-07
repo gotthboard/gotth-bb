@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Admit the bounded AN-02 discovery contract
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- product, architecture, implementation, feature, verification, security, and
+  release-operations contracts
+
+Explanation:
+
+Admit AN-02 as three bounded optional-session reads backed by PostgreSQL 17:
+authorization-first typed search, recent post activity, and a primary-key
+direct-post target. The contract fixes the 50-result/25-page search window,
+26-row activity keyset, authenticated audience-bound cursor, renderer-owned
+search projections, restart-safe migration 000008 backfill/readiness, exact
+partial indexes and narrowed triggers, process-local work/response bounds, and
+honest edge/database logging boundaries. It explicitly preserves publication,
+automatic restart, deployment topology, and existing backup/restore authority.
+
+Verification:
+
+- revision 18 rejected by a cold admission review as stale, unreviewable, and
+  behavior-changing
+- replacement revision 19 repaired through three rejected cold passes, after
+  the initial revision-18 rejection
+- two fresh CLEAN passes on exact proposal SHA-256
+  `cee375259a811c1912caf9099a25a430eeb83330d720ab7e1f570108f5a33d92`
+- canonical Markdown/reference/repository checks and two fresh exact-diff
+  reviews required before this documentation commit is admitted
+
+Risks / non-goals:
+
+- this commit contains no application code, migration, generated asset, PR,
+  merge, push, tag, release, image, or deployment
+- population sizes in the verification plan are evidence points, not
+  production publication quotas
+
 ### 2026-09-07 — Preserve cursor bounds under generic PostgreSQL plans
 
 Commit: current commit; hash assigned by Git after commit

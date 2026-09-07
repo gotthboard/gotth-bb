@@ -115,6 +115,7 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
+| `ACTIVITY_CURSOR_KEYRING_FILE` | Yes after AN-02 | Absolute path to the read-only cursor-keyring secret |
 | `BOOTSTRAP_ADMIN_SUBJECT` | Yes | Exact verified OIDC subject allowed to claim first-run administration |
 | `REGISTRATION_URL` | Yes | Exact same-origin Authentik enrollment-flow URL |
 | `REGISTRATION_ENABLED` | Yes | Exact `true`/`false` operational gate for the public registration route and link |
@@ -177,6 +178,12 @@ Rules:
 - OIDC claims never assign forum roles or local group membership.
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.
+- `ACTIVITY_CURSOR_KEYRING_FILE` is a non-secret absolute clean path no longer
+  than 4,096 bytes, containing no NUL. Startup opens it read-only with
+  `O_CLOEXEC|O_NOFOLLOW`, validates the opened regular file with `fstat`, reads
+  at most 1,025 bytes to distinguish overflow, requires EOF, parses into owned
+  immutable memory, and closes the descriptor. It never validates one pathname
+  object and later reopens another.
 - Database and OIDC client secrets use an unexported redacting value type with
   no general-purpose reveal method. PostgreSQL pool parsing and OIDC service
   construction receive them through narrow boundary-specific methods. The
@@ -840,6 +847,8 @@ Internal routes are shown relative to the configured external base URL.
 | `POST` | `/admin/areas` | Create area | Administrator |
 | `POST` | `/admin/areas/{id}` | Change area | Administrator |
 | `GET` | `/search` | Access-filtered search | Visitor |
+| `GET` | `/activity` | Access-filtered recent posts | Visitor |
+| `GET` | `/posts/{id}` | Bounded direct post target | Post viewer |
 | `GET` | `/health/live` | Liveness | Edge/operator |
 | `GET` | `/health/ready` | Readiness | Edge/operator |
 
@@ -942,7 +951,8 @@ paths. Session lookup wraps only exact routes that can
 consume identity: `/`; one-segment `GET /areas/{slug}`; canonical
 positive-decimal one-segment `GET /topics/{id}`; the exact publishing,
 preview, edit, delete, topic-moderation, account-status, suspend, and reinstate
-routes listed above; setup; revalidation; and logout. Every numeric identifier must
+routes listed above; exact `GET /search` and `GET /activity`; canonical
+positive-decimal one-segment `GET /posts/{id}`; setup; revalidation; and logout. Every numeric identifier must
 pass the canonical parser before session lookup. Noncanonical escaped paths,
 malformed or nested paths, wrong methods, health, static, and unknown paths go
 directly to the public router and cannot become unavailable merely because the
@@ -1532,7 +1542,276 @@ operator logs.
 - Deployment health and smoke test beneath Caddy.
 - Backup and restore rehearsal before stable release.
 
-## 19. Definition of implementation complete
+## 19. AN-02 search and recent activity
+
+AN-02 is one bounded PostgreSQL read feature. It does not activate
+`gotth-search`, add a host lifecycle process, alter publication or Docker
+restart semantics, or create a second migration/deployment authority.
+
+### 19.1 Request and response grammar
+
+`GET /search` accepts exactly one each of `q`, `author`, `area`, `from`, `to`,
+and `page`. Unknown/duplicate keys, malformed percent encoding, invalid UTF-8,
+NUL/control bytes, semicolon separators, or a raw query string over 2,048 bytes
+return a fixed bounded `400` before session or database work. At least `q` or
+`author` is required; the other filters cannot initiate a search.
+
+- `q` is trimmed with the Unicode 15.0 `White_Space` property, NFC-normalized through the pinned
+  `golang.org/x/text/unicode/norm` helper, and 1..256 UTF-8 bytes. PostgreSQL
+  alone parses it with
+  `websearch_to_tsquery('pg_catalog.simple'::regconfig, $1)`. Empty or
+  no-positive-term queries and parsed queries over 31 nodes are rejected before
+  candidate discovery using `numnode(parsed_query) BETWEEN 1 AND 31` and
+  `querytree(parsed_query) <> 'T'`. Terms, quoted phrases, `OR`, and unary `-`
+  are supported; prefix and fuzzy matching are not.
+- `author` is a canonical positive decimal int64 user ID, not a display name.
+- `area` uses the existing canonical lowercase area-slug grammar.
+- `from`/`to` are inclusive UTC `YYYY-MM-DD` dates in years 0001..9999 with
+  `from <= to`. The lower predicate is `>= from@00:00:00Z`; ordinary upper
+  predicates are `< to+1day@00:00:00Z`; `9999-12-31` uses the exact finite
+  microsecond endpoint and never constructs year 10000.
+- `page` is canonical positive decimal, defaults to 1, and is at most 2.
+
+Canonical links contain normalized/canonical values, omit absent keys and
+`page=1`, and use the shared base-path URL builder and Go URL encoding. Valid
+filters remain in the rendered form; fixed errors never quote input.
+
+Search emits at most 25 rows per page from the newest 50 authorized matches.
+`50+` means only that a 51st authorized match exists. With `q`, rank is
+approximate within the first 50; without `q`, results stay newest-first. Page 1
+with no rows is `200`; a valid empty page 2 is `404`. Page 2 uses a fresh
+snapshot and therefore may duplicate or omit concurrently changed rows.
+
+Topic results contain readable area/topic/author/time context and no body.
+Post results contain readable area/topic/post/author/time context and an
+escaped, unhighlighted excerpt comprising the first at most 300 runes of
+normalized visible text. They link to the canonical direct post and topic URLs.
+All three AN-02 routes render a complete full page or equivalent
+`#main-content` HTMX state and set `Cache-Control: private, no-store` on success
+and failure.
+
+`GET /posts/{postID}` accepts one canonical positive decimal int64. One
+primary-key-started query joins its topic, area, and author and applies the
+complete direct-read predicate before returning fields. Missing, deleted,
+redacted, or inaccessible rows are the same fixed `404`. Search projection
+health is irrelevant to this direct read. Success renders only that post and
+authorized context; it never enumerates parents, descendants, siblings,
+totals, or a threaded-page ordinal.
+
+### 19.2 Authorization-first SQL
+
+The server supplies one validated `policy.AccessContext`; no request field
+carries authority. Every discovery branch requires an undeleted topic, permits
+hidden topics only for staff, and proves the owning area's public,
+authenticated-member, or group visibility. Group visibility uses
+`EXISTS` against the complete server-loaded group-ID array; `area_groups` is
+never a row-producing outer join. Post discovery also requires undeleted and
+unredacted state.
+
+Unauthorized rows contribute no identity, field, rank, count, excerpt, cursor,
+or terminality. Those predicates are inside SQL before the 51-row search fence
+and the 26-row activity limit. PostgreSQL may still visit index entries, so no
+constant-time claim is made.
+
+Search unions typed authorized topic/post identities, applies text and all
+filters in each branch, suppresses a root-post result only when that same
+topic-title result matches, and orders by `created_at DESC`, topic before post
+on an equal timestamp, then typed ID descending. It materializes at most 51;
+row 51 is only the sentinel. With text, the first 50 then order by
+`ts_rank_cd(search_vector, parsed_query, 32) DESC` followed by the same tie
+break. The selected page rechecks authorization and projection identity in the
+same read-only repeatable-read transaction. Missing, duplicate, unauthorized,
+stale, malformed, or misordered selected data fails the fully buffered response
+with fixed `503`; no weaker fill query runs.
+
+Activity is post activity ordered by `(posts.created_at DESC, posts.id DESC)`.
+A continuation adds the strict tuple predicate `< (cursor_created_at,
+cursor_post_id)`. Authorization and current projection are before `LIMIT 26`;
+25 rows are returned and row 25's boundary is emitted only when row 26 exists.
+Restricted rows therefore cannot suppress older public activity or reveal
+restricted occupancy. There is no exact total.
+
+### 19.3 Activity cursor and keyring
+
+The cursor is strict unpadded base64url over this exact 77-byte record, yielding
+exactly 103 ASCII characters:
+
+```text
+version(1) | key_id(uint32) | issued_at_unix_seconds(int64)
+| created_at_unix_microseconds(int64) | post_id(int64)
+| audience_digest(16) | HMAC-SHA-256(32)
+```
+
+Integers are big-endian; signed fields use two's complement. Version is 1,
+key/post IDs are positive, and the occurrence time must round-trip within
+0001-01-01T00:00:00Z through 9999-12-31T23:59:59.999999Z. The outer HMAC covers
+the exact ASCII domain string `gotth-bb/activity-cursor/v1` and all preceding
+bytes. Decode enforces exact length,
+alphabet, no padding, canonical re-encoding, known active/previous key ID, and
+constant-time MAC comparison before session/activity-query work.
+
+The 16-byte audience digest is the prefix of a separate HMAC under that cursor
+key, beginning with exact ASCII `gotth-bb/activity-audience/v1`. Its remaining
+input is: format byte `1`; authentication byte (`0`/`1`);
+big-endian signed user ID (zero only anonymous); role byte (`0` anonymous, `1`
+member, `2` moderator, `3` administrator); then every complete sorted unique
+positive group ID as a big-endian signed integer. The fixed-width remainder is
+unambiguous and is streamed over the server-loaded slice. An authenticated
+slice that is not strictly increasing and positive fails fixed `503` rather
+than being sorted or deduplicated into a second authority snapshot. A mismatch after
+optional-session resolution is the same fixed `400` as malformed/expired and
+runs no activity candidate query.
+
+One statement at the start of the activity transaction samples finite
+PostgreSQL `clock_timestamp()` and decides cursor/key time validity before
+candidate SQL. Issue time over 60 seconds in the future or age over 24 hours is
+invalid. A new cursor uses that database sample; process-local time state is not
+authority.
+
+Startup reads one immutable cursor-keyring secret. Its UTF-8 JSON is at most
+1,024 bytes and contains exactly `version: 1`, one `active` object, and
+`previous: null` or one previous object. Each object has only a distinct
+nonzero uint32 decimal `id`, strict unpadded-base64url 32-byte `key`, and UTC
+RFC3339-second `not_before`/`issue_not_after` with ordered bounds. Bounds plus
+24 hours and 60 seconds fit years 0001..9999. Duplicate/unknown fields, trailing
+JSON, symlinks, non-regular files, runtime write permission, or group/world
+write bits fail startup without echoing content. The read-only mount/service
+credentials follow existing secret policy.
+
+Emission uses active only inside its inclusive issuance window. Decode also
+requires `issued_at` inside the selected key's window; previous accepts only
+through its `issue_not_after + 24h + 60s`. A valid but non-issuing active key
+makes `/activity` fixed `503` while global readiness, search, and unrelated
+routes remain available.
+
+### 19.4 Projection schema and writers
+
+`SearchProjectionVersion` is the exact compiled literal
+`search-v1-pg17-simple-u15-p2`. It binds renderer
+`goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`, the renderer-owned visible-text
+algorithm, pinned NFC/Unicode-15 identity, PostgreSQL major 17, and
+`pg_catalog.simple`. Any output-affecting change requires a new literal and
+complete rebuild. Before a PostgreSQL 17 minor update, the stopped preflight
+recomputes every vector on the candidate server and compares byte-for-byte;
+any difference requires a new literal/rebuild.
+
+Topic vector input is the stored title after NFC normalization. The renderer
+derives sanitized trusted HTML and normalized visible text from one parse of
+sanitized output. It emits only text nodes in render order, inserts one ASCII
+space at boundaries for `p`, `h1` through `h6`, `hr`, `ul`, `ol`, `li`,
+`blockquote`, `pre`, `br`, `table`, `thead`, `tbody`, `tr`, `th`, and `td`,
+collapses Unicode 15.0 `White_Space` runs to one ASCII space, trims,
+NFC-normalizes,
+and emits no markup or attributes. Redacted input is empty. Search query text
+uses the same NFC helper.
+
+Migration 000008 adds topic/post `search_vector tsvector` and
+`search_projection_version text`; a boolean-true-primary-key
+`search_projection_state` with exact target, closed topics/posts/complete
+phase, nullable signed-bigint cursor, separate nonnegative converted counts,
+and nullable completion time; and six `NOT VALID` checks covering the two
+projection tuples, two finite created-at domains, and two positive-ID domains.
+Historical projection tuples are all NULL; current tuples have non-NULL vector
+and the exact version. The checks are named
+`topics_search_projection_current`, `posts_search_projection_current`,
+`topics_search_created_finite`, `posts_search_created_finite`,
+`topics_search_id_positive`, and `posts_search_id_positive`. Completion
+validates all six.
+
+The five exact partial indexes are:
+
+- `topics_search_vector_current_idx`: GIN `topics(search_vector)`;
+- `posts_search_vector_current_idx`: GIN `posts(search_vector)`;
+- `topics_search_author_current_idx`: B-tree
+  `topics(author_id, created_at DESC, id DESC)`;
+- `posts_search_author_current_idx`: the same columns on posts; and
+- `posts_activity_current_idx`: B-tree
+  `posts(created_at DESC, id DESC)`.
+
+Every topic predicate is `deleted_at IS NULL AND
+search_projection_version = 'search-v1-pg17-simple-u15-p2'`. Every post
+predicate adds `redacted_at IS NULL`. Query predicates match syntactically.
+No row quota, stored full visible-text copy, exact global count, or index hint
+is added.
+
+Publish/edit/redact derive vector input at the renderer boundary and persist
+content, exact projection version, and
+`to_tsvector('pg_catalog.simple', $visible_text)` atomically. Redaction writes
+the exact empty vector/current version. Delete/hide/move need not rewrite vector
+bytes because reads exclude invisible state.
+
+Migration 000008 leaves `gotth_validate_topic_post_state()` unchanged but
+replaces its two all-column constraint triggers with six. The exact names are
+`topics_validate_post_state_insert`, `topics_validate_post_state_update`,
+`topics_validate_post_state_delete`, `posts_validate_topic_state_insert`,
+`posts_validate_topic_state_update`, and
+`posts_validate_topic_state_delete`. Topic/post INSERT and DELETE retain
+deferred checks. Topic UPDATE names only `id, first_post_id, latest_post_id,
+reply_count, next_post_number`; post UPDATE names only `id, topic_id,
+post_number`. Each UPDATE also has an exact `OLD ... IS DISTINCT FROM NEW ...`
+disjunction, so projection-only writes do not queue whole-topic validation.
+Completion/readiness attest those definitions and the unchanged function.
+
+### 19.5 Migration, readiness, and rollback
+
+The application and all writers are stopped/drained before the ordinary
+argument-free migration command. Its complete read-only preflight walks topic
+and post primary keys in batches of at most 100, validates positive IDs/finite
+times, derives exact projection input, asks PostgreSQL 17 to construct each
+vector, and reports only kind, ID, and fixed error class. The preflight is not a
+concurrency barrier; stopped-writer state is mandatory and rechecked before
+schema apply.
+
+The existing advisory migration lock covers migration 000008 and its ledger row
+in one transaction. Nullable columns do not rewrite heaps. The five initially
+empty partial indexes still perform heap passes to evaluate predicates; release
+evidence measures their I/O/lock exposure. After commit, batches of at most 100
+lock the singleton and selected rows, write vectors and phase/cursor/count in
+one transaction, and resume solely from database state. Moving topics to posts
+resets the cursor. Failure advances nothing.
+
+Completion proves zero NULL/partial/stale tuples, validates all six checks,
+attests exact indexes and six narrowed triggers plus unchanged function, and
+marks complete once while preserving first completion time on rerun. Startup
+and `/health/ready` require exact migration head 000008, the one complete
+current singleton, exact validated checks/indexes/triggers/function, and the
+admitted Alpha.3 renderer. Startup also requires a structurally valid keyring;
+active issuance expiry remains route-local. Each query still requires current
+row projection.
+
+Before 000008, restore the prior artifact normally. After commit, its
+exact-migration readiness fails; recover by forward repair/current artifact or
+the existing verified pre-migration backup/restore. Unknown COMMIT outcome is
+resolved from the ledger/schema before retry. AN-02 adds no down migration or
+physical-backup system.
+
+### 19.6 Resource, failure, and logging contract
+
+Search/activity share a process-local non-waiting semaphore of capacity two.
+Saturation returns fixed `503` plus `Retry-After: 1` before session/pool work.
+Search has one five-second application context and activity two seconds,
+covering session/group load, repeatable-read checkout, semantic parse, SQL,
+validation, excerpt derivation, and bounded rendering. Each transaction uses a
+statement timeout no longer than that context, `lock_timeout=250ms`,
+`work_mem=4MB`, parallel gather off, and JIT off. These schedule cancellation;
+they are not hard resource guarantees.
+
+Rendering completes before headers. Transaction/checkout end before network
+output. The permit stays held until the bounded write ends, so at most two
+discovery buffers/slow writes exist per process; the existing 30-second server
+write deadline is the outer slow-client bound. Pages contain at most 25 rows
+and the full envelope is at most 256 KiB. Overflow, cancellation, SQL, row,
+projection, or template failure discards uncommitted output and returns fixed
+`503`. There is no in-request retry or partial authorized response.
+
+Application logs/metrics retain route pattern, fixed outcome, status, duration,
+and bounded counts only—not filters, cursor, identity, fields, snippets, or raw
+body. Caddy still receives the raw query-bearing request target, and enabled
+PostgreSQL statement/parameter diagnostics may see bound values. Those are
+separate operator-controlled trust boundaries and are never hidden by an
+application-log redaction claim.
+
+## 20. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

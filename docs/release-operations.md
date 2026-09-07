@@ -231,9 +231,15 @@ notes, screenshots, or repository files.
   `SELECT ... FOR UPDATE`, plus `SELECT` on the migration-owned
   `content_renderer_state` readiness singleton. Table-wide governance UPDATE,
   UPDATE on `created_at`, renderer-state mutation, and DELETE remain denied.
+- After 000008, the same packaged grant artifact adds only `SELECT` on the
+  migration-owned `search_projection_state` singleton for runtime readiness;
+  runtime never owns or mutates that table.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
+- Before a PostgreSQL 17 minor update, AN-02's stopped preflight recomputes
+  every stored search vector on the candidate server. Any byte difference
+  requires a new projection identity and complete rebuild before service.
 - Database access is not public.
 - The alpha Compose service preserves the pinned PostgreSQL container image,
   loopback-only maintenance port, and
@@ -272,6 +278,8 @@ Required secrets include at minimum:
 
 - PostgreSQL credential or connection secret.
 - Authentik OIDC client secret.
+- AN-02 cursor keyring with one active 32-byte key and at most one overlapping
+  previous key.
 - Any session-token hashing/pepper secret if the final implementation requires
   one beyond strong random opaque tokens and stored hashes.
 
@@ -287,6 +295,29 @@ Secret handling requirements:
   The database URL and OIDC client secret are separate host files mounted
   read-only as Compose secrets; neither appears in the Compose file, image
   configuration, or Docker `Config.Env`.
+- The cursor keyring is a separate read-only Compose secret. Only its non-secret
+  absolute mount path is configured as `ACTIVITY_CURSOR_KEYRING_FILE`; key
+  bytes are never exported by the entrypoint.
+
+### 8.1 AN-02 cursor-key rotation
+
+The cursor keyring uses the strict schema and file validation in the
+implementation specification. Secret bytes never enter repository files,
+arguments, environment, logs, metrics, retained evidence, or release records.
+The record keeps only key IDs, issuance bounds, and secret-file digest or
+fingerprint.
+
+To rotate, generate a new 32-byte key with a CSPRNG; atomically install a
+complete keyring containing new active and old previous; force-recreate the
+application so Docker selects the new secret-file inode; and verify activity
+issuance through Caddy. Retain previous until strictly more than 24 hours plus
+60 seconds after its last allowed issuance. Then atomically install the
+active-only keyring, force-recreate again, and verify. Do not alter
+`restart: unless-stopped`, restart PostgreSQL, or introduce a key daemon.
+
+If the structurally valid active key is outside its issuance window, only
+`/activity` returns fixed `503`; global readiness and unrelated routes remain
+available. An invalid/unreadable keyring is a startup configuration failure.
 
 ## 9. Deployment procedure
 
@@ -302,14 +333,14 @@ required sequence is:
 5. Validate new configuration without exposing secrets.
 6. Put the new artifact beside the current artifact; do not overwrite the only
    rollback copy.
-7. Inspect pending migrations and confirm the Alpha.3 renderer preflight is
-   present in the exact `gotth-bb-migrate` artifact. Do not run it while the
-   old application can still write.
-8. For alpha.3 or any later renderer-version migration, enter a visible
-   maintenance window, stop the current application, drain in-flight requests,
-   and prove the old listener is closed before applying schema or content
-   changes. Do not rely on row locks to protect against an old binary that can
-   resume afterward and write an obsolete renderer version.
+7. Inspect pending migrations and confirm every required Alpha.3 renderer and
+   AN-02 projection preflight is present in the exact `gotth-bb-migrate`
+   artifact. Do not run it while the old application can still write.
+8. For alpha.3, AN-02, or any later renderer/projection migration, enter a
+   visible maintenance window, stop the current application, drain in-flight
+   requests, and prove the old listener is closed before applying schema or
+   content changes. Do not rely on row locks to protect against an old binary
+   that can resume afterward and write an obsolete projection version.
 9. Run the ordinary argument-free migration command once with an explicit
    result. It first performs the mandatory complete read-only renderer
    preflight and returns before `migration.Apply` if any existing row is not
@@ -351,14 +382,25 @@ required sequence is:
    maintenance window is unacceptable for the target installation, stop before
    migration 000007 and plan an explicitly approved maintenance window; do not
    begin the incompatible schema transition and hope it finishes.
+   For AN-02 migration 000008, the same stopped/drained boundary covers the
+   complete topic/post projection preflight, schema apply, and restart-safe
+   backfill. Its six existing-row checks are installed `NOT VALID`; its five
+   initially empty partial indexes still perform full heap predicate passes and
+   their measured I/O/lock exposure belongs in the release record. Topic then
+   post batches commit at most 100 rows with singleton phase/cursor/count state.
+   Completion proves no NULL/partial/stale projection, validates all checks,
+   attests the exact indexes and narrowed triggers, and alone marks readiness.
+   A PostgreSQL minor update additionally performs the full-corpus byte
+   comparison before service. Do not replace this with fixture sampling.
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
    after 000007 because PostgreSQL grants a newly created table only to its
    migration owner by default; the application readiness role needs the
    artifact's narrow `SELECT` on `content_renderer_state`. Reapplying this
-   `GRANT` artifact is idempotent. Do not transfer table ownership or substitute
-   table-wide mutation privileges.
+   `GRANT` artifact is idempotent. After 000008 it also supplies the exact
+   read-only `search_projection_state` grant. Do not transfer table ownership
+   or substitute table-wide mutation privileges.
 11. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 12. Validate the resolved Compose model without printing its environment.
@@ -387,6 +429,9 @@ Every deployed prerelease verifies:
 - Read-only and archived publishing are rejected correctly.
 - Topic/reply creation and readback work.
 - Restricted direct URL and list leakage checks pass.
+- Once AN-02 is present, public/member/group/staff search, recent activity,
+  continuation, direct-post, expiry, and restricted-occupancy checks pass
+  through Caddy without exposing query/cursor values in application logs.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
 
@@ -408,6 +453,9 @@ Decision order after failure:
    binary that persists the previous renderer version; do not restart that
    binary after migration. Use forward repair, or restore the pre-migration
    database backup before restoring the old artifact.
+   AN-02 migration 000008 likewise makes the prior artifact fail its exact-head
+   readiness contract. Use the current artifact/forward repair or restore the
+   verified pre-000008 database backup; there is no down-migration claim.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the
@@ -457,6 +505,13 @@ A backup file's existence proves nothing until restoration is tested.
   tag; operators can also use bounded `docker compose logs` output.
 - Request IDs propagated through error pages and HTMX errors.
 - No tokens, cookies, secrets, or unrestricted content bodies.
+- AN-02 application events retain only route pattern, fixed outcome, status,
+  duration, and bounded counts. They exclude filters, cursor values, identities,
+  result fields, and snippets. Caddy still receives the raw query-bearing
+  request target, and operator-enabled PostgreSQL statement/parameter
+  diagnostics may receive bound search values. Access and retention for those
+  separate systems must be set accordingly; application redaction does not
+  make a broader claim.
 
 ### Metrics
 

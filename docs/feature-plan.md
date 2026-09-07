@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.3` |
+| Current target | `1.0.0-alpha.N` — AN-02 contract admitted; implementation pending |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -384,9 +384,37 @@ Requirements: MOD-001 through MOD-004, MOD-007, MOD-008.
 
 Requirements: READ-003, READ-004, SEC-004.
 
-- PostgreSQL text vectors and ranking.
-- Text, author, area, and date filters.
-- Access-filtered recent activity and search counts/snippets.
+AN-02 depends on admitted Alpha.3 commit
+`af194df197c9e2f9ceec3b26b3891cad7ad00cf1`. Its serial implementation units
+are:
+
+1. **AN-02-01 — projection and restart-safe migration.** Add the exact
+   `search-v1-pg17-simple-u15-p2` renderer-owned vector contract, migration
+   000008 schema/checks/indexes/narrowed triggers, stopped full preflight,
+   topic/post batch backfill, completion oracle, readiness checks, writer
+   integration, and fresh/upgrade/restart/concurrent-runner evidence. Do not
+   add routes before the projection gate is complete.
+2. **AN-02-02 — authorization-first stores and cursor.** Add bounded request
+   types, PostgreSQL web-search parsing, the typed 51-identity candidate/page
+   query, 26-row activity keyset, primary-key direct-post query, strict
+   cursor/audience/keyring codec, and visitor/member/group/staff matrices.
+   Plans must prove authorization before limits/rank/excerpts/terminality on the
+   representative PostgreSQL corpus.
+3. **AN-02-03 — HTTP and progressive UI.** Add exact optional-session routes,
+   navigation/search form, full/HTMX parity, base-path canonical links, fixed
+   statuses, two-permit/deadline/buffer behavior, safe excerpt rendering,
+   application-log redaction, and browser-through-Caddy accessibility/slow-
+   client evidence.
+4. **AN-02-04 — integrated admission.** Reproduce generated SQL/static/Templ
+   state; run focused unit, PostgreSQL 17 integration/race, migration,
+   100,000-topic/1,000,000-post plan/resource, browser, repository-integrity,
+   and exact-artifact gates; retain evidence; then obtain two fresh clean
+   reviews on one exact final tree.
+
+The units stay in one isolated feature worktree and move one at a time through
+DONE/HANDOFF/orchestrator review. Corpus sizes are evidence points, never
+publication quotas. Workers do not create PRs, merge, push, release, or deploy
+without later explicit authorization.
 
 ### AN-03: unread state
 

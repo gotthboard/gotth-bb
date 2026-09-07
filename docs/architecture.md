@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft constrained by PRD 0.5 |
+| Status | Draft constrained by PRD 0.6 |
 | Product | GOTTH Board |
 | Applies to | Version 1.0 unless noted |
 | Governing document | [Product requirements](prd.md) |
@@ -437,10 +437,64 @@ isolation.
 
 ## 10. Search and unread state
 
-PostgreSQL full-text search is sufficient for version 1.0. Search vectors are
-derived from topic titles and visible post content. The access predicate joins
-areas before ranking or returning results. Restricted text must not enter a
-shared unauthenticated cache.
+PostgreSQL 17 full-text search is sufficient for version 1.0; `gotth-search`
+remains a placeholder and no external service enters the data path. AN-02 owns
+three optional-session reads: `/search`, `/activity`, and the primary-key-started
+`/posts/{postID}` target. The existing global navigation links the first two.
+
+Search treats topic titles and post bodies as distinct typed documents. The
+admitted renderer produces sanitized HTML and normalized visible text at one
+boundary; only that visible text becomes a post vector or excerpt input. Topic
+vectors derive from titles. Projection identity binds renderer/visible-text,
+NFC/Unicode, PostgreSQL-major, and the fully qualified `pg_catalog.simple`
+configuration. A changed identity requires stopped preflight and complete
+rebuild, not a mixed projection. Minor PostgreSQL upgrades compare every stored
+vector under the candidate server; a fixture sample is not corpus proof.
+
+Authorization is relational, not a post-filter. Each topic and post candidate
+branch joins its area/topic context and applies the canonical visitor/member/
+group/staff predicate before text matching can enter the 51-row search fence,
+the 26-row activity limit, ranking, counting, excerpt work, or terminality.
+`area_groups` is only an `EXISTS` semi-join. The selected search page rechecks
+the same predicate and projection marker inside one read-only repeatable-read
+transaction. A mismatch fails the buffered response closed; it does not fill a
+page with a weaker query. Restricted data never enters a shared anonymous
+cache.
+
+Search first materializes at most the newest 51 authorized typed identities,
+with root-post deduplication before that limit. It uses row 51 only as the
+`50+` sentinel. Text ranking orders the first 50 candidates; author-only search
+retains newest-first order. This makes the cost and the UI claim agree: rank is
+local to a bounded recent set, not a fictional global optimum.
+
+Activity keysets on immutable `(posts.created_at, posts.id)` and authorizes
+inside the same SQL shape before `LIMIT 26`. Its fixed authenticated cursor
+carries only the boundary, database-issued time, key identity, and a 16-byte
+digest of the server-owned access snapshot. A 32-byte HMAC covers the complete
+binary record. PostgreSQL `clock_timestamp()` in the read transaction decides
+the 24-hour lifetime and key issuance window, preserving ordinary automatic
+restart without process-local monotonic state. Cursor-key expiry affects only
+activity issuance; it cannot close global readiness or unrelated routes.
+
+One process-local non-waiting semaphore of two bounds search/activity database
+work, response buffers, and slow writes. Each handler buffers at most 256 KiB
+before committing headers, ends its database checkout before network output,
+and holds the permit through the bounded write. Search gets one five-second
+work context and activity two seconds. PostgreSQL statement, lock, work-memory,
+parallel, and JIT settings schedule bounded cancellation but are not misrepresented
+as hard CPU, RSS, I/O, or backend-disappearance limits.
+
+Migration 000008 adds nullable vector/version columns, a restart-safe
+topic-then-post projection singleton, six `NOT VALID` checks over existing
+rows, five exact partial indexes, and narrower deferred consistency-trigger
+events. The stopped release preflight validates every row before schema apply.
+Backfill commits batches of at most 100 with singleton/cursor/count state in the
+same transaction. Completion proves no NULL/partial/stale tuple, validates the
+checks, attests exact indexes/triggers, and alone marks the target complete.
+Index creation honestly performs heap passes even while its current-version
+predicates are initially empty. Rollback remains forward repair or the existing
+verified pre-migration restore; AN-02 adds no down-migration fiction or backup
+engine.
 
 Unread state records the last post position read for a user and topic. Counts
 may be approximate only if the UI labels them as such; access filtering is never
