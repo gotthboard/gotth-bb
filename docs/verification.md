@@ -392,17 +392,29 @@ local result is represented as that evidence.
 
 ## 18. Alpha.3 renderer migration evidence
 
-The canonical reproduction command is
-`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-rerender-performance.sh`.
-It captures HEAD and tree, writes exactly one deterministic committed archive,
+The canonical Linux/amd64 reproduction command is
+`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/alpha3-evidence-launcher rerender`.
+The committed statically linked launcher is the only supported entry point;
+direct `bash scripts/verify-alpha3-rerender-performance.sh` invocation is
+rejected. Before Bash exists, the launcher retains only the database URL,
+new evidence path, and optional container name, clears the environment, fixes
+the repository working directory and Git configuration boundary, requires its
+own exact worktree to be clean through fixed `/usr/bin/git`, then starts
+`/usr/bin/bash --noprofile --norc -p` with an explicit environment allowlist.
+The runner requires that launcher as its live direct parent through `/proc`,
+rechecks static linkage, and records its resolved path and SHA-256. It then
+captures HEAD and tree, writes exactly one deterministic committed archive,
 and extracts that captured archive into private scratch. Compilation occurs
 only inside the extracted tree, never inside the live worktree. The compile
 uses fixed `/usr/bin/go` under `env -i`, `GOENV=off`, `GOWORK=off`, empty
 `GOFLAGS`, the exact checksum-verified Go 1.26.6 toolchain, disabled CGO,
 fixed Linux/amd64/v1 targets,
 isolated build/module/temp caches, and checksum-verified public module
-downloads. The measured binary also starts under `env -i`. The script refuses
-ambient shell/loader injection, records both the bootstrap and selected
+downloads. The measured binary also starts under `env -i`. Because the entry
+point is static and Bash starts only after environment clearing, `BASH_ENV`,
+`ENV`, `SHELLOPTS`, `BASHOPTS`, `CDPATH`, imported shell functions, and
+dynamic-loader variables cannot execute or control the runner before custody.
+The script records both the bootstrap and selected
 compiler paths and digests, refuses
 a dirty source tree, and requires the same HEAD/tree/archive identities plus a
 clean tree after the measured process exits. It requires
@@ -431,7 +443,14 @@ identities and cleanliness, extracted-archive execution mode, OS, Go bootstrap
 and compiler digests/version/environment, container endpoint/image identity, container and
 live-SQL system identifier, fixture digests, transaction elapsed time, result
 state, and sampled peak RSS without printing the database URL. A committed
-negative test places syntax-invalid `_test.go` files behind both `.gitignore`
+negative test first proves an unsupported direct Bash invocation executes a
+malicious `BASH_ENV` before it can reject the caller. It then invokes both
+canonical launcher modes with the same payload, imported `dirname`/`sudo`/
+`docker` functions, `SHELLOPTS=xtrace`, hostile shell paths and loader values,
+and a secret URL sentinel, and requires no payload/function marker, spoofed
+value, evidence file, or secret output. It also rebuilds the static launcher
+byte-for-byte from the captured committed archive. Finally, it places
+syntax-invalid `_test.go` files behind both `.gitignore`
 and `.git/info/exclude`, supplies hostile ambient Go workspace, overlay,
 toolchain, cache, target, and compiler settings, and proves only the committed
 archive compiles and runs.
@@ -470,7 +489,7 @@ This documentation-and-evidence commit is the direct child of the tested
 executable commit; it changes no executable source, fixture, or methodology.
 
 The separate population-scale reproduction command is
-`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-population-performance.sh`.
+`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/alpha3-evidence-launcher population`.
 It applies the same extracted-archive build, empty build/run environment,
 before/after source-custody, new retained-output, exact-image, exact loopback
 endpoint, live-SQL-identity, environment-identity, stable system-identifier

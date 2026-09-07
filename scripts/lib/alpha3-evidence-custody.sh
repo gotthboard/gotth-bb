@@ -94,3 +94,17 @@ alpha3_compile_rerender_test() {
     alpha3_clean_go "$scratch" test -mod=readonly -tags=integration -c -o "$output" ./internal/rerender
   )
 }
+
+alpha3_compile_evidence_launcher() {
+  if [ "$#" -ne 2 ]; then
+    printf '%s\n' 'alpha3_compile_evidence_launcher requires scratch and output path' >&2
+    return 2
+  fi
+  local scratch=$1
+  local output=$2
+  (
+    cd "$ALPHA3_SOURCE_ROOT"
+    alpha3_clean_go "$scratch" build -mod=readonly -trimpath -buildvcs=false \
+      -ldflags='-s -w -buildid=' -o "$output" ./scripts/_alpha3_evidence_launcher/main.go
+  )
+}

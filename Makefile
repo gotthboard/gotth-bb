@@ -22,7 +22,7 @@ test:
 	go test -mod=readonly ./...
 
 verify: generate
-	bash scripts/test-alpha3-evidence-custody.sh
+	scripts/test-alpha3-evidence-custody.sh
 	test -z "$$(git diff --name-only -- internal/store/db)"
 	test -z "$$(git ls-files --others --exclude-standard -- internal/store/db)"
 	test -z "$$(git diff --name-only -- ':(glob)internal/httpui/*_templ.go' ':(glob)internal/httpui/**/*_templ.go' internal/httpui/static)"

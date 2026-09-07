@@ -1,12 +1,49 @@
-#!/usr/bin/bash
+#!/usr/bin/bash -p
+set +x
 set -euo pipefail
 
-for injection_variable in BASH_ENV ENV LD_PRELOAD LD_LIBRARY_PATH; do
+if [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PID:-}" ] || [ -z "${GOTTH_BB_EVIDENCE_LAUNCHER_PATH:-}" ]; then
+  printf '%s\n' 'unsupported direct invocation; use scripts/alpha3-evidence-launcher rerender' >&2
+  exit 2
+fi
+case "$GOTTH_BB_EVIDENCE_LAUNCHER_PID" in
+  ''|*[!0-9]*) printf '%s\n' 'invalid Alpha.3 evidence launcher PID' >&2; exit 2 ;;
+esac
+if [ "$PPID" != "$GOTTH_BB_EVIDENCE_LAUNCHER_PID" ]; then
+  printf '%s\n' 'Alpha.3 evidence launcher is not the direct parent' >&2
+  exit 2
+fi
+readonly evidence_launcher_path="$(/usr/bin/readlink -f -- "/proc/$PPID/exe")"
+readonly expected_launcher_path="$(/usr/bin/readlink -f -- "${BASH_SOURCE[0]%/*}/alpha3-evidence-launcher")"
+readonly attested_launcher_path="$(/usr/bin/readlink -f -- "$GOTTH_BB_EVIDENCE_LAUNCHER_PATH")"
+if [ "$evidence_launcher_path" != "$expected_launcher_path" ] || [ "$attested_launcher_path" != "$expected_launcher_path" ] || [ "$(/usr/bin/basename -- "$evidence_launcher_path")" != alpha3-evidence-launcher ]; then
+  printf '%s\n' 'Alpha.3 evidence launcher executable does not match its attestation' >&2
+  exit 2
+fi
+if /usr/bin/readelf -l -- "$evidence_launcher_path" | /usr/bin/grep -q 'INTERP'; then
+  printf '%s\n' 'Alpha.3 evidence launcher must be statically linked' >&2
+  exit 2
+fi
+readonly evidence_launcher_sha256="$(/usr/bin/sha256sum "/proc/$PPID/exe" | /usr/bin/cut -d' ' -f1)"
+readonly expected_launcher_sha256=b5b869a7ad2bbe1bd6969c8428621dc8644a84b89193d2397ec9f7342b47d859
+if [ "$evidence_launcher_sha256" != "$expected_launcher_sha256" ]; then
+  printf '%s\n' 'Alpha.3 evidence launcher digest does not match the admitted binary' >&2
+  exit 2
+fi
+if ! shopt -q -o privileged || [[ $- == *x* ]]; then
+  printf '%s\n' 'Alpha.3 evidence Bash must be privileged with xtrace disabled' >&2
+  exit 2
+fi
+for injection_variable in BASH_ENV ENV CDPATH LD_PRELOAD LD_LIBRARY_PATH; do
   if [ -n "${!injection_variable-}" ]; then
     printf 'refusing ambient process injection variable %s\n' "$injection_variable" >&2
     exit 2
   fi
 done
+if /usr/bin/env | /usr/bin/grep -q '^BASH_FUNC_'; then
+  printf '%s\n' 'refusing imported shell functions' >&2
+  exit 2
+fi
 PATH=/usr/bin:/bin
 export PATH
 readonly PATH
@@ -106,6 +143,10 @@ fi
   printf 'source_clean_after=true\n'
   printf 'source_execution_root=%s\n' "$ALPHA3_SOURCE_ROOT"
   printf 'source_execution_kind=extracted_captured_git_archive\n'
+  printf 'evidence_launcher_path=%s\n' "$evidence_launcher_path"
+  printf 'evidence_launcher_sha256=%s\n' "$evidence_launcher_sha256"
+  printf 'evidence_launcher_linkage=static-linux-amd64\n'
+  printf 'evidence_shell=/usr/bin/bash;--noprofile;--norc;-p;environment-allowlist\n'
   printf 'environment=%s\n' "$(uname -srvmo)"
   printf 'go_bootstrap_binary=%s\n' "$ALPHA3_GO_BOOTSTRAP_BINARY"
   printf 'go_bootstrap_sha256=%s\n' "$ALPHA3_GO_BOOTSTRAP_SHA256"
