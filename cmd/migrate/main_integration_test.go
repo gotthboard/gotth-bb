@@ -76,6 +76,39 @@ func TestApplyReleasePreflightFailsBeforeAlpha3SchemaMutationOnPostgreSQL17(t *t
 	}
 }
 
+func TestApplyReleaseSearchPreflightFailsBeforeMigration000008OnPostgreSQL17(t *testing.T) {
+	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	configured, connection := migrationTestDatabase(t, ctx, databaseURL, "gotth_bb_an02_preflight_failure")
+	if err := migration.Apply(ctx, configured, preAN02Migrations(t)); err != nil {
+		t.Fatalf("apply pre-AN-02 migrations: %v", err)
+	}
+	const source = "valid **source**"
+	insertMigrationPreflightPost(t, ctx, connection, -8, source, migrationCurrentHTML(t, source), contentrender.RendererVersion)
+	err := applyRelease(ctx, configured, migrations.Files())
+	if err == nil || !strings.Contains(err.Error(), "search projection post -8: invalid identity or time") {
+		t.Fatalf("applyRelease() error = %v, want fixed search projection identity failure", err)
+	}
+	var ledgerCount int
+	var stateAbsent, topicColumnAbsent, postColumnAbsent bool
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT count(*) FROM public.gotth_schema_migrations WHERE version = 8),
+    pg_catalog.to_regclass('public.search_projection_state') IS NULL,
+    NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'public.topics'::regclass AND attname = 'search_vector' AND NOT attisdropped),
+    NOT EXISTS (SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid = 'public.posts'::regclass AND attname = 'search_vector' AND NOT attisdropped)`).Scan(
+		&ledgerCount, &stateAbsent, &topicColumnAbsent, &postColumnAbsent,
+	); err != nil {
+		t.Fatalf("inspect failed search preflight state: %v", err)
+	}
+	if ledgerCount != 0 || !stateAbsent || !topicColumnAbsent || !postColumnAbsent {
+		t.Fatalf("failed search preflight mutated schema = (ledger %d state absent %t topic column absent %t post column absent %t)", ledgerCount, stateAbsent, topicColumnAbsent, postColumnAbsent)
+	}
+}
+
 func TestApplyReleasePreflightRechecksCurrentOutputOnIdempotentRunOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -203,6 +236,24 @@ func preAlpha3Migrations(t *testing.T) fs.FS {
 		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
 		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
 		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+	} {
+		body, err := fs.ReadFile(migrations.Files(), name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		legacy[name] = &fstest.MapFile{Data: body}
+	}
+	return legacy
+}
+
+func preAN02Migrations(t *testing.T) fs.FS {
+	t.Helper()
+	legacy := fstest.MapFS{}
+	for _, name := range []string{
+		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
+		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
+		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+		"000007_gfm_renderer.sql",
 	} {
 		body, err := fs.ReadFile(migrations.Files(), name)
 		if err != nil {
