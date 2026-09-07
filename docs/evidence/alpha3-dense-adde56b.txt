@@ -1,27 +1,27 @@
 === RUN   TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17
     rerender_integration_test.go:346: sql_server_identity version_num=170010 address=172.17.0.7/32 port=5432 database=gotth_bb_alpha3_rerender_performance_test system_identifier=7682637991496687654
     rerender_integration_test.go:383: fixture source_bytes=65532 source_sha256=5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c legacy_html_bytes=141997 legacy_html_sha256=8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a
-    rerender_integration_test.go:436: compatibility_batch rows=100 elapsed=20.059625365s preserved=100 exact_html=100 converted=100
---- PASS: TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17 (20.89s)
+    rerender_integration_test.go:436: compatibility_batch rows=100 elapsed=20.265108315s preserved=100 exact_html=100 converted=100
+--- PASS: TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17 (21.03s)
 PASS
-source_head_before=205ac5f5460de45da85ddb680669c31f26a3412c
-source_tree_before=cac3fa117a0e972c2878c59605a43b1ea53476b2
-source_archive_sha256_before=eafb8d8165e9d992ef4eafe73545b38d23ecb3fb40944a09ee096efc7d9f8c1c
+source_head_before=adde56b4a59e314abd5838c5e47da2b1ca5491e7
+source_tree_before=5198dc4fae9fdbfaaf9bd6bb3615d57e33c84f06
+source_archive_sha256_before=3c67a96189cff7009ae461371daccce759dad197378d238af32907400a1e369e
 source_clean_before=true
-source_head_after=205ac5f5460de45da85ddb680669c31f26a3412c
-source_tree_after=cac3fa117a0e972c2878c59605a43b1ea53476b2
-source_archive_sha256_after=eafb8d8165e9d992ef4eafe73545b38d23ecb3fb40944a09ee096efc7d9f8c1c
+source_head_after=adde56b4a59e314abd5838c5e47da2b1ca5491e7
+source_tree_after=5198dc4fae9fdbfaaf9bd6bb3615d57e33c84f06
+source_archive_sha256_after=3c67a96189cff7009ae461371daccce759dad197378d238af32907400a1e369e
 source_clean_after=true
-source_execution_root=/tmp/gotth-bb-alpha3-performance.wiiZNt/source
+source_execution_root=/tmp/gotth-bb-alpha3-performance.GqF9rU/source
 source_execution_kind=extracted_captured_git_archive
-evidence_launcher_path=/tmp/gotth-bb-alpha3-ime-205ac5f.ixsDuB/source/scripts/alpha3-evidence-launcher
+evidence_launcher_path=/tmp/gotth-bb-alpha3-pointer-adde56b.Zsd1cS/source/scripts/alpha3-evidence-launcher
 evidence_launcher_sha256=2bc8ae699ce63232345cc54671935e858bb16833dca0d6b642b7b68c95b3f547
 evidence_launcher_linkage=static-linux-amd64
 evidence_shell=/usr/bin/bash;--noprofile;--norc;-p;environment-allowlist
 environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
 go_bootstrap_binary=/usr/bin/go
 go_bootstrap_sha256=1eefba0e588df5775114c8e9d1805dc806be761c12061454c9aad655d2e171e3
-go_compiler_binary=/tmp/gotth-bb-alpha3-performance.wiiZNt/go-mod-cache/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64/bin/go
+go_compiler_binary=/tmp/gotth-bb-alpha3-performance.GqF9rU/go-mod-cache/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64/bin/go
 go_compiler_sha256=29e6e0b8be61beb1489ceae62b304343566de8a1dc700af74bde7aeb9c80ad45
 go_version=go1.26.6
 go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=go1.26.6;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches
@@ -33,4 +33,4 @@ postgres_system_identifier=7682637991496687654
 postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
 postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
-sampled_peak_rss_kib=76044
+sampled_peak_rss_kib=78576
