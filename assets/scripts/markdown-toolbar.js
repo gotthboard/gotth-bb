@@ -534,8 +534,9 @@
   // enhance progressively wires every not-yet-enhanced editor beneath root.
   //
   // Complexity: for e editor roots and b buttons, time is O(e+b), Omega(e),
-  // and tight Theta(e+b); auxiliary listener state is O(b), Omega(1), and
-  // tight Theta(b). DOM query and listener costs are delegated to the browser.
+  // and tight Theta(e+b). Persistent listener state is Theta(b); transient
+  // state is O(p+m) for active pointer IDs and mouse buttons across those
+  // buttons. DOM query, listener, and timer costs are delegated to the browser.
   function enhance(root = document) {
     root.querySelectorAll("[data-markdown-editor]").forEach((editor) => {
       if (editor.dataset.markdownEnhanced === "true") return;
@@ -549,35 +550,123 @@
       textarea.addEventListener("compositionend", () => {
         composing = false;
       });
+      const cleanupBlockedActivations = [];
       editor.querySelectorAll("[data-markdown-action]").forEach((button) => {
-        let suppressPointerClick = false;
+        const blockedPointers = new Set();
+        const pointerRecords = new Map();
+        const blockedMouseButtons = new Set();
+        const mouseRecords = new Map();
+
+        const pointerKey = (event) => Number.isInteger(event.pointerId) ? event.pointerId : "legacy-pointer";
+        const mouseKey = (event) => Number.isInteger(event.button) ? event.button : 0;
+        const removePointerRecord = (key) => {
+          const record = pointerRecords.get(key);
+          if (!record) return;
+          document.removeEventListener("pointerup", record.up, true);
+          document.removeEventListener("pointercancel", record.cancel, true);
+          pointerRecords.delete(key);
+        };
+        const finishPointer = (key, canceled) => {
+          removePointerRecord(key);
+          if (canceled) blockedPointers.delete(key);
+          else setTimeout(() => blockedPointers.delete(key), 0);
+        };
+        const removeMouseRecord = (key) => {
+          const up = mouseRecords.get(key);
+          if (!up) return;
+          document.removeEventListener("mouseup", up, true);
+          mouseRecords.delete(key);
+        };
+        const finishMouse = (key) => {
+          removeMouseRecord(key);
+          setTimeout(() => blockedMouseButtons.delete(key), 0);
+        };
+        const clearBlockedActivation = () => {
+          for (const key of pointerRecords.keys()) removePointerRecord(key);
+          for (const key of mouseRecords.keys()) removeMouseRecord(key);
+          blockedPointers.clear();
+          blockedMouseButtons.clear();
+        };
+        cleanupBlockedActivations.push(clearBlockedActivation);
         const guardPointerDown = (event) => {
-          if (!composing) {
-            suppressPointerClick = false;
-            return;
-          }
-          suppressPointerClick = true;
+          const key = pointerKey(event);
+          if (!composing) return finishPointer(key, true);
+          blockedPointers.add(key);
           event.preventDefault();
+          if (pointerRecords.has(key)) return;
+          const up = (endEvent) => {
+            if (pointerKey(endEvent) === key) finishPointer(key, false);
+          };
+          const cancel = (endEvent) => {
+            if (pointerKey(endEvent) === key) finishPointer(key, true);
+          };
+          pointerRecords.set(key, { up, cancel });
+          document.addEventListener("pointerup", up, true);
+          document.addEventListener("pointercancel", cancel, true);
         };
         const guardMouseDown = (event) => {
-          if (!composing) return;
-          suppressPointerClick = true;
+          const key = mouseKey(event);
+          if (!composing) {
+            blockedMouseButtons.delete(key);
+            removeMouseRecord(key);
+            return;
+          }
+          blockedMouseButtons.add(key);
           event.preventDefault();
+          if (mouseRecords.has(key)) return;
+          const up = (endEvent) => {
+            if (mouseKey(endEvent) === key) finishMouse(key);
+          };
+          mouseRecords.set(key, up);
+          document.addEventListener("mouseup", up, true);
         };
         button.addEventListener("pointerdown", guardPointerDown);
         button.addEventListener("mousedown", guardMouseDown);
+        button.addEventListener("lostpointercapture", (event) => {
+          const key = pointerKey(event);
+          if (blockedPointers.has(key)) finishPointer(key, false);
+        });
         button.addEventListener("click", (event) => {
           event.preventDefault();
-          if (composing || suppressPointerClick) {
-            suppressPointerClick = false;
-            return;
+          let blockedPointerClick = false;
+          if (Number(event.detail) > 0) {
+            const key = pointerKey(event);
+            if (blockedPointers.has(key)) {
+              blockedPointerClick = true;
+              finishPointer(key, true);
+            } else if (blockedPointers.size > 0) {
+              // Legacy compatibility clicks may not expose pointerId. Retire
+              // one local blocked pointer rather than letting that physical
+              // click mutate a composition-owned draft.
+              const blockedKey = blockedPointers.values().next().value;
+              blockedPointerClick = true;
+              finishPointer(blockedKey, true);
+            } else {
+              const mouseButton = mouseKey(event);
+              if (blockedMouseButtons.has(mouseButton)) {
+                blockedPointerClick = true;
+                blockedMouseButtons.delete(mouseButton);
+                removeMouseRecord(mouseButton);
+              }
+            }
+          } else {
+            // Native keyboard and synthetic activation use detail zero. They
+            // are never poisoned by an older pointer gesture.
+            clearBlockedActivation();
           }
+          if (composing || blockedPointerClick) return;
           const result = transform(textarea.value, textarea.selectionStart, textarea.selectionEnd, button.dataset.markdownAction);
           textarea.value = result.value;
           textarea.focus();
           textarea.setSelectionRange(result.start, result.end);
         });
       });
+      const cleanupEditor = (event) => {
+        if (event.target !== editor) return;
+        for (const cleanup of cleanupBlockedActivations) cleanup();
+        editor.removeEventListener("htmx:beforeCleanupElement", cleanupEditor);
+      };
+      editor.addEventListener("htmx:beforeCleanupElement", cleanupEditor);
       editor.dataset.markdownEnhanced = "true";
       toolbar.hidden = false;
     });

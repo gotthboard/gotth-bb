@@ -6,7 +6,7 @@ import vm from "node:vm";
 const script = readFileSync(new URL("./markdown-toolbar.js", import.meta.url), "utf8");
 
 function load(document = { querySelectorAll: () => [], addEventListener: () => {} }) {
-  const context = { document };
+  const context = { document, setTimeout };
   context.globalThis = context;
   vm.runInNewContext(script, context, { filename: "markdown-toolbar.js" });
   return context.gotthMarkdownToolbar;
@@ -296,6 +296,7 @@ test("enhancement wires buttons without replacing ordinary textarea behavior", (
 function editorHarness(value = "word", action = "bold") {
   const textareaListeners = {};
   const buttonListeners = {};
+  const rootListeners = {};
   const textarea = {
     value,
     selectionStart: 0,
@@ -312,6 +313,8 @@ function editorHarness(value = "word", action = "bold") {
   const toolbar = { hidden: true };
   const root = {
     dataset: {},
+    addEventListener(name, listener) { rootListeners[name] = listener; },
+    removeEventListener(name, listener) { if (rootListeners[name] === listener) delete rootListeners[name]; },
     querySelector(selector) {
       if (selector === "textarea") return textarea;
       if (selector === "[data-markdown-toolbar]") return toolbar;
@@ -319,17 +322,37 @@ function editorHarness(value = "word", action = "bold") {
     },
     querySelectorAll: () => [button],
   };
-  const click = () => {
+  const click = (detail = 0, pointerId) => {
     let prevented = 0;
-    buttonListeners.click({ preventDefault() { prevented += 1; } });
+    buttonListeners.click({ detail, pointerId, button: 0, preventDefault() { prevented += 1; } });
     return prevented;
   };
-  const dispatch = (name) => {
+  const dispatch = (name, properties = {}) => {
     let prevented = 0;
-    buttonListeners[name]({ preventDefault() { prevented += 1; } });
+    buttonListeners[name]({ pointerId: 1, button: 0, ...properties, preventDefault() { prevented += 1; } });
     return prevented;
   };
-  return { root, textarea, toolbar, textareaListeners, buttonListeners, click, dispatch };
+  return { root, textarea, toolbar, button, rootListeners, textareaListeners, buttonListeners, click, dispatch };
+}
+
+function documentHarness(editors) {
+  const listeners = new Map();
+  let afterSwap;
+  return {
+    document: {
+      querySelectorAll: () => editors.map((editor) => editor.root),
+      addEventListener(name, listener) {
+        if (name === "htmx:afterSwap") afterSwap = listener;
+        if (!listeners.has(name)) listeners.set(name, new Set());
+        listeners.get(name).add(listener);
+      },
+      removeEventListener(name, listener) { listeners.get(name)?.delete(listener); },
+    },
+    dispatch(name, properties = {}) {
+      for (const listener of [...(listeners.get(name) || [])]) listener({ pointerId: 1, button: 0, ...properties });
+    },
+    afterSwap(event) { afterSwap(event); },
+  };
 }
 
 test("live IME composition makes toolbar actions strict editor-local no-ops", () => {
@@ -389,12 +412,8 @@ test("live IME composition makes toolbar actions strict editor-local no-ops", ()
 test("pointer activation that begins during composition stays inert after compositionend", () => {
   const first = editorHarness("provisional", "bold");
   const second = editorHarness("stable", "italic");
-  let afterSwap;
-  const document = {
-    querySelectorAll: () => [first.root, second.root],
-    addEventListener(name, listener) { if (name === "htmx:afterSwap") afterSwap = listener; },
-  };
-  load(document);
+  const harness = documentHarness([first, second]);
+  load(harness.document);
 
   first.textarea.selectionStart = 2;
   first.textarea.selectionEnd = 7;
@@ -404,7 +423,7 @@ test("pointer activation that begins during composition stays inert after compos
   // mousedown. That mousedown must not erase the blocked-gesture latch.
   first.textareaListeners.compositionend();
   assert.equal(first.dispatch("mousedown"), 0);
-  assert.equal(first.click(), 1);
+  assert.equal(first.click(1, 1), 1);
   assert.equal(first.textarea.value, "provisional");
   assert.equal(first.textarea.selectionStart, 2);
   assert.equal(first.textarea.selectionEnd, 7);
@@ -412,7 +431,7 @@ test("pointer activation that begins during composition stays inert after compos
 
   assert.equal(second.dispatch("pointerdown"), 0);
   assert.equal(second.dispatch("mousedown"), 0);
-  assert.equal(second.click(), 1);
+  assert.equal(second.click(1, 1), 1);
   assert.equal(second.textarea.value, "*stable*");
   assert.equal(second.textarea.focusCalls, 1);
 
@@ -420,22 +439,106 @@ test("pointer activation that begins during composition stays inert after compos
   // therefore follows the ordinary action path.
   assert.equal(first.dispatch("pointerdown"), 0);
   assert.equal(first.dispatch("mousedown"), 0);
-  assert.equal(first.click(), 1);
+  assert.equal(first.click(1, 1), 1);
   assert.equal(first.textarea.value, "pr**ovisi**onal");
   assert.equal(first.textarea.focusCalls, 1);
 
   const replacement = editorHarness("fresh", "strike");
-  afterSwap({ target: { querySelectorAll: () => [replacement.root] } });
+  harness.afterSwap({ target: { querySelectorAll: () => [replacement.root] } });
   replacement.textarea.selectionStart = 1;
   replacement.textarea.selectionEnd = 4;
   replacement.textareaListeners.compositionstart();
   assert.equal(replacement.dispatch("mousedown"), 1);
   replacement.textareaListeners.compositionend();
-  assert.equal(replacement.click(), 1);
+  assert.equal(replacement.click(1, 1), 1);
   assert.equal(replacement.textarea.value, "fresh");
   assert.equal(replacement.textarea.selectionStart, 1);
   assert.equal(replacement.textarea.selectionEnd, 4);
   assert.equal(replacement.textarea.focusCalls, 0);
+});
+
+test("canceled and off-button pointer gestures cannot poison later native activation", async () => {
+  const editor = editorHarness("word", "bold");
+  const harness = documentHarness([editor]);
+  load(harness.document);
+
+  editor.textareaListeners.compositionstart();
+  assert.equal(editor.dispatch("pointerdown", { pointerId: 7 }), 1);
+  harness.dispatch("pointercancel", { pointerId: 7 });
+  editor.textareaListeners.compositionend();
+  assert.equal(editor.click(0), 1);
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
+
+  editor.textarea.value = "word";
+  editor.textarea.selectionStart = 0;
+  editor.textarea.selectionEnd = 4;
+  editor.textarea.focusCalls = 0;
+  editor.textareaListeners.compositionstart();
+  assert.equal(editor.dispatch("pointerdown", { pointerId: 8 }), 1);
+  harness.dispatch("pointerup", { pointerId: 8 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  editor.textareaListeners.compositionend();
+  assert.equal(editor.click(0), 1);
+  assert.equal(editor.textarea.value, "**word**");
+  assert.equal(editor.textarea.focusCalls, 1);
+
+  const replacement = editorHarness("replacement", "italic");
+  editor.textareaListeners.compositionstart();
+  editor.dispatch("pointerdown", { pointerId: 9 });
+  editor.rootListeners["htmx:beforeCleanupElement"]({ target: editor.root });
+  assert.equal(editor.rootListeners["htmx:beforeCleanupElement"], undefined);
+  harness.afterSwap({ target: { querySelectorAll: () => [replacement.root] } });
+  replacement.click(0);
+  assert.equal(replacement.textarea.value, "*replacement*");
+});
+
+test("mouse fallback, lost capture, multiple pointers, and buttons retire locally", async () => {
+  const first = editorHarness("one", "bold");
+  const second = editorHarness("two", "italic");
+  const harness = documentHarness([first, second]);
+  load(harness.document);
+
+  first.textareaListeners.compositionstart();
+  assert.equal(first.dispatch("mousedown", { button: 0 }), 1);
+  harness.dispatch("mouseup", { button: 0 });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  first.textareaListeners.compositionend();
+  first.click(0);
+  assert.equal(first.textarea.value, "**one**");
+
+  first.textarea.value = "one";
+  first.textarea.selectionStart = 0;
+  first.textarea.selectionEnd = 3;
+  first.textareaListeners.compositionstart();
+  first.dispatch("pointerdown", { pointerId: 11 });
+  first.dispatch("pointerdown", { pointerId: 12 });
+  first.dispatch("lostpointercapture", { pointerId: 11 });
+  harness.dispatch("pointercancel", { pointerId: 12 });
+  first.textareaListeners.compositionend();
+  first.click(0);
+  assert.equal(first.textarea.value, "**one**");
+
+  // The second editor/button never shares the first editor's gesture state.
+  second.click(0);
+  assert.equal(second.textarea.value, "*two*");
+
+  const shared = editorHarness("shared", "bold");
+  const italicListeners = {};
+  const italicButton = {
+    dataset: { markdownAction: "italic" },
+    addEventListener(name, listener) { italicListeners[name] = listener; },
+  };
+  shared.root.querySelectorAll = () => [shared.button, italicButton];
+  const sharedHarness = documentHarness([shared]);
+  load(sharedHarness.document);
+  shared.textareaListeners.compositionstart();
+  shared.dispatch("pointerdown", { pointerId: 21 });
+  shared.textareaListeners.compositionend();
+  italicListeners.click({ detail: 0, button: 0, preventDefault() {} });
+  assert.equal(shared.textarea.value, "*shared*");
+  shared.click(1, 21);
+  assert.equal(shared.textarea.value, "*shared*");
 });
 
 test("keyboard activation retains native click behavior outside composition", () => {

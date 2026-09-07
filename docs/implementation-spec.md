@@ -1215,9 +1215,13 @@ rendered core pages for root-relative application links that omit `/bb`.
   listener closure, so separate editors and an HTMX-created replacement start
   independently; once composition ends, the existing action path resumes.
   Pointer activation is intercepted before its focus-changing default action;
-  a per-button latch also consumes the trailing click if browser event ordering
-  ends composition before that click. Native keyboard activation remains the
-  ordinary button click path.
+  per-button, per-pointer state also consumes the same gesture's trailing
+  physical click if browser event ordering ends composition before that click.
+  Cancellation, lost capture, and pointer/mouse release without click retire
+  that gesture locally; HTMX cleanup removes any transient document listeners
+  before an editor is discarded. Native keyboard activation is identified by
+  the browser's zero-detail click and remains the ordinary button path even if
+  a canceled pointer lifecycle was interrupted.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
   match. Bold and italic inspect complete adjacent star runs: applying one to
   the other composes a three-star strong-plus-emphasis delimiter, removing one

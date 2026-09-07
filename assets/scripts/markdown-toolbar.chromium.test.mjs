@@ -75,7 +75,7 @@ test("Chromium preserves live IME state across physical pointer activation", asy
   await send("Page.enable", {}, sessionId);
   await send("Runtime.enable", {}, sessionId);
 
-  const html = `<!doctype html><meta charset="utf-8">
+  const html = `<!doctype html><meta charset="utf-8"><style>body{min-height:800px}</style>
     <div data-markdown-editor>
       <textarea id="draft">text</textarea>
       <div data-markdown-toolbar hidden><button id="bold" type="button" data-markdown-action="bold">Bold</button></div>
@@ -119,8 +119,35 @@ test("Chromium preserves live IME state across physical pointer activation", asy
   assert(!after.events.includes("t:compositionend"));
   assert(!after.events.includes("t:blur"));
 
+  // Finish the first composition, reset, and begin another gesture that is
+  // physically released away from the button. It must generate no button
+  // click and must retire its guard before later native keyboard activation.
+  await send("Input.insertText", { text: "正在" }, sessionId);
+  await evaluate(send, sessionId, "draft.value = 'text'; draft.focus(); draft.setSelectionRange(0, 0); toolbarEvents = []");
+  await send("Input.imeSetComposition", { text: "正在", selectionStart: 2, selectionEnd: 2 }, sessionId);
+  const offButton = await evaluate(send, sessionId, `({
+    value: draft.value,
+    start: draft.selectionStart,
+    end: draft.selectionEnd,
+    active: document.activeElement.id,
+    rect: (() => { const r = bold.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; })()
+  })`);
+  await send("Input.dispatchMouseEvent", { type: "mousePressed", x: offButton.rect.x, y: offButton.rect.y, button: "left", clickCount: 1 }, sessionId);
+  await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 500, y: 500, button: "none" }, sessionId);
+  await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 500, y: 500, button: "left", clickCount: 1 }, sessionId);
+  await evaluate(send, sessionId, "new Promise(resolve => setTimeout(resolve, 0))");
+  const releasedAway = await evaluate(send, sessionId, "({value: draft.value, start: draft.selectionStart, end: draft.selectionEnd, active: document.activeElement.id, events: toolbarEvents})");
+  assert.deepEqual(
+    { value: releasedAway.value, start: releasedAway.start, end: releasedAway.end, active: releasedAway.active },
+    { value: offButton.value, start: offButton.start, end: offButton.end, active: offButton.active },
+  );
+  assert(releasedAway.events.includes("b:pointerdown"));
+  assert(!releasedAway.events.includes("b:click"));
+  assert(!releasedAway.events.includes("t:compositionend"));
+  assert(!releasedAway.events.includes("t:blur"));
+
   // Commit the browser-owned composition, then use native keyboard navigation
-  // and activation. No custom key handling is involved.
+  // with both Space and Enter. No custom key handling is involved.
   await send("Input.insertText", { text: "正在" }, sessionId);
   await evaluate(send, sessionId, "draft.setSelectionRange(2, draft.value.length)");
   await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 }, sessionId);
@@ -131,4 +158,13 @@ test("Chromium preserves live IME state across physical pointer activation", asy
   const keyboard = await evaluate(send, sessionId, "({value: draft.value, active: document.activeElement.id})");
   assert.equal(keyboard.value, "正在**text**");
   assert.equal(keyboard.active, "draft");
+
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 }, sessionId);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 }, sessionId);
+  assert.equal(await evaluate(send, sessionId, "document.activeElement.id"), "bold");
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", unmodifiedText: "\r", windowsVirtualKeyCode: 13 }, sessionId);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }, sessionId);
+  const enter = await evaluate(send, sessionId, "({value: draft.value, active: document.activeElement.id})");
+  assert.equal(enter.value, "正在text");
+  assert.equal(enter.active, "draft");
 });

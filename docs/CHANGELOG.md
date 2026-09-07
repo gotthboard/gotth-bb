@@ -198,7 +198,11 @@ Risks / non-goals:
 The toolbar's IME guard also intercepts pointer focus transfer before
 `compositionend` and consumes that gesture's trailing click. This keeps value,
 focus, and selection unchanged when a pointer gesture begins during live
-composition without replacing native keyboard button activation.
+composition without replacing native keyboard button activation. Pointer
+cancel, lost capture, release without click, mouse compatibility events, and
+HTMX editor removal retire only their editor/button-local gesture state;
+zero-detail Space, Enter, and synthetic activation cannot inherit a stale
+pointer latch.
 
 ### 2026-09-06 20:02 CDT — Implement the bounded GFM renderer
 
