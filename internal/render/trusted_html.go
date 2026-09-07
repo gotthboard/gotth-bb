@@ -1,8 +1,13 @@
 package render
 
 import (
+	"bytes"
+	"regexp"
+	"strings"
+
 	"github.com/a-h/templ"
 	"github.com/microcosm-cc/bluemonday"
+	"golang.org/x/net/html"
 )
 
 var trustedHTMLPolicy = newTrustedHTMLPolicy()
@@ -35,10 +40,20 @@ func newTrustedHTMLPolicy() *bluemonday.Policy {
 		"pre",
 		"code",
 		"br",
+		"table",
+		"thead",
+		"tbody",
+		"tr",
+		"th",
+		"td",
+		"del",
+		"input",
 	)
+	policy.AllowAttrs("type").Matching(regexp.MustCompile(`^checkbox$`)).OnElements("input")
+	policy.AllowAttrs("disabled", "checked").Matching(regexp.MustCompile(`^$`)).OnElements("input")
 	policy.AllowAttrs("href").OnElements("a")
 	policy.AllowRelativeURLs(true)
-	policy.AllowURLSchemes("http", "https")
+	policy.AllowURLSchemes("http", "https", "mailto")
 	policy.RequireNoFollowOnLinks(true)
 	policy.RequireNoReferrerOnLinks(true)
 	return policy
@@ -52,7 +67,71 @@ func newTrustedHTMLPolicy() *bluemonday.Policy {
 // Bluemonday owns the tokenizer and output allocation. No retry, I/O, or
 // background work occurs.
 func SanitizeHTML(raw string) TrustedHTML {
-	return TrustedHTML{html: trustedHTMLPolicy.Sanitize(raw)}
+	return TrustedHTML{html: trustedHTMLPolicy.Sanitize(filterTaskListInputs(raw))}
+}
+
+// filterTaskListInputs removes every raw input except Goldmark's exact disabled
+// task-list checkbox shape before Bluemonday normalizes individual attributes.
+// Bluemonday cannot require an attribute combination, so this narrow pass also
+// prevents a corrupt persisted input with extra form attributes from becoming
+// apparently valid merely because those extra attributes were stripped.
+//
+// Complexity: for n sanitized bytes, time is O(n), Omega(1), and tight
+// Theta(n); auxiliary/returned space is O(n), Omega(1), and tight Theta(n) for
+// the tokenizer and output buffer. No I/O or shared mutation occurs.
+func filterTaskListInputs(raw string) string {
+	tokenizer := html.NewTokenizer(strings.NewReader(raw))
+	var output bytes.Buffer
+	output.Grow(len(raw))
+	for {
+		tokenType := tokenizer.Next()
+		if tokenType == html.ErrorToken {
+			return output.String()
+		}
+		if tokenType == html.StartTagToken || tokenType == html.SelfClosingTagToken {
+			token := tokenizer.Token()
+			if token.Data == "input" {
+				if validTaskListInput(token.Attr) {
+					output.Write(tokenizer.Raw())
+				}
+				continue
+			}
+		}
+		output.Write(tokenizer.Raw())
+	}
+}
+
+// validTaskListInput accepts exactly one checkbox type, one empty disabled
+// attribute, and at most one empty checked attribute in any order.
+//
+// Complexity: for a <= 3 attributes, time is O(a), Omega(1), and tight
+// Theta(a); auxiliary space is tight Theta(1).
+func validTaskListInput(attributes []html.Attribute) bool {
+	typeSeen := false
+	disabledSeen := false
+	checkedSeen := false
+	for _, attribute := range attributes {
+		switch attribute.Key {
+		case "type":
+			if typeSeen || attribute.Val != "checkbox" {
+				return false
+			}
+			typeSeen = true
+		case "disabled":
+			if disabledSeen || attribute.Val != "" {
+				return false
+			}
+			disabledSeen = true
+		case "checked":
+			if checkedSeen || attribute.Val != "" {
+				return false
+			}
+			checkedSeen = true
+		default:
+			return false
+		}
+	}
+	return typeSeen && disabledSeen
 }
 
 // Component exposes trusted content only as a Templ component; it does not

@@ -1070,11 +1070,14 @@ rendered core pages for root-relative application links that omit `/bb`.
 - Canonical input is nonblank UTF-8 Markdown source from 1 through 65,536
   bytes. Sanitized rendered HTML must be nonblank and no larger than 262,144
   bytes before persistence.
-- Alpha.3 uses Goldmark v1.8.5 with its bundled `extension.GFM`: CommonMark
-  plus tables, strikethrough, task lists, and linkification. Table alignment
-  output is disabled so user content never requires style or alignment
-  attributes. Raw HTML and dangerous links retain Goldmark's default disabled
-  behavior. Heading IDs and every non-GFM runtime extension stay disabled.
+- Alpha.3 uses Goldmark v1.8.5 with the four components bundled by GFM:
+  tables, strikethrough, task lists, and linkification. They are registered
+  explicitly so table alignment output is disabled and linkification accepts
+  only `http:` and `https:` URL protocols while preserving GFM's separately
+  parsed email autolinks as `mailto:`; user content therefore never requires
+  style or alignment attributes and `ftp:` is not promoted to a link. Raw HTML
+  and dangerous links retain Goldmark's default disabled behavior. Heading IDs
+  and every non-GFM runtime extension stay disabled.
 - Link schemes are restricted to an allowlist.
 - Rendered HTML passes through a narrow sanitizer allowlist even when the parser
   claims safe output.

@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
+func TestRenderMarkdownSupportsGFM(t *testing.T) {
 	t.Parallel()
 
 	source := "Hello *careful* **world** 👋\n\n" +
@@ -17,7 +17,10 @@ func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
 		"> quote\n\n" +
 		"`inline`\n\n" +
 		"```go\nif x < y {}\n```\n\n" +
-		"[local](/bb/topics/1) [external](https://example.org/read)\n"
+		"[local](/bb/topics/1) [external](https://example.org/read)\n\n" +
+		"~~removed~~ https://example.org/automatic\n\n" +
+		"| Left | Right |\n| --- | --- |\n| one | two |\n\n" +
+		"- [ ] pending\n- [x] complete\n"
 	rendered, err := RenderMarkdown(source)
 	if err != nil {
 		t.Fatalf("RenderMarkdown() returned error: %v", err)
@@ -33,6 +36,11 @@ func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
 		"<p><code>inline</code></p>", "<pre><code>if x &lt; y {}\n</code></pre>",
 		`<a href="/bb/topics/1" rel="nofollow noreferrer">local</a>`,
 		`<a href="https://example.org/read" rel="nofollow noreferrer">external</a>`,
+		`<del>removed</del>`,
+		`<a href="https://example.org/automatic" rel="nofollow noreferrer">https://example.org/automatic</a>`,
+		"<table>", "<thead>", "<tbody>", "<th>Left</th>", "<td>two</td>",
+		`<input disabled="" type="checkbox"> pending`,
+		`<input checked="" disabled="" type="checkbox"> complete`,
 	} {
 		if !strings.Contains(html, required) {
 			t.Fatalf("rendered HTML lacks %q: %s", required, html)
@@ -47,6 +55,52 @@ func TestRenderMarkdownSupportsOnlyAlphaFormatting(t *testing.T) {
 	}
 	if output.String() != html {
 		t.Fatalf("trusted HTML = %q, want persisted %q", output.String(), html)
+	}
+}
+
+func TestRenderMarkdownIsDeterministic(t *testing.T) {
+	t.Parallel()
+
+	const source = "| a | b |\n| - | - |\n| ~~x~~ | https://example.org |\n\n- [x] done\n"
+	first, err := RenderMarkdown(source)
+	if err != nil {
+		t.Fatalf("first RenderMarkdown() returned error: %v", err)
+	}
+	want, _, err := first.PersistenceValues()
+	if err != nil {
+		t.Fatalf("first PersistenceValues() returned error: %v", err)
+	}
+	for index := 0; index < 32; index++ {
+		next, renderErr := RenderMarkdown(source)
+		if renderErr != nil {
+			t.Fatalf("render %d returned error: %v", index, renderErr)
+		}
+		got, _, persistenceErr := next.PersistenceValues()
+		if persistenceErr != nil || got != want {
+			t.Fatalf("render %d = (%q, %v), want %q", index, got, persistenceErr, want)
+		}
+	}
+}
+
+func TestRenderMarkdownLinkificationRestrictsProtocols(t *testing.T) {
+	t.Parallel()
+
+	rendered, err := RenderMarkdown("https://example.org/safe user@example.org ftp://example.org/file [ftp](ftp://example.org/file)")
+	if err != nil {
+		t.Fatalf("RenderMarkdown() returned error: %v", err)
+	}
+	html, _, err := rendered.PersistenceValues()
+	if err != nil {
+		t.Fatalf("PersistenceValues() returned error: %v", err)
+	}
+	if !strings.Contains(html, `<a href="https://example.org/safe" rel="nofollow noreferrer">https://example.org/safe</a>`) {
+		t.Fatalf("rendered HTML lost HTTPS linkification: %s", html)
+	}
+	if strings.Contains(html, `href="ftp:`) || !strings.Contains(html, "ftp://example.org/file") {
+		t.Fatalf("rendered HTML promoted forbidden FTP URL: %s", html)
+	}
+	if !strings.Contains(html, `<a href="mailto:user@example.org" rel="nofollow noreferrer">user@example.org</a>`) {
+		t.Fatalf("rendered HTML lost GFM email linkification: %s", html)
 	}
 }
 

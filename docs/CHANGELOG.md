@@ -5,6 +5,37 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-06 20:02 CDT — Implement the bounded GFM renderer
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- `internal/render/markdown.go`
+- `internal/render/markdown_test.go`
+- `internal/render/trusted_html.go`
+- `internal/render/trusted_html_test.go`
+- `docs/CHANGELOG.md`
+
+Explanation:
+
+Enable Goldmark's GFM linkification, tables, strikethrough, and task lists while
+keeping raw HTML disabled. Expand the persisted-content sanitizer only for the
+new renderer output, disable table alignment attributes, and add a second
+bounded input-token filter so corrupt stored HTML cannot turn a nominal task
+checkbox into another kind of form control.
+
+Verification:
+
+- `GOMAXPROCS=2 go test -p=1 ./internal/render`
+- `git diff --check`
+
+Risks / non-goals:
+
+- no additional Markdown extensions or arbitrary HTML attributes are enabled
+- the renderer migration and authoring toolbar remain separate production
+  units
+
 ### 2026-09-06 19:45 CDT — Define alpha.3 GFM and migration contracts
 
 Commit: current commit; hash assigned by Git after commit

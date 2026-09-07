@@ -7,15 +7,21 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
 )
 
 const (
 	MaximumMarkdownBytes     = 65_536
 	MaximumRenderedHTMLBytes = 262_144
-	RendererVersion          = "goldmark-v1.8.5-bluemonday-v1.0.27-p1"
+	RendererVersion          = "goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2"
 )
 
-var commonMarkRenderer = goldmark.New()
+var commonMarkRenderer = goldmark.New(goldmark.WithExtensions(
+	extension.NewLinkify(extension.WithLinkifyAllowedProtocols([]string{"http:", "https:"})),
+	extension.NewTable(extension.WithTableCellAlignMethod(extension.TableCellAlignNone)),
+	extension.Strikethrough,
+	extension.TaskList,
+))
 
 // RenderedMarkdown is one validated, rendered, and sanitized forum body. Its
 // private representation prevents callers from forging persistence or trusted
@@ -26,8 +32,9 @@ type RenderedMarkdown struct {
 }
 
 // RenderMarkdown validates bounded canonical source, renders plain CommonMark
-// with Goldmark's raw-HTML/unsafe-link protections left enabled, and applies
-// the forum's narrow sanitizer before returning any persistence value.
+// as GitHub Flavored Markdown with Goldmark's raw-HTML/unsafe-link protections
+// left enabled, and applies the forum's narrow sanitizer before returning any
+// persistence value.
 //
 // Complexity: for n <= 65,536 source bytes and h rendered bytes, time is
 // O(n+h), Omega(1), and auxiliary/returned space is O(n+h), Omega(1), owned by

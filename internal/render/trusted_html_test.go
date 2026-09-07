@@ -13,12 +13,16 @@ func TestSanitizeHTMLAllowsDocumentedMarkup(t *testing.T) {
 	raw := `<p>Hello <em>careful</em> <strong>world</strong> 👋</p>` +
 		`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 		`<blockquote>quote</blockquote><pre><code>if x &lt; y</code></pre>` +
-		`<p><a href="/bb/topics/7">local</a> <a href="https://example.org/read">external</a><br>done</p>`
+		`<p><a href="/bb/topics/7">local</a> <a href="https://example.org/read">external</a><br>done</p>` +
+		`<del>gone</del><table><thead><tr><th>head</th></tr></thead><tbody><tr><td>cell</td></tr></tbody></table>` +
+		`<input disabled="" type="checkbox"><input checked="" disabled="" type="checkbox">`
 
 	want := `<p>Hello <em>careful</em> <strong>world</strong> 👋</p>` +
 		`<ul><li>one</li></ul><ol><li>two</li></ol>` +
 		`<blockquote>quote</blockquote><pre><code>if x &lt; y</code></pre>` +
-		`<p><a href="/bb/topics/7" rel="nofollow noreferrer">local</a> <a href="https://example.org/read" rel="nofollow noreferrer">external</a><br>done</p>`
+		`<p><a href="/bb/topics/7" rel="nofollow noreferrer">local</a> <a href="https://example.org/read" rel="nofollow noreferrer">external</a><br>done</p>` +
+		`<del>gone</del><table><thead><tr><th>head</th></tr></thead><tbody><tr><td>cell</td></tr></tbody></table>` +
+		`<input disabled="" type="checkbox"><input checked="" disabled="" type="checkbox">`
 
 	if got := SanitizeHTML(raw).html; got != want {
 		t.Fatalf("sanitized HTML = %q, want %q", got, want)
@@ -31,10 +35,22 @@ func TestSanitizeHTMLStripsExecutableAndUndocumentedMarkup(t *testing.T) {
 	raw := `<script>alert(1)</script><style>body{display:none}</style>` +
 		`<p id="x" class="y" style="color:red" onclick="alert(2)">safe` +
 		`<img src="https://example.org/tracker.png"><iframe src="https://example.org"></iframe>` +
-		`<table><tr><td>cell</td></tr></table></p>`
+		`<table style="color:red" onclick="alert(3)"><tr><td colspan="2">cell</td></tr></table>` +
+		`<input type="text" disabled="" name="stolen"><input type="checkbox" onclick="alert(4)"></p>`
 
-	if got, want := SanitizeHTML(raw).html, `<p>safecell</p>`; got != want {
+	if got, want := SanitizeHTML(raw).html, `<p>safe<table><tr><td>cell</td></tr></table></p>`; got != want {
 		t.Fatalf("sanitized HTML = %q, want %q", got, want)
+	}
+}
+
+func TestSanitizeHTMLAcceptsOnlyExactDisabledTaskInputs(t *testing.T) {
+	t.Parallel()
+
+	raw := `<input><input type="checkbox"><input type="text" disabled="">` +
+		`<input type="checkbox" name="x" value="y" form="z" disabled="">` +
+		`<input type="checkbox" disabled=""><input checked="" disabled="" type="checkbox">`
+	if got, want := SanitizeHTML(raw).html, `<input type="checkbox" disabled=""><input checked="" disabled="" type="checkbox">`; got != want {
+		t.Fatalf("sanitized task inputs = %q, want %q", got, want)
 	}
 }
 
@@ -53,7 +69,7 @@ func TestSanitizeHTMLRestrictsLinkSchemes(t *testing.T) {
 	want := `<p>` +
 		`javascript` +
 		`data` +
-		`mail` +
+		`<a href="mailto:user@example.org" rel="nofollow noreferrer">mail</a>` +
 		`<a href="//example.org/read" rel="nofollow noreferrer">scheme-relative</a>` +
 		`<a href="///example.org/read" rel="nofollow noreferrer">ambiguous-relative</a>` +
 		`<a href="http://example.org/read" rel="nofollow noreferrer">http</a>` +
