@@ -114,7 +114,7 @@ func main() {
 	if worktreeConfigErr != nil {
 		fatalf("resolve worktree Git configuration: %v", worktreeConfigErr)
 	}
-	worktreeConfig := strings.TrimSpace(string(worktreeConfigOutput))
+	worktreeConfig := absoluteGitPath(repository, worktreeConfigOutput)
 	if info, statErr := os.Lstat(worktreeConfig); statErr == nil {
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			fatalf("worktree Git configuration is not a regular file")
@@ -144,7 +144,7 @@ func main() {
 	if err != nil {
 		fatalf("resolve Git info/attributes: %v", err)
 	}
-	attributesPath := strings.TrimSpace(string(attributesOutput))
+	attributesPath := absoluteGitPath(repository, attributesOutput)
 	if info, statErr := os.Lstat(attributesPath); statErr == nil {
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() != 0 {
 			fatalf("Git info/attributes must be absent or an empty regular file")
@@ -235,6 +235,17 @@ func gitOutput(repository string, environment []string, arguments ...string) ([]
 	command.Dir = repository
 	command.Env = environment
 	return command.Output()
+}
+
+func absoluteGitPath(repository string, output []byte) string {
+	path := strings.TrimSpace(string(output))
+	if path == "" {
+		fatalf("Git returned an empty metadata path")
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repository, path)
+	}
+	return filepath.Clean(path)
 }
 
 func rejectLocalGitConfiguration(repository string, environment []string, scope string) {

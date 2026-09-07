@@ -65,7 +65,7 @@ make_attack_repository() {
     printf '%s\n' 'make_attack_repository requires one destination' >&2
     return 2
   fi
-  /usr/bin/git clone -q --no-hardlinks "$repository_root" "$1"
+  /usr/bin/git -c advice.detachedHead=false clone -q --no-hardlinks "$repository_root" "$1"
 }
 
 require_pre_bash_rejection() {
