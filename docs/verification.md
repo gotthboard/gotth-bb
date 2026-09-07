@@ -416,6 +416,21 @@ requires exact writer-constraint validation and completed state. This is a
 measured dense-task fixture, not a proof that it is the maximum over every
 valid p1 source.
 
-An exact clean-commit result is recorded here after running that script. A
-documentation-only evidence commit may follow the tested executable commit;
-if so, both identities and that relationship must be explicit.
+The exact clean executable-and-methodology commit tested on `development` on
+2026-09-06 was
+`b5dad7c8b296718d5dca7c7de2473d34c373649d`, with tree
+`c71e120cb2eb74777010db23f43e2e124ee576d7` and deterministic source-archive
+SHA-256
+`5ee58b05465062007ef790f9bf7496335f40d2b57056bd05ef6bb873426b12e5`.
+The fixture source was 65,532 bytes with SHA-256
+`5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c`;
+its exact p1 HTML was 141,997 bytes with SHA-256
+`8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a`.
+The real 100-row transaction took `20.415339295s`; all 100 rows were
+p1-preserved with exact HTML, `converted_count` became 100, the subsequent
+empty batch validated the exact writer constraint and completed the singleton,
+and the test process's sampled peak RSS was 80,848 KiB. The run used
+`GOMAXPROCS=4`, Go 1.26.6, Linux 7.1.5 x86-64, PostgreSQL 17.10, and the exact
+image reference and ID above. This documentation-only evidence commit is the
+direct child of the tested executable commit; it changes no executable source,
+fixture, or methodology.

@@ -1155,8 +1155,8 @@ rendered core pages for root-relative application links that omit `/bb`.
   exact validated writer constraint through a constant-shaped catalog query;
   it does not scan the posts table on every probe.
 - A measured 100-row dense-task compatibility fixture on the pinned PostgreSQL
-  17.10 image took 21.286 seconds and the test process peaked at a sampled
-  78,572 KiB RSS. This is one deliberately expensive admitted fixture, not a
+  17.10 image took 20.415339295 seconds and the test process peaked at a sampled
+  80,848 KiB RSS. This is one deliberately expensive admitted fixture, not a
   universal maximum over all valid p1 source. All 100 selected post rows remain
   locked for that maintenance transaction. This cost is admitted only because
   the application is stopped and drained before migration; it is not an
