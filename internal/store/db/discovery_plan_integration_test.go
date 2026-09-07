@@ -206,15 +206,14 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 	for _, mode := range []string{"force_custom_plan", "force_generic_plan"} {
 		for _, shape := range searchShapes {
 			searchPlan := explainPrepared(t, ctx, connection, "an02_search", "integer,boolean,boolean,bigint[],boolean,text,bigint,text,boolean,timestamptz,boolean,boolean,timestamptz", searchDiscoveryPage, shape.arguments, mode)
-			if !strings.Contains(searchPlan, `"Node Type":"Limit"`) || !strings.Contains(searchPlan, `"Relation Name":"areas"`) || !strings.Contains(searchPlan, `"Relation Name":"topics"`) || !strings.Contains(searchPlan, `"Relation Name":"posts"`) {
-				t.Fatalf("%s %s search plan lost bounded authorized relation tree: %s", mode, shape.name, searchPlan)
-			}
+			candidate := requireAuthorizedSearchCandidate(t, mode, shape.name, searchPlan)
 			if mode == "force_custom_plan" && (shape.name == "current-vector-author" || shape.name == "author") &&
-				(!strings.Contains(searchPlan, `"Index Name":"topics_search_author_current_idx"`) || !strings.Contains(searchPlan, `"Index Name":"posts_search_author_current_idx"`)) {
+				(!planUsesIndex(candidate, "topics_search_author_current_idx") || !planUsesIndex(candidate, "posts_search_author_current_idx")) {
 				t.Fatalf("%s %s search plan lost author indexes: %s", mode, shape.name, searchPlan)
 			}
-			if mode == "force_custom_plan" && shape.name == "rare-term" && !strings.Contains(searchPlan, `"Index Name":"topics_search_vector_current_idx"`) {
-				t.Fatalf("%s rare-term search plan lost GIN index: %s", mode, searchPlan)
+			if mode == "force_custom_plan" && shape.name == "rare-term" &&
+				(!planUsesIndex(candidate, "topics_search_vector_current_idx") || !planUsesIndex(candidate, "posts_search_vector_current_idx")) {
+				t.Fatalf("%s rare-term search plan lost topic or post GIN index: %s", mode, searchPlan)
 			}
 			t.Logf("PLAN mode=%s query=search shape=%s\n%s", mode, shape.name, searchPlan)
 		}
@@ -234,6 +233,80 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 		runDiscoveryCoexistenceEvidence(t, ctx, configured, connection, publicAreaID, ownerID, groupID, population)
 		logDiscoveryResourceSnapshot(t, ctx, connection, "completed")
 	}
+}
+
+type explainPlanDocument []struct {
+	Plan explainPlanNode `json:"Plan"`
+}
+
+type explainPlanNode struct {
+	NodeType     string            `json:"Node Type"`
+	SubplanName  string            `json:"Subplan Name"`
+	PlanRows     int64             `json:"Plan Rows"`
+	ActualRows   int64             `json:"Actual Rows"`
+	RelationName string            `json:"Relation Name"`
+	IndexName    string            `json:"Index Name"`
+	Filter       string            `json:"Filter"`
+	Plans        []explainPlanNode `json:"Plans"`
+}
+
+func requireAuthorizedSearchCandidate(t *testing.T, mode, shape, encoded string) explainPlanNode {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil {
+		t.Fatalf("%s %s decode search plan: %v", mode, shape, err)
+	}
+	if len(document) != 1 {
+		t.Fatalf("%s %s search plan documents = %d", mode, shape, len(document))
+	}
+	candidate := findPlanNode(&document[0].Plan, func(node *explainPlanNode) bool {
+		return node.NodeType == "Limit" && node.SubplanName == "CTE candidate"
+	})
+	if candidate == nil {
+		t.Fatalf("%s %s search plan lost candidate limit: %s", mode, shape, encoded)
+	}
+	if candidate.PlanRows != 51 || candidate.ActualRows != 51 {
+		t.Fatalf("%s %s candidate fence = plan_rows=%d actual_rows=%d, want 51/51: %s", mode, shape, candidate.PlanRows, candidate.ActualRows, encoded)
+	}
+	requiredRelations := []struct {
+		relation string
+		filter   string
+	}{
+		{relation: "areas", filter: "visibility"},
+		{relation: "area_groups", filter: "group_id"},
+		{relation: "topics", filter: "state"},
+		{relation: "posts", filter: "deleted_at"},
+	}
+	for _, required := range requiredRelations {
+		if !planUsesFilteredRelation(*candidate, required.relation, required.filter) {
+			t.Fatalf("%s %s candidate lost authorized %s filter %q: %s", mode, shape, required.relation, required.filter, encoded)
+		}
+	}
+	return *candidate
+}
+
+func findPlanNode(node *explainPlanNode, match func(*explainPlanNode) bool) *explainPlanNode {
+	if match(node) {
+		return node
+	}
+	for index := range node.Plans {
+		if found := findPlanNode(&node.Plans[index], match); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+func planUsesIndex(node explainPlanNode, indexName string) bool {
+	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
+		return candidate.IndexName == indexName
+	}) != nil
+}
+
+func planUsesFilteredRelation(node explainPlanNode, relation, filter string) bool {
+	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
+		return candidate.RelationName == relation && strings.Contains(candidate.Filter, filter)
+	}) != nil
 }
 
 func requestedDiscoveryPlanPopulation(t *testing.T) discoveryPlanPopulation {
