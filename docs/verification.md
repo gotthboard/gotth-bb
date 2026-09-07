@@ -642,11 +642,12 @@ Fresh and upgrade integration shall cover preflight failure before 000008,
 every topics/posts phase and nullable-cursor interruption boundary, batch size
 100, two concurrent runners, atomic cursor/count progress, trigger narrowing,
 writer atomicity, six-check validation, five exact partial indexes, completion
-idempotency, readiness catalog drift, minor-PostgreSQL full-corpus comparison,
+idempotency, interrupted/repeated/concurrent explicit topic/post `ANALYZE`,
+readiness catalog drift, minor-PostgreSQL full-corpus comparison,
 and the honest forward/restore rollback boundary. Index-build heap passes and
 lock/I/O exposure are measured, not described away. Completion measurements
-separately cover the zero-stale full-table oracle and every constraint-
-validation scan/`SHARE UPDATE EXCLUSIVE` lock.
+separately cover explicit analysis, the zero-stale full-table oracle, and every
+constraint-validation scan/`SHARE UPDATE EXCLUSIVE` lock.
 
 The generated admission corpus contains at least 100,000 topics and 1,000,000
 posts across public, authenticated, groups, hidden, deleted, redacted, common-

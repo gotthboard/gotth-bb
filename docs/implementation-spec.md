@@ -1770,6 +1770,14 @@ lock the singleton and selected rows, write vectors and phase/cursor/count in
 one transaction, and resume solely from database state. Moving topics to posts
 resets the cursor. Failure advances nothing.
 
+After the post selection is empty and before completion, the command runs
+`ANALYZE public.topics` and `ANALYZE public.posts` as explicit separate
+statements. A crash before completion repeats both safely on rerun. Competing
+runners may duplicate analysis work but cannot skip it or mark completion
+before one successful pair; the stopped maintenance window and admission
+measurements account for that bounded concurrency case. Readiness never relies
+on eventual autovacuum to make first-service plans usable.
+
 Completion proves zero NULL/partial/stale tuples, validates all six checks,
 attests exact indexes and six narrowed triggers plus unchanged function, and
 marks complete once while preserving first completion time on rerun. The

@@ -388,6 +388,11 @@ required sequence is:
    initially empty partial indexes still perform full heap predicate passes and
    their measured I/O/lock exposure belongs in the release record. Topic then
    post batches commit at most 100 rows with singleton phase/cursor/count state.
+   After the post cursor is exhausted and before completion, run explicit
+   `ANALYZE public.topics` and `ANALYZE public.posts`. Interruption or a
+   competing runner may repeat analysis safely; no runner may mark complete
+   before one successful pair. Do not rely on eventual autovacuum before first
+   service.
    Completion proves no NULL/partial/stale projection, validates all checks,
    attests the exact indexes and narrowed triggers, and alone marks readiness.
    Its zero-stale oracle and constraint validations scan complete affected
