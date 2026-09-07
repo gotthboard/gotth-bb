@@ -25,7 +25,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
-		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: "2acf51dfa5e15ca555f850b14f8dbac35e0cdd0355892c3736b5be95c5668602", contains: "gotthMarkdownToolbar"},
+		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: "3bac41198c0cc3d7224efe4337fed0c65423a3f9242450b28d450799db3f4a67", contains: "gotthMarkdownToolbar"},
 	}
 	for _, test := range tests {
 		test := test

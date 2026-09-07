@@ -157,6 +157,33 @@ func TestRenderMarkdownAcceptsInlineCodeBesideEscapedAuthoredBackticks(t *testin
 	}
 }
 
+func TestRenderMarkdownAcceptsToolbarStarComposition(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		source   string
+		required string
+	}{
+		{name: "combined", source: "***word***", required: "<p><em><strong>word</strong></em></p>"},
+		{name: "authored star before emphasis", source: `\**word*`, required: "<p>*<em>word</em></p>"},
+		{name: "authored stars after emphasis", source: `*word*\*\*`, required: "<p><em>word</em>**</p>"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			rendered, err := RenderMarkdown(test.source)
+			if err != nil {
+				t.Fatalf("RenderMarkdown() returned error: %v", err)
+			}
+			html, _, err := rendered.PersistenceValues()
+			if err != nil || !strings.Contains(html, test.required) {
+				t.Fatalf("toolbar star composition rendering = (%q, %v), want containing %q", html, err, test.required)
+			}
+		})
+	}
+}
+
 func TestRenderMarkdownIsDeterministic(t *testing.T) {
 	t.Parallel()
 

@@ -340,6 +340,7 @@ func TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("connect renderer performance database: %v", err)
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+	logPerformanceServerIdentity(t, ctx, connection, rerenderPerformanceTestDatabase)
 
 	var userID, areaID, topicID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Renderer performance owner', 'administrator') RETURNING id`).Scan(&userID); err != nil {
@@ -471,6 +472,7 @@ func TestPopulationMigrationPerformanceOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("connect renderer population database: %v", err)
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
+	logPerformanceServerIdentity(t, ctx, connection, rerenderPopulationTestDatabase)
 
 	const populationSource = "Representative **population** post."
 	populationLegacyHTML := exactLegacyHTML(t, populationSource)
@@ -639,6 +641,23 @@ func preAlpha3MigrationFS(t *testing.T) fs.FS {
 		legacy[name] = &fstest.MapFile{Data: body}
 	}
 	return legacy
+}
+
+func logPerformanceServerIdentity(t *testing.T, ctx context.Context, connection *pgx.Conn, wantDatabase string) {
+	t.Helper()
+	var versionNumber, serverPort int
+	var serverAddress, database string
+	if err := connection.QueryRow(ctx, `SELECT
+current_setting('server_version_num')::integer,
+COALESCE(inet_server_addr()::text, ''),
+COALESCE(inet_server_port(), 0),
+current_database()`).Scan(&versionNumber, &serverAddress, &serverPort, &database); err != nil {
+		t.Fatalf("query live PostgreSQL identity: %v", err)
+	}
+	if versionNumber != 170010 || serverAddress == "" || serverPort != 5432 || database != wantDatabase {
+		t.Fatalf("live PostgreSQL identity = version %d/address %q/port %d/database %q, want 170010/nonempty/5432/%q", versionNumber, serverAddress, serverPort, database, wantDatabase)
+	}
+	t.Logf("sql_server_identity version_num=%d address=%s port=%d database=%s", versionNumber, serverAddress, serverPort, database)
 }
 
 func exactLegacyHTML(t *testing.T, source string) string {

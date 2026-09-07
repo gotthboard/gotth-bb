@@ -1206,7 +1206,11 @@ rendered core pages for root-relative application links that omit `/bb`.
   retention, and bounded failure behavior can be specified and implemented as
   one honest media boundary.
 - Inline wrappers toggle only when the exact selected/caret-adjacent markers
-  match. Line actions add/remove prefixes across the complete touched lines.
+  match. Bold and italic inspect complete adjacent star runs: applying one to
+  the other composes a three-star strong-plus-emphasis delimiter, removing one
+  removes only its own width, and unequal exterior authored runs are escaped
+  reversibly so a repeated toggle restores those stars byte-for-byte. Line
+  actions add/remove prefixes across the complete touched lines.
   Fenced-code and table actions expand to complete touched lines and map the
   original selection into the transformed content. A recognized fence/table
   toggle removes only its actual wrapper/internal syntax and never an exterior

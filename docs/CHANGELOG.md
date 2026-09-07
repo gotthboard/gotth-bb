@@ -94,7 +94,9 @@ only wrapper/internal syntax, never exterior line endings; delimiter length and
 separator dashes carry no hidden provenance. Inline code reversibly escapes
 adjacent unselected backtick runs so the pinned parser sees complete delimiters;
 repeated toggle restores those exterior runs and the original selection
-byte-for-byte.
+byte-for-byte. Bold and italic likewise inspect complete star runs, compose
+strong-plus-emphasis delimiters, and reversibly protect unequal authored runs
+instead of consuming half of an existing delimiter.
 
 Verification:
 

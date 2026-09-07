@@ -2,8 +2,6 @@
   "use strict";
 
   const inlineActions = Object.freeze({
-    bold: ["**", "text"],
-    italic: ["*", "text"],
     strike: ["~~", "text"],
   });
 
@@ -32,6 +30,97 @@
       value: source.slice(0, start) + marker + content + marker + source.slice(end),
       start: start + marker.length,
       end: start + marker.length + content.length,
+    };
+  }
+
+  function adjacentStarRun(source, position, direction) {
+    let cursor = position;
+    if (direction < 0) {
+      while (cursor > 0 && source[cursor - 1] === "*") cursor -= 1;
+      return { start: cursor, end: position };
+    }
+    while (cursor < source.length && source[cursor] === "*") cursor += 1;
+    return { start: position, end: cursor };
+  }
+
+  function escapedStars(length) {
+    return "\\*".repeat(length);
+  }
+
+  function escapedStarRunBefore(source, position) {
+    let cursor = position;
+    while (cursor >= 2 && source[cursor - 2] === "\\" && source[cursor - 1] === "*") cursor -= 2;
+    return { start: cursor, count: (position - cursor) / 2 };
+  }
+
+  function escapedStarRunAfter(source, position) {
+    let cursor = position;
+    while (cursor + 1 < source.length && source[cursor] === "\\" && source[cursor + 1] === "*") cursor += 2;
+    return { end: cursor, count: (cursor - position) / 2 };
+  }
+
+  function removableStarRun(width, length) {
+    return width === 1 ? length % 2 === 1 : length >= width;
+  }
+
+  function wrapStars(source, start, end, width) {
+    const selected = source.slice(start, end);
+    const marker = "*".repeat(width);
+    if (start >= width && source.slice(start - width, start) === marker && source.slice(end, end + width) === marker) {
+      const escapedLeft = escapedStarRunBefore(source, start - width);
+      const escapedRight = escapedStarRunAfter(source, end + width);
+      if (escapedLeft.count > 0 || escapedRight.count > 0) {
+        const restored = "*".repeat(escapedLeft.count) + selected + "*".repeat(escapedRight.count);
+        return {
+          value: source.slice(0, escapedLeft.start) + restored + source.slice(escapedRight.end),
+          start: escapedLeft.start + escapedLeft.count,
+          end: escapedLeft.start + escapedLeft.count + selected.length,
+        };
+      }
+      const left = adjacentStarRun(source, start, -1);
+      const right = adjacentStarRun(source, end, 1);
+      const leftLength = left.end - left.start;
+      const rightLength = right.end - right.start;
+      if (leftLength === rightLength && removableStarRun(width, leftLength)) {
+        return {
+          value: source.slice(0, start - width) + selected + source.slice(end + width),
+          start: start - width,
+          end: end - width,
+        };
+      }
+    }
+
+    let leading = 0;
+    while (leading < selected.length && selected[leading] === "*") leading += 1;
+    let trailing = 0;
+    while (trailing < selected.length - leading && selected[selected.length - 1 - trailing] === "*") trailing += 1;
+    if (leading === trailing && leading + trailing < selected.length && removableStarRun(width, leading)) {
+      const inner = selected.slice(width, -width);
+      return {
+        value: source.slice(0, start) + inner + source.slice(end),
+        start,
+        end: start + inner.length,
+      };
+    }
+
+    const content = selected || "text";
+    const left = adjacentStarRun(source, start, -1);
+    const right = adjacentStarRun(source, end, 1);
+    const leftLength = left.end - left.start;
+    const rightLength = right.end - right.start;
+    if (leftLength === rightLength) {
+      return {
+        value: source.slice(0, start) + marker + content + marker + source.slice(end),
+        start: start + width,
+        end: start + width + content.length,
+      };
+    }
+    const escapedLeft = escapedStars(leftLength);
+    const escapedRight = escapedStars(rightLength);
+    return {
+      value: source.slice(0, left.start) + escapedLeft + marker + content + marker + escapedRight + source.slice(right.end),
+      start: left.start + escapedLeft.length + width,
+      end: left.start + escapedLeft.length + width + content.length,
     };
   }
 
@@ -413,6 +502,9 @@
   function transform(source, start, end, action) {
     if (typeof source !== "string" || !Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > source.length) {
       return { value: typeof source === "string" ? source : "", start: 0, end: 0 };
+    }
+    if (action === "bold" || action === "italic") {
+      return wrapStars(source, start, end, action === "bold" ? 2 : 1);
     }
     if (Object.hasOwn(inlineActions, action)) {
       return wrapInline(source, start, end, ...inlineActions[action]);

@@ -27,6 +27,42 @@ test("inline actions preserve and toggle selections", () => {
   assert.deepEqual({ ...transform(result.value, result.start, result.end, "inline-code") }, { value: "code", start: 0, end: 4 });
 });
 
+test("star actions compose without consuming authored delimiter runs", () => {
+  const { transform } = load();
+  const cases = [
+    { name: "italic inside strong", action: "italic", source: "**word**", start: 2, end: 6, value: "***word***", next: { value: "**word**", start: 2, end: 6 } },
+    { name: "strong inside emphasis", action: "bold", source: "*word*", start: 1, end: 5, value: "***word***", next: { value: "*word*", start: 1, end: 5 } },
+    { name: "italic off combined", action: "italic", source: "***word***", start: 3, end: 7, value: "**word**", next: { value: "***word***", start: 3, end: 7 } },
+    { name: "strong off combined", action: "bold", source: "***word***", start: 3, end: 7, value: "*word*", next: { value: "***word***", start: 3, end: 7 } },
+    { name: "left adjacent", action: "italic", source: "*word", start: 1, end: 5, value: "\\**word*", next: { value: "*word", start: 1, end: 5 } },
+    { name: "right multiple adjacent", action: "italic", source: "word**", start: 0, end: 4, value: "*word*\\*\\*", next: { value: "word**", start: 0, end: 4 } },
+    { name: "unequal both adjacent", action: "italic", source: "**word*", start: 2, end: 6, value: "\\*\\**word*\\*", next: { value: "**word*", start: 2, end: 6 } },
+    { name: "bold unequal both adjacent", action: "bold", source: "*word**", start: 1, end: 5, value: "\\***word**\\*\\*", next: { value: "*word**", start: 1, end: 5 } },
+    { name: "padded strong", action: "italic", source: "** word **", start: 2, end: 8, value: "*** word ***", next: { value: "** word **", start: 2, end: 8 } },
+  ];
+  for (const item of cases) {
+    const changed = transform(item.source, item.start, item.end, item.action);
+    assert.equal(changed.value, item.value, item.name);
+    assert.equal(changed.value.slice(changed.start, changed.end), item.source.slice(item.start, item.end), item.name);
+    assert.deepEqual({ ...transform(changed.value, changed.start, changed.end, item.action) }, item.next, item.name);
+  }
+
+  let whole = transform("**word**", 0, 8, "italic");
+  assert.deepEqual({ ...whole }, { value: "***word***", start: 1, end: 9 });
+  assert.deepEqual({ ...transform(whole.value, whole.start, whole.end, "italic") }, { value: "**word**", start: 0, end: 8 });
+  whole = transform("*word*", 0, 6, "bold");
+  assert.deepEqual({ ...whole }, { value: "***word***", start: 2, end: 8 });
+  assert.deepEqual({ ...transform(whole.value, whole.start, whole.end, "bold") }, { value: "*word*", start: 0, end: 6 });
+
+  const caret = transform("*", 1, 1, "italic");
+  assert.deepEqual({ ...caret }, { value: "\\**text*", start: 3, end: 7 });
+  assert.deepEqual({ ...transform(caret.value, caret.start, caret.end, "italic") }, { value: "*text", start: 1, end: 5 });
+
+  const combinedCaret = transform("****", 2, 2, "italic");
+  assert.deepEqual({ ...combinedCaret }, { value: "***text***", start: 3, end: 7 });
+  assert.deepEqual({ ...transform(combinedCaret.value, combinedCaret.start, combinedCaret.end, "italic") }, { value: "**text**", start: 2, end: 6 });
+});
+
 test("line actions preserve exact caret and selection coordinates", () => {
   const { transform } = load();
   for (const [action, prefixOne, prefixTwo] of [

@@ -8,6 +8,9 @@ if [ -z "${GOTTH_BB_TEST_DATABASE_URL:-}" ]; then
   printf '%s\n' 'GOTTH_BB_TEST_DATABASE_URL is required' >&2
   exit 2
 fi
+readonly source_head_before="$(git rev-parse HEAD)"
+readonly source_tree_before="$(git rev-parse 'HEAD^{tree}')"
+readonly source_archive_before="$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)"
 if [ -n "$(git status --porcelain=v1)" ]; then
   printf '%s\n' 'performance evidence requires a clean committed source tree' >&2
   exit 2
@@ -24,8 +27,29 @@ fi
 
 image_ref=$(sudo -n docker inspect --format '{{.Config.Image}}' "$container_name")
 image_id=$(sudo -n docker inspect --format '{{.Image}}' "$container_name")
-if [ "$image_ref" != "$expected_image" ] || [ "$image_id" != "sha256:${expected_image#*@sha256:}" ]; then
+container_running=$(sudo -n docker inspect --format '{{.State.Running}}' "$container_name")
+published_endpoint=$(sudo -n docker port "$container_name" 5432/tcp)
+if [ "$image_ref" != "$expected_image" ] || [ "$image_id" != "sha256:${expected_image#*@sha256:}" ] || [ "$container_running" != true ]; then
   printf 'unexpected PostgreSQL image: ref=%s id=%s\n' "$image_ref" "$image_id" >&2
+  exit 2
+fi
+if [[ ! "$published_endpoint" =~ ^127\.0\.0\.1:[0-9]+$ ]]; then
+  printf 'PostgreSQL container must publish exactly one loopback endpoint, got %s\n' "$published_endpoint" >&2
+  exit 2
+fi
+case "$GOTTH_BB_TEST_DATABASE_URL" in
+  postgres://*|postgresql://*) ;;
+  *) printf '%s\n' 'database URL must use the postgres or postgresql scheme' >&2; exit 2 ;;
+esac
+database_authority=${GOTTH_BB_TEST_DATABASE_URL#*://}
+if [ "$database_authority" = "$GOTTH_BB_TEST_DATABASE_URL" ] || [ "$database_authority" = "${database_authority#*/}" ]; then
+  printf '%s\n' 'database URL must contain an authority and database path' >&2
+  exit 2
+fi
+database_authority=${database_authority%%/*}
+database_endpoint=${database_authority##*@}
+if [ "$database_endpoint" != "$published_endpoint" ]; then
+  printf 'database URL endpoint does not match inspected container endpoint %s\n' "$published_endpoint" >&2
   exit 2
 fi
 
@@ -58,15 +82,30 @@ wait "$test_pid"
 test_status=$?
 set -e
 
+source_head_after=$(git rev-parse HEAD)
+source_tree_after=$(git rev-parse 'HEAD^{tree}')
+source_archive_after=$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)
+if [ -n "$(git status --porcelain=v1)" ] || [ "$source_head_after" != "$source_head_before" ] || [ "$source_tree_after" != "$source_tree_before" ] || [ "$source_archive_after" != "$source_archive_before" ]; then
+  printf '%s\n' 'source identity changed during performance evidence run' >&2
+  exit 2
+fi
+
 {
   cat "$test_log"
-  printf 'commit=%s\n' "$(git rev-parse HEAD)"
-  printf 'tree=%s\n' "$(git rev-parse 'HEAD^{tree}')"
-  printf 'source_archive_sha256=%s\n' "$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)"
+  printf 'source_head_before=%s\n' "$source_head_before"
+  printf 'source_tree_before=%s\n' "$source_tree_before"
+  printf 'source_archive_sha256_before=%s\n' "$source_archive_before"
+  printf 'source_clean_before=true\n'
+  printf 'source_head_after=%s\n' "$source_head_after"
+  printf 'source_tree_after=%s\n' "$source_tree_after"
+  printf 'source_archive_sha256_after=%s\n' "$source_archive_after"
+  printf 'source_clean_after=true\n'
   printf 'environment=%s\n' "$(uname -srvmo)"
   printf 'go_version=%s\n' "$(go env GOVERSION)"
   printf 'gomaxprocs=4\n'
   printf 'postgres_container=%s\n' "$container_name"
+  printf 'postgres_container_running=%s\n' "$container_running"
+  printf 'postgres_published_endpoint=%s\n' "$published_endpoint"
   printf 'postgres_image_ref=%s\n' "$image_ref"
   printf 'postgres_image_id=%s\n' "$image_id"
   printf 'postgres_version=%s\n' "$(sudo -n docker exec "$container_name" postgres --version)"
@@ -85,3 +124,4 @@ if [ "$test_status" -ne 0 ]; then
   exit "$test_status"
 fi
 grep -F 'preserved=100 exact_html=100 converted=100' "$transcript" >/dev/null
+grep -F 'sql_server_identity version_num=170010 ' "$transcript" >/dev/null

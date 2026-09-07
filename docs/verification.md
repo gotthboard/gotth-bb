@@ -394,19 +394,25 @@ local result is represented as that evidence.
 
 The canonical reproduction command is
 `GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-rerender-performance.sh`.
-It refuses a dirty source tree, requires `GOTTH_BB_TEST_DATABASE_URL`, requires
-the evidence output to be a new file in an existing directory, and preserves
-the complete bounded test transcript plus identity footer there before its
-scratch directory is removed. It verifies that
+It captures HEAD, tree, and deterministic archive identity before compilation,
+refuses a dirty source tree, and requires the same identities plus a clean tree
+after the measured process exits. It requires `GOTTH_BB_TEST_DATABASE_URL`,
+requires the evidence output to be a new file in an existing directory, and
+preserves the complete bounded test transcript plus identity footer there
+before its scratch directory is removed. It verifies that
 `GOTTH_BB_POSTGRES_CONTAINER` (default
 `gotth-bb-alpha3-totality-pg`) uses both the exact configured image reference
 and image ID
 `postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d`,
-compiles the committed integration test, runs it once with `GOMAXPROCS=4`, and
-samples the test process's `VmRSS` from `/proc` every 50 ms. It prints the
-commit, tree, deterministic `git archive` digest, OS, Go version, PostgreSQL
-binary identity, fixture digests, transaction elapsed time, result state, and
-sampled peak RSS without printing the database URL.
+is running with exactly one loopback-published PostgreSQL endpoint, and that
+the test URL names that exact endpoint. The selected test also requires
+`server_version_num = 170010` and records the address, port, and ephemeral test
+database from the measured SQL connection. The script compiles the committed
+integration test, runs it once with `GOMAXPROCS=4`, and samples the test
+process's `VmRSS` from `/proc` every 50 ms. It prints the before/after source
+identities and cleanliness, OS, Go version, container endpoint/image identity,
+live SQL identity, fixture digests, transaction elapsed time, result state,
+and sampled peak RSS without printing the database URL.
 
 The fixture is exactly 100 copies of
 `strings.Repeat("- [x]\n", 65536/len("- [x]\n"))`, each paired with the
@@ -443,8 +449,9 @@ executable commit; it changes no executable source, fixture, or methodology.
 
 The separate population-scale reproduction command is
 `GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-population-performance.sh`.
-It applies the same clean-tree, new retained-output, exact-image,
-environment-identity, and 50 ms test-process `VmRSS` sampling gates. Its
+It applies the same before/after source-custody, new retained-output,
+exact-image, exact loopback endpoint, live-SQL-identity, environment-identity,
+and 50 ms test-process `VmRSS` sampling gates. Its
 committed integration fixture creates 25,000 coherent
 ordinary p1 posts as 1,000 full 25-post topics, then verifies every topic's
 exact post count, first/latest/root relationships, counters, parent, and thread
