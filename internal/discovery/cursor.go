@@ -105,19 +105,6 @@ func (ring CursorKeyring) EncodeCursor(databaseNow time.Time, boundary ActivityB
 	return base64.RawURLEncoding.EncodeToString(record), nil
 }
 
-// AuthenticateCursor validates canonical encoding, key identity/window, MAC,
-// and database-time lifetime before exposing a value that may bind a session.
-//
-// Complexity: time and auxiliary space are tight Theta(1): the record is fixed
-// at 77 bytes and at most two keys exist. No session or database query occurs.
-func (ring CursorKeyring) AuthenticateCursor(encoded string, databaseNow time.Time) (AuthenticatedCursor, error) {
-	authenticated, err := ring.VerifyCursor(encoded)
-	if err != nil || authenticated.ValidateTime(databaseNow) != nil {
-		return AuthenticatedCursor{}, fmt.Errorf("invalid activity cursor")
-	}
-	return authenticated, nil
-}
-
 // VerifyCursor authenticates the fixed record before optional-session work.
 // Database-authoritative age checks intentionally remain a separate method.
 //

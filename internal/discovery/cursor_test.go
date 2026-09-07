@@ -25,9 +25,9 @@ func TestCursorRoundTripAndAudienceBinding(t *testing.T) {
 	if len(encoded) != EncodedCursorLength || strings.Contains(encoded, "=") {
 		t.Fatalf("encoded cursor = %q", encoded)
 	}
-	authenticated, err := ring.AuthenticateCursor(encoded, now)
+	authenticated, err := verifyCursorAt(ring, encoded, now)
 	if err != nil {
-		t.Fatalf("AuthenticateCursor() returned error: %v", err)
+		t.Fatalf("verifyCursorAt() returned error: %v", err)
 	}
 	if got, err := authenticated.BindAudience(actor); err != nil || got != boundary {
 		t.Fatalf("BindAudience() = %+v, %v", got, err)
@@ -63,9 +63,9 @@ func TestCursorOccurrenceTimeEndpointsRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatalf("EncodeCursor(%s) returned error: %v", occurrence, err)
 		}
-		authenticated, err := ring.AuthenticateCursor(encoded, now)
+		authenticated, err := verifyCursorAt(ring, encoded, now)
 		if err != nil {
-			t.Fatalf("AuthenticateCursor(%s) returned error: %v", occurrence, err)
+			t.Fatalf("verifyCursorAt(%s) returned error: %v", occurrence, err)
 		}
 		boundary, err := authenticated.BindAudience(actor)
 		if err != nil || !boundary.CreatedAt.Equal(occurrence) {
@@ -89,15 +89,15 @@ func TestCursorRotationAndKeyringIdentity(t *testing.T) {
 		Active:   CursorKey{ID: 8, secret: testKey(8).secret, NotBefore: now, IssueNotAfter: now.Add(time.Hour)},
 		Previous: &previous,
 	}
-	authenticated, err := rotated.AuthenticateCursor(encoded, now)
+	authenticated, err := verifyCursorAt(rotated, encoded, now)
 	if err != nil || !authenticated.belongsTo(rotated) {
-		t.Fatalf("rotated AuthenticateCursor() = %+v, %v", authenticated, err)
+		t.Fatalf("rotated verifyCursorAt() = %+v, %v", authenticated, err)
 	}
 	if _, err := authenticated.BindAudience(actor); err != nil {
 		t.Fatalf("rotated BindAudience() returned error: %v", err)
 	}
-	if _, err := (CursorKeyring{Active: rotated.Active}).AuthenticateCursor(encoded, now); err == nil {
-		t.Fatal("AuthenticateCursor() accepted cursor after previous-key removal")
+	if _, err := verifyCursorAt(CursorKeyring{Active: rotated.Active}, encoded, now); err == nil {
+		t.Fatal("verifyCursorAt() accepted cursor after previous-key removal")
 	}
 	wrongPrevious := previous
 	wrongPrevious.secret = testKey(9).secret
@@ -126,13 +126,13 @@ func TestCursorRejectsMalformedTamperedAndInvalidTimes(t *testing.T) {
 		tampered = encoded[:len(encoded)-1] + "B"
 	}
 	for _, input := range []string{encoded + "=", encoded[:102], strings.Repeat("!", EncodedCursorLength), tampered} {
-		if got, err := ring.AuthenticateCursor(input, now); err == nil {
-			t.Fatalf("AuthenticateCursor(%q) = %+v, want error", input, got)
+		if got, err := verifyCursorAt(ring, input, now); err == nil {
+			t.Fatalf("verifyCursorAt(%q) = %+v, want error", input, got)
 		}
 	}
 	for _, observed := range []time.Time{now.Add(-61 * time.Second), now.Add(24*time.Hour + time.Microsecond)} {
-		if got, err := ring.AuthenticateCursor(encoded, observed); err == nil {
-			t.Fatalf("AuthenticateCursor at %s = %+v, want error", observed, got)
+		if got, err := verifyCursorAt(ring, encoded, observed); err == nil {
+			t.Fatalf("verifyCursorAt at %s = %+v, want error", observed, got)
 		}
 	}
 	if _, err := ring.EncodeCursor(now, ActivityBoundary{CreatedAt: time.Date(0, 1, 1, 0, 0, 0, 0, time.UTC), PostID: 1}, actor); err == nil {
@@ -264,4 +264,15 @@ func testKey(seed byte) CursorKey {
 		key[index] = seed
 	}
 	return CursorKey{ID: uint32(seed), secret: key}
+}
+
+func verifyCursorAt(ring CursorKeyring, encoded string, databaseNow time.Time) (AuthenticatedCursor, error) {
+	authenticated, err := ring.VerifyCursor(encoded)
+	if err != nil {
+		return AuthenticatedCursor{}, err
+	}
+	if err := authenticated.ValidateTime(databaseNow); err != nil {
+		return AuthenticatedCursor{}, err
+	}
+	return authenticated, nil
 }
