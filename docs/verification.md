@@ -380,7 +380,7 @@ revocation, every report transition, every extended action, fixed redaction
 state, tree-page target links, and atomic audit creation. Ordinary and HTMX
 HTTP paths cover the same successful destinations and error mappings.
 
-Tagged statement coverage was 74.4% for `internal/httpui`, 82.8% for
+Tagged statement coverage was 74.4% for `internal/httpui`, 83.1% for
 `internal/moderation`, 97.4% for `internal/store`, 41.4% for generated
 `internal/store/db`, and 100% for migrations. The explicit gaps are defensive
 malformed-return branches in the service and HTTP adapters and mechanically
