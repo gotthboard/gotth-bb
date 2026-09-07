@@ -274,13 +274,17 @@ func requireAuthorizedSearchCandidate(t *testing.T, mode, shape, encoded string)
 	}{
 		{relation: "areas", filter: "visibility"},
 		{relation: "area_groups", filter: "group_id"},
-		{relation: "topics", filter: "state"},
-		{relation: "posts", filter: "deleted_at"},
 	}
 	for _, required := range requiredRelations {
 		if !planUsesFilteredRelation(*candidate, required.relation, required.filter) {
 			t.Fatalf("%s %s candidate lost authorized %s filter %q: %s", mode, shape, required.relation, required.filter, encoded)
 		}
+	}
+	if !planUsesAuthorizedTopicRelation(*candidate) {
+		t.Fatalf("%s %s candidate lost current visible topic relation: %s", mode, shape, encoded)
+	}
+	if !planUsesCurrentPostRelation(*candidate) {
+		t.Fatalf("%s %s candidate lost current post relation: %s", mode, shape, encoded)
 	}
 	return *candidate
 }
@@ -306,6 +310,28 @@ func planUsesIndex(node explainPlanNode, indexName string) bool {
 func planUsesFilteredRelation(node explainPlanNode, relation, filter string) bool {
 	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
 		return candidate.RelationName == relation && strings.Contains(candidate.Filter, filter)
+	}) != nil
+}
+
+func planUsesAuthorizedTopicRelation(node explainPlanNode) bool {
+	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
+		if candidate.RelationName != "topics" || !strings.Contains(candidate.Filter, "state") {
+			return false
+		}
+		return strings.Contains(candidate.Filter, "deleted_at") ||
+			candidate.IndexName == "topics_search_author_current_idx" ||
+			candidate.IndexName == "topics_search_vector_current_idx"
+	}) != nil
+}
+
+func planUsesCurrentPostRelation(node explainPlanNode) bool {
+	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
+		if candidate.RelationName != "posts" {
+			return false
+		}
+		return (strings.Contains(candidate.Filter, "deleted_at") && strings.Contains(candidate.Filter, "redacted_at")) ||
+			candidate.IndexName == "posts_search_author_current_idx" ||
+			candidate.IndexName == "posts_search_vector_current_idx"
 	}) != nil
 }
 
