@@ -449,23 +449,23 @@ valid p1 source.
 
 The exact clean executable-and-methodology commit tested on `development` on
 2026-09-07 was
-`b46286d05d0dfdfe1a7825ddda0e44a21cfe439a`, with tree
-`448a15ecb67e526f0679bef5a75b292a47e43df3` and deterministic source-archive
+`c046eec2487f107a1eeb22c2aabce6bb5a5b6607`, with tree
+`67b307a81ad5c48e10a262a8d16fd66e6a64435e` and deterministic source-archive
 SHA-256
-`c4e6daa53b81492e44dd2d8e99547141fb9508e0b25ea4fba2062266f7ba2205`.
+`e9eb2372430c9fa5bb00c67705adbfa3dfc61326c2b6956ab3d90b2ce6e36556`.
 The fixture source was 65,532 bytes with SHA-256
 `5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c`;
 its exact p1 HTML was 141,997 bytes with SHA-256
 `8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a`.
-The real 100-row transaction took `19.913512149s`; all 100 rows were
+The real 100-row transaction took `20.634825217s`; all 100 rows were
 p1-preserved with exact HTML, `converted_count` became 100, the subsequent
 empty batch validated the exact writer constraint and completed the singleton,
-and the test process's sampled peak RSS was 78,728 KiB. The run used
+and the test process's sampled peak RSS was 74,248 KiB. The run used
 `GOMAXPROCS=4`, Go 1.26.6, Linux 7.1.5 x86-64, PostgreSQL 17.10, and the exact
 image reference and ID above. The complete retained transcript is
-[`docs/evidence/alpha3-dense-b46286d.txt`](evidence/alpha3-dense-b46286d.txt),
+[`docs/evidence/alpha3-dense-c046eec.txt`](evidence/alpha3-dense-c046eec.txt),
 SHA-256
-`687357ec20d76386ea82901f3124161323a6c026264402fb112fa8a9672a667b`.
+`0ece57080e409db9e7f27eddc3e35ec868ff19188ba89c0642bddc05849d486a`.
 This documentation-and-evidence commit is the direct child of the tested
 executable commit; it changes no executable source, fixture, or methodology.
 
@@ -488,22 +488,22 @@ is a representative 1,000-page measurement point, not a universal timing bound
 or capacity promise.
 
 The exact clean executable-and-methodology commit for this population run was
-`b46286d05d0dfdfe1a7825ddda0e44a21cfe439a`, with tree
-`448a15ecb67e526f0679bef5a75b292a47e43df3` and deterministic source-archive
+`c046eec2487f107a1eeb22c2aabce6bb5a5b6607`, with tree
+`67b307a81ad5c48e10a262a8d16fd66e6a64435e` and deterministic source-archive
 SHA-256
-`c4e6daa53b81492e44dd2d8e99547141fb9508e0b25ea4fba2062266f7ba2205`.
+`e9eb2372430c9fa5bb00c67705adbfa3dfc61326c2b6956ab3d90b2ce6e36556`.
 The 25,000-row fixture used 35-byte source with SHA-256
 `dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98`
 and 56-byte exact p1 HTML with SHA-256
 `3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970`.
-Complete preflight took `1.567473792s`, schema apply took `47.20206ms`,
-250 conversion batches took `16.644531867s`, and final full-table validation
-plus completion took `42.715157ms`. Total re-render time was `16.687247024s`;
-the measured release path was `18.301924316s`; sampled test-process peak RSS
-was 24,160 KiB. The exact final state contained 25,000 current rows,
+Complete preflight took `1.585382994s`, schema apply took `46.616788ms`,
+250 conversion batches took `15.824835011s`, and final full-table validation
+plus completion took `43.92339ms`. Total re-render time was `15.868758401s`;
+the measured release path was `17.500759503s`; sampled test-process peak RSS
+was 19,684 KiB. The exact final state contained 25,000 current rows,
 `converted_count=25000`, one non-null completion time, and a validated writer
 constraint. The environment and pinned PostgreSQL/Go identities were identical
 to the dense compatibility run above. The complete retained transcript is
-[`docs/evidence/alpha3-population-b46286d.txt`](evidence/alpha3-population-b46286d.txt),
+[`docs/evidence/alpha3-population-c046eec.txt`](evidence/alpha3-population-c046eec.txt),
 SHA-256
-`1798c499d9d8f790e7a8372e90b85ffd95c638244cc970c684154334f4fbcd4d`.
+`21284edb8c12058ade57462d1c5f24312ebb133af783bfe489735a6c0fa7b45e`.
