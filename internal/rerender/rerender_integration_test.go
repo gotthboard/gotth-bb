@@ -74,7 +74,7 @@ type explainNode struct {
 	Plans               []explainNode `json:"Plans"`
 }
 
-type mutationPlanEvidence struct {
+type selectionPlanEvidence struct {
 	queries      int
 	returnedRows int
 	examinedRows int
@@ -161,8 +161,8 @@ func (tx *commitUnknownTx) Commit(ctx context.Context) error {
 	return errors.New("simulated lost commit acknowledgement")
 }
 
-func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (mutationPlanEvidence, error) {
-	var evidence mutationPlanEvidence
+func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (selectionPlanEvidence, error) {
+	var evidence selectionPlanEvidence
 	var cursor *int64
 	for {
 		var encoded string
@@ -173,36 +173,36 @@ func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, ro
 			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectStalePostsAfterCursorSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, *cursor, int32(batchSize))
 		}
 		if err := row.Scan(&encoded); err != nil {
-			return mutationPlanEvidence{}, fmt.Errorf("explain renderer mutation selection after %v: %w", cursor, err)
+			return selectionPlanEvidence{}, fmt.Errorf("explain renderer mutation selection after %v: %w", cursor, err)
 		}
 		var documents []explainDocument
 		if err := json.Unmarshal([]byte(encoded), &documents); err != nil || len(documents) != 1 {
-			return mutationPlanEvidence{}, fmt.Errorf("decode renderer mutation selection plan after %v: documents=%d: %w", cursor, len(documents), err)
+			return selectionPlanEvidence{}, fmt.Errorf("decode renderer mutation selection plan after %v: documents=%d: %w", cursor, len(documents), err)
 		}
 		evidence.queries++
 		returned := int(documents[0].Plan.ActualRows)
 		evidence.returnedRows += returned
 		scans, examined := inspectPostIndexScan(documents[0].Plan)
 		if scans != 1 {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
 		}
 		evidence.examinedRows += examined
 		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$3") {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v did not retain id > $3 as a generic-plan index condition", cursor)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v did not retain id > $3 as a generic-plan index condition", cursor)
 		}
 		if returned == 0 {
 			return evidence, nil
 		}
 		nextCursor := int64(evidence.returnedRows)
 		if nextCursor > int64(rowCount) {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation plan returned %d rows from %d-row fixture", nextCursor, rowCount)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer mutation plan returned %d rows from %d-row fixture", nextCursor, rowCount)
 		}
 		cursor = &nextCursor
 	}
 }
 
-func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (mutationPlanEvidence, error) {
-	var evidence mutationPlanEvidence
+func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (selectionPlanEvidence, error) {
+	var evidence selectionPlanEvidence
 	var cursor *int64
 	for {
 		var encoded string
@@ -213,29 +213,29 @@ func measurePreflightSelectionPlans(ctx context.Context, connection *pgx.Conn, r
 			row = connection.QueryRow(ctx, "EXPLAIN (ANALYZE, FORMAT JSON) "+selectPreflightPostsAfterCursorSQL, *cursor, int32(batchSize))
 		}
 		if err := row.Scan(&encoded); err != nil {
-			return mutationPlanEvidence{}, fmt.Errorf("explain renderer preflight selection after %v: %w", cursor, err)
+			return selectionPlanEvidence{}, fmt.Errorf("explain renderer preflight selection after %v: %w", cursor, err)
 		}
 		var documents []explainDocument
 		if err := json.Unmarshal([]byte(encoded), &documents); err != nil || len(documents) != 1 {
-			return mutationPlanEvidence{}, fmt.Errorf("decode renderer preflight selection plan after %v: documents=%d: %w", cursor, len(documents), err)
+			return selectionPlanEvidence{}, fmt.Errorf("decode renderer preflight selection plan after %v: documents=%d: %w", cursor, len(documents), err)
 		}
 		evidence.queries++
 		returned := int(documents[0].Plan.ActualRows)
 		evidence.returnedRows += returned
 		scans, examined := inspectPostIndexScan(documents[0].Plan)
 		if scans != 1 {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
 		}
 		evidence.examinedRows += examined
 		if cursor != nil && !postIndexConditionContains(documents[0].Plan, "id>$1") {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v did not retain id > $1 as a generic-plan index condition", cursor)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer preflight selection after %v did not retain id > $1 as a generic-plan index condition", cursor)
 		}
 		if returned == 0 {
 			return evidence, nil
 		}
 		nextCursor := int64(evidence.returnedRows)
 		if nextCursor > int64(rowCount) {
-			return mutationPlanEvidence{}, fmt.Errorf("renderer preflight plan returned %d rows from %d-row fixture", nextCursor, rowCount)
+			return selectionPlanEvidence{}, fmt.Errorf("renderer preflight plan returned %d rows from %d-row fixture", nextCursor, rowCount)
 		}
 		cursor = &nextCursor
 	}

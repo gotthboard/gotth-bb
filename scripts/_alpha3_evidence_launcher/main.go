@@ -37,8 +37,8 @@ var criticalFiles = []fileIdentity{
 	},
 	{
 		relativePath: "scripts/verify-alpha3-population-performance.sh",
-		size:         9285,
-		sha256:       "019fe49157bd71d7c2e752d05ef1d88ace9e91226095b45da6bb54968a4eb38f",
+		size:         9443,
+		sha256:       "72e91ca2df2e4c559fb2dcef8e1d2300c636df1d763a3619cc7eaa4cfd517456",
 		mode:         0o755,
 	},
 	{
