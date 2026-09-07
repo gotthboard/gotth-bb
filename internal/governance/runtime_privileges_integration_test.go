@@ -119,26 +119,30 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		t.Fatalf("read runtime grant contract: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if strings.Count(string(grantTemplate), rolePlaceholder) != 1 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 1", strings.Count(string(grantTemplate), rolePlaceholder))
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 2 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 2", strings.Count(string(grantTemplate), rolePlaceholder))
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	if _, err := connection.Exec(ctx, grantSQL); err != nil {
 		t.Fatalf("apply runtime grant contract: %v", err)
 	}
 
-	var tableUpdate, singletonUpdate, createdAtUpdate, tableDelete bool
+	var tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete bool
 	if err := connection.QueryRow(ctx, `SELECT
 		pg_catalog.has_table_privilege($1, 'public.governance_state', 'UPDATE'),
 		pg_catalog.has_column_privilege($1, 'public.governance_state', 'singleton', 'UPDATE'),
 		pg_catalog.has_column_privilege($1, 'public.governance_state', 'created_at', 'UPDATE'),
-		pg_catalog.has_table_privilege($1, 'public.governance_state', 'DELETE')`, runtimePrivilegeTestRole).Scan(
-		&tableUpdate, &singletonUpdate, &createdAtUpdate, &tableDelete,
+		pg_catalog.has_table_privilege($1, 'public.governance_state', 'DELETE'),
+		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'SELECT'),
+		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'INSERT'),
+		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'UPDATE'),
+		pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'DELETE')`, runtimePrivilegeTestRole).Scan(
+		&tableUpdate, &singletonUpdate, &createdAtUpdate, &tableDelete, &rendererSelect, &rendererInsert, &rendererUpdate, &rendererDelete,
 	); err != nil {
-		t.Fatalf("inspect runtime governance privileges: %v", err)
+		t.Fatalf("inspect packaged runtime privileges: %v", err)
 	}
-	if tableUpdate || !singletonUpdate || createdAtUpdate || tableDelete {
-		t.Fatalf("runtime governance privileges = (table update %t, singleton update %t, created_at update %t, delete %t)", tableUpdate, singletonUpdate, createdAtUpdate, tableDelete)
+	if tableUpdate || !singletonUpdate || createdAtUpdate || tableDelete || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete {
+		t.Fatalf("runtime privileges = (governance table update %t, singleton update %t, created_at update %t, delete %t; renderer select %t, insert %t, update %t, delete %t)", tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete)
 	}
 
 	if _, err := connection.Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {

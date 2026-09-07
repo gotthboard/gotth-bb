@@ -4,7 +4,9 @@ package readiness
 
 import (
 	"context"
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,9 +14,14 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/rerender"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
-const readinessTestDatabase = "gotth_bb_alpha1_readiness_test"
+const (
+	readinessTestDatabase       = "gotth_bb_alpha1_readiness_test"
+	readinessRestrictedRole     = "gotth_bb_alpha3_readiness_runtime"
+	readinessRestrictedPassword = "alpha3-readiness-test-only"
+)
 
 func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -40,6 +47,19 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if _, err := admin.Exec(ctx, "DROP DATABASE IF EXISTS "+readinessTestDatabase+" WITH (FORCE)"); err != nil {
 		t.Fatalf("drop stale readiness database: %v", err)
 	}
+	if _, err := admin.Exec(ctx, "DROP ROLE IF EXISTS "+readinessRestrictedRole); err != nil {
+		t.Fatalf("drop stale readiness role: %v", err)
+	}
+	if _, err := admin.Exec(ctx, "CREATE ROLE "+readinessRestrictedRole+" LOGIN PASSWORD '"+readinessRestrictedPassword+"'"); err != nil {
+		t.Fatalf("create restricted readiness role: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if _, err := admin.Exec(cleanupContext, "DROP ROLE IF EXISTS "+readinessRestrictedRole); err != nil {
+			t.Errorf("drop readiness role: %v", err)
+		}
+	})
 	if _, err := admin.Exec(ctx, "CREATE DATABASE "+readinessTestDatabase); err != nil {
 		t.Fatalf("create readiness database: %v", err)
 	}
@@ -102,6 +122,67 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if err := checker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected exact release and governance state: %v", err)
 	}
+
+	roleIdentifier := pgx.Identifier{readinessRestrictedRole}.Sanitize()
+	if _, err := connection.Exec(ctx, `GRANT CONNECT ON DATABASE `+pgx.Identifier{readinessTestDatabase}.Sanitize()+` TO `+roleIdentifier+`;
+GRANT USAGE ON SCHEMA public TO `+roleIdentifier+`;
+GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, public.users TO `+roleIdentifier+`;`); err != nil {
+		t.Fatalf("grant baseline readiness privileges: %v", err)
+	}
+	restrictedConfig := testConfig.Copy()
+	restrictedConfig.User = readinessRestrictedRole
+	restrictedConfig.Password = readinessRestrictedPassword
+	restricted, err := pgx.ConnectConfig(ctx, restrictedConfig)
+	if err != nil {
+		t.Fatalf("connect as restricted runtime role: %v", err)
+	}
+	t.Cleanup(func() { _ = restricted.Close(context.Background()) })
+	restrictedChecker, err := New(restricted, func(checkContext context.Context) error {
+		return release.Verify(checkContext, restricted)
+	}, time.Now)
+	if err != nil {
+		t.Fatalf("New(restricted) returned error: %v", err)
+	}
+	var postgresError *pgconn.PgError
+	if err := restrictedChecker.Check(ctx); !errors.As(err, &postgresError) || postgresError.Code != "42501" {
+		t.Fatalf("restricted Check() before packaged grant = %v, want SQLSTATE 42501", err)
+	}
+
+	grantTemplate, err := os.ReadFile("../../deploy/postgresql/runtime-grants.sql")
+	if err != nil {
+		t.Fatalf("read packaged runtime grants: %v", err)
+	}
+	const rolePlaceholder = `:"runtime_role"`
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 2 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 2", count)
+	}
+	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := connection.Exec(ctx, grantSQL); err != nil {
+			t.Fatalf("apply packaged runtime grants attempt %d: %v", attempt, err)
+		}
+	}
+	var rendererOwner string
+	var rendererSelect, rendererInsert, rendererUpdate, rendererDelete bool
+	if err := connection.QueryRow(ctx, `SELECT
+table_owner,
+pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'SELECT'),
+pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'INSERT'),
+pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'UPDATE'),
+pg_catalog.has_table_privilege($1, 'public.content_renderer_state', 'DELETE')
+FROM information_schema.tables
+WHERE table_schema = 'public' AND table_name = 'content_renderer_state'`, readinessRestrictedRole).Scan(
+		&rendererOwner, &rendererSelect, &rendererInsert, &rendererUpdate, &rendererDelete,
+	); err != nil {
+		t.Fatalf("inspect renderer-state ownership and privileges: %v", err)
+	}
+	if rendererOwner != testConfig.User || rendererOwner == readinessRestrictedRole || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete {
+		t.Fatalf("renderer-state boundary = (owner %q, select %t, insert %t, update %t, delete %t), migration owner %q/runtime %q", rendererOwner, rendererSelect, rendererInsert, rendererUpdate, rendererDelete, testConfig.User, readinessRestrictedRole)
+	}
+	if err := restrictedChecker.Check(ctx); err != nil {
+		t.Fatalf("restricted Check() rejected exact release after packaged grant: %v", err)
+	}
+
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_renderer_version_current,
 ADD CONSTRAINT posts_renderer_version_current CHECK (true)`); err != nil {
 		t.Fatalf("replace renderer constraint with same-name impostor: %v", err)

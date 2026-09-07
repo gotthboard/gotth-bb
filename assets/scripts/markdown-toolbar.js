@@ -97,54 +97,87 @@
     return maximum;
   }
 
+  function adjacentBacktickRun(source, position, direction) {
+    let cursor = position;
+    if (direction < 0) {
+      while (cursor > 0 && source[cursor - 1] === "`") cursor -= 1;
+      return { start: cursor, end: position };
+    }
+    while (cursor < source.length && source[cursor] === "`") cursor += 1;
+    return { start: position, end: cursor };
+  }
+
+  function escapedBackticks(length) {
+    return "\\`".repeat(length);
+  }
+
+  function escapedBacktickRunBefore(source, position) {
+    let cursor = position;
+    while (cursor >= 2 && source[cursor - 2] === "\\" && source[cursor - 1] === "`") cursor -= 2;
+    return { start: cursor, count: (position - cursor) / 2 };
+  }
+
+  function escapedBacktickRunAfter(source, position) {
+    let cursor = position;
+    while (cursor + 1 < source.length && source[cursor] === "\\" && source[cursor + 1] === "`") cursor += 2;
+    return { end: cursor, count: (cursor - position) / 2 };
+  }
+
+  function unwrapInlineCode(source, start, end, selected, padded) {
+    const markerLength = maximumBacktickRun(selected) + 1;
+    const leftMarkerEnd = padded ? start - 1 : start;
+    const rightMarkerStart = padded ? end + 1 : end;
+    if ((padded && (source[start - 1] !== " " || source[end] !== " ")) || leftMarkerEnd < markerLength) return null;
+    const leftMarkerStart = leftMarkerEnd - markerLength;
+    const rightMarkerEnd = rightMarkerStart + markerLength;
+    const marker = "`".repeat(markerLength);
+    if (source.slice(leftMarkerStart, leftMarkerEnd) !== marker || source.slice(rightMarkerStart, rightMarkerEnd) !== marker) return null;
+
+    const escapedLeft = escapedBacktickRunBefore(source, leftMarkerStart);
+    const escapedRight = escapedBacktickRunAfter(source, rightMarkerEnd);
+    if ((source[leftMarkerStart - 1] === "`" && escapedLeft.count === 0) || source[rightMarkerEnd] === "`") return null;
+    const replacement = "`".repeat(escapedLeft.count) + selected + "`".repeat(escapedRight.count);
+    const replacementStart = escapedLeft.start;
+    return {
+      value: source.slice(0, escapedLeft.start) + replacement + source.slice(escapedRight.end),
+      start: replacementStart + escapedLeft.count,
+      end: replacementStart + escapedLeft.count + selected.length,
+    };
+  }
+
   // Inline code uses CommonMark padding except for all-space selections, where
   // padding would become content. The delimiter is longer than every selected
-  // run and exact adjacent wrappers toggle off.
+  // run. Adjacent unselected backticks are escaped while wrapped so Goldmark
+  // sees complete delimiter runs, then restored byte-for-byte on toggle.
   function inlineCode(source, start, end) {
     const selected = source.slice(start, end);
     if (selected.length > 0 && selected.trim() === "") {
-      let left = start - 1;
-      while (left >= 0 && source[left] === "`") left -= 1;
-      let right = end;
-      while (right < source.length && source[right] === "`") right += 1;
-      const leftLength = start - 1 - left;
-      const rightLength = right - end;
-      if (leftLength > 0 && leftLength === rightLength) {
-        return {
-          value: source.slice(0, left + 1) + selected + source.slice(right),
-          start: left + 1,
-          end: left + 1 + selected.length,
-        };
-      }
+      const unwrapped = unwrapInlineCode(source, start, end, selected, false);
+      if (unwrapped) return unwrapped;
       const marker = "`".repeat(maximumBacktickRun(selected) + 1);
+      const left = adjacentBacktickRun(source, start, -1);
+      const right = adjacentBacktickRun(source, end, 1);
+      const escapedLeft = escapedBackticks(left.end - left.start);
+      const escapedRight = escapedBackticks(right.end - right.start);
       return {
-        value: source.slice(0, start) + marker + selected + marker + source.slice(end),
-        start: start + marker.length,
-        end: start + marker.length + selected.length,
+        value: source.slice(0, left.start) + escapedLeft + marker + selected + marker + escapedRight + source.slice(right.end),
+        start: left.start + escapedLeft.length + marker.length,
+        end: left.start + escapedLeft.length + marker.length + selected.length,
       };
     }
-    if (start > 1 && source[start - 1] === " " && source[end] === " ") {
-      let left = start - 2;
-      while (left >= 0 && source[left] === "`") left -= 1;
-      let right = end + 1;
-      while (right < source.length && source[right] === "`") right += 1;
-      const leftLength = start - 2 - left;
-      const rightLength = right - end - 1;
-      if (leftLength > 0 && leftLength === rightLength) {
-        return {
-          value: source.slice(0, left + 1) + selected + source.slice(right),
-          start: left + 1,
-          end: left + 1 + selected.length,
-        };
-      }
-    }
+    const unwrapped = unwrapInlineCode(source, start, end, selected, true);
+    if (unwrapped) return unwrapped;
     const content = selected || "code";
     const marker = "`".repeat(maximumBacktickRun(content) + 1);
+    const left = adjacentBacktickRun(source, start, -1);
+    const right = adjacentBacktickRun(source, end, 1);
+    const escapedLeft = escapedBackticks(left.end - left.start);
+    const escapedRight = escapedBackticks(right.end - right.start);
     const inserted = marker + " " + content + " " + marker;
     return {
-      value: source.slice(0, start) + inserted + source.slice(end),
-      start: start + marker.length + 1,
-      end: start + marker.length + 1 + content.length,
+      value: source.slice(0, left.start) + escapedLeft + inserted + escapedRight + source.slice(right.end),
+      start: left.start + escapedLeft.length + marker.length + 1,
+      end: left.start + escapedLeft.length + marker.length + 1 + content.length,
     };
   }
 

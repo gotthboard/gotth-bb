@@ -311,6 +311,13 @@ administrator has `role = administrator` and no suspension effective at the
 transaction time. The row contains no cached administrator count that could
 drift.
 
+Migration 000007 also creates `content_renderer_state` under the migration
+owner. The packaged runtime-grant artifact idempotently grants the distinct
+runtime role only `SELECT` on that table so readiness can observe the completed
+renderer transition. Ownership and every mutation privilege remain with the
+migration owner; the runtime role receives no renderer-state INSERT, UPDATE, or
+DELETE privilege.
+
 ### 6.3 `external_identities`
 
 - `user_id` foreign key and unique for version 1.0 single-issuer operation

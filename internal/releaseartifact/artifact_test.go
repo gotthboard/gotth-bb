@@ -21,7 +21,7 @@ import (
 
 const testCommit = "0123456789abcdef0123456789abcdef01234567"
 
-const testRuntimeGrants = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n"
+const testRuntimeGrants = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\n\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";\n"
 
 const (
 	testContainerfile = "FROM alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659\n"
@@ -361,6 +361,7 @@ func TestCanonicalRuntimeGrantsRejectsMalformedData(t *testing.T) {
 		[]byte("GRANT TO :\"runtime_role\";\r\n"),
 		[]byte("GRANT TO :\"runtime_role\";\x00\n"),
 		[]byte("GRANT TO :\"runtime_role\"; GRANT TO :\"runtime_role\";\n"),
+		[]byte("GRANT TO :\"runtime_role\"; GRANT TO :\"runtime_role\"; GRANT TO :\"runtime_role\";\n"),
 		bytes.Repeat([]byte{'x'}, maxRuntimeGrantsBytes+1),
 	}
 	for _, grants := range invalid {

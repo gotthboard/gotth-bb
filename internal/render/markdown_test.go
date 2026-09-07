@@ -129,6 +129,34 @@ func TestRenderMarkdownAcceptsToolbarBoundaryMarkdown(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownAcceptsInlineCodeBesideEscapedAuthoredBackticks(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		source   string
+		required string
+	}{
+		{name: "right", source: "` text `\\`", required: "<p><code>text</code>`</p>"},
+		{name: "left", source: "\\`` text `", required: "<p>`<code>text</code></p>"},
+		{name: "both", source: "x\\`` text `\\`y", required: "<p>x`<code>text</code>`y</p>"},
+		{name: "multiple", source: "x\\`\\`\\`` text `\\`\\`y", required: "<p>x```<code>text</code>``y</p>"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			rendered, err := RenderMarkdown(test.source)
+			if err != nil {
+				t.Fatalf("RenderMarkdown() returned error: %v", err)
+			}
+			html, _, err := rendered.PersistenceValues()
+			if err != nil || !strings.Contains(html, test.required) {
+				t.Fatalf("adjacent inline-code rendering = (%q, %v), want containing %q", html, err, test.required)
+			}
+		})
+	}
+}
+
 func TestRenderMarkdownIsDeterministic(t *testing.T) {
 	t.Parallel()
 

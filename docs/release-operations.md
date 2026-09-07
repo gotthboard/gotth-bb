@@ -226,9 +226,11 @@ notes, screenshots, or repository files.
 - Migration privileges are separated from runtime privileges where practical.
 - After migrations, the migration owner applies
   `deploy/postgresql/runtime-grants.sql` with the exact runtime role as psql's
-  `runtime_role` variable. This grants only `UPDATE(singleton)` on
-  `governance_state`, which PostgreSQL requires for `SELECT ... FOR UPDATE`;
-  table-wide UPDATE, UPDATE on `created_at`, and DELETE remain denied.
+  `runtime_role` variable. The idempotent artifact grants only
+  `UPDATE(singleton)` on `governance_state`, which PostgreSQL requires for
+  `SELECT ... FOR UPDATE`, plus `SELECT` on the migration-owned
+  `content_renderer_state` readiness singleton. Table-wide governance UPDATE,
+  UPDATE on `created_at`, renderer-state mutation, and DELETE remain denied.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -342,15 +344,23 @@ required sequence is:
    maintenance window is unacceptable for the target installation, stop before
    migration 000007 and plan an explicitly approved maintenance window; do not
    begin the incompatible schema transition and hope it finishes.
-10. Build the application image from the verified archive and verify labels and
+10. Before starting the application, the migration owner must apply the exact
+   packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
+   restricted runtime role as psql's `runtime_role` variable. This is required
+   after 000007 because PostgreSQL grants a newly created table only to its
+   migration owner by default; the application readiness role needs the
+   artifact's narrow `SELECT` on `content_renderer_state`. Reapplying this
+   `GRANT` artifact is idempotent. Do not transfer table ownership or substitute
+   table-wide mutation privileges.
+11. Build the application image from the verified archive and verify labels and
    database-free binary identities.
-11. Validate the resolved Compose model without printing its environment.
-12. Preserve the running PostgreSQL container and durable bind mount and start
+12. Validate the resolved Compose model without printing its environment.
+13. Preserve the running PostgreSQL container and durable bind mount and start
    only the new application container.
-13. Wait for container health and application readiness.
-14. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
-15. Record result, version, image ID, migration head, and evidence.
-16. If any gate fails, stop and execute the documented rollback/repair decision.
+14. Wait for container health and application readiness.
+15. Run deployed smoke tests through Caddy at `https://bb.alhstudios.com/`.
+16. Record result, version, image ID, migration head, and evidence.
+17. If any gate fails, stop and execute the documented rollback/repair decision.
 
 Deploy commands must be safe to rerun or must detect completed state. A retry
 must not duplicate migrations, seed users, or moderation data.

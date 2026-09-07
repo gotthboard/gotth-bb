@@ -10,3 +10,8 @@ GRANT UPDATE (singleton)
 ON TABLE public.governance_state
 TO :"runtime_role";
 
+-- Readiness must observe the migration-owned renderer completion singleton.
+-- Keep this read-only and table-specific; runtime never owns or mutates it.
+GRANT SELECT
+ON TABLE public.content_renderer_state
+TO :"runtime_role";

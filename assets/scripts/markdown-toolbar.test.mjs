@@ -202,6 +202,40 @@ test("all-space inline code preserves and toggles exact selected spaces", () => 
   }
 });
 
+test("inline code preserves adjacent authored backtick runs exactly", () => {
+  const { transform } = load();
+  const cases = [
+    { name: "right single", source: "text`", start: 0, end: 4, wrapped: "` text `\\`" },
+    { name: "left single", source: "`text", start: 1, end: 5, wrapped: "\\`` text `" },
+    { name: "both single", source: "x`text`y", start: 2, end: 6, wrapped: "x\\`` text `\\`y" },
+    { name: "unequal multiple", source: "x```text``y", start: 4, end: 8, wrapped: "x\\`\\`\\`` text `\\`\\`y" },
+    { name: "internal and exterior runs", source: "x``a`b```y", start: 3, end: 6, wrapped: "x\\`\\``` a`b ``\\`\\`\\`y" },
+    { name: "padded content", source: "x` text `y", start: 2, end: 8, wrapped: "x\\``  text  `\\`y" },
+    { name: "all-space content", source: "x`   ``y", start: 2, end: 5, wrapped: "x\\``   `\\`\\`y" },
+  ];
+  for (const item of cases) {
+    const wrapped = transform(item.source, item.start, item.end, "inline-code");
+    assert.equal(wrapped.value, item.wrapped, item.name);
+    assert.equal(wrapped.value.slice(wrapped.start, wrapped.end), item.source.slice(item.start, item.end), item.name);
+    assert.deepEqual(
+      { ...transform(wrapped.value, wrapped.start, wrapped.end, "inline-code") },
+      { value: item.source, start: item.start, end: item.end },
+      item.name,
+    );
+  }
+
+  const caret = transform("x`y", 2, 2, "inline-code");
+  assert.deepEqual({ ...caret }, { value: "x\\`` code `y", start: 5, end: 9 });
+  assert.deepEqual(
+    { ...transform(caret.value, caret.start, caret.end, "inline-code") },
+    { value: "x`codey", start: 2, end: 6 },
+  );
+
+  const noncanonical = transform("x`` text ``y", 4, 8, "inline-code");
+  assert.equal(noncanonical.value, "x`` ` text ` ``y");
+  assert.equal(noncanonical.value.slice(noncanonical.start, noncanonical.end), "text");
+});
+
 test("unsupported Image action is a no-op", () => {
   const { transform } = load();
   assert.deepEqual({ ...transform("draft", 1, 4, "image") }, { value: "draft", start: 1, end: 4 });

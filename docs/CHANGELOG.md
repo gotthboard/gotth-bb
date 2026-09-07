@@ -55,7 +55,10 @@ Verification:
 - opt-in pinned-PostgreSQL 25,000-post population measurement with separate
   complete-preflight transaction/round-trip counts, conversion,
   final-validation, total-time, row-state, and
-  sampled test-process RSS evidence
+  sampled test-process RSS evidence retained as a hashed canonical transcript
+- restricted-login-role integration of the exact idempotent packaged grants,
+  proving the migration owner remains owner, renderer state stays read-only,
+  and migration verification plus readiness pass after the narrow grant
 
 Risks / non-goals:
 
@@ -88,7 +91,10 @@ JavaScript.
 Fenced-code and table actions operate on complete touched lines and map the
 original selection into the result. Toggling recognized authored syntax removes
 only wrapper/internal syntax, never exterior line endings; delimiter length and
-separator dashes carry no hidden provenance.
+separator dashes carry no hidden provenance. Inline code reversibly escapes
+adjacent unselected backtick runs so the pinned parser sees complete delimiters;
+repeated toggle restores those exterior runs and the original selection
+byte-for-byte.
 
 Verification:
 

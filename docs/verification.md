@@ -393,8 +393,11 @@ local result is represented as that evidence.
 ## 18. Alpha.3 renderer migration evidence
 
 The canonical reproduction command is
-`scripts/verify-alpha3-rerender-performance.sh`. It refuses a dirty source
-tree, requires `GOTTH_BB_TEST_DATABASE_URL`, verifies that
+`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-rerender-performance.sh`.
+It refuses a dirty source tree, requires `GOTTH_BB_TEST_DATABASE_URL`, requires
+the evidence output to be a new file in an existing directory, and preserves
+the complete bounded test transcript plus identity footer there before its
+scratch directory is removed. It verifies that
 `GOTTH_BB_POSTGRES_CONTAINER` (default
 `gotth-bb-alpha3-totality-pg`) uses both the exact configured image reference
 and image ID
@@ -436,9 +439,10 @@ direct child of the tested executable commit; it changes no executable source,
 fixture, or methodology.
 
 The separate population-scale reproduction command is
-`scripts/verify-alpha3-population-performance.sh`. It applies the same
-clean-tree, exact-image, environment-identity, and 50 ms test-process `VmRSS`
-sampling gates. Its committed integration fixture creates 25,000 coherent
+`GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-population-performance.sh`.
+It applies the same clean-tree, new retained-output, exact-image,
+environment-identity, and 50 ms test-process `VmRSS` sampling gates. Its
+committed integration fixture creates 25,000 coherent
 ordinary p1 posts as 1,000 full 25-post topics, then verifies every topic's
 exact post count, first/latest/root relationships, counters, parent, and thread
 path before measurement. Fixture loading is explicitly outside the timed
