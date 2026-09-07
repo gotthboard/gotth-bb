@@ -1,0 +1,25 @@
+=== RUN   TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17
+    rerender_integration_test.go:346: sql_server_identity version_num=170010 address=172.17.0.7/32 port=5432 database=gotth_bb_alpha3_rerender_performance_test system_identifier=7682637991496687654
+    rerender_integration_test.go:383: fixture source_bytes=65532 source_sha256=5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c legacy_html_bytes=141997 legacy_html_sha256=8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a
+    rerender_integration_test.go:436: compatibility_batch rows=100 elapsed=19.913512149s preserved=100 exact_html=100 converted=100
+--- PASS: TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17 (20.71s)
+PASS
+source_head_before=b46286d05d0dfdfe1a7825ddda0e44a21cfe439a
+source_tree_before=448a15ecb67e526f0679bef5a75b292a47e43df3
+source_archive_sha256_before=c4e6daa53b81492e44dd2d8e99547141fb9508e0b25ea4fba2062266f7ba2205
+source_clean_before=true
+source_head_after=b46286d05d0dfdfe1a7825ddda0e44a21cfe439a
+source_tree_after=448a15ecb67e526f0679bef5a75b292a47e43df3
+source_archive_sha256_after=c4e6daa53b81492e44dd2d8e99547141fb9508e0b25ea4fba2062266f7ba2205
+source_clean_after=true
+environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
+go_version=go1.26.6
+gomaxprocs=4
+postgres_container=gotth-bb-alpha3-totality-pg
+postgres_container_running=true
+postgres_published_endpoint=127.0.0.1:32797
+postgres_system_identifier=7682637991496687654
+postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
+sampled_peak_rss_kib=78728
