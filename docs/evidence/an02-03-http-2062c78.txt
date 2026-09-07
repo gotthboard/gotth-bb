@@ -1,10 +1,10 @@
 AN-02-03 HTTP/UI admission evidence
 
 Executable source
-  commit: 9092ed0acf52017ff929ec4abc9702da7132b2f9
-  tree: aae0587ed2f2287a7cf613ca25ef4414112571f9
-  parent: d9372eb9b37fa9637d6b6eeba67ce8f33a2f3d23
-  git archive SHA-256: 5eb85463087677aef39595ceecc8bc0d377f14e4fb22278b7d579279538ffc71
+  commit: 2062c789bf654d57d9a1922270d46e66cbdab2bc
+  tree: 661336c310f046b31a4a188a07f18553d5c10718
+  parent: 56ab431fa2a3f8e0b87f7cabffbd0cb725e5dbf2
+  git archive SHA-256: ab3f71283bc7cd669ddacc77c8d47457d3c6461231be3b7fd551f88e732e1a63
 
 Scope
   This evidence admits AN-02-03 only: exact optional-session search,
@@ -21,9 +21,11 @@ Generation gate (local pinned toolchain)
   command: make generate
   result: PASS; generated binary diff unchanged
   diff SHA-256 before/after:
-    4a8b6b05b27fb2ca9c6ced75dc34af8d51581df2d04e36f3563b1bd3b0d50157
+    018558348866e8daa01cee9144c111418b28ccb3698a9970557c11bd0bb7a24b
   generated CSS SHA-256 and content-addressed filename:
     1b528939bc5a90b46925897b73a2e268ea711eaed8177b516d3b9cf5a767bc9b
+  discovery-response script SHA-256 and content-addressed filename:
+    83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b
 
 Designated evidence host
   host role: development
@@ -36,14 +38,14 @@ Repository-wide static/race/coverage gate
   command: GOTOOLCHAIN=go1.26.6 GOMAXPROCS=4 go vet ./...
   result: PASS
   command: GOTOOLCHAIN=go1.26.6 GOMAXPROCS=4 go test -p=2 -race
-           -covermode=atomic -coverprofile=/tmp/gotth-bb-an02-03-full.cover ./...
+           -covermode=atomic -coverprofile=/tmp/gotth-bb-an02-03-repair.cover ./...
   result: PASS
   total statement coverage: 74.1%
 
 Changed-boundary function coverage
   config.ParseActivityCursorKeyringFile: 100.0%
   httpui.renderDiscoveryResponse: 100.0%
-  httpui.boundedDiscoveryBuffer.Write: 100.0%
+  httpui.discoveryBuffer.Write: 100.0%
   httpui.NewFooterLoadTimesHandler: 100.0%
   httpui.newDiscoveryPreflightHandler: 100.0%
   httpui.newDiscoveryPreflightHandlerWithTimeouts: 94.9%
@@ -67,11 +69,14 @@ Browser-through-Caddy gate
   command: GOTTH_BB_BROWSER_CADDY=1 GOTOOLCHAIN=go1.26.6
            GOMAXPROCS=4 go test -p=1 -tags=integration
            -run=TestDiscoveryBrowserThroughCaddy -v ./internal/httpui
-  result: PASS (0.85s)
-  rendered DOM: 6,564 bytes
+  result: PASS (1.51s)
+  rendered successful DOM: 6,884 bytes
   assertions: real reverse proxy at /bb; semantic navigation/main/form labels;
-  full base-path-safe links; escaped excerpt; direct-post link; no root-path
-  escape; no active script material.
+  base-path-safe search, activity, direct-post, and topic links; escaped
+  excerpt; no root-path escape; no active script material; production HTMX
+  plus the content-addressed discovery listener automatically replace the
+  marked 400 response into #main-content while the global non-discovery
+  4xx/5xx no-swap policy remains unchanged.
 
 Focused failure and policy evidence
   PASS: malformed search/activity/direct-post input stops before cursor,
@@ -83,6 +88,9 @@ Focused failure and policy evidence
   PASS: search/activity downstream contexts carry five-/two-second bounds
   PASS: render completes before headers and rejects >256 KiB or cancellation
   PASS: full-page and HTMX modes share canonical typed presentation state
+  PASS: marked discovery 400/404/503 fragments swap without widening the
+        established global HTMX error policy
+  PASS: post search results expose both canonical direct-post and topic links
   PASS: direct-post absence and denial both use the fixed 404 envelope
   PASS: application access logs retain the route pattern but omit raw query,
         filters, cursor, identity, results, snippets, and body material
