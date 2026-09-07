@@ -1,0 +1,16 @@
+=== RUN   TestPopulationMigrationPerformanceOnPostgreSQL17
+    rerender_integration_test.go:477: population_fixture rows=25000 full_pages_25=1000 source_bytes=35 source_sha256=dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98 legacy_html_bytes=56 legacy_html_sha256=3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970
+    rerender_integration_test.go:624: population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250 preflight_elapsed=1.630501112s schema_elapsed=43.788582ms conversion_elapsed=16.967768035s validation_elapsed=45.689901ms rerender_total_elapsed=17.013457936s release_total_elapsed=18.68774911s current=25000 converted=25000 completed=true validated=true
+--- PASS: TestPopulationMigrationPerformanceOnPostgreSQL17 (19.57s)
+PASS
+commit=0a7e71baf372fcc62fc72fdf7ecb7e5afd86e70d
+tree=b8ce5f58abc94e04b3e948410007be9164e0ff89
+source_archive_sha256=86fcd7e05683b6973d41428ac32bce21353add081ee06e6cccdc4f36e134e52a
+environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
+go_version=go1.26.6
+gomaxprocs=4
+postgres_container=gotth-bb-alpha3-totality-pg
+postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
+sampled_peak_rss_kib=21840

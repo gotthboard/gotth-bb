@@ -1,0 +1,16 @@
+=== RUN   TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17
+    rerender_integration_test.go:379: fixture source_bytes=65532 source_sha256=5949974d253f9c125c1c299c557d17d3a501963959d987d927d653af04c57e2c legacy_html_bytes=141997 legacy_html_sha256=8379d153b1eeec05b8cea9b844ea24b612cbe32aa1d0ce9a9cb050ba1ff57a1a
+    rerender_integration_test.go:432: compatibility_batch rows=100 elapsed=21.132094785s preserved=100 exact_html=100 converted=100
+--- PASS: TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17 (21.86s)
+PASS
+commit=0a7e71baf372fcc62fc72fdf7ecb7e5afd86e70d
+tree=b8ce5f58abc94e04b3e948410007be9164e0ff89
+source_archive_sha256=86fcd7e05683b6973d41428ac32bce21353add081ee06e6cccdc4f36e134e52a
+environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
+go_version=go1.26.6
+gomaxprocs=4
+postgres_container=gotth-bb-alpha3-totality-pg
+postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
+sampled_peak_rss_kib=78844
