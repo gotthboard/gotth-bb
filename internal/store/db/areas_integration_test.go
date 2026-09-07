@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -107,26 +108,26 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 		{query: `INSERT INTO public.posts
             (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
             OVERRIDING SYSTEM VALUE VALUES
-            (1001, 101, $1, 1, 'first', '<p>first</p>', 'test', $2, $2),
-            (1002, 101, $1, 2, 'second', '<p>second</p>', 'test', $3, $3)`, args: []any{ownerID, fixtureTime, fixtureTime.Add(time.Minute)}},
+            (1001, 101, $1, 1, 'first', '<p>first</p>', $4, $2, $2),
+            (1002, 101, $1, 2, 'second', '<p>second</p>', $4, $3, $3)`, args: []any{ownerID, fixtureTime, fixtureTime.Add(time.Minute), contentrender.RendererVersion}},
 		{query: `INSERT INTO public.posts
             (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at, deleted_at, deleted_by, deletion_reason)
             OVERRIDING SYSTEM VALUE VALUES
-            (1003, 101, $1, 3, 'deleted', '<p>deleted</p>', 'test', $2, $2, $2, $1, 'fixture deletion')`, args: []any{ownerID, fixtureTime.Add(2 * time.Minute)}},
+            (1003, 101, $1, 3, 'deleted', '<p>deleted</p>', $3, $2, $2, $2, $1, 'fixture deletion')`, args: []any{ownerID, fixtureTime.Add(2 * time.Minute), contentrender.RendererVersion}},
 		{query: `INSERT INTO public.topics
             (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number, created_at, updated_at, last_activity_at)
             VALUES (102, $1, $2, 'Hidden topic', 'hidden', 1004, 1004, 0, 2, $3, $3, $3)`, args: []any{areaIDs["public"], ownerID, fixtureTime.Add(3 * time.Minute)}},
 		{query: `INSERT INTO public.posts
             (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
             OVERRIDING SYSTEM VALUE VALUES
-            (1004, 102, $1, 1, 'hidden', '<p>hidden</p>', 'test', $2, $2)`, args: []any{ownerID, fixtureTime.Add(3 * time.Minute)}},
+            (1004, 102, $1, 1, 'hidden', '<p>hidden</p>', $3, $2, $2)`, args: []any{ownerID, fixtureTime.Add(3 * time.Minute), contentrender.RendererVersion}},
 		{query: `INSERT INTO public.topics
             (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number, created_at, updated_at, last_activity_at, deleted_at)
             VALUES (103, $1, $2, 'Deleted topic', 'open', 1005, 1005, 0, 2, $3, $3, $3, $3)`, args: []any{areaIDs["public"], ownerID, fixtureTime.Add(4 * time.Minute)}},
 		{query: `INSERT INTO public.posts
             (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at)
             OVERRIDING SYSTEM VALUE VALUES
-            (1005, 103, $1, 1, 'deleted topic', '<p>deleted topic</p>', 'test', $2, $2)`, args: []any{ownerID, fixtureTime.Add(4 * time.Minute)}},
+            (1005, 103, $1, 1, 'deleted topic', '<p>deleted topic</p>', $3, $2, $2)`, args: []any{ownerID, fixtureTime.Add(4 * time.Minute), contentrender.RendererVersion}},
 	}
 	for index, statement := range statements {
 		if _, err := fixture.Exec(ctx, statement.query, statement.args...); err != nil {

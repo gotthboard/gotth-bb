@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 )
@@ -226,8 +227,8 @@ func insertTopicListFixture(t *testing.T, ctx context.Context, connection *pgx.C
 	}
 	for postNumber := 1; postNumber <= replyCount+1; postNumber++ {
 		postID := firstPostID + int64(postNumber-1)
-		if _, err := tx.Exec(ctx, `INSERT INTO public.posts (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at) VALUES ($1, $2, $3, $4, 'source', '<p>source</p>', 'test-v1', $5, $5)`,
-			postID, topicID, authorID, postNumber, createdAt); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO public.posts (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, created_at, updated_at) VALUES ($1, $2, $3, $4, 'source', '<p>source</p>', $6, $5, $5)`,
+			postID, topicID, authorID, postNumber, createdAt, contentrender.RendererVersion); err != nil {
 			t.Fatalf("insert post fixture %d/%d: %v", topicID, postNumber, err)
 		}
 	}
