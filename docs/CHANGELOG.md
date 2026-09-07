@@ -96,8 +96,10 @@ Explanation:
 Add a mandatory, population-linear, read-only candidate preflight whose
 individual transactions retain at most 100 rows before migration 000007
 and a release-owned re-render pass after schema migration. One locked
-singleton serializes runners, each transaction handles at most 100 ordinary
-posts from canonical Markdown, and an immediately enforced `NOT VALID` writer
+singleton serializes runners, persists a nullable signed-bigint post-ID cursor,
+and atomically advances it with each at-most-100-row transaction. Selection is
+strictly after that committed cursor, so restart and retry do not rescan a
+converted prefix. An immediately enforced `NOT VALID` writer
 constraint prevents a stopped old release from leaving mixed renderer writes.
 The final empty transaction performs PostgreSQL's population-wide constraint
 validation under `SHARE UPDATE EXCLUSIVE` and records one stable completion
@@ -109,7 +111,8 @@ expansion exceeds that ceiling retains its byte-verified p1 HTML under an
 explicit p1-preserved compatibility marker; every other render or
 legacy-integrity error fails closed.
 The mutating loop performs no synchronous progress writes; durable database
-state is the canonical restart record.
+state is the canonical restart record. Readiness attests the exact cursor
+column and progress constraint as well as the completed renderer state.
 
 Verification:
 
@@ -127,7 +130,9 @@ Verification:
   sampling, and bounded cancellation between renderer phases
 - opt-in pinned-PostgreSQL 25,000-post population measurement with separate
   complete-preflight transaction/round-trip counts, conversion,
-  final-validation, total-time, row-state, and
+  exact primary-key `EXPLAIN ANALYZE` and returned-identity proof of 251
+  selections examining 25,000 rows without prefix revisits, final-validation,
+  total-time, row-state, and
   sampled test-process RSS evidence retained as a hashed canonical transcript
 - evidence scripts that admit only the inspected loopback target after pinned
   pgx effective-config parsing and require the same PostgreSQL system

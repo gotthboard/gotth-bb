@@ -411,7 +411,9 @@ renderer boundary. It is acceptable when all of the following hold:
 4. The persisted renderer version changes immutably. A population-linear,
    restart-safe migration uses bounded read-only and mutation transactions to
    rebuild old derived HTML from canonical Markdown without overwriting a
-   concurrent edit. When exact application-valid
+   concurrent edit. The mutation pass persists a nullable post-ID keyset cursor
+   atomically with each batch, so retry and restart do not rescan an already
+   converted prefix. When exact application-valid
    p1 HTML cannot fit after p2 expansion, it is preserved byte-for-byte under a
    distinct compatibility marker rather than stranding the release. Readiness
    fails closed until every ordinary post is current p2 or explicitly

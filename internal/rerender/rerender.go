@@ -25,11 +25,12 @@ FROM public.posts
 WHERE redacted_at IS NULL
   AND renderer_version <> $1
   AND renderer_version <> $2
+  AND ($3::bigint IS NULL OR id > $3)
 ORDER BY id
-LIMIT $3
+LIMIT $4
 FOR UPDATE`
 
-const lockRendererStateSQL = `SELECT target_version
+const lockRendererStateSQL = `SELECT target_version, last_processed_post_id
 FROM public.content_renderer_state
 WHERE singleton
 FOR UPDATE`
@@ -45,9 +46,11 @@ WHERE id = $3
 
 const recordBatchSQL = `UPDATE public.content_renderer_state
 SET converted_count = converted_count + $1,
+    last_processed_post_id = $2,
     completed_at = NULL
 WHERE singleton
-  AND target_version = $2`
+  AND target_version = $3
+  AND last_processed_post_id IS NOT DISTINCT FROM $4`
 
 const completeMigrationSQL = `UPDATE public.content_renderer_state
 SET completed_at = COALESCE(completed_at, clock_timestamp())
@@ -99,12 +102,13 @@ type preflightState struct {
 // commit attempt are retried at most three times; commit-unknown outcomes are
 // returned for operator inspection and safe command rerun.
 //
-// Complexity: for p stale posts, source bytes n, rendered bytes h, batch size
-// b <= 100, and retry count r <= 3 per batch, time is O(r*(p+n+h)) and
-// Omega(p+n+h), with no tight Theta bound because database I/O and retry
-// occurrence vary; auxiliary space is O(b*65,536+b*262,144), Omega(1), bounded
-// by the source, persisted-output, and batch limits. Durable renderer state is
-// the sole progress record; the loop performs no synchronous output I/O.
+// Complexity: for q total posts, p stale posts containing n source and h
+// rendered bytes, batch size b <= 100, and retry count r <= 3 per batch, the
+// persisted primary-key cursor makes time O(r*(q+n+h)) and Omega(p+n+h), with
+// no tight Theta bound because database I/O and retry occurrence vary.
+// Auxiliary space is O(b*65,536+b*262,144), Omega(1), bounded by the source,
+// persisted-output, and batch limits. Durable renderer state is the sole
+// progress record; the loop performs no synchronous output I/O.
 func Run(ctx context.Context, database database, batchSize int) error {
 	if ctx == nil {
 		return fmt.Errorf("renderer migration context is required")
@@ -282,8 +286,10 @@ LIMIT $2`, afterID, int32(batchSize))
 	return result, nil
 }
 
-// runBatch locks and converts at most batchSize current rows, or validates the
-// writer constraint and completion oracle when no stale row remains.
+// runBatch locks and converts at most batchSize rows strictly after the
+// persisted post-ID cursor, advancing that cursor atomically with their
+// updates, or validates the writer constraint and whole-table completion
+// oracle when no later stale row remains.
 //
 // Complexity: for b selected rows, n source bytes, and h rendered bytes, time
 // is O(b+n+h), Omega(1), with no tight Theta bound because database costs vary;
@@ -310,13 +316,14 @@ func runBatch(ctx context.Context, database database, batchSize int) (result Bat
 		}
 	}()
 	var targetVersion string
-	if err := tx.QueryRow(ctx, lockRendererStateSQL).Scan(&targetVersion); err != nil {
+	var lastProcessedPostID *int64
+	if err := tx.QueryRow(ctx, lockRendererStateSQL).Scan(&targetVersion, &lastProcessedPostID); err != nil {
 		return BatchResult{}, isRetryable(err), fmt.Errorf("lock renderer migration state: %w", err)
 	}
 	if targetVersion != contentrender.RendererVersion {
 		return BatchResult{}, false, fmt.Errorf("renderer migration target does not match this release")
 	}
-	rows, err := tx.Query(ctx, selectStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, int32(batchSize))
+	rows, err := tx.Query(ctx, selectStalePostsSQL, contentrender.RendererVersion, legacyPreservedRendererVersion, lastProcessedPostID, int32(batchSize))
 	if err != nil {
 		return BatchResult{}, isRetryable(err), fmt.Errorf("select stale renderer rows: %w", err)
 	}
@@ -373,7 +380,8 @@ func runBatch(ctx context.Context, database database, batchSize int) (result Bat
 			return BatchResult{}, false, fmt.Errorf("locked stale renderer row changed unexpectedly")
 		}
 	}
-	tag, err := tx.Exec(ctx, recordBatchSQL, int64(len(posts)), contentrender.RendererVersion)
+	nextCursor := posts[len(posts)-1].id
+	tag, err := tx.Exec(ctx, recordBatchSQL, int64(len(posts)), nextCursor, contentrender.RendererVersion, lastProcessedPostID)
 	if err != nil {
 		return BatchResult{}, isRetryable(err), fmt.Errorf("record renderer migration batch: %w", err)
 	}

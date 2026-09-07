@@ -172,6 +172,6 @@ set +o noclobber
 if [ "$test_status" -ne 0 ]; then
   exit "$test_status"
 fi
-grep -F 'population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250' "$transcript" >/dev/null
-grep -F 'current=25000 converted=25000 completed=true validated=true' "$transcript" >/dev/null
+grep -F 'population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250 mutation_selection_queries=251 mutation_selected_rows=25000 explain_queries=251 explain_returned_rows=25000 explain_examined_rows=25000' "$transcript" >/dev/null
+grep -F 'current=25000 converted=25000 cursor=25000 completed=true validated=true' "$transcript" >/dev/null
 grep -F 'sql_server_identity version_num=170010 ' "$transcript" | grep -F " system_identifier=$container_system_identifier" >/dev/null

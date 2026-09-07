@@ -1142,9 +1142,16 @@ rendered core pages for root-relative application links that omit `/bb`.
   constraint.
 - After preflight, the release migration command applies schema migrations,
   then repeatedly processes at most 100 stale posts in one transaction ordered
-  by post ID. It
-  first locks the renderer-state singleton, mechanically serializing multiple
-  migration runners, then locks the selected posts. Rendering uses the same
+  by post ID. The renderer-state singleton contains a nullable
+  `last_processed_post_id`; `NULL` is the distinct initial state before every
+  signed 64-bit identity, including `MinInt64`. The command first locks that
+  singleton, mechanically serializing multiple migration runners, then selects
+  and locks stale rows with `id > last_processed_post_id ORDER BY id LIMIT 100`.
+  It advances the cursor to the last selected identity and increments the
+  converted count in the same transaction as every post update. A rollback
+  advances neither posts nor state. A committed transaction whose
+  acknowledgement is lost returns an outcome-unknown error; a later invocation
+  observes the committed cursor and resumes after it. Rendering uses the same
   `RenderMarkdown` function as preview and publication. If and only if p2
   rendering of an exact application-valid p1 row exceeds the unchanged
   262,144-byte persistence limit, the migration verifies its existing HTML
@@ -1169,15 +1176,18 @@ rendered core pages for root-relative application links that omit `/bb`.
   transaction. Current-p2 and exact p1-preserved rows are both handled.
   An already-recorded completion timestamp is never rewritten. Process
   interruption or an
-  unknown commit outcome is recovered by rerunning the command: already
-  converted or preserved rows no longer match, while an edit serialized by the
-  row lock either precedes the batch render or persists the new p2 renderer
-  itself.
+  unknown commit outcome is recovered by rerunning the command from the
+  persisted cursor. The immediately enforced writer constraint prevents an
+  obsolete ordinary row from appearing behind that cursor, while the final
+  whole-table oracle remains the authoritative completion proof. An edit
+  serialized by the row lock either precedes the batch render or persists the
+  new p2 renderer itself.
 - The re-render loop performs no per-batch output I/O. The renderer-state
   singleton and post renderer markers are the canonical restart/progress
   record, so a blocked logging sink cannot stop database progress or signal
   cancellation. Readiness requires the exact completed target and the
-  exact validated writer constraint through a constant-shaped catalog query;
+  exact cursor column and progress constraint plus the exact validated writer
+  constraint through a constant-shaped catalog query;
   it does not scan the posts table on every probe.
 - A measured 100-row dense-task compatibility fixture on the pinned PostgreSQL
   17.10 image took 20.194381887 seconds and the test process peaked at a sampled
@@ -1193,7 +1203,10 @@ rendered core pages for root-relative application links that omit `/bb`.
   capacity promise. It records complete preflight time and exact batch,
   transaction, and query-round-trip counts, schema time, 250 conversion
   batches, the final validation/completion transaction, total re-render/release
-  time, RSS, row count, and exact result state. Total maintenance time and I/O
+  time, RSS, row count, and exact result state. It also instruments every
+  returned mutation identity and uses `EXPLAIN ANALYZE` on the exact selection
+  query to prove 251 primary-key selections examine exactly 25,000 rows rather
+  than repeatedly scanning converted prefixes. Total maintenance time and I/O
   grow with population; no universal timing bound is claimed.
 
 ### 13.2 Native toolbar

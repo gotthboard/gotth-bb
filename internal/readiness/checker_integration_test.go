@@ -107,10 +107,11 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if _, err := connection.Exec(ctx, "INSERT INTO public.users (display_name, role) VALUES ('Readiness Administrator', 'administrator')"); err != nil {
 		t.Fatalf("insert readiness administrator: %v", err)
 	}
-	var liveConstraintDefinition, liveSizeDefinition string
+	var liveConstraintDefinition, liveSizeDefinition, liveCursorConstraintDefinition string
 	if err := connection.QueryRow(ctx, `SELECT
 (SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current'),
-(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size')`).Scan(&liveConstraintDefinition, &liveSizeDefinition); err != nil {
+(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'posts_rendered_size'),
+(SELECT pg_catalog.pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conname = 'content_renderer_state_cursor_progress')`).Scan(&liveConstraintDefinition, &liveSizeDefinition, &liveCursorConstraintDefinition); err != nil {
 		t.Fatalf("read renderer constraint definitions: %v", err)
 	}
 	if liveConstraintDefinition != rendererConstraintDefinition {
@@ -118,6 +119,9 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	}
 	if liveSizeDefinition != renderedSizeConstraintDefinition {
 		t.Fatalf("rendered-size constraint definition = %q, want %q", liveSizeDefinition, renderedSizeConstraintDefinition)
+	}
+	if liveCursorConstraintDefinition != rendererCursorConstraintDefinition {
+		t.Fatalf("renderer cursor constraint definition = %q, want %q", liveCursorConstraintDefinition, rendererCursorConstraintDefinition)
 	}
 	if err := checker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected exact release and governance state: %v", err)
@@ -183,6 +187,36 @@ WHERE namespace.nspname = 'public' AND renderer_state.relname = 'content_rendere
 	}
 	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("restricted Check() rejected exact release after packaged grant: %v", err)
+	}
+
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state DROP CONSTRAINT content_renderer_state_cursor_progress,
+ADD CONSTRAINT content_renderer_state_cursor_progress CHECK (true)`); err != nil {
+		t.Fatalf("replace renderer cursor constraint with same-name impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted a same-name validated CHECK (true) renderer cursor constraint")
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state DROP CONSTRAINT content_renderer_state_cursor_progress,
+ADD CONSTRAINT content_renderer_state_cursor_progress CHECK (
+    (converted_count = 0 AND last_processed_post_id IS NULL)
+    OR (converted_count > 0 AND last_processed_post_id IS NOT NULL)
+)`); err != nil {
+		t.Fatalf("restore exact renderer cursor constraint: %v", err)
+	}
+	if err := checker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored exact renderer cursor constraint: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state ALTER COLUMN last_processed_post_id SET DEFAULT 0`); err != nil {
+		t.Fatalf("install renderer cursor default impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted renderer cursor column with an unauthorized default")
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state ALTER COLUMN last_processed_post_id DROP DEFAULT`); err != nil {
+		t.Fatalf("remove renderer cursor default impostor: %v", err)
+	}
+	if err := checker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored exact renderer cursor column: %v", err)
 	}
 
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_renderer_version_current,

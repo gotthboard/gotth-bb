@@ -488,7 +488,7 @@ add a highest-precedence `info/attributes`; all must fail before Bash, secret
 exposure, payload execution, or evidence creation. The test also rebuilds the
 static launcher byte-for-byte from the captured committed archive. The admitted
 launcher SHA-256 is
-`2bc8ae699ce63232345cc54671935e858bb16833dca0d6b642b7b68c95b3f547`.
+`973f1a57b0cabdd43cef8650d5dd43d0df048661d885591a90aa520f61b2125e`.
 Finally, the test places
 syntax-invalid `_test.go` files behind both `.gitignore`
 and `.git/info/exclude`, supplies hostile ambient Go workspace, overlay,

@@ -114,14 +114,18 @@ func TestApplyReleasePreflightHandlesFreshAndIdempotentRunOnPostgreSQL17(t *test
 	var ledgerCount int
 	var completedAt time.Time
 	var rendererValidated bool
+	var lastProcessedPostID *int64
+	var convertedCount int64
 	if err := connection.QueryRow(ctx, `SELECT
 	(SELECT count(*) FROM public.gotth_schema_migrations WHERE version = 7),
 	(SELECT completed_at FROM public.content_renderer_state WHERE singleton),
-	(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current')`).Scan(&ledgerCount, &completedAt, &rendererValidated); err != nil {
+	(SELECT last_processed_post_id FROM public.content_renderer_state WHERE singleton),
+	(SELECT converted_count FROM public.content_renderer_state WHERE singleton),
+	(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conname = 'posts_renderer_version_current')`).Scan(&ledgerCount, &completedAt, &lastProcessedPostID, &convertedCount, &rendererValidated); err != nil {
 		t.Fatalf("inspect fresh Alpha.3 state: %v", err)
 	}
-	if ledgerCount != 1 || completedAt.IsZero() || !rendererValidated {
-		t.Fatalf("fresh Alpha.3 state = (ledger %d, completed %s, validated %t), want 1/nonzero/true", ledgerCount, completedAt, rendererValidated)
+	if ledgerCount != 1 || completedAt.IsZero() || lastProcessedPostID != nil || convertedCount != 0 || !rendererValidated {
+		t.Fatalf("fresh Alpha.3 state = (ledger %d, completed %s, cursor %v, converted %d, validated %t), want 1/nonzero/nil/0/true", ledgerCount, completedAt, lastProcessedPostID, convertedCount, rendererValidated)
 	}
 	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
 		t.Fatalf("idempotent applyRelease() returned error: %v", err)

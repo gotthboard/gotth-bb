@@ -342,8 +342,9 @@ Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
   defer image authoring to version 2 plus `gotth-media` so the media security,
   privacy, quota, retention, and failure contracts exist first.
 - Add the renderer-state migration plus bounded restart-safe re-render command,
+  a durable nullable post-ID keyset cursor advanced atomically with each batch,
   exact p1-overflow compatibility marker, edit serialization, completion
-  oracle, readiness gate, and rollback record. Keep the 262,144-byte persisted
+  oracle, exact readiness gate, and rollback record. Keep the 262,144-byte persisted
   output limit; preserve only byte-verified p1 HTML when p2 expansion exceeds
   it, and fail closed on every other render or legacy-integrity error.
 - Make the ordinary argument-free migration command run a population-linear
@@ -355,6 +356,9 @@ Requirements: CONTENT-001 through CONTENT-003, CONTENT-006, SEC-004, OPS-001.
   caret, multiline, toggle, keyboard/semantic, JavaScript-failure, HTMX, fresh
   and populated upgrade, exact p1 preservation, forged-marker refusal at the
   runtime API boundary, restart, idempotence, concurrency, and rollback cases.
+- Prove the mutation pass examines the 25,000-row evidence population once in
+  primary-key order, performs exactly 250 nonempty selections plus one final
+  empty selection, and never revisits an identity at or below its prior cursor.
 - Run performance admission and two independent fresh cold Judge passes before
   alpha.3 may be admitted. No deployment or release is part of this feature.
 

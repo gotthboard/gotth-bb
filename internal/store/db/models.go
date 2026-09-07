@@ -32,10 +32,11 @@ type AreaGroup struct {
 }
 
 type ContentRendererState struct {
-	Singleton      bool
-	TargetVersion  string
-	ConvertedCount int64
-	CompletedAt    pgtype.Timestamptz
+	Singleton           bool
+	TargetVersion       string
+	ConvertedCount      int64
+	LastProcessedPostID pgtype.Int8
+	CompletedAt         pgtype.Timestamptz
 }
 
 type ExternalIdentity struct {

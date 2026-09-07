@@ -12,10 +12,15 @@ CREATE TABLE public.content_renderer_state (
     singleton boolean PRIMARY KEY DEFAULT true,
     target_version text NOT NULL,
     converted_count bigint NOT NULL DEFAULT 0,
+    last_processed_post_id bigint,
     completed_at timestamp with time zone,
     CONSTRAINT content_renderer_state_singleton CHECK (singleton),
     CONSTRAINT content_renderer_state_target_length CHECK (char_length(target_version) BETWEEN 1 AND 64),
-    CONSTRAINT content_renderer_state_converted_nonnegative CHECK (converted_count >= 0)
+    CONSTRAINT content_renderer_state_converted_nonnegative CHECK (converted_count >= 0),
+    CONSTRAINT content_renderer_state_cursor_progress CHECK (
+        (converted_count = 0 AND last_processed_post_id IS NULL)
+        OR (converted_count > 0 AND last_processed_post_id IS NOT NULL)
+    )
 );
 
 INSERT INTO public.content_renderer_state (singleton, target_version, completed_at)

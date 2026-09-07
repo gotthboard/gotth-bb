@@ -369,11 +369,16 @@ mutating pass. The snapshots are batch-bounded, but total preflight rendering,
 transactions, and round trips grow with the complete post population.
 The application stop/drain, not a fake atomic claim, protects traversal across
 those snapshots and the gap before schema apply. Alpha.3 then performs the
-rebuild through release-owned, bounded batch transactions. Each batch locks
-only its selected stale post rows plus the singleton renderer-state row that
-serializes competing runners,
+rebuild through release-owned, bounded batch transactions. The singleton owns
+a nullable `last_processed_post_id`: `NULL` means before every possible bigint
+identity, including `MinInt64`, and each selection is a primary-key keyset
+query strictly greater than the committed cursor. Each batch locks only its
+selected stale post rows plus the singleton renderer-state row that serializes
+competing runners,
 renders current canonical source, updates only those locked identities, and
-commits before selecting more. The schema installs a `NOT VALID` writer
+atomically commits the last selected ID and converted count before selecting
+more. A rollback advances nothing; an unknown commit outcome is resolved by
+the persisted cursor on restart. The schema installs a `NOT VALID` writer
 constraint that immediately rejects obsolete-version inserts and updates while
 the application is stopped and old rows are rebuilt. The schema transaction
 does not scan `posts`; the later final empty batch validates that constraint by
@@ -382,11 +387,13 @@ renderer-state row lock, then records completion. A legacy row whose exact
 admitted p1 HTML would exceed the unchanged persistence limit under p2 keeps
 that verified p1 HTML under an
 explicit p1-preserved compatibility marker. Every other row moves to p2, and
-every other failure stops the batch. Readiness checks the exact completed
-target and validated catalog constraints in constant-shaped SQL. Per-batch
+every other failure stops the batch. The final whole-table oracle remains
+authoritative even after the cursor reaches the end. Readiness checks the exact
+completed target, cursor column/constraint shape, and validated catalog
+constraints in constant-shaped SQL. Per-batch
 logging is absent; durable database state is the sole progress record. Restarting
-the migration safely resumes from remaining stale rows while treating current
-p2 and p1-preserved rows as handled.
+the migration safely resumes after the last committed identity without
+rescanning the converted prefix.
 
 ### 8.4 Soft deletion and audit
 

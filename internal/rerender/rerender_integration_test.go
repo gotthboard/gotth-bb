@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -31,6 +32,7 @@ const (
 	rerenderPerformanceTestDatabase        = "gotth_bb_alpha3_rerender_performance_test"
 	rerenderPopulationTestDatabase         = "gotth_bb_alpha3_rerender_population_test"
 	rerenderPopulationPerformancePostCount = 25_000
+	rendererCursorConstraintDefinition     = "CHECK ((((converted_count = 0) AND (last_processed_post_id IS NULL)) OR ((converted_count > 0) AND (last_processed_post_id IS NOT NULL))))"
 )
 
 type countedPreflightDatabase struct {
@@ -51,6 +53,158 @@ func (database *countedPreflightDatabase) BeginTx(ctx context.Context, options p
 type countedPreflightTx struct {
 	pgx.Tx
 	roundTrips *int
+}
+
+type mutationSelection struct {
+	cursor *int64
+	ids    []int64
+}
+
+type explainDocument struct {
+	Plan explainNode `json:"Plan"`
+}
+
+type explainNode struct {
+	NodeType            string        `json:"Node Type"`
+	RelationName        string        `json:"Relation Name"`
+	IndexName           string        `json:"Index Name"`
+	ActualRows          float64       `json:"Actual Rows"`
+	RowsRemovedByFilter float64       `json:"Rows Removed by Filter"`
+	Plans               []explainNode `json:"Plans"`
+}
+
+type mutationPlanEvidence struct {
+	queries      int
+	returnedRows int
+	examinedRows int
+}
+
+type countedMutationDatabase struct {
+	connection *pgx.Conn
+	selections []*mutationSelection
+}
+
+func (database *countedMutationDatabase) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := database.connection.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &countedMutationTx{Tx: tx, database: database}, nil
+}
+
+type countedMutationTx struct {
+	pgx.Tx
+	database *countedMutationDatabase
+}
+
+func (tx *countedMutationTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
+	rows, err := tx.Tx.Query(ctx, sql, arguments...)
+	if err != nil || sql != selectStalePostsSQL {
+		return rows, err
+	}
+	selection := &mutationSelection{}
+	if cursor, ok := arguments[2].(*int64); ok && cursor != nil {
+		value := *cursor
+		selection.cursor = &value
+	}
+	tx.database.selections = append(tx.database.selections, selection)
+	return &countedMutationRows{Rows: rows, selection: selection}, nil
+}
+
+type countedMutationRows struct {
+	pgx.Rows
+	selection *mutationSelection
+}
+
+func (rows *countedMutationRows) Scan(destinations ...any) error {
+	if err := rows.Rows.Scan(destinations...); err != nil {
+		return err
+	}
+	id, ok := destinations[0].(*int64)
+	if !ok {
+		return fmt.Errorf("counted renderer selection first destination is %T, want *int64", destinations[0])
+	}
+	rows.selection.ids = append(rows.selection.ids, *id)
+	return nil
+}
+
+type commitUnknownDatabase struct {
+	connection *pgx.Conn
+	used       bool
+}
+
+func (database *commitUnknownDatabase) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := database.connection.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if database.used {
+		return tx, nil
+	}
+	database.used = true
+	return &commitUnknownTx{Tx: tx}, nil
+}
+
+type commitUnknownTx struct {
+	pgx.Tx
+}
+
+func (tx *commitUnknownTx) Commit(ctx context.Context) error {
+	if err := tx.Tx.Commit(ctx); err != nil {
+		return err
+	}
+	return errors.New("simulated lost commit acknowledgement")
+}
+
+func measureMutationSelectionPlans(ctx context.Context, connection *pgx.Conn, rowCount, batchSize int) (mutationPlanEvidence, error) {
+	var evidence mutationPlanEvidence
+	var cursor *int64
+	for {
+		var encoded string
+		if err := connection.QueryRow(
+			ctx,
+			"EXPLAIN (ANALYZE, FORMAT JSON) "+selectStalePostsSQL,
+			contentrender.RendererVersion,
+			legacyPreservedRendererVersion,
+			cursor,
+			int32(batchSize),
+		).Scan(&encoded); err != nil {
+			return mutationPlanEvidence{}, fmt.Errorf("explain renderer mutation selection after %v: %w", cursor, err)
+		}
+		var documents []explainDocument
+		if err := json.Unmarshal([]byte(encoded), &documents); err != nil || len(documents) != 1 {
+			return mutationPlanEvidence{}, fmt.Errorf("decode renderer mutation selection plan after %v: documents=%d: %w", cursor, len(documents), err)
+		}
+		evidence.queries++
+		returned := int(documents[0].Plan.ActualRows)
+		evidence.returnedRows += returned
+		scans, examined := inspectPostIndexScan(documents[0].Plan)
+		if scans != 1 {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation selection after %v used %d exact posts_pkey scans, want 1", cursor, scans)
+		}
+		evidence.examinedRows += examined
+		if returned == 0 {
+			return evidence, nil
+		}
+		nextCursor := int64(evidence.returnedRows)
+		if nextCursor > int64(rowCount) {
+			return mutationPlanEvidence{}, fmt.Errorf("renderer mutation plan returned %d rows from %d-row fixture", nextCursor, rowCount)
+		}
+		cursor = &nextCursor
+	}
+}
+
+func inspectPostIndexScan(node explainNode) (scans, examined int) {
+	if node.NodeType == "Index Scan" && node.RelationName == "posts" && node.IndexName == "posts_pkey" {
+		scans++
+		examined += int(node.ActualRows + node.RowsRemovedByFilter)
+	}
+	for _, child := range node.Plans {
+		childScans, childExamined := inspectPostIndexScan(child)
+		scans += childScans
+		examined += childExamined
+	}
+	return scans, examined
 }
 
 func (tx *countedPreflightTx) Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error) {
@@ -110,6 +264,7 @@ func TestRendererMigrationOnPostgreSQL17(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = contentionConnection.Close(context.Background()) })
 	var userID, areaID, topicID, rootID, replyID, currentID, denseTaskID, denseTableID int64
+	const minimumPostID = int64(-1 << 63)
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Renderer owner', 'administrator') RETURNING id`).Scan(&userID); err != nil {
 		t.Fatalf("insert renderer owner: %v", err)
 	}
@@ -128,7 +283,7 @@ nextval(pg_get_serial_sequence('public.posts', 'id')),
 nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, &replyID, &currentID, &denseTaskID, &denseTableID); err != nil {
 		t.Fatalf("allocate renderer fixture identifiers: %v", err)
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number) VALUES ($1, $2, $3, 'Renderer topic', $4, $5, 4, 6)`, topicID, areaID, userID, rootID, denseTableID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO public.topics (id, area_id, author_id, title, first_post_id, latest_post_id, reply_count, next_post_number) VALUES ($1, $2, $3, 'Renderer topic', $4, 0, 6, 8)`, topicID, areaID, userID, rootID); err != nil {
 		t.Fatalf("insert renderer topic: %v", err)
 	}
 	denseTasks := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
@@ -144,10 +299,12 @@ nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, 
 		($6, $2, $3, 2, '- [x] reply', $7, $5, $1, ARRAY[1,2]),
 		($8, $2, $3, 3, 'current', '<p>current</p>', $9, $1, ARRAY[1,3]),
 		($10, $2, $3, 4, $11, $12, $5, $1, ARRAY[1,4]),
-		($13, $2, $3, 5, $14, $15, $5, $1, ARRAY[1,5])`,
+		($13, $2, $3, 5, $14, $15, $5, $1, ARRAY[1,5]),
+		($16, $2, $3, 6, 'minimum id', '<p>minimum id</p>', $5, $1, ARRAY[1,6]),
+		(0, $2, $3, 7, 'zero id', '<p>zero id</p>', $5, $1, ARRAY[1,7])`,
 		rootID, topicID, userID, rootLegacyHTML, contentrender.LegacyRendererVersion,
 		replyID, replyLegacyHTML, currentID, contentrender.RendererVersion,
-		denseTaskID, denseTasks, denseTaskLegacyHTML, denseTableID, denseTable, denseTableLegacyHTML); err != nil {
+		denseTaskID, denseTasks, denseTaskLegacyHTML, denseTableID, denseTable, denseTableLegacyHTML, minimumPostID); err != nil {
 		t.Fatalf("insert renderer posts: %v", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -155,6 +312,26 @@ nextval(pg_get_serial_sequence('public.posts', 'id'))`).Scan(&topicID, &rootID, 
 	}
 	if err := migration.Apply(ctx, testConfig, migrations.Files()); err != nil {
 		t.Fatalf("apply alpha.3 schema: %v", err)
+	}
+	var cursorTypeExact, cursorNullable, cursorPlain, cursorNoDefault bool
+	var cursorConstraintDefinition string
+	if err := connection.QueryRow(ctx, `SELECT
+cursor_column.atttypid = 'pg_catalog.int8'::regtype AND cursor_column.atttypmod = -1,
+NOT cursor_column.attnotnull,
+cursor_column.attgenerated = '' AND cursor_column.attidentity = '',
+NOT cursor_column.atthasdef,
+pg_catalog.pg_get_constraintdef(cursor_constraint.oid, false)
+FROM pg_catalog.pg_attribute AS cursor_column
+JOIN pg_catalog.pg_constraint AS cursor_constraint
+  ON cursor_constraint.conrelid = cursor_column.attrelid
+ AND cursor_constraint.conname = 'content_renderer_state_cursor_progress'
+WHERE cursor_column.attrelid = 'public.content_renderer_state'::regclass
+  AND cursor_column.attname = 'last_processed_post_id'
+  AND NOT cursor_column.attisdropped`).Scan(&cursorTypeExact, &cursorNullable, &cursorPlain, &cursorNoDefault, &cursorConstraintDefinition); err != nil {
+		t.Fatalf("inspect renderer cursor schema: %v", err)
+	}
+	if !cursorTypeExact || !cursorNullable || !cursorPlain || !cursorNoDefault || cursorConstraintDefinition != rendererCursorConstraintDefinition {
+		t.Fatalf("renderer cursor schema = type %t/nullable %t/plain %t/no-default %t/constraint %q", cursorTypeExact, cursorNullable, cursorPlain, cursorNoDefault, cursorConstraintDefinition)
 	}
 
 	var rendererValidated, sizeValidated bool
@@ -203,7 +380,7 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if err != nil {
 		t.Fatalf("begin concurrent edit probe: %v", err)
 	}
-	if _, err := editTx.Exec(ctx, `UPDATE public.posts SET markdown_source = '~~edited~~', rendered_html = '<p><del>edited</del></p>', renderer_version = $2 WHERE id = $1`, rootID, contentrender.RendererVersion); err != nil {
+	if _, err := editTx.Exec(ctx, `UPDATE public.posts SET markdown_source = '~~edited~~', rendered_html = '<p><del>edited</del></p>', renderer_version = $2 WHERE id = $1`, minimumPostID, contentrender.RendererVersion); err != nil {
 		t.Fatalf("lock stale row with concurrent edit: %v", err)
 	}
 	blockedEditContext, blockedEditCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -213,6 +390,10 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 		t.Fatalf("edit-versus-rerender error = %v, want deadline", err)
 	}
 	blockedEditCancel()
+	var rolledBackCursor *int64
+	if err := connection.QueryRow(ctx, `SELECT last_processed_post_id FROM public.content_renderer_state WHERE singleton`).Scan(&rolledBackCursor); err != nil || rolledBackCursor != nil {
+		t.Fatalf("blocked batch cursor = (%v, %v), want NULL/nil", rolledBackCursor, err)
+	}
 	if err := editTx.Rollback(ctx); err != nil {
 		t.Fatalf("release concurrent edit row: %v", err)
 	}
@@ -224,8 +405,38 @@ WHERE topic_id = $1 AND post_number = 3`, topicID, userID); err != nil {
 	if err != nil || result.Converted != 1 || result.Complete {
 		t.Fatalf("first batch = (%+v, %v), want one/incomplete", result, err)
 	}
-	if err := Run(ctx, runnerConnection, 1); err != nil {
+	var firstCursor *int64
+	var firstConverted int64
+	if err := connection.QueryRow(ctx, `SELECT last_processed_post_id, converted_count FROM public.content_renderer_state WHERE singleton`).Scan(&firstCursor, &firstConverted); err != nil || firstCursor == nil || *firstCursor != minimumPostID || firstConverted != 1 {
+		t.Fatalf("first committed cursor = (%v, %d, %v), want MinInt64/1/nil", firstCursor, firstConverted, err)
+	}
+	unknownDatabase := &commitUnknownDatabase{connection: runnerConnection}
+	if _, _, err := runBatch(ctx, unknownDatabase, 1); err == nil || !strings.Contains(err.Error(), "outcome unknown") {
+		t.Fatalf("lost commit acknowledgement = %v, want outcome-unknown error", err)
+	}
+	var unknownCursor *int64
+	var unknownConverted int64
+	if err := connection.QueryRow(ctx, `SELECT last_processed_post_id, converted_count FROM public.content_renderer_state WHERE singleton`).Scan(&unknownCursor, &unknownConverted); err != nil || unknownCursor == nil || *unknownCursor != 0 || unknownConverted != 2 {
+		t.Fatalf("commit-unknown cursor = (%v, %d, %v), want 0/2/nil", unknownCursor, unknownConverted, err)
+	}
+	countedDatabase := &countedMutationDatabase{connection: runnerConnection}
+	if err := Run(ctx, countedDatabase, 1); err != nil {
 		t.Fatalf("restart Run() returned error: %v", err)
+	}
+	selectedIDs := make(map[int64]struct{})
+	for index, selection := range countedDatabase.selections {
+		for _, id := range selection.ids {
+			if selection.cursor != nil && id <= *selection.cursor {
+				t.Fatalf("selection %d revisited prefix: cursor %d, id %d", index, *selection.cursor, id)
+			}
+			if _, duplicate := selectedIDs[id]; duplicate {
+				t.Fatalf("selection %d repeated post id %d", index, id)
+			}
+			selectedIDs[id] = struct{}{}
+		}
+	}
+	if len(selectedIDs) != 4 || len(countedDatabase.selections) != 5 || len(countedDatabase.selections[len(countedDatabase.selections)-1].ids) != 0 {
+		t.Fatalf("restart selections = %d unique rows/%d queries/final %d rows, want 4/5/0", len(selectedIDs), len(countedDatabase.selections), len(countedDatabase.selections[len(countedDatabase.selections)-1].ids))
 	}
 	var staleCount int
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE redacted_at IS NULL AND renderer_version <> $1`, contentrender.RendererVersion).Scan(&staleCount); err != nil || staleCount != 2 {
@@ -572,6 +783,21 @@ CROSS JOIN LATERAL (
 	if fixtureTopics != wantTopics || invalidFixtureTopics != 0 {
 		t.Fatalf("population topics = %d/%d invalid, want %d/0", fixtureTopics, invalidFixtureTopics, wantTopics)
 	}
+	// Fixture construction bypasses normal application activity and autovacuum
+	// timing. Refresh planner statistics outside every measured release phase so
+	// the plan proof represents the loaded population rather than an empty-table
+	// estimate.
+	if _, err := connection.Exec(ctx, `ANALYZE public.posts`); err != nil {
+		t.Fatalf("analyze population fixture: %v", err)
+	}
+	planEvidence, err := measureMutationSelectionPlans(ctx, connection, rerenderPopulationPerformancePostCount, MaximumBatchSize)
+	if err != nil {
+		t.Fatalf("measure population mutation plans: %v", err)
+	}
+	wantMutationQueries := (rerenderPopulationPerformancePostCount / MaximumBatchSize) + 1
+	if planEvidence.queries != wantMutationQueries || planEvidence.returnedRows != rerenderPopulationPerformancePostCount || planEvidence.examinedRows != rerenderPopulationPerformancePostCount {
+		t.Fatalf("population mutation plans = %d queries/%d returned/%d examined, want %d/%d/%d", planEvidence.queries, planEvidence.returnedRows, planEvidence.examinedRows, wantMutationQueries, rerenderPopulationPerformancePostCount, rerenderPopulationPerformancePostCount)
+	}
 
 	releaseStarted := time.Now()
 	preflightStarted := time.Now()
@@ -588,8 +814,9 @@ CROSS JOIN LATERAL (
 	conversionStarted := time.Now()
 	converted := 0
 	mutationBatches := 0
+	mutationDatabase := &countedMutationDatabase{connection: connection}
 	for converted < rerenderPopulationPerformancePostCount {
-		result, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+		result, retryable, err := runBatch(ctx, mutationDatabase, MaximumBatchSize)
 		if err != nil || retryable || result.Complete || result.Converted < 1 || result.Converted > MaximumBatchSize {
 			t.Fatalf("population conversion batch %d = (%+v, retryable %t, %v)", mutationBatches+1, result, retryable, err)
 		}
@@ -598,7 +825,7 @@ CROSS JOIN LATERAL (
 	}
 	conversionElapsed := time.Since(conversionStarted)
 	validationStarted := time.Now()
-	completion, retryable, err := runBatch(ctx, connection, MaximumBatchSize)
+	completion, retryable, err := runBatch(ctx, mutationDatabase, MaximumBatchSize)
 	validationElapsed := time.Since(validationStarted)
 	if err != nil || retryable || !completion.Complete || completion.Converted != 0 {
 		t.Fatalf("population completion = (%+v, retryable %t, %v)", completion, retryable, err)
@@ -607,18 +834,20 @@ CROSS JOIN LATERAL (
 	releaseElapsed := time.Since(releaseStarted)
 	var rowCount, currentCount int
 	var convertedCount int64
+	var lastProcessedPostID *int64
 	var completed bool
 	var rendererValidated bool
 	if err := connection.QueryRow(ctx, `SELECT
 (SELECT count(*) FROM public.posts),
 (SELECT count(*) FROM public.posts WHERE renderer_version = $1),
 (SELECT converted_count FROM public.content_renderer_state WHERE singleton),
+(SELECT last_processed_post_id FROM public.content_renderer_state WHERE singleton),
 (SELECT completed_at IS NOT NULL FROM public.content_renderer_state WHERE singleton),
-(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conrelid = 'public.posts'::regclass AND conname = 'posts_renderer_version_current')`, contentrender.RendererVersion).Scan(&rowCount, &currentCount, &convertedCount, &completed, &rendererValidated); err != nil {
+(SELECT convalidated FROM pg_catalog.pg_constraint WHERE conrelid = 'public.posts'::regclass AND conname = 'posts_renderer_version_current')`, contentrender.RendererVersion).Scan(&rowCount, &currentCount, &convertedCount, &lastProcessedPostID, &completed, &rendererValidated); err != nil {
 		t.Fatalf("inspect population result: %v", err)
 	}
-	if rowCount != rerenderPopulationPerformancePostCount || currentCount != rowCount || convertedCount != int64(rowCount) || !completed || !rendererValidated {
-		t.Fatalf("population result = rows %d/current %d/converted %d/completed %t/validated %t", rowCount, currentCount, convertedCount, completed, rendererValidated)
+	if rowCount != rerenderPopulationPerformancePostCount || currentCount != rowCount || convertedCount != int64(rowCount) || lastProcessedPostID == nil || *lastProcessedPostID != int64(rowCount) || !completed || !rendererValidated {
+		t.Fatalf("population result = rows %d/current %d/converted %d/cursor %v/completed %t/validated %t", rowCount, currentCount, convertedCount, lastProcessedPostID, completed, rendererValidated)
 	}
 	preflightBatches := (rowCount / MaximumBatchSize) + 1
 	preflightTransactions := preflightBatches + 1
@@ -626,7 +855,24 @@ CROSS JOIN LATERAL (
 	if preflightDatabase.transactions != preflightTransactions || preflightDatabase.roundTrips != preflightRoundTrips {
 		t.Fatalf("population preflight work = %d transactions/%d round trips, want %d/%d", preflightDatabase.transactions, preflightDatabase.roundTrips, preflightTransactions, preflightRoundTrips)
 	}
-	t.Logf("population_migration rows=%d preflight_batches=%d preflight_transactions=%d preflight_round_trips=%d mutation_batches=%d preflight_elapsed=%s schema_elapsed=%s conversion_elapsed=%s validation_elapsed=%s rerender_total_elapsed=%s release_total_elapsed=%s current=%d converted=%d completed=%t validated=%t", rowCount, preflightBatches, preflightTransactions, preflightRoundTrips, mutationBatches, preflightElapsed, schemaElapsed, conversionElapsed, validationElapsed, rerenderElapsed, releaseElapsed, currentCount, convertedCount, completed, rendererValidated)
+	mutationSelectedRows := 0
+	selectedIDs := make(map[int64]struct{}, rowCount)
+	for index, selection := range mutationDatabase.selections {
+		for _, id := range selection.ids {
+			if selection.cursor != nil && id <= *selection.cursor {
+				t.Fatalf("population mutation selection %d revisited prefix: cursor %d, id %d", index, *selection.cursor, id)
+			}
+			if _, duplicate := selectedIDs[id]; duplicate {
+				t.Fatalf("population mutation selection %d repeated post id %d", index, id)
+			}
+			selectedIDs[id] = struct{}{}
+			mutationSelectedRows++
+		}
+	}
+	if len(mutationDatabase.selections) != wantMutationQueries || mutationSelectedRows != rowCount || len(selectedIDs) != rowCount || len(mutationDatabase.selections[len(mutationDatabase.selections)-1].ids) != 0 {
+		t.Fatalf("population mutation selections = %d queries/%d selected/%d unique/final %d, want %d/%d/%d/0", len(mutationDatabase.selections), mutationSelectedRows, len(selectedIDs), len(mutationDatabase.selections[len(mutationDatabase.selections)-1].ids), wantMutationQueries, rowCount, rowCount)
+	}
+	t.Logf("population_migration rows=%d preflight_batches=%d preflight_transactions=%d preflight_round_trips=%d mutation_batches=%d mutation_selection_queries=%d mutation_selected_rows=%d explain_queries=%d explain_returned_rows=%d explain_examined_rows=%d preflight_elapsed=%s schema_elapsed=%s conversion_elapsed=%s validation_elapsed=%s rerender_total_elapsed=%s release_total_elapsed=%s current=%d converted=%d cursor=%d completed=%t validated=%t", rowCount, preflightBatches, preflightTransactions, preflightRoundTrips, mutationBatches, len(mutationDatabase.selections), mutationSelectedRows, planEvidence.queries, planEvidence.returnedRows, planEvidence.examinedRows, preflightElapsed, schemaElapsed, conversionElapsed, validationElapsed, rerenderElapsed, releaseElapsed, currentCount, convertedCount, *lastProcessedPostID, completed, rendererValidated)
 }
 
 func preAlpha3MigrationFS(t *testing.T) fs.FS {

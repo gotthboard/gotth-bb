@@ -56,6 +56,8 @@ func TestGFMRendererSchemaStepIsMetadataOnlyAndIncomplete(t *testing.T) {
 	}
 	for _, required := range []string{
 		"'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2',\n    NULL",
+		"last_processed_post_id bigint",
+		"content_renderer_state_cursor_progress",
 		"goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved",
 		"ADD CONSTRAINT posts_renderer_version_current",
 		") NOT VALID",

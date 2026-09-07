@@ -14,8 +14,9 @@ import (
 const probeTimeout = 2 * time.Second
 
 const (
-	rendererConstraintDefinition     = "CHECK (((renderer_version = 'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2'::text) OR ((renderer_version = 'goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved'::text) AND (redacted_at IS NULL)) OR ((renderer_version = 'moderation-redaction-v1'::text) AND (redacted_at IS NOT NULL))))"
-	renderedSizeConstraintDefinition = "CHECK ((octet_length(rendered_html) <= 262144))"
+	rendererConstraintDefinition       = "CHECK (((renderer_version = 'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2'::text) OR ((renderer_version = 'goldmark-v1.8.5-bluemonday-v1.0.27-p1-preserved'::text) AND (redacted_at IS NULL)) OR ((renderer_version = 'moderation-redaction-v1'::text) AND (redacted_at IS NOT NULL))))"
+	renderedSizeConstraintDefinition   = "CHECK ((octet_length(rendered_html) <= 262144))"
+	rendererCursorConstraintDefinition = "CHECK ((((converted_count = 0) AND (last_processed_post_id IS NULL)) OR ((converted_count > 0) AND (last_processed_post_id IS NOT NULL))))"
 )
 
 const governanceInvariantSQL = `SELECT
@@ -36,6 +37,28 @@ const governanceInvariantSQL = `SELECT
         WHERE singleton
           AND target_version = $2::text
           AND completed_at IS NOT NULL
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_attribute AS cursor_column
+        WHERE cursor_column.attrelid = 'public.content_renderer_state'::regclass
+          AND cursor_column.attname = 'last_processed_post_id'
+          AND cursor_column.atttypid = 'pg_catalog.int8'::regtype
+          AND cursor_column.atttypmod = -1
+          AND NOT cursor_column.attnotnull
+          AND NOT cursor_column.attisdropped
+          AND cursor_column.attgenerated = ''
+          AND cursor_column.attidentity = ''
+          AND NOT cursor_column.atthasdef
+    )
+    AND EXISTS (
+        SELECT 1
+        FROM pg_catalog.pg_constraint AS cursor_constraint
+        WHERE cursor_constraint.conrelid = 'public.content_renderer_state'::regclass
+          AND cursor_constraint.conname = 'content_renderer_state_cursor_progress'
+          AND cursor_constraint.contype = 'c'
+          AND cursor_constraint.convalidated
+          AND pg_catalog.pg_get_constraintdef(cursor_constraint.oid, false) = $5::text
     )
     AND EXISTS (
         SELECT 1
@@ -132,6 +155,7 @@ func (checker *Checker) Check(ctx context.Context) error {
 		contentrender.RendererVersion,
 		rendererConstraintDefinition,
 		renderedSizeConstraintDefinition,
+		rendererCursorConstraintDefinition,
 	).Scan(&valid); err != nil {
 		return fmt.Errorf("query governance readiness: %w", err)
 	}

@@ -328,8 +328,14 @@ required sequence is:
    Final `VALIDATE CONSTRAINT` scans the complete `posts` table while holding
    PostgreSQL `SHARE UPDATE EXCLUSIVE` and the renderer-state row lock; its I/O
    and lock duration grow with population and are not batch-bounded.
-   The command emits no per-batch progress: `content_renderer_state` and the
-   post renderer markers are the canonical restart record. The measured
+   The command emits no per-batch progress. Instead, each mutation transaction
+   atomically stores its converted count and last selected signed-bigint post
+   ID in `content_renderer_state` with the post updates. `NULL` is the distinct
+   before-first-row state, so negative, zero, and `MinInt64` identities are not
+   skipped. Restart resumes strictly after the committed cursor; rollback
+   advances nothing, and an unknown commit acknowledgement is reconciled from
+   this state. The final whole-table oracle and constraint validation remain
+   authoritative. The measured
    100-row dense-task compatibility fixture lasted about 21.1 seconds with a
    sampled roughly 77 MiB test-process peak RSS on the development host; it is
    not claimed as a universal worst case. Those selected post rows remain
@@ -339,7 +345,8 @@ required sequence is:
    render phase to return.
    The separate 25,000-post/1,000-topic population fixture records complete
    preflight, schema, 250 conversion batches, final validation/completion,
-   total release time, and sampled test-process RSS. Treat it as a reproducible
+   exact 251-query/25,000-examined-row mutation-selection proof, total release
+   time, and sampled test-process RSS. Treat it as a reproducible
    planning point, not a universal duration or capacity bound. If its measured
    maintenance window is unacceptable for the target installation, stop before
    migration 000007 and plan an explicitly approved maintenance window; do not
