@@ -719,7 +719,7 @@ templ publishingFormSection(form publishingFormView) {
 				if form.ShowPreview {
 					<section aria-labelledby="preview-title" class="rounded-lg border border-slate-700 bg-slate-950/60 p-5">
 						<h2 id="preview-title" class="text-xl font-semibold text-white">Sanitized preview</h2>
-						<div class="mt-4 space-y-4 break-words leading-7 text-slate-200">
+						<div class="rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-200">
 							@form.PreviewBody.Component()
 						</div>
 					</section>

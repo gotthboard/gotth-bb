@@ -1,18 +1,24 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 set -euo pipefail
+
+for injection_variable in BASH_ENV ENV LD_PRELOAD LD_LIBRARY_PATH; do
+  if [ -n "${!injection_variable-}" ]; then
+    printf 'refusing ambient process injection variable %s\n' "$injection_variable" >&2
+    exit 2
+  fi
+done
+PATH=/usr/bin:/bin
+export PATH
+readonly PATH
+
+readonly script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source "$script_dir/lib/alpha3-evidence-custody.sh"
 
 readonly expected_image='postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d'
 readonly container_name="${GOTTH_BB_POSTGRES_CONTAINER:-gotth-bb-alpha3-totality-pg}"
 
 if [ -z "${GOTTH_BB_TEST_DATABASE_URL:-}" ]; then
   printf '%s\n' 'GOTTH_BB_TEST_DATABASE_URL is required' >&2
-  exit 2
-fi
-readonly source_head_before="$(git rev-parse HEAD)"
-readonly source_tree_before="$(git rev-parse 'HEAD^{tree}')"
-readonly source_archive_before="$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)"
-if [ -n "$(git status --porcelain=v1)" ]; then
-  printf '%s\n' 'performance evidence requires a clean committed source tree' >&2
   exit 2
 fi
 readonly evidence_output="${GOTTH_BB_EVIDENCE_OUTPUT:-}"
@@ -24,6 +30,13 @@ if [ -e "$evidence_output" ] || [ -L "$evidence_output" ] || [ ! -d "$(dirname -
   printf '%s\n' 'GOTTH_BB_EVIDENCE_OUTPUT must name a new file in an existing directory' >&2
   exit 2
 fi
+
+evidence_scratch=$(mktemp -d /tmp/gotth-bb-alpha3-performance.XXXXXX)
+trap 'rm -rf -- "$evidence_scratch"' EXIT HUP INT TERM
+alpha3_capture_committed_source "$evidence_scratch"
+readonly source_head_before=$ALPHA3_SOURCE_HEAD
+readonly source_tree_before=$ALPHA3_SOURCE_TREE
+readonly source_archive_before=$ALPHA3_SOURCE_ARCHIVE_SHA256
 
 image_ref=$(sudo -n docker inspect --format '{{.Config.Image}}' "$container_name")
 image_id=$(sudo -n docker inspect --format '{{.Image}}' "$container_name")
@@ -44,14 +57,12 @@ if [[ ! "$container_system_identifier" =~ ^[0-9]+$ ]]; then
   printf 'inspected container returned invalid PostgreSQL system identifier %s\n' "$container_system_identifier" >&2
   exit 2
 fi
-evidence_scratch=$(mktemp -d "${TMPDIR:-/tmp}/gotth-bb-alpha3-performance.XXXXXX")
-trap 'rm -rf -- "$evidence_scratch"' EXIT HUP INT TERM
 readonly test_binary="$evidence_scratch/rerender-performance.test"
 readonly test_log="$evidence_scratch/result.log"
 readonly transcript="$evidence_scratch/evidence.txt"
 
-GOMAXPROCS=4 go test -mod=readonly -tags=integration -c -o "$test_binary" ./internal/rerender
-GOTTH_BB_RUN_PERFORMANCE=1 GOTTH_BB_TEST_DATABASE_URL="$GOTTH_BB_TEST_DATABASE_URL" \
+alpha3_compile_rerender_test "$evidence_scratch" "$test_binary"
+alpha3_clean_process "$evidence_scratch" GOTTH_BB_RUN_PERFORMANCE=1 GOTTH_BB_TEST_DATABASE_URL="$GOTTH_BB_TEST_DATABASE_URL" \
   GOTTH_BB_EXPECTED_DATABASE_HOST="$expected_database_host" GOTTH_BB_EXPECTED_DATABASE_PORT="$expected_database_port" \
   GOTTH_BB_EXPECTED_DATABASE_SYSTEM_IDENTIFIER="$container_system_identifier" GOMAXPROCS=4 "$test_binary" \
   -test.run '^TestMaximumCompatibilityBatchPerformanceOnPostgreSQL17$' \
@@ -75,10 +86,10 @@ wait "$test_pid"
 test_status=$?
 set -e
 
-source_head_after=$(git rev-parse HEAD)
-source_tree_after=$(git rev-parse 'HEAD^{tree}')
-source_archive_after=$(git archive --format=tar HEAD | sha256sum | cut -d' ' -f1)
-if [ -n "$(git status --porcelain=v1)" ] || [ "$source_head_after" != "$source_head_before" ] || [ "$source_tree_after" != "$source_tree_before" ] || [ "$source_archive_after" != "$source_archive_before" ]; then
+source_head_after=$(/usr/bin/git rev-parse HEAD)
+source_tree_after=$(/usr/bin/git rev-parse 'HEAD^{tree}')
+source_archive_after=$(/usr/bin/git archive --format=tar HEAD | /usr/bin/sha256sum | /usr/bin/cut -d' ' -f1)
+if [ -n "$(/usr/bin/git status --porcelain=v1)" ] || [ "$source_head_after" != "$source_head_before" ] || [ "$source_tree_after" != "$source_tree_before" ] || [ "$source_archive_after" != "$source_archive_before" ]; then
   printf '%s\n' 'source identity changed during performance evidence run' >&2
   exit 2
 fi
@@ -93,8 +104,13 @@ fi
   printf 'source_tree_after=%s\n' "$source_tree_after"
   printf 'source_archive_sha256_after=%s\n' "$source_archive_after"
   printf 'source_clean_after=true\n'
+  printf 'source_execution_root=%s\n' "$ALPHA3_SOURCE_ROOT"
+  printf 'source_execution_kind=extracted_captured_git_archive\n'
   printf 'environment=%s\n' "$(uname -srvmo)"
-  printf 'go_version=%s\n' "$(go env GOVERSION)"
+  printf 'go_binary=%s\n' "$ALPHA3_GO_BINARY"
+  printf 'go_binary_sha256=%s\n' "$ALPHA3_GO_BINARY_SHA256"
+  printf 'go_version=%s\n' "$ALPHA3_GO_VERSION"
+  printf 'go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=local;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches\n'
   printf 'gomaxprocs=4\n'
   printf 'postgres_container=%s\n' "$container_name"
   printf 'postgres_container_running=%s\n' "$container_running"

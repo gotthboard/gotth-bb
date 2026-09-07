@@ -59,6 +59,8 @@ Verification:
 - evidence scripts that admit only the inspected loopback target after pinned
   pgx effective-config parsing and require the same PostgreSQL system
   identifier through both the inspected container and measured SQL connection
+- archive-only evidence compilation under an empty controlled Go environment,
+  with an ignored/excluded `_test.go` contamination regression
 - restricted-login-role integration of the exact idempotent packaged grants,
   proving the migration owner remains owner, renderer state stays read-only,
   and migration verification plus readiness pass after the narrow grant
@@ -90,7 +92,9 @@ small first-party selection/caret transformations, native labeled buttons,
 visible keyboard focus, unique textarea labels, and HTMX replacement wiring.
 Serve the script as an immutable same-origin asset while leaving the ordinary
 textarea, preview, CSRF, validation, and publication paths independent of
-JavaScript.
+JavaScript. Sanitized previews use the same bounded rendered-post container as
+published content, including local horizontal scrolling for wide code and
+tables.
 Fenced-code and table actions operate on complete touched lines and map the
 original selection into the result. Toggling recognized authored syntax removes
 only wrapper/internal syntax, never exterior line endings; delimiter length and

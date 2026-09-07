@@ -394,9 +394,17 @@ local result is represented as that evidence.
 
 The canonical reproduction command is
 `GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-rerender-performance.sh`.
-It captures HEAD, tree, and deterministic archive identity before compilation,
-refuses a dirty source tree, and requires the same identities plus a clean tree
-after the measured process exits. It requires `GOTTH_BB_TEST_DATABASE_URL`,
+It captures HEAD and tree, writes exactly one deterministic committed archive,
+and extracts that captured archive into private scratch. Compilation occurs
+only inside the extracted tree, never inside the live worktree. The compile
+uses fixed `/usr/bin/go` under `env -i`, `GOENV=off`, `GOWORK=off`, empty
+`GOFLAGS`, the local toolchain, disabled CGO, fixed Linux/amd64/v1 targets,
+isolated build/module/temp caches, and checksum-verified public module
+downloads. The measured binary also starts under `env -i`. The script refuses
+ambient shell/loader injection, records the Go binary path and digest, refuses
+a dirty source tree, and requires the same HEAD/tree/archive identities plus a
+clean tree after the measured process exits. It requires
+`GOTTH_BB_TEST_DATABASE_URL`,
 requires the evidence output to be a new file in an existing directory, and
 preserves the complete bounded test transcript plus identity footer there
 before its scratch directory is removed. It verifies that
@@ -417,9 +425,14 @@ measured SQL connection must return that exact identifier while also requiring
 test database. The script compiles the committed
 integration test, runs it once with `GOMAXPROCS=4`, and samples the test
 process's `VmRSS` from `/proc` every 50 ms. It prints the before/after source
-identities and cleanliness, OS, Go version, container endpoint/image identity,
-container and live-SQL system identifier, fixture digests, transaction elapsed
-time, result state, and sampled peak RSS without printing the database URL.
+identities and cleanliness, extracted-archive execution mode, OS, Go binary
+digest/version/environment, container endpoint/image identity, container and
+live-SQL system identifier, fixture digests, transaction elapsed time, result
+state, and sampled peak RSS without printing the database URL. A committed
+negative test places syntax-invalid `_test.go` files behind both `.gitignore`
+and `.git/info/exclude`, supplies hostile ambient Go workspace, overlay,
+toolchain, cache, target, and compiler settings, and proves only the committed
+archive compiles and runs.
 
 The fixture is exactly 100 copies of
 `strings.Repeat("- [x]\n", 65536/len("- [x]\n"))`, each paired with the
@@ -456,10 +469,10 @@ executable commit; it changes no executable source, fixture, or methodology.
 
 The separate population-scale reproduction command is
 `GOTTH_BB_EVIDENCE_OUTPUT=/new/absolute/path scripts/verify-alpha3-population-performance.sh`.
-It applies the same before/after source-custody, new retained-output,
-exact-image, exact loopback endpoint, live-SQL-identity, environment-identity,
-stable system-identifier equality, and 50 ms test-process `VmRSS` sampling
-gates. Its
+It applies the same extracted-archive build, empty build/run environment,
+before/after source-custody, new retained-output, exact-image, exact loopback
+endpoint, live-SQL-identity, environment-identity, stable system-identifier
+equality, and 50 ms test-process `VmRSS` sampling gates. Its
 committed integration fixture creates 25,000 coherent
 ordinary p1 posts as 1,000 full 25-post topics, then verifies every topic's
 exact post count, first/latest/root relationships, counters, parent, and thread

@@ -1047,7 +1047,11 @@ reply-to label, and connector styling. CSS indentation increases for depths one
 through six only; deeper nodes retain their true `data-depth`, reply-to label,
 DOM order, and accessible relationship while using the sixth-level inset. At
 320 CSS pixels the author panel collapses above content before indentation is
-applied, and no node may force document-level horizontal scrolling.
+applied, and no node may force document-level horizontal scrolling. Published
+and previewed sanitized bodies share the exact
+`rendered-post min-w-0 max-w-full` containment boundary. Its `pre` and `table`
+children become bounded horizontal scrollers, so a wide code line or GFM table
+cannot widen the document in either workflow.
 
 An ordinary reader never receives a soft-deleted post body. A deleted leaf is
 omitted. A deleted post with a visible descendant produces a tombstone article

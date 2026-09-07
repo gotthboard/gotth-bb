@@ -40,12 +40,12 @@ func TestPublishingHandlerPreviewsSanitizedTopicAndReplyDrafts(t *testing.T) {
 		{
 			name: "topic", target: "/topics/preview",
 			form: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "area": {"news"}, "title": {"Kept title"}, "markdown": {"Hello **world** <script>alert(1)</script>"}},
-			want: []string{`value="Kept title"`, `Hello **world** &lt;script&gt;alert(1)&lt;/script&gt;`, `<strong>world</strong>`, `alert(1)`},
+			want: []string{`value="Kept title"`, `Hello **world** &lt;script&gt;alert(1)&lt;/script&gt;`, `<strong>world</strong>`, `alert(1)`, `class="rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-200"`},
 		},
 		{
 			name: "reply", target: "/topics/41/replies/preview",
 			form: url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "parent_post_id": {"91"}, "markdown": {"A [safe](https://example.test) reply"}},
-			want: []string{`A [safe](https://example.test) reply`, `<a href="https://example.test" rel="nofollow noreferrer">safe</a>`, `formaction="/bb/topics/41/replies/preview"`},
+			want: []string{`A [safe](https://example.test) reply`, `<a href="https://example.test" rel="nofollow noreferrer">safe</a>`, `formaction="/bb/topics/41/replies/preview"`, `class="rendered-post mt-4 min-w-0 max-w-full space-y-4 break-words leading-7 text-slate-200"`},
 		},
 	} {
 		test := test

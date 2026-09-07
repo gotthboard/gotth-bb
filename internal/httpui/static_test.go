@@ -80,6 +80,20 @@ func TestEmbeddedStylesheetContainsDarkForumTheme(t *testing.T) {
 	}
 }
 
+func TestEmbeddedStylesheetBoundsWideRenderedContent(t *testing.T) {
+	t.Parallel()
+
+	stylesheet := string(appStylesheet)
+	for _, selector := range []string{
+		".rendered-post{overflow-wrap:anywhere}",
+		".rendered-post pre,.rendered-post table{max-width:100%;display:block;overflow-x:auto}",
+	} {
+		if !strings.Contains(stylesheet, selector) {
+			t.Fatalf("stylesheet does not contain rendered-content containment selector %q", selector)
+		}
+	}
+}
+
 func TestStaticAssetHandlerServesImmutableGetHeadAndRange(t *testing.T) {
 	t.Parallel()
 
