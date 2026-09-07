@@ -206,7 +206,11 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 	for _, mode := range []string{"force_custom_plan", "force_generic_plan"} {
 		for _, shape := range searchShapes {
 			searchPlan := explainPrepared(t, ctx, connection, "an02_search", "integer,boolean,boolean,bigint[],boolean,text,bigint,text,boolean,timestamptz,boolean,boolean,timestamptz", searchDiscoveryPage, shape.arguments, mode)
-			candidate := requireAuthorizedSearchCandidate(t, mode, shape.name, searchPlan)
+			expectedRows := int64(51)
+			if !population.admission && shape.name == "rare-term" {
+				expectedRows = population.topics / 997
+			}
+			candidate := requireAuthorizedSearchCandidate(t, mode, shape.name, expectedRows, searchPlan)
 			if mode == "force_custom_plan" && (shape.name == "current-vector-author" || shape.name == "author") &&
 				(!planUsesIndex(candidate, "topics_search_author_current_idx") || !planUsesIndex(candidate, "posts_search_author_current_idx")) {
 				t.Fatalf("%s %s search plan lost author indexes: %s", mode, shape.name, searchPlan)
@@ -251,7 +255,7 @@ type explainPlanNode struct {
 	Plans        []explainPlanNode `json:"Plans"`
 }
 
-func requireAuthorizedSearchCandidate(t *testing.T, mode, shape, encoded string) explainPlanNode {
+func requireAuthorizedSearchCandidate(t *testing.T, mode, shape string, expectedRows int64, encoded string) explainPlanNode {
 	t.Helper()
 	var document explainPlanDocument
 	if err := json.Unmarshal([]byte(encoded), &document); err != nil {
@@ -266,8 +270,8 @@ func requireAuthorizedSearchCandidate(t *testing.T, mode, shape, encoded string)
 	if candidate == nil {
 		t.Fatalf("%s %s search plan lost candidate limit: %s", mode, shape, encoded)
 	}
-	if candidate.PlanRows != 51 || candidate.ActualRows != 51 {
-		t.Fatalf("%s %s candidate fence = plan_rows=%d actual_rows=%d, want 51/51: %s", mode, shape, candidate.PlanRows, candidate.ActualRows, encoded)
+	if candidate.PlanRows != 51 || candidate.ActualRows != expectedRows {
+		t.Fatalf("%s %s candidate fence = plan_rows=%d actual_rows=%d, want 51/%d: %s", mode, shape, candidate.PlanRows, candidate.ActualRows, expectedRows, encoded)
 	}
 	requiredRelations := []struct {
 		relation string
