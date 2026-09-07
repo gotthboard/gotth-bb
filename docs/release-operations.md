@@ -336,8 +336,8 @@ required sequence is:
    advances nothing, and an unknown commit acknowledgement is reconciled from
    this state. The final whole-table oracle and constraint validation remain
    authoritative. The measured
-   100-row dense-task compatibility fixture lasted about 21.1 seconds with a
-   sampled roughly 77 MiB test-process peak RSS on the development host; it is
+   100-row dense-task compatibility fixture lasted about 21.2 seconds with a
+   sampled roughly 83 MiB test-process peak RSS on the development host; it is
    not claimed as a universal worst case. Those selected post rows remain
    locked for the transaction. Run this only while the application is stopped
    and drained. Cancellation is checked between rows and renderer phases,

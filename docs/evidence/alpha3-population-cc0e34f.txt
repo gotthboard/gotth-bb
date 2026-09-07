@@ -1,0 +1,36 @@
+=== RUN   TestPopulationMigrationPerformanceOnPostgreSQL17
+    rerender_integration_test.go:689: sql_server_identity version_num=170010 address=172.17.0.7/32 port=5432 database=gotth_bb_alpha3_rerender_population_test system_identifier=7682637991496687654
+    rerender_integration_test.go:693: population_fixture rows=25000 full_pages_25=1000 source_bytes=35 source_sha256=dc0767673dc19d4fcd263526028c93f097464a955a8d1f520a1663b8f9c4ce98 legacy_html_bytes=56 legacy_html_sha256=3a0d36f5ae4a5939c8d8f6fed339ec77d41d697a60c17ffbe306296eabb54970
+    rerender_integration_test.go:875: population_migration rows=25000 preflight_batches=251 preflight_transactions=252 preflight_round_trips=254 mutation_batches=250 mutation_selection_queries=251 mutation_selected_rows=25000 explain_queries=251 explain_returned_rows=25000 explain_examined_rows=25000 preflight_elapsed=1.554417769s schema_elapsed=37.189173ms conversion_elapsed=14.225123821s validation_elapsed=23.105229ms rerender_total_elapsed=14.24822905s release_total_elapsed=15.839837112s current=25000 converted=25000 cursor=25000 completed=true validated=true
+--- PASS: TestPopulationMigrationPerformanceOnPostgreSQL17 (17.45s)
+PASS
+source_head_before=cc0e34fe74e9e48e351dc7c761975b087a5219c6
+source_tree_before=9d8ed5cdec3feece34deb55233b11b5c8fcc78ba
+source_archive_sha256_before=480bb97cc323020862ac27eeea194b0fffe3b74af4b002b5662b3e844e0f3472
+source_clean_before=true
+source_head_after=cc0e34fe74e9e48e351dc7c761975b087a5219c6
+source_tree_after=9d8ed5cdec3feece34deb55233b11b5c8fcc78ba
+source_archive_sha256_after=480bb97cc323020862ac27eeea194b0fffe3b74af4b002b5662b3e844e0f3472
+source_clean_after=true
+source_execution_root=/tmp/gotth-bb-alpha3-population.vtlCqd/source
+source_execution_kind=extracted_captured_git_archive
+evidence_launcher_path=/tmp/gotth-bb-alpha3-cursor.O4oQWe/repo4/scripts/alpha3-evidence-launcher
+evidence_launcher_sha256=973f1a57b0cabdd43cef8650d5dd43d0df048661d885591a90aa520f61b2125e
+evidence_launcher_linkage=static-linux-amd64
+evidence_shell=/usr/bin/bash;--noprofile;--norc;-p;environment-allowlist
+environment=Linux 7.1.5-arch1-2 #1 SMP PREEMPT_DYNAMIC Tue, 28 Jul 2026 13:49:51 +0000 x86_64 GNU/Linux
+go_bootstrap_binary=/usr/bin/go
+go_bootstrap_sha256=1eefba0e588df5775114c8e9d1805dc806be761c12061454c9aad655d2e171e3
+go_compiler_binary=/tmp/gotth-bb-alpha3-population.vtlCqd/go-mod-cache/golang.org/toolchain@v0.0.1-go1.26.6.linux-amd64/bin/go
+go_compiler_sha256=29e6e0b8be61beb1489ceae62b304343566de8a1dc700af74bde7aeb9c80ad45
+go_version=go1.26.6
+go_environment=env-i;GOENV=off;GOWORK=off;GOFLAGS=;GOTOOLCHAIN=go1.26.6;CGO_ENABLED=0;GOOS=linux;GOARCH=amd64;GOAMD64=v1;isolated-caches
+gomaxprocs=4
+postgres_container=gotth-bb-alpha3-totality-pg
+postgres_container_running=true
+postgres_published_endpoint=127.0.0.1:32797
+postgres_system_identifier=7682637991496687654
+postgres_image_ref=postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_image_id=sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+postgres_version=postgres (PostgreSQL) 17.10 (Debian 17.10-1.pgdg13+1)
+sampled_peak_rss_kib=21940
