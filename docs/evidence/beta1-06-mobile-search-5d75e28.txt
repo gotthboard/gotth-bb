@@ -27,6 +27,12 @@ Tree:
 Contract-admission commit:
 838a02169b39d0233d2b9a917351205d90645ffb
 
+Published-asset retention commit:
+fe03e20654f6f752343aa1304211c7ab7d3cd212
+
+Retention tree:
+a31941a68495c03f3cdbfe10ff1de8010c073b5c
+
 The corrective series:
 
 - changes the date-filter wrapper from unconditional grid-cols-2 to
@@ -114,6 +120,20 @@ Result: PASS. Every reflow assertion reported scrollWidth no greater than
 clientWidth. Axe reported zero violations; its pre-existing gradient
 color-contrast checks remained explicitly incomplete rather than being called
 passes. The candidate regenerated without tracked drift before this matrix.
+
+A restarted cold review then rejected removal of the published
+app-3faf03fa...css route because it promises one-year immutable caching. Commit
+fe03e20654f6f752343aa1304211c7ab7d3cd212 restores the exact old bytes, embeds
+and serves both stylesheet digests, exempts both from request admission, and
+tests their hashes and GET/HEAD routes. New HTML still references only the
+corrected app-3104ce3e...css asset.
+
+On exact retention commit fe03e20654f6f752343aa1304211c7ab7d3cd212:
+
+- deterministic Templ/Tailwind generation left no tracked difference;
+- both stylesheet files hashed to their exact filenames;
+- go vet and repository-wide race/coverage passed; and
+- the complete affected Caddy/Chromium matrix passed at `/` and `/bb`.
 
 Repository-wide verification
 ----------------------------
