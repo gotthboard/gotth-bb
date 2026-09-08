@@ -612,8 +612,9 @@ for the version 1.0 single-process deployment:
    fragment. The policy checks resolved Markdown links, images, and automatic
    links using the admitted GFM parse; code spans/blocks and ordinary text do
    not become false positives. Local relative links remain outside external-
-   link policy, while protocol-relative network-path destinations are rejected
-   so they cannot become an external-domain bypass in the browser.
+   link policy, while protocol-relative network paths and destinations with an
+   ASCII backslash are rejected so browser URL normalization cannot manufacture
+   an external-domain bypass.
 6. Topic, reply, edit, their preview paths, and administrator community-rules
    updates use the same immutable link policy and fail before persistence when
    any destination is blocked. Existing

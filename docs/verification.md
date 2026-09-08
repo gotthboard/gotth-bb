@@ -1116,7 +1116,8 @@ two-window burst rather than claiming a rolling limit.
 
 Destination tests cover inline/reference/collapsed-reference links, images,
 GFM automatic URLs, repeated destinations, local relative links, rejected
-protocol-relative network paths, anchors, mailto,
+protocol-relative network paths, pure/mixed slash-backslash authority forms,
+other ASCII-backslash destinations, anchors, mailto,
 code spans, fenced code, escaped text, raw HTML, Unicode/IDNA host forms, exact
 host, subdomain, sibling suffix, trailing dot, default/nondefault ports, empty/
 dot/escaped paths, uppercase/lowercase percent escapes, encoded unreserved and

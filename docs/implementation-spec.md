@@ -2655,10 +2655,12 @@ The canonical host is compared
 with exact and dot-boundary domain rules; the canonical URL is compared with
 exact URL rules. Local relative references, anchors, and `mailto` destinations
 remain governed by the existing renderer/sanitizer and do not match external
-rules. A network-path reference beginning `//` is rejected as a normal field-
-safe Markdown validation failure because the browser would resolve it to an
-external HTTP(S) destination. A malformed HTTP(S)-looking destination is
-likewise a normal Markdown validation failure, not a bypass.
+rules. A network-path reference beginning `//` and any parsed destination
+containing an ASCII backslash are rejected as normal field-safe Markdown
+validation failures because browser HTTP(S) URL resolution treats paired or
+mixed leading slashes/backslashes as an external authority. A malformed HTTP(S)-
+looking destination is likewise a normal Markdown validation failure, not a
+bypass.
 
 `RenderTopicDraft`, `RenderReplyDraft`, `CreateTopic`, `CreateReply`,
 `EditPost`, and the nonempty community-rules rendering path receive the

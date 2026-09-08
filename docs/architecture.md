@@ -766,8 +766,9 @@ to 256 rules and 64 KiB; empty policy is explicit rather than missing.
 
 The GFM renderer parses valid Markdown once, visits resolved link, image, and
 automatic-link destinations, rejects external network-path references such as
-`//example.org/path`, applies the immutable policy, and renders the same
-admitted AST only if it passes. This avoids a parser disagreement between
+`//example.org/path` and every ASCII-backslash destination that a browser could
+reinterpret as an authority, applies the immutable policy, and renders the
+same admitted AST only if it passes. This avoids a parser disagreement between
 preview and persistence. Code and non-link text are not searched for URL-like
 substrings. Topic, reply, edit, their previews, and the public community-rules
 settings writer all cross that same function.
