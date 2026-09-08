@@ -359,6 +359,46 @@ VALUES ('Independent account', clock_timestamp() - interval '2 days', clock_time
 	}
 	assertPublicationTuple(t, ctx, connections[0], independentID, 1)
 
+	var coexistID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
+VALUES ('FK coexistence account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&coexistID); err != nil {
+		t.Fatal(err)
+	}
+	coexistActor := policy.AccessContext{Authenticated: true, UserID: coexistID, Role: policy.RoleMember}
+	topicLocker, err := connections[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lockedTopicID int64
+	if err := topicLocker.QueryRow(ctx, `SELECT id FROM public.topics WHERE id=$1 FOR UPDATE`, first.TopicID).Scan(&lockedTopicID); err != nil || lockedTopicID != first.TopicID {
+		t.Fatalf("lock coexistence topic = (%d, %v)", lockedTopicID, err)
+	}
+	var coexistBackendPID int32
+	if err := connections[3].QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&coexistBackendPID); err != nil {
+		t.Fatal(err)
+	}
+	coexistResult := make(chan error, 1)
+	go func() {
+		_, publishErr := CreateReply(ctx, connections[3], limits, coexistActor, first.TopicID, first.PostID, "FK key-share coexistence")
+		coexistResult <- publishErr
+	}()
+	waitForPublicationLock(t, ctx, connections[1], coexistBackendPID)
+	keyShareContext, stopKeyShare := context.WithTimeout(ctx, 100*time.Millisecond)
+	var referencedUserID int64
+	keyShareErr := topicLocker.QueryRow(keyShareContext, `SELECT id FROM public.users WHERE id=$1 FOR KEY SHARE`, coexistID).Scan(&referencedUserID)
+	stopKeyShare()
+	if keyShareErr != nil || referencedUserID != coexistID {
+		_ = topicLocker.Rollback(ctx)
+		t.Fatalf("foreign-key key-share coexistence = (%d, %v)", referencedUserID, keyShareErr)
+	}
+	if err := topicLocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-coexistResult; err != nil {
+		t.Fatalf("publication after compatible key-share = %v", err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], coexistID, 1)
+
 	var canceledID int64
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
 VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&canceledID); err != nil {

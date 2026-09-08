@@ -16,7 +16,7 @@ SELECT
     clock_timestamp()::timestamp with time zone AS observed_at
 FROM public.users AS forum_user
 WHERE forum_user.id = sqlc.arg(actor_user_id)
-FOR UPDATE OF forum_user;
+FOR NO KEY UPDATE OF forum_user;
 
 -- name: ListLockedPublicationActorGroupIDs :many
 SELECT membership.group_id

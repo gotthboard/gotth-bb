@@ -315,7 +315,7 @@ SELECT
     clock_timestamp()::timestamp with time zone AS observed_at
 FROM public.users AS forum_user
 WHERE forum_user.id = $1
-FOR UPDATE OF forum_user
+FOR NO KEY UPDATE OF forum_user
 `
 
 type LockPublicationActorRow struct {

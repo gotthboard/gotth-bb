@@ -11,6 +11,13 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestPublicationActorQueryUsesOnlyNoKeyUpdate(t *testing.T) {
+	t.Parallel()
+	if !strings.Contains(lockPublicationActor, "FOR NO KEY UPDATE OF forum_user") || strings.Contains(lockPublicationActor, "FOR UPDATE OF forum_user") {
+		t.Fatalf("publication actor lock query = %q", lockPublicationActor)
+	}
+}
+
 func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 	t.Parallel()
 
