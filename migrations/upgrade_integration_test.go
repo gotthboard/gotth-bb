@@ -118,8 +118,12 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 			t.Fatalf("insert valid alpha.1 report state: %v", err)
 		}
 	}
+	var negativeInfinityUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Negative infinity reader') RETURNING id`).Scan(&negativeInfinityUserID); err != nil {
+		t.Fatalf("insert negative-infinity reader: %v", err)
+	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads
-    (user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $2, 1, 'infinity')`, userID, topicID); err != nil {
+	(user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $3, 1, 'infinity'), ($2, $3, 1, '-infinity')`, userID, negativeInfinityUserID, topicID); err != nil {
 		t.Fatalf("insert legacy non-finite marker: %v", err)
 	}
 	if err := migration.Apply(ctx, testConfig, Files()); err == nil {
@@ -129,21 +133,21 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	var failedConstraintCount int
 	var failedIndexName *string
 	var retainedMarkerCount int
-	var retainedMarkerInfinite bool
+	var retainedNonFiniteMarkers int
 	if err := connection.QueryRow(ctx, `SELECT
     (SELECT max(version) FROM public.gotth_schema_migrations),
     (SELECT count(*) FROM pg_catalog.pg_constraint WHERE conrelid = 'public.topic_reads'::regclass AND conname = 'topic_reads_read_at_finite'),
     to_regclass('public.posts_topic_unread_visible_idx')::text,
-    (SELECT count(*) FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2),
-    (SELECT read_at = 'infinity'::timestamptz FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2)`, userID, topicID).Scan(
-		&failedHead, &failedConstraintCount, &failedIndexName, &retainedMarkerCount, &retainedMarkerInfinite,
+	    (SELECT count(*) FROM public.topic_reads WHERE topic_id = $1),
+	    (SELECT count(*) FROM public.topic_reads WHERE topic_id = $1 AND NOT pg_catalog.isfinite(read_at))`, topicID).Scan(
+		&failedHead, &failedConstraintCount, &failedIndexName, &retainedMarkerCount, &retainedNonFiniteMarkers,
 	); err != nil {
 		t.Fatalf("inspect aborted unread migration: %v", err)
 	}
-	if failedHead != 8 || failedConstraintCount != 0 || failedIndexName != nil || retainedMarkerCount != 1 || !retainedMarkerInfinite {
-		t.Fatalf("aborted unread migration = (head %d, constraints %d, index %v, markers %d, infinity %t)", failedHead, failedConstraintCount, failedIndexName, retainedMarkerCount, retainedMarkerInfinite)
+	if failedHead != 8 || failedConstraintCount != 0 || failedIndexName != nil || retainedMarkerCount != 2 || retainedNonFiniteMarkers != 2 {
+		t.Fatalf("aborted unread migration = (head %d, constraints %d, index %v, markers %d, nonfinite %d)", failedHead, failedConstraintCount, failedIndexName, retainedMarkerCount, retainedNonFiniteMarkers)
 	}
-	if _, err := connection.Exec(ctx, `UPDATE public.topic_reads SET read_at = clock_timestamp() WHERE user_id = $1 AND topic_id = $2`, userID, topicID); err != nil {
+	if _, err := connection.Exec(ctx, `UPDATE public.topic_reads SET read_at = clock_timestamp() WHERE topic_id = $1`, topicID); err != nil {
 		t.Fatalf("repair legacy non-finite marker: %v", err)
 	}
 	if err := migration.Apply(ctx, testConfig, Files()); err != nil {
@@ -153,11 +157,15 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("idempotent unread migration rerun: %v", err)
 	}
 	var migrationCount int
+	var upgradedMarkerCount int
 	var assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized bool
 	var rootParent, replyParent *int64
 	var rootPath, replyPath []int32
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.gotth_schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("inspect upgrade migration count: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.topic_reads WHERE topic_id = $1 AND pg_catalog.isfinite(read_at)`, topicID).Scan(&upgradedMarkerCount); err != nil {
+		t.Fatalf("inspect upgraded markers: %v", err)
 	}
 	if err := connection.QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, rootID).Scan(&rootParent, &rootPath); err != nil {
 		t.Fatalf("inspect upgraded root: %v", err)
@@ -172,7 +180,7 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 FROM public.reports`).Scan(&assignedOpenNormalized, &unassignedReviewNormalized, &terminalAssignmentNormalized); err != nil {
 		t.Fatalf("inspect normalized report states: %v", err)
 	}
-	if migrationCount != 9 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
+	if migrationCount != 9 || upgradedMarkerCount != 2 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
 		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v, reports %t/%t/%t)", migrationCount, rootParent, rootPath, replyParent, replyPath, assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized)
 	}
 }

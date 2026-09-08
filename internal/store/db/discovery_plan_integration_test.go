@@ -261,14 +261,34 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 		t.Logf("PLAN mode=%s query=direct-post\n%s", mode, directPlan)
 		t.Logf("%s search/activity/direct plans admitted", mode)
 		if population.unread {
-			areaArguments := fmt.Sprintf("false,ARRAY[%d]::bigint[],%d", groupID, readerID)
-			areaPlan := explainPrepared(t, ctx, connection, "an03_board", "boolean,bigint[],bigint", listAuthenticatedVisibleAreaSummaries, areaArguments, mode)
-			requireUnreadAuthorizationPlan(t, mode, "board", "visible_areas", areaPlan, false)
-			t.Logf("PLAN mode=%s query=authenticated-board\n%s", mode, areaPlan)
-			topicArguments := fmt.Sprintf("%d,'public',false,ARRAY[%d]::bigint[],0,25", readerID, groupID)
-			topicPlan := explainPrepared(t, ctx, connection, "an03_area", "bigint,text,boolean,bigint[],integer,integer", listAuthenticatedVisibleTopicsByAreaSlug, topicArguments, mode)
-			requireUnreadAuthorizationPlan(t, mode, "area", "visible_area", topicPlan, true)
-			t.Logf("PLAN mode=%s query=authenticated-area\n%s", mode, topicPlan)
+			visitorBoardPlan := explainPrepared(t, ctx, connection, "an03_visitor_board", "boolean,boolean,bigint[]", listVisibleAreaSummaries, "false,false,ARRAY[]::bigint[]", mode)
+			requireVisitorReadPlan(t, mode, "visitor-board", visitorBoardPlan)
+			t.Logf("PLAN mode=%s actor=visitor query=board\n%s", mode, visitorBoardPlan)
+			visitorAreaPlan := explainPrepared(t, ctx, connection, "an03_visitor_area", "text,boolean,boolean,bigint[],integer,integer", listVisibleTopicsByAreaSlug, "'public',false,false,ARRAY[]::bigint[],0,25", mode)
+			requireVisitorReadPlan(t, mode, "visitor-area", visitorAreaPlan)
+			t.Logf("PLAN mode=%s actor=visitor query=area\n%s", mode, visitorAreaPlan)
+
+			authenticatedShapes := []struct {
+				name                string
+				isStaff             bool
+				groups              string
+				areaSlug            string
+				requireGroupSubplan bool
+			}{
+				{name: "member", groups: "ARRAY[]::bigint[]", areaSlug: "authenticated"},
+				{name: "group", groups: fmt.Sprintf("ARRAY[%d]::bigint[]", groupID), areaSlug: "restricted", requireGroupSubplan: true},
+				{name: "staff", isStaff: true, groups: "ARRAY[]::bigint[]", areaSlug: "restricted"},
+			}
+			for _, shape := range authenticatedShapes {
+				areaArguments := fmt.Sprintf("%t,%s,%d", shape.isStaff, shape.groups, readerID)
+				areaPlan := explainPrepared(t, ctx, connection, "an03_board_"+shape.name, "boolean,bigint[],bigint", listAuthenticatedVisibleAreaSummaries, areaArguments, mode)
+				requireUnreadAuthorizationPlan(t, mode, shape.name+"-board", "visible_areas", areaPlan, false, shape.isStaff, shape.requireGroupSubplan)
+				t.Logf("PLAN mode=%s actor=%s query=board\n%s", mode, shape.name, areaPlan)
+				topicArguments := fmt.Sprintf("%d,'%s',%t,%s,0,25", readerID, shape.areaSlug, shape.isStaff, shape.groups)
+				topicPlan := explainPrepared(t, ctx, connection, "an03_area_"+shape.name, "bigint,text,boolean,bigint[],integer,integer", listAuthenticatedVisibleTopicsByAreaSlug, topicArguments, mode)
+				requireUnreadAuthorizationPlan(t, mode, shape.name+"-area", "visible_area", topicPlan, true, shape.isStaff, shape.requireGroupSubplan)
+				t.Logf("PLAN mode=%s actor=%s query=area\n%s", mode, shape.name, topicPlan)
+			}
 		}
 	}
 	if population.admission {
@@ -292,10 +312,28 @@ type explainPlanNode struct {
 	RecheckCond  string            `json:"Recheck Cond"`
 	IndexCond    string            `json:"Index Cond"`
 	JoinType     string            `json:"Join Type"`
+	Parent       string            `json:"Parent Relationship"`
 	Plans        []explainPlanNode `json:"Plans"`
 }
 
-func requireUnreadAuthorizationPlan(t *testing.T, mode, query, areaCTE string, encoded string, requirePostIndex bool) {
+func requireVisitorReadPlan(t *testing.T, mode, query, encoded string) {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
+		t.Fatalf("%s %s decode visitor plan: documents=%d error=%v", mode, query, len(document), err)
+	}
+	root := document[0].Plan
+	if !planUsesConditionedRelation(root, "areas", "visibility") ||
+		!planUsesConditionedRelation(root, "topics", "deleted_at") ||
+		!planUsesConditionedRelation(root, "topics", "state") {
+		t.Fatalf("%s %s plan lost visitor authorization filters: %s", mode, query, encoded)
+	}
+	if findPlanNode(&root, func(node *explainPlanNode) bool { return node.RelationName == "topic_reads" }) != nil {
+		t.Fatalf("%s %s visitor plan accessed private read markers: %s", mode, query, encoded)
+	}
+}
+
+func requireUnreadAuthorizationPlan(t *testing.T, mode, query, areaCTE string, encoded string, requirePostIndex, isStaff, requireGroupSubplan bool) {
 	t.Helper()
 	var document explainPlanDocument
 	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
@@ -304,10 +342,19 @@ func requireUnreadAuthorizationPlan(t *testing.T, mode, query, areaCTE string, e
 	root := document[0].Plan
 	area := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE "+areaCTE })
 	topics := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE visible_topics" })
-	if area == nil || topics == nil || !planUsesConditionedRelation(*area, "areas", "visibility") ||
-		!planUsesConditionedRelation(*area, "area_groups", "group_id") ||
-		!planUsesConditionedRelation(*topics, "topics", "deleted_at") || !planUsesConditionedRelation(*topics, "topics", "state") {
+	if area == nil || topics == nil || !planUsesConditionedRelation(*topics, "topics", "deleted_at") {
 		t.Fatalf("%s %s plan lost materialized authorization fence: %s", mode, query, encoded)
+	}
+	if !isStaff && (!planUsesConditionedRelation(*area, "areas", "visibility") || !planUsesConditionedRelation(*topics, "topics", "state")) {
+		t.Fatalf("%s %s nonstaff plan lost visibility or hidden-topic authorization: %s", mode, query, encoded)
+	}
+	if requireGroupSubplan {
+		groupMembership := findPlanNode(area, func(node *explainPlanNode) bool {
+			return node.RelationName == "area_groups" && strings.Contains(node.Filter+node.RecheckCond+node.IndexCond, "group_id")
+		})
+		if groupMembership == nil || groupMembership.Parent != "SubPlan" {
+			t.Fatalf("%s %s plan lost non-multiplying group-membership subplan: %s", mode, query, encoded)
+		}
 	}
 	if !planUsesConditionedRelation(root, "posts", "author_id") || findPlanNode(&root, func(node *explainPlanNode) bool { return node.RelationName == "topic_reads" }) == nil {
 		t.Fatalf("%s %s plan lost eligible-post or marker read: %s", mode, query, encoded)

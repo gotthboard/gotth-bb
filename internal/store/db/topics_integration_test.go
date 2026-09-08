@@ -136,6 +136,10 @@ func TestVisibleForumReadsOnPostgreSQL17(t *testing.T) {
 	if err != nil || len(staffPage) != 5 || staffPage[0].TopicID != 101 || staffPage[1].TopicID != 102 || staffPage[0].TotalVisibleTopics != 5 {
 		t.Fatalf("staff public page = (%+v, %v), want hidden included and deleted excluded", staffPage, err)
 	}
+	var visitorMarkerCount int
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.topic_reads`).Scan(&visitorMarkerCount); err != nil || visitorMarkerCount != 0 {
+		t.Fatalf("visitor topic reads mutated markers = (%d, %v)", visitorMarkerCount, err)
+	}
 
 	for _, test := range []struct {
 		name       string
@@ -165,6 +169,17 @@ func TestVisibleForumReadsOnPostgreSQL17(t *testing.T) {
 		})
 	}
 
+	insertTopicListFixture(t, ctx, connection, 107, 1601, areaIDs["public"], readerID, "Own only", "open", 0, createdAt, createdAt.Add(6*time.Hour), nil, nil)
+	insertTopicListFixture(t, ctx, connection, 108, 1701, areaIDs["public"], authorID, "Redacted only", "open", 0, createdAt, createdAt.Add(5*time.Hour), nil, nil)
+	if _, err := connection.Exec(ctx, `UPDATE public.posts
+SET markdown_source = '[Content removed by moderation]', rendered_html = '<p>Content removed by moderation.</p>',
+    renderer_version = 'moderation-redaction-v1', search_vector = to_tsvector('pg_catalog.simple'::regconfig, ''),
+    search_projection_version = 'search-v1-pg17-simple-u15-p2', revision = revision + 1,
+    edited_at = $1, deleted_at = $1, deleted_by = $2, deletion_reason = 'fixture redaction',
+    redacted_at = $1, redacted_by = $2, redaction_reason = 'fixture redaction', updated_at = $1
+WHERE id = 1701`, createdAt.Add(13*time.Hour), ownerID); err != nil {
+		t.Fatalf("redact authenticated topic-list fixture: %v", err)
+	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads (user_id, topic_id, last_read_post_number, read_at)
 VALUES ($1, 101, 1, $2), ($1, 103, 2, $2)`, readerID, createdAt.Add(12*time.Hour)); err != nil {
 		t.Fatalf("insert authenticated topic-list markers: %v", err)
@@ -172,20 +187,27 @@ VALUES ($1, 101, 1, $2), ($1, 103, 2, $2)`, readerID, createdAt.Add(12*time.Hour
 	authenticatedPage, err := queries.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, ListAuthenticatedVisibleTopicsByAreaSlugParams{
 		ActorUserID: readerID, AreaSlug: "public", PageLimit: 25,
 	})
-	if err != nil || len(authenticatedPage) != 4 {
-		t.Fatalf("authenticated public page = (%+v, %v), want four rows", authenticatedPage, err)
+	if err != nil || len(authenticatedPage) != 6 {
+		t.Fatalf("authenticated public page = (%+v, %v), want six rows", authenticatedPage, err)
 	}
-	wantStates := map[int64]string{101: "unread", 103: "read", 104: "read", 105: "new"}
+	wantStates := map[int64]string{101: "unread", 103: "read", 104: "read", 105: "new", 107: "read", 108: "read"}
 	for _, topic := range authenticatedPage {
-		if topic.ReadState != wantStates[topic.TopicID] || topic.TotalVisibleTopics != 4 {
-			t.Fatalf("authenticated topic = %+v, want state %q and total four", topic, wantStates[topic.TopicID])
+		if topic.ReadState != wantStates[topic.TopicID] || topic.TotalVisibleTopics != 6 ||
+			(topic.TopicID == 107 || topic.TopicID == 108) && topic.ReadHead != 0 {
+			t.Fatalf("authenticated topic = %+v, want state %q and total six", topic, wantStates[topic.TopicID])
 		}
 	}
 	staffAuthenticatedPage, err := queries.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, ListAuthenticatedVisibleTopicsByAreaSlugParams{
-		ActorUserID: authorID, AreaSlug: "public", IsStaff: true, PageLimit: 25,
+		ActorUserID: readerID, AreaSlug: "public", IsStaff: true, PageLimit: 25,
 	})
-	if err != nil || len(staffAuthenticatedPage) != 5 || staffAuthenticatedPage[1].TopicID != 102 || staffAuthenticatedPage[1].ReadState != "read" || staffAuthenticatedPage[1].ReadHead != 0 {
-		t.Fatalf("authenticated staff page = (%+v, %v), want own-post-only hidden topic read", staffAuthenticatedPage, err)
+	if err != nil || len(staffAuthenticatedPage) != 7 {
+		t.Fatalf("authenticated staff page = (%+v, %v), want seven topics", staffAuthenticatedPage, err)
+	}
+	for _, topic := range staffAuthenticatedPage {
+		if topic.TopicID == 102 && topic.ReadState != "new" || topic.TopicID == 107 && (topic.ReadState != "read" || topic.ReadHead != 0) ||
+			topic.TopicID == 108 && (topic.ReadState != "read" || topic.ReadHead != 0) {
+			t.Fatalf("authenticated staff topic = %+v", topic)
+		}
 	}
 	for _, test := range []struct {
 		name       string
@@ -208,6 +230,10 @@ VALUES ($1, 101, 1, $2), ($1, 103, 2, $2)`, readerID, createdAt.Add(12*time.Hour
 				}
 			}
 		})
+	}
+	var authenticatedMarkerCount int
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.topic_reads`).Scan(&authenticatedMarkerCount); err != nil || authenticatedMarkerCount != 2 {
+		t.Fatalf("authenticated topic reads mutated markers = (%d, %v)", authenticatedMarkerCount, err)
 	}
 
 	firstPostPage, err := queries.GetVisibleTopicPostPage(ctx, GetVisibleTopicPostPageParams{TopicID: 101, PageLimit: 1})

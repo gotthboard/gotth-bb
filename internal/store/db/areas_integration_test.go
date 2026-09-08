@@ -244,4 +244,8 @@ VALUES ($1, 101, 1, $2)`, readerID, fixtureTime.Add(5*time.Minute)); err != nil 
 			}
 		})
 	}
+	var markerCount int
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.topic_reads`).Scan(&markerCount); err != nil || markerCount != 1 {
+		t.Fatalf("area summary reads mutated markers = (%d, %v)", markerCount, err)
+	}
 }

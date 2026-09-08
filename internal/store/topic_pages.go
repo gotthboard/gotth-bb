@@ -95,11 +95,13 @@ func GetVisibleAreaTopicPage(ctx context.Context, querier visibleAreaTopicPageQu
 			return VisibleAreaTopicPage{}, fmt.Errorf("query authenticated visible area topics: %w", queryErr)
 		}
 		topics = make([]VisibleAreaTopic, len(rows))
+		seen := make(map[int64]struct{}, len(rows))
 		for index, row := range rows {
 			topic, valid := authenticatedVisibleAreaTopicFromRow(row)
-			if !valid {
+			if _, duplicate := seen[row.TopicID]; !valid || duplicate {
 				return VisibleAreaTopicPage{}, fmt.Errorf("query authenticated visible area topics: malformed row %d", index)
 			}
+			seen[row.TopicID] = struct{}{}
 			topics[index] = topic
 		}
 	} else {
@@ -111,11 +113,13 @@ func GetVisibleAreaTopicPage(ctx context.Context, querier visibleAreaTopicPageQu
 			return VisibleAreaTopicPage{}, fmt.Errorf("query visible area topics: %w", queryErr)
 		}
 		topics = make([]VisibleAreaTopic, len(rows))
+		seen := make(map[int64]struct{}, len(rows))
 		for index, row := range rows {
 			topic, valid := visibleAreaTopicFromRow(row)
-			if !valid {
+			if _, duplicate := seen[row.TopicID]; !valid || duplicate {
 				return VisibleAreaTopicPage{}, fmt.Errorf("query visible area topics: malformed row %d", index)
 			}
+			seen[row.TopicID] = struct{}{}
 			topics[index] = topic
 		}
 	}
@@ -155,7 +159,7 @@ func GetVisibleAreaTopicPage(ctx context.Context, querier visibleAreaTopicPageQu
 func visibleAreaTopicFromRow(row db.ListVisibleTopicsByAreaSlugRow) (VisibleAreaTopic, bool) {
 	if row.TopicID <= 0 || row.Title == "" || row.AuthorDisplayName == "" || !validVisibleTopicState(row.State) ||
 		row.ReplyCount < 0 || !finiteTimestamp(row.LastActivityAt) || row.TotalVisibleTopics <= 0 ||
-		row.PinnedAt.Valid && row.PinnedAt.InfinityModifier != pgtype.Finite || row.Slug.Valid && row.Slug.String == "" {
+		(row.PinnedAt.Valid && row.PinnedAt.InfinityModifier != pgtype.Finite) || (row.Slug.Valid && row.Slug.String == "") {
 		return VisibleAreaTopic{}, false
 	}
 	return VisibleAreaTopic{
@@ -174,8 +178,8 @@ func authenticatedVisibleAreaTopicFromRow(row db.ListAuthenticatedVisibleTopicsB
 	markerPresent := row.LastReadPostNumber.Valid && row.ReadAt.Valid
 	markerAbsent := !row.LastReadPostNumber.Valid && !row.ReadAt.Valid
 	if !valid || row.NextPostNumber < 2 || row.ReadHead < 0 || row.ReadHead > row.NextPostNumber-1 ||
-		!markerPresent && !markerAbsent || markerPresent && (row.LastReadPostNumber.Int32 <= 0 ||
-		row.LastReadPostNumber.Int32 > row.NextPostNumber-1 || row.ReadAt.InfinityModifier != pgtype.Finite) {
+		(!markerPresent && !markerAbsent) || (markerPresent && (row.LastReadPostNumber.Int32 <= 0 ||
+		row.LastReadPostNumber.Int32 > row.NextPostNumber-1 || row.ReadAt.InfinityModifier != pgtype.Finite)) {
 		return VisibleAreaTopic{}, false
 	}
 	expected := ReadStateRead

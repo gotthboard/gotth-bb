@@ -148,6 +148,11 @@ func TestGetVisibleAreaTopicPageRejectsInconsistentQueryMetadata(t *testing.T) {
 			result[1].TotalVisibleTopics = 3
 			return result
 		}()},
+		{page: 1, topics: func() []db.ListVisibleTopicsByAreaSlugRow {
+			result := rows(2, 2)
+			result[1].TopicID = result[0].TopicID
+			return result
+		}()},
 		{page: 1, topics: rows(2, int64(TopicPageSize)+1)},
 	} {
 		test := test

@@ -124,6 +124,16 @@ func TestListVisibleAreaSummariesRejectsMalformedRowsWithoutPartialResults(t *te
 	}
 }
 
+func TestListVisibleAreaSummariesRejectsDuplicateAreaWithoutPartialResults(t *testing.T) {
+	t.Parallel()
+	valid := validVisibleAreaSummaryRow(time.Date(2026, time.September, 2, 20, 0, 0, 0, time.UTC))
+	querier := &visibleAreaSummaryTestQuerier{rows: []db.ListVisibleAreaSummariesRow{valid, valid}}
+	got, err := ListVisibleAreaSummaries(context.Background(), querier, policy.AccessContext{})
+	if err == nil || got != nil || querier.calls != 1 {
+		t.Fatalf("duplicate visitor areas = (%+v, %v, calls %d)", got, err, querier.calls)
+	}
+}
+
 func TestListVisibleAreaSummariesRejectsDependenciesAuthorityAndQueryFailure(t *testing.T) {
 	t.Parallel()
 

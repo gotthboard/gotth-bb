@@ -78,11 +78,13 @@ func ListVisibleAreaSummaries(ctx context.Context, querier visibleAreaSummaryQue
 			return nil, fmt.Errorf("query authenticated visible area summaries: %w", err)
 		}
 		summaries := make([]VisibleAreaSummary, len(rows))
+		seen := make(map[int64]struct{}, len(rows))
 		for index, row := range rows {
 			summary, valid := authenticatedVisibleAreaSummaryFromRow(row)
-			if !valid {
+			if _, duplicate := seen[row.ID]; !valid || duplicate {
 				return nil, fmt.Errorf("query authenticated visible area summaries: malformed row %d", index)
 			}
+			seen[row.ID] = struct{}{}
 			summaries[index] = summary
 		}
 		return summaries, nil
@@ -94,11 +96,13 @@ func ListVisibleAreaSummaries(ctx context.Context, querier visibleAreaSummaryQue
 		return nil, fmt.Errorf("query visible area summaries: %w", err)
 	}
 	summaries := make([]VisibleAreaSummary, len(rows))
+	seen := make(map[int64]struct{}, len(rows))
 	for index, row := range rows {
 		summary, valid := visibleAreaSummaryFromRow(row)
-		if !valid {
+		if _, duplicate := seen[row.ID]; !valid || duplicate {
 			return nil, fmt.Errorf("query visible area summaries: malformed row %d", index)
 		}
+		seen[row.ID] = struct{}{}
 		summaries[index] = summary
 	}
 	return summaries, nil
