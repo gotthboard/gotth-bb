@@ -62,6 +62,29 @@ func TestRequestLimiterCapacityReclaimsOnlyExpiredWindows(t *testing.T) {
 	}
 }
 
+func TestRequestLimiterRestartDropsProcessLocalWindows(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	client := netip.MustParseAddr("192.0.2.90")
+	newLimiter := func() *RequestLimiter {
+		limiter, err := NewRequestLimiter(bytes.NewReader(bytes.Repeat([]byte{0x46}, 32)), 1, 1, time.Minute, func() time.Time { return now })
+		if err != nil {
+			t.Fatalf("NewRequestLimiter() returned error: %v", err)
+		}
+		return limiter
+	}
+	first := newLimiter()
+	if decision, _ := first.Admit(client); decision != RequestAllowed {
+		t.Fatalf("first admission = %d", decision)
+	}
+	if decision, _ := first.Admit(client); decision != RequestRateLimited {
+		t.Fatalf("limited admission = %d", decision)
+	}
+	if decision, retry := newLimiter().Admit(client); decision != RequestAllowed || retry != 0 {
+		t.Fatalf("post-restart admission = (%d, %s)", decision, retry)
+	}
+}
+
 func TestRequestLimiterCanonicalIdentityAndClockRegression(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)

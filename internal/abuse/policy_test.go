@@ -42,11 +42,18 @@ func TestDecodePolicyRejectsNoncanonicalOrAmbiguousRules(t *testing.T) {
 		"domain=example.com.\n",
 		"domain=192.0.2.1\n",
 		"domain=-bad.example\n",
+		"domain=bücher.example\n",
+		"domain=" + strings.Repeat("a", 64) + ".example\n",
+		"domain=" + strings.Repeat("a.", 127) + "a\n",
 		"url=ftp://example.com/\n",
 		"url=https://user@example.com/\n",
 		`url=https://example.com\path` + "\n",
 		"url=https://example.com\n",
 		"url=https://example.com:443/\n",
+		"url=https://example.com:01/\n",
+		"url=https://example.com:0/\n",
+		"url=https://example.com:65536/\n",
+		"url=https://example.com/%zz\n",
 		"url=https://example.com/%7euser\n",
 		"url=https://example.com/a/../b\n",
 		"url=https://example.com/#fragment\n",
@@ -65,6 +72,29 @@ func TestDecodePolicyRejectsNoncanonicalOrAmbiguousRules(t *testing.T) {
 	many := strings.Repeat("domain=example.com\n", MaximumRules+1)
 	if _, err := decodePolicy(many); err == nil {
 		t.Fatal("decodePolicy() accepted too many rules")
+	}
+}
+
+func TestLoadPolicyRejectsInvalidEncodingWithoutExposingInput(t *testing.T) {
+	t.Parallel()
+	for name, contents := range map[string][]byte{
+		"invalid UTF-8": {0xff, '\n'},
+		"BOM":           {0xef, 0xbb, 0xbf, 'd', 'o', 'm', 'a', 'i', 'n', '=', 'x', '\n'},
+		"control":       []byte("domain=example.com\x7f\n"),
+		"missing LF":    []byte("domain=example.com"),
+	} {
+		name, contents := name, contents
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "sensitive-rules-name")
+			if err := os.WriteFile(path, contents, 0o400); err != nil {
+				t.Fatalf("os.WriteFile() returned error: %v", err)
+			}
+			_, err := LoadPolicy(path, testRateProfile)
+			if err == nil || strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "example.com") {
+				t.Fatalf("LoadPolicy() error = %v", err)
+			}
+		})
 	}
 }
 
@@ -106,6 +136,10 @@ func TestLoadPolicyUsesASealedRegularReadOnlyFile(t *testing.T) {
 	established, newAccount, window, period := policy.PublicationProfile()
 	if established != 10 || newAccount != 3 || window != 10*time.Minute || period != 24*time.Hour {
 		t.Fatalf("PublicationProfile() = (%d, %d, %s, %s)", established, newAccount, window, period)
+	}
+	limiter, err := policy.NewRequestLimiter(strings.NewReader(strings.Repeat("k", 32)), time.Now)
+	if err != nil || limiter == nil {
+		t.Fatalf("Policy.NewRequestLimiter() = (%v, %v)", limiter, err)
 	}
 
 	for _, test := range []struct {
