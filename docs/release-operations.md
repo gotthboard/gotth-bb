@@ -226,14 +226,14 @@ notes, screenshots, or repository files.
 - Migration privileges are separated from runtime privileges where practical.
 - After migrations, the migration owner applies
   `deploy/postgresql/runtime-grants.sql` with the exact runtime role as psql's
-  `runtime_role` variable. The idempotent artifact grants only
+  `runtime_role` variable. The idempotent artifact's base entries grant only
   `UPDATE(singleton)` on `governance_state`, which PostgreSQL requires for
   `SELECT ... FOR UPDATE`, plus `SELECT` on the migration-owned
   `content_renderer_state` readiness singleton. Table-wide governance UPDATE,
   UPDATE on `created_at`, renderer-state mutation, and DELETE remain denied.
-- After 000008, the same packaged grant artifact adds only `SELECT` on the
-  migration-owned `search_projection_state` singleton for runtime readiness;
-  runtime never owns or mutates that table.
+- After 000008, the same packaged artifact's search-state entry adds only
+  `SELECT` on the migration-owned `search_projection_state` singleton for
+  runtime readiness; runtime never owns or mutates that table.
 - Migration 000009 adds no singleton, secret, or custom runner. Its regular
   partial index, including `author_id`, scans `posts` and can block writers; its
   finite-time constraint validation scans `topic_reads`. Both are measured
