@@ -197,11 +197,11 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
   assert.equal(await evaluate(send, sessionId, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next groups')"), true);
   assert.equal(await evaluate(send, sessionId, `(() => { const link = [...document.querySelectorAll("main a")].find((node) => node.textContent.trim() === "Next groups"); link.click(); return true; })()`), true);
-  await waitFor(send, sessionId, "location.search === '?after=53' && document.body.textContent.includes('Continuation Group')");
+  await waitFor(send, sessionId, "location.search === '?after=53' && document.querySelector('form[action$=\"/admin/groups/54\"] input[name=\"name\"]')?.value === 'Continuation Group'");
   await evaluate(send, sessionId, "history.back()");
   await waitFor(send, sessionId, "location.search === '' && document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
   await evaluate(send, sessionId, "history.forward()");
-  await waitFor(send, sessionId, "location.search === '?after=53' && document.body.textContent.includes('Continuation Group')");
+  await waitFor(send, sessionId, "location.search === '?after=53' && document.querySelector('form[action$=\"/admin/groups/54\"] input[name=\"name\"]')?.value === 'Continuation Group'");
 
   await navigate(send, sessionId, `${target}/accounts/2`, "document.body.textContent.includes('Local Member')");
   await submitForm(send, sessionId, `form[action$="/admin/accounts/2/groups/4"]`, { action: "revoke", reason: "Revoke browser membership" });
