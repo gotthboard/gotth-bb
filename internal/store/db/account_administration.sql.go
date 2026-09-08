@@ -260,12 +260,13 @@ WITH actor AS MATERIALIZED (
     JOIN public.users AS forum_user ON forum_user.id = $3
 ), candidate AS MATERIALIZED (
     SELECT forum_group.id, forum_group.name,
-           EXISTS (
-               SELECT 1
+           COALESCE((
+               SELECT true
                FROM public.forum_group_members AS membership
                WHERE membership.user_id = $3
                  AND membership.group_id = forum_group.id
-           )::boolean AS member
+               LIMIT 1
+           ), false)::boolean AS member
     FROM target
     JOIN LATERAL (
         SELECT group_row.id, group_row.name
