@@ -18,7 +18,9 @@ Environment
 - Designated evidence host `development`, Linux/amd64.
 - Go 1.26.5-X:nodwarf5 host bootstrap toolchain, PostgreSQL 17.10 in the
   task-owned loopback-only `gotth-bb-beta1-b101-pg` container.
-- Caddy 2.11.4, Chromium 151.0.7922.71 Arch Linux, Node.js 26.5.1, npm 12.0.2.
+- Caddy 2.11.4, Chromium 151.0.7922.71 Arch Linux, exact declared Node.js
+  26.7.0 and npm 12.0.2. The retained Node archive SHA-256 is
+  `982aa24dd8be4c889c6a8ab337ddff3b0896645b20f4239356e80552c16277ee`.
 - Test-only axe-core 4.13.0, exactly pinned in package.json/package-lock.json.
   It is not linked into or shipped with any application binary or browser page.
 
@@ -134,6 +136,10 @@ Rejected attempts and boundary
   ran only at `/bb`. The final harness runs all four controlled journeys at
   both paths. Its first exact run then exposed a Chromium profile cleanup race;
   teardown now uses the existing bounded retry and the exact rerun passed.
+- The next cold review rejected the otherwise passing host-bootstrap run
+  because Node 26.5.1 did not satisfy the repository's exact 26.7.0 engine.
+  Merely recording npm's `EBADENGINE` warning was not accepted. The complete
+  matrix passed again with exact Node 26.7.0 and npm 12.0.2.
 - The first Axe attempt ran while Chromium page execution was disabled and its
   asynchronous promise was collected. Enabling execution within the active
   administrator no-script journey then allowed HTMX to attach and invalidated
