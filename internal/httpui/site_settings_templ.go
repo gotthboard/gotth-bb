@@ -84,7 +84,7 @@ func publicRulesContent(view pageView, rules publicRulesPageView) templ.Componen
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Rules</span></nav><section aria-labelledby=\"rules-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Community</p><h1 id=\"rules-title\" class=\"text-3xl font-bold tracking-tight text-white\">Rules</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Community rules</span></nav><section aria-labelledby=\"rules-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Community</p><h1 id=\"rules-title\" class=\"text-3xl font-bold tracking-tight text-white\">Community rules</h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -170,9 +170,9 @@ func siteSettingsContent(view pageView, settings siteSettingsPageView) templ.Com
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 templ.SafeURL
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(view.HomeURL)
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(view.AdminURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/site_settings.templ`, Line: 35, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/site_settings.templ`, Line: 35, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -183,15 +183,15 @@ func siteSettingsContent(view pageView, settings siteSettingsPageView) templ.Com
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(view.HomeURL)
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(view.AdminURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/site_settings.templ`, Line: 35, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/site_settings.templ`, Line: 35, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Areas</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Site settings</span></nav><section aria-labelledby=\"site-settings-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"site-settings-title\" class=\"text-3xl font-bold tracking-tight text-white\">Site settings</h1><p class=\"mt-4 text-slate-300\">Change the public name, description, color theme, and community rules.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm text-cyan-200 hover:text-cyan-100\">Administration</a> <span aria-hidden=\"true\" class=\"px-2 text-slate-500\">/</span> <span aria-current=\"page\" class=\"text-slate-400\">Site settings</span></nav><section aria-labelledby=\"site-settings-title\" class=\"rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8\"><p class=\"mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"site-settings-title\" class=\"text-3xl font-bold tracking-tight text-white\">Site settings</h1><p class=\"mt-4 text-slate-300\">Change the public name, description, color theme, and community rules.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

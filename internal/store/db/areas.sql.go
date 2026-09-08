@@ -856,6 +856,7 @@ SELECT
     a.display_order,
     a.visibility,
     a.posting_mode,
+    a.administration_revision,
     a.created_by,
     a.updated_by,
     a.created_at,
@@ -875,18 +876,19 @@ FOR UPDATE OF a
 `
 
 type LockAreaForAdministrationRow struct {
-	ID           int64
-	Slug         string
-	Name         string
-	Description  string
-	DisplayOrder int32
-	Visibility   string
-	PostingMode  string
-	CreatedBy    int64
-	UpdatedBy    int64
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
-	GroupIds     []int64
+	ID                     int64
+	Slug                   string
+	Name                   string
+	Description            string
+	DisplayOrder           int32
+	Visibility             string
+	PostingMode            string
+	AdministrationRevision int64
+	CreatedBy              int64
+	UpdatedBy              int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	GroupIds               []int64
 }
 
 func (q *Queries) LockAreaForAdministration(ctx context.Context, areaID int64) (LockAreaForAdministrationRow, error) {
@@ -900,6 +902,7 @@ func (q *Queries) LockAreaForAdministration(ctx context.Context, areaID int64) (
 		&i.DisplayOrder,
 		&i.Visibility,
 		&i.PostingMode,
+		&i.AdministrationRevision,
 		&i.CreatedBy,
 		&i.UpdatedBy,
 		&i.CreatedAt,

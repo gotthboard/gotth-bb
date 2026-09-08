@@ -24,6 +24,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/httpui"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	moderationservice "github.com/gotthboard/gotth-bb/internal/moderation"
+	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/readiness"
 	siteservice "github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -305,6 +306,50 @@ func run(
 			},
 			Update: func(siteContext context.Context, access auth.AccessContext, input siteservice.SettingsInput, requestID pgtype.UUID) (siteservice.MutationResult, error) {
 				return siteservice.UpdateSettings(siteContext, pool, time.Now, access, input, requestID)
+			},
+			Administration: &httpui.AdministrationHTTPServices{
+				Dashboard: func(adminContext context.Context, access auth.AccessContext) (administrationservice.Dashboard, error) {
+					return administrationservice.LoadDashboard(adminContext, pool, access)
+				},
+				ListAccounts: func(adminContext context.Context, access auth.AccessContext, after int64) (administrationservice.AccountPage, error) {
+					return administrationservice.ListAccounts(adminContext, queries, access, time.Now(), after)
+				},
+				LoadAccount: func(adminContext context.Context, access auth.AccessContext, userID int64) (administrationservice.AccountSummary, error) {
+					return administrationservice.LoadAccount(adminContext, queries, access, time.Now(), userID)
+				},
+				ListAccountGroups: func(adminContext context.Context, access auth.AccessContext, userID, after int64) (administrationservice.AccountGroupPage, error) {
+					return administrationservice.ListAccountGroups(adminContext, queries, access, time.Now(), userID, after)
+				},
+				ListGroups: func(adminContext context.Context, access auth.AccessContext, after int64) (administrationservice.GroupPage, error) {
+					return administrationservice.ListGroups(adminContext, queries, access, time.Now(), after)
+				},
+				CreateGroup: func(adminContext context.Context, access auth.AccessContext, name, reason string, requestID pgtype.UUID) (administrationservice.GroupMutationResult, error) {
+					return administrationservice.CreateGroup(adminContext, pool, time.Now, access, name, reason, requestID)
+				},
+				RenameGroup: func(adminContext context.Context, access auth.AccessContext, groupID int64, name, reason string, revision int64, requestID pgtype.UUID) (administrationservice.GroupMutationResult, error) {
+					return administrationservice.RenameGroup(adminContext, pool, time.Now, access, groupID, name, reason, revision, requestID)
+				},
+				ChangeMembership: func(adminContext context.Context, access auth.AccessContext, userID, groupID int64, grant bool, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AccountMutationResult, error) {
+					return administrationservice.ChangeGroupMembership(adminContext, pool, time.Now, access, userID, groupID, grant, reason, revision, requestID)
+				},
+				ChangeRole: func(adminContext context.Context, access auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AccountMutationResult, error) {
+					return administrationservice.ChangeAccountRole(adminContext, pool, time.Now, access, userID, role, expected, reason, revision, requestID)
+				},
+				ListAreas: func(adminContext context.Context, access auth.AccessContext, after int64) (administrationservice.AreaPage, error) {
+					return administrationservice.ListAreaPage(adminContext, queries, access, time.Now(), after)
+				},
+				LoadArea: func(adminContext context.Context, access auth.AccessContext, areaID, after int64) (administrationservice.AreaDetail, error) {
+					return administrationservice.LoadAreaDetail(adminContext, queries, access, time.Now(), areaID, after)
+				},
+				CreateArea: func(adminContext context.Context, access auth.AccessContext, input administrationservice.AreaCoreInput, requestID pgtype.UUID) (administrationservice.AreaCompletionResult, error) {
+					return administrationservice.CreateAreaCompletion(adminContext, pool, time.Now, access, input, requestID)
+				},
+				UpdateArea: func(adminContext context.Context, access auth.AccessContext, areaID int64, input administrationservice.AreaCoreInput, requestID pgtype.UUID) (administrationservice.AreaCompletionResult, error) {
+					return administrationservice.UpdateAreaCompletion(adminContext, pool, time.Now, access, areaID, input, requestID)
+				},
+				ChangeAreaGroup: func(adminContext context.Context, access auth.AccessContext, areaID, groupID int64, grant bool, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AreaCompletionResult, error) {
+					return administrationservice.ChangeAreaGroup(adminContext, pool, time.Now, access, areaID, groupID, grant, reason, revision, requestID)
+				},
 			},
 		},
 		configured.RegistrationURL,

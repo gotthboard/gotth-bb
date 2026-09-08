@@ -166,6 +166,56 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_area_administration_audit();`); err 
 	if err := owner.QueryRow(ctx, `SELECT count(*) FROM public.areas`).Scan(&mappingCount); err != nil || mappingCount != 2 {
 		t.Fatalf("area count after rejected changes = (%d, %v)", mappingCount, err)
 	}
+
+	// AN-04-03 uses numeric revisions and bounded keyset projections while the
+	// legacy constructor above remains available to older consumers.
+	dashboard, err := LoadDashboard(ctx, owner, actor)
+	if err != nil || dashboard.Users != 1 || dashboard.Administrators != 1 || dashboard.ActiveUsers != 1 || dashboard.SuspendedUsers != 0 || dashboard.Topics != 0 || dashboard.Posts != 0 {
+		t.Fatalf("LoadDashboard() = (%+v, %v)", dashboard, err)
+	}
+	completionQuerier := db.New(owner)
+	areaPage, err := ListAreaPage(ctx, completionQuerier, actor, updatedAt.Add(time.Minute), 0)
+	if err != nil || len(areaPage.Areas) != 2 || areaPage.NextAfter != 0 || areaPage.Areas[0].Revision <= 0 {
+		t.Fatalf("ListAreaPage() = (%+v, %v)", areaPage, err)
+	}
+	secondGroup, err := CreateGroup(ctx, owner, func() time.Time { return updatedAt.Add(2 * time.Minute) }, actor, "Second Members", "Create another area group", pgtype.UUID{Bytes: [16]byte{0x71}, Valid: true})
+	if err != nil {
+		t.Fatalf("CreateGroup(second area group): %v", err)
+	}
+	completedArea, err := CreateAreaCompletion(ctx, owner, func() time.Time { return updatedAt.Add(3 * time.Minute) }, actor, AreaCoreInput{
+		Slug: "private", Name: "Private", Description: "Restricted discussion", DisplayOrder: 4,
+		Visibility: policy.VisibilityGroups, PostingMode: policy.PostingNormal, InitialGroupID: groupID,
+		Reason: "Create a bounded restricted area",
+	}, pgtype.UUID{Bytes: [16]byte{0x72}, Valid: true})
+	if err != nil || completedArea.Revision != 1 || completedArea.AuditID <= 0 {
+		t.Fatalf("CreateAreaCompletion() = (%+v, %v)", completedArea, err)
+	}
+	detailPage, err := LoadAreaDetail(ctx, completionQuerier, actor, updatedAt.Add(4*time.Minute), completedArea.AreaID, 0)
+	if err != nil || detailPage.Area.Revision != 1 || len(detailPage.Groups) != 2 || !detailPage.Groups[0].Assigned || detailPage.Groups[1].Assigned {
+		t.Fatalf("LoadAreaDetail() = (%+v, %v)", detailPage, err)
+	}
+	grantedArea, err := ChangeAreaGroup(ctx, owner, func() time.Time { return updatedAt.Add(5 * time.Minute) }, actor, completedArea.AreaID, secondGroup.GroupID, true, "Grant the second group", completedArea.Revision, pgtype.UUID{Bytes: [16]byte{0x73}, Valid: true})
+	if err != nil || grantedArea.Revision != 2 || grantedArea.AuditID <= completedArea.AuditID {
+		t.Fatalf("ChangeAreaGroup(grant) = (%+v, %v)", grantedArea, err)
+	}
+	revokedArea, err := ChangeAreaGroup(ctx, owner, func() time.Time { return updatedAt.Add(6 * time.Minute) }, actor, completedArea.AreaID, groupID, false, "Revoke the original group", grantedArea.Revision, pgtype.UUID{Bytes: [16]byte{0x74}, Valid: true})
+	if err != nil || revokedArea.Revision != 3 {
+		t.Fatalf("ChangeAreaGroup(revoke) = (%+v, %v)", revokedArea, err)
+	}
+	if _, err := ChangeAreaGroup(ctx, owner, time.Now, actor, completedArea.AreaID, secondGroup.GroupID, false, "Reject last group removal", revokedArea.Revision, pgtype.UUID{Bytes: [16]byte{0x75}, Valid: true}); !errors.Is(err, ErrAdministrationConflict) {
+		t.Fatalf("last ChangeAreaGroup(revoke) error = %v", err)
+	}
+	updatedArea, err := UpdateAreaCompletion(ctx, owner, func() time.Time { return updatedAt.Add(7 * time.Minute) }, actor, completedArea.AreaID, AreaCoreInput{
+		Slug: "private", Name: "Private archive", Description: "Restricted archive", DisplayOrder: 5,
+		Visibility: policy.VisibilityGroups, PostingMode: policy.PostingArchived,
+		Reason: "Archive the restricted area", Revision: revokedArea.Revision,
+	}, pgtype.UUID{Bytes: [16]byte{0x76}, Valid: true})
+	if err != nil || updatedArea.Revision != 4 {
+		t.Fatalf("UpdateAreaCompletion() = (%+v, %v)", updatedArea, err)
+	}
+	if _, err := UpdateAreaCompletion(ctx, owner, time.Now, actor, completedArea.AreaID, AreaCoreInput{Slug: "private", Name: "Stale", Visibility: policy.VisibilityPublic, PostingMode: policy.PostingNormal, Reason: "Reject stale area", Revision: revokedArea.Revision}, pgtype.UUID{Bytes: [16]byte{0x77}, Valid: true}); !errors.Is(err, ErrAdministrationConflict) {
+		t.Fatalf("stale UpdateAreaCompletion() error = %v", err)
+	}
 }
 
 type runtimeAreaQuerier struct{ connection *pgx.Conn }

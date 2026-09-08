@@ -413,6 +413,7 @@ SELECT
     a.display_order,
     a.visibility,
     a.posting_mode,
+    a.administration_revision,
     a.created_by,
     a.updated_by,
     a.created_at,

@@ -331,7 +331,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build logout URL: %w", err)
 	}
-	adminURL, err := builder.Path("admin", "areas")
+	adminURL, err := builder.Path("admin")
 	if err != nil {
 		return pageView{}, fmt.Errorf("build area administration URL: %w", err)
 	}

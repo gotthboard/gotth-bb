@@ -281,7 +281,7 @@ func document(view pageView, content templ.Component) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white\">Rules</a> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white\">Community rules</a> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -312,7 +312,7 @@ func document(view pageView, content templ.Component) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white\">Manage areas</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\" class=\"rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white\">Administration</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

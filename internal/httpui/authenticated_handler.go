@@ -662,6 +662,7 @@ func newAuthenticatedHandler(
 	}
 	var publicSiteHandler http.Handler
 	var authenticatedSiteHandler http.Handler
+	var administrationHandler http.Handler
 	if siteServices != nil {
 		publicSiteHandler, authenticatedSiteHandler, err = newSiteSettingsHandler(builder, *siteServices)
 		if err != nil {
@@ -675,6 +676,17 @@ func newAuthenticatedHandler(
 		}
 		publicSiteHandler = withExactSiteRoutePreflight(publicSiteHandler, "/rules", http.MethodGet)
 		authenticatedSiteHandler = withExactSiteRoutePreflight(authenticatedSiteHandler, "/admin/settings", http.MethodGet, http.MethodPost)
+		if siteServices.Administration != nil {
+			inner, administrationErr := newAdministrationCompletionHandler(builder, *siteServices.Administration)
+			if administrationErr != nil {
+				return nil, fmt.Errorf("construct administration routes: %w", administrationErr)
+			}
+			authenticated, administrationErr := newSessionAuthenticationHandler(inner, service.AuthenticateSession, sessionCookieName, builder, secure)
+			if administrationErr != nil {
+				return nil, fmt.Errorf("construct administration session boundary: %w", administrationErr)
+			}
+			administrationHandler = withAdministrationPreflight(authenticated)
+		}
 	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
@@ -711,6 +723,10 @@ func newAuthenticatedHandler(
 			}
 			publicHandler.ServeHTTP(response, request)
 		case "/admin/areas":
+			if administrationHandler != nil {
+				administrationHandler.ServeHTTP(response, request)
+				return
+			}
 			if authenticatedAreaAdministrationHandler != nil {
 				authenticatedAreaAdministrationHandler.ServeHTTP(response, request)
 				return
@@ -719,6 +735,12 @@ func newAuthenticatedHandler(
 		case "/admin/settings":
 			if authenticatedSiteHandler != nil {
 				authenticatedSiteHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
+		case "/admin", "/admin/accounts", "/admin/groups":
+			if administrationHandler != nil {
+				administrationHandler.ServeHTTP(response, request)
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
@@ -743,6 +765,10 @@ func newAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if administrationHandler != nil && strings.HasPrefix(request.URL.Path, "/admin/") {
+				administrationHandler.ServeHTTP(response, request)
+				return
+			}
 			if unreadHandler != nil && request.URL.RawPath == "" {
 				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
 				identifier, unreadPath := "", false

@@ -23,6 +23,9 @@ type SiteHTTPServices struct {
 	Rules    func(context.Context) (site.PublicRules, error)
 	Editable func(context.Context, auth.AccessContext) (site.EditableSettings, error)
 	Update   func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error)
+	// Administration enables AN-04-03's bounded administrator surface. It is
+	// optional so older constructors retain their exact route set.
+	Administration *AdministrationHTTPServices
 }
 
 func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http.Handler, http.Handler, error) {
@@ -41,7 +44,7 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 	if err != nil {
 		return nil, nil, fmt.Errorf("build site settings revalidation URL: %w", err)
 	}
-	rulesView, err := newPageView(builder, "Rules", "rules")
+	rulesView, err := newPageView(builder, "Community rules", "rules")
 	if err != nil {
 		return nil, nil, fmt.Errorf("construct rules view: %w", err)
 	}
