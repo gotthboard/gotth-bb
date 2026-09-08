@@ -22,7 +22,9 @@ import (
 // upsert, and marker-validation work D(g), time is O(g+D(g)), Omega(1), with no
 // tighter bound because database scheduling is external. Auxiliary space is
 // O(g+A(D)), Omega(1); the actor's group slice is passed without a copy. There
-// is one transaction, two application statements, and at most one marker row.
+// is one transaction, three application statements, and at most one marker
+// row. The first statement installs transaction-local statement and lock
+// deadlines for the remaining work.
 func MarkTopicRead(ctx context.Context, beginner interface {
 	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }, actor policy.AccessContext, topicID int64) error {
@@ -43,6 +45,9 @@ func MarkTopicRead(ctx context.Context, beginner interface {
 	}
 
 	err := store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
+		if err := queries.ConfigureMarkTopicReadTransaction(ctx); err != nil {
+			return fmt.Errorf("configure mark-read transaction: %w", err)
+		}
 		boundary, err := queries.MarkTopicReadBoundary(ctx, db.MarkTopicReadBoundaryParams{
 			TopicID: topicID, IsStaff: actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator,
 			GroupIds: actor.GroupIDs, ActorUserID: actor.UserID,

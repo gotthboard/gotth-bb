@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const configureMarkTopicReadTransaction = `-- name: ConfigureMarkTopicReadTransaction :exec
+SELECT
+    set_config('statement_timeout', '2000ms', true),
+    set_config('lock_timeout', '250ms', true)
+`
+
+func (q *Queries) ConfigureMarkTopicReadTransaction(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, configureMarkTopicReadTransaction)
+	return err
+}
+
 const getTopicReadMarker = `-- name: GetTopicReadMarker :one
 SELECT
     marker.last_read_post_number,

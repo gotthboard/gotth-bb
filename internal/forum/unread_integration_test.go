@@ -16,6 +16,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 const unreadWriteTestDatabase = "gotth_bb_an03_unread_write_test"
@@ -262,8 +263,35 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 		}
 	})
 
+	t.Run("transaction local lock timeout bounds a blocked advance", func(t *testing.T) {
+		topic := insertUnreadTopic(t, ctx, connection, areas["public"], "Lock timeout marker", []int64{readerID, otherID}, baseTime.Add(9*time.Hour))
+		insertMarker(t, ctx, connection, readerID, topic.id, 1, baseTime)
+		_, originalAt := inspectMarker(t, ctx, connection, readerID, topic.id)
+		blocker, err := connections[1].Begin(ctx)
+		if err != nil {
+			t.Fatalf("begin timeout blocker: %v", err)
+		}
+		defer func() { _ = blocker.Rollback(context.Background()) }()
+		if _, err := blocker.Exec(ctx, `SELECT 1 FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2 FOR UPDATE`, readerID, topic.id); err != nil {
+			t.Fatalf("lock timeout marker: %v", err)
+		}
+		started := time.Now()
+		err = MarkTopicRead(context.Background(), connections[3], reader, topic.id)
+		elapsed := time.Since(started)
+		var databaseError *pgconn.PgError
+		if !errors.As(err, &databaseError) || databaseError.Code != "55P03" {
+			t.Fatalf("locked MarkTopicRead() error = %v, want lock_not_available", err)
+		}
+		if elapsed < 100*time.Millisecond || elapsed > 2*time.Second {
+			t.Fatalf("lock timeout elapsed = %s, want bounded near 250ms", elapsed)
+		}
+		if got, readAt := inspectMarker(t, ctx, connection, readerID, topic.id); got != 1 || !readAt.Equal(originalAt) {
+			t.Fatalf("lock-timeout marker = (%d, %s), want unchanged", got, readAt)
+		}
+	})
+
 	t.Run("post committed after statement snapshot remains unread", func(t *testing.T) {
-		topic := insertUnreadTopic(t, ctx, connection, areas["public"], "Post race", []int64{readerID, otherID}, baseTime.Add(9*time.Hour))
+		topic := insertUnreadTopic(t, ctx, connection, areas["public"], "Post race", []int64{readerID, otherID}, baseTime.Add(10*time.Hour))
 		insertMarker(t, ctx, connection, readerID, topic.id, 1, baseTime)
 		blocker, err := connections[1].Begin(ctx)
 		if err != nil {

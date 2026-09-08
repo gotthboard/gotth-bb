@@ -11,8 +11,31 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func TestConfigureMarkTopicReadTransactionUsesExactLocalTimeouts(t *testing.T) {
+	t.Parallel()
+
+	database := &unreadDBTX{}
+	if err := New(database).ConfigureMarkTopicReadTransaction(context.Background()); err != nil {
+		t.Fatalf("ConfigureMarkTopicReadTransaction() returned error: %v", err)
+	}
+	for _, required := range []string{
+		"set_config('statement_timeout', '2000ms', true)",
+		"set_config('lock_timeout', '250ms', true)",
+	} {
+		if !strings.Contains(database.query, required) {
+			t.Fatalf("configuration SQL lacks %q", required)
+		}
+	}
+	cause := errors.New("configuration failed")
+	database.execErr = cause
+	if err := New(database).ConfigureMarkTopicReadTransaction(context.Background()); !errors.Is(err, cause) {
+		t.Fatalf("ConfigureMarkTopicReadTransaction() error = %v, want cause", err)
+	}
+}
 
 func TestMarkTopicReadBoundaryBindsOnlyServerAuthorityAndScansSentinel(t *testing.T) {
 	t.Parallel()
@@ -96,9 +119,16 @@ func TestMarkTopicReadIsTheSoleGeneratedMarkerMutation(t *testing.T) {
 
 type unreadDBTX struct {
 	DBTX
-	query string
-	args  []any
-	row   pgx.Row
+	query   string
+	args    []any
+	row     pgx.Row
+	execErr error
+}
+
+func (database *unreadDBTX) Exec(_ context.Context, query string, arguments ...any) (pgconn.CommandTag, error) {
+	database.query = query
+	database.args = append([]any(nil), arguments...)
+	return pgconn.CommandTag{}, database.execErr
 }
 
 func (database *unreadDBTX) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {

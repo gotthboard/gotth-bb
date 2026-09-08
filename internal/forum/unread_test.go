@@ -10,6 +10,7 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -25,8 +26,8 @@ func TestMarkTopicReadCommitsServerSelectedBoundary(t *testing.T) {
 	if err := MarkTopicRead(context.Background(), markReadTestBeginner{tx: tx}, actor, 41); err != nil {
 		t.Fatalf("MarkTopicRead() returned error: %v", err)
 	}
-	if !tx.committed || tx.rolledBack || tx.boundaryCalls != 1 || tx.markerCalls != 1 {
-		t.Fatalf("transaction = (commit %t rollback %t boundary %d marker %d)", tx.committed, tx.rolledBack, tx.boundaryCalls, tx.markerCalls)
+	if !tx.committed || tx.rolledBack || tx.configureCalls != 1 || tx.boundaryCalls != 1 || tx.markerCalls != 1 {
+		t.Fatalf("transaction = (commit %t rollback %t configure %d boundary %d marker %d)", tx.committed, tx.rolledBack, tx.configureCalls, tx.boundaryCalls, tx.markerCalls)
 	}
 	if !reflect.DeepEqual(tx.boundaryArgs, []any{int64(41), true, []int64{3, 5}, int64(11)}) ||
 		!reflect.DeepEqual(tx.markerArgs, []any{int64(11), int64(41)}) {
@@ -109,6 +110,7 @@ func TestMarkTopicReadRollsBackFailuresAndMalformedRows(t *testing.T) {
 		name string
 		tx   *markReadTestTx
 	}{
+		{name: "transaction configuration", tx: &markReadTestTx{configureErr: cause}},
 		{name: "boundary query", tx: &markReadTestTx{boundaryErr: cause}},
 		{name: "wrong topic", tx: &markReadTestTx{boundaryTopicID: 42, nextPostNumber: 7}},
 		{name: "invalid next", tx: &markReadTestTx{boundaryTopicID: 41, nextPostNumber: 1}},
@@ -179,15 +181,25 @@ func (beginner markReadTestBeginner) BeginTx(_ context.Context, options pgx.TxOp
 
 type markReadTestTx struct {
 	pgx.Tx
-	boundaryTopicID, markerUserID, markerTopicID int64
-	nextPostNumber, selectedPostNumber           int32
-	markerPostNumber                             int32
-	markerReadAt                                 pgtype.Timestamptz
-	advanced                                     bool
-	boundaryErr, markerErr, commitErr            error
-	boundaryArgs, markerArgs                     []any
-	boundaryCalls, markerCalls                   int
-	committed, rolledBack                        bool
+	boundaryTopicID, markerUserID, markerTopicID    int64
+	nextPostNumber, selectedPostNumber              int32
+	markerPostNumber                                int32
+	markerReadAt                                    pgtype.Timestamptz
+	advanced                                        bool
+	configureErr, boundaryErr, markerErr, commitErr error
+	boundaryArgs, markerArgs                        []any
+	configureCalls, boundaryCalls, markerCalls      int
+	committed, rolledBack                           bool
+}
+
+func (tx *markReadTestTx) Exec(_ context.Context, query string, _ ...any) (pgconn.CommandTag, error) {
+	if !strings.Contains(query, "ConfigureMarkTopicReadTransaction") ||
+		!strings.Contains(query, "set_config('statement_timeout', '2000ms', true)") ||
+		!strings.Contains(query, "set_config('lock_timeout', '250ms', true)") {
+		panic("unexpected mark-read configuration query")
+	}
+	tx.configureCalls++
+	return pgconn.CommandTag{}, tx.configureErr
 }
 
 func (tx *markReadTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {

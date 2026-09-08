@@ -1,3 +1,8 @@
+-- name: ConfigureMarkTopicReadTransaction :exec
+SELECT
+    set_config('statement_timeout', '2000ms', true),
+    set_config('lock_timeout', '250ms', true);
+
 -- name: MarkTopicReadBoundary :one
 WITH authorized_topic AS MATERIALIZED (
     SELECT
