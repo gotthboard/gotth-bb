@@ -101,6 +101,11 @@ func TestLoadEditableIsAuthorizationFirstAndDistinguishesMissingSettings(t *test
 	if err != nil || got.Revision != 4 || got.Shell.Name != "Board" || got.RendererVersion != contentrender.RendererVersion {
 		t.Fatalf("LoadEditable() = (%+v, %v)", got, err)
 	}
+	cause := errors.New("editable query failed")
+	failed := &editableStub{err: cause}
+	if _, err := LoadEditable(context.Background(), failed, admin, testObservedAt); !errors.Is(err, ErrUnavailable) || !errors.Is(err, cause) {
+		t.Fatalf("failed LoadEditable() error = %v", err)
+	}
 }
 
 type panicBeginner struct{}

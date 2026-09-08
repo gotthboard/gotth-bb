@@ -143,7 +143,7 @@ func LoadEditable(ctx context.Context, querier editableQuerier, actor policy.Acc
 		return EditableSettings{}, ErrDenied
 	}
 	if err != nil {
-		return EditableSettings{}, fmt.Errorf("%w: load editable settings", ErrUnavailable)
+		return EditableSettings{}, fmt.Errorf("%w: load editable settings: %w", ErrUnavailable, err)
 	}
 	if !row.SettingsPresent {
 		return EditableSettings{}, fmt.Errorf("%w: missing site settings", ErrUnavailable)
