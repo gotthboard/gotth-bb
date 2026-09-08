@@ -2,14 +2,14 @@ AN-04-04 integrated admission summary
 =====================================
 
 Tested executable and methodology commit:
-  6bccce39ea4e322518e12f3389baf96c7df13e46
+  1d1e100f2a6e1895cb10e98b56e75b60d795b5a5
 Tested tree:
-  0c007212596ee50d1841a65f8fe5b144d639cfd8
+  a5390b81139f5d759cbc86f7c1b5d4c601b40c3c
 Base AN-04-03 evidence commit:
   8e85433bfc67fd20f273891c344bebe0291c0d6a
 Offline bundle:
-  /tmp/gotth-bb-an04-04-member.bundle
-  SHA-256 bcd3d13c42b23d1326221043f3864bcd47b0d7be7ab3827c00fb0348165fc0e0
+  /tmp/gotth-bb-an04-04-denied-plan.bundle
+  SHA-256 3b8cbb2a63065566fcc06e45fee99ffbd30758ff8b37c9dd23e6fd1ea8ba9f09
 
 Environment
 -----------
@@ -73,17 +73,17 @@ The following commands ran from clean checkouts of the tested commit.
 7. Reproducible Linux/amd64 package gate:
 
      go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
-       --commit 6bccce39ea4e322518e12f3389baf96c7df13e46 \
+       --commit 1d1e100f2a6e1895cb10e98b56e75b60d795b5a5 \
        --goos linux --goarch amd64 \
-       --output /tmp/gotth-bb-an04-04-release-6bccce3-a
+       --output /tmp/gotth-bb-an04-04-release-1d1e100-a
      go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
-       --commit 6bccce39ea4e322518e12f3389baf96c7df13e46 \
+       --commit 1d1e100f2a6e1895cb10e98b56e75b60d795b5a5 \
        --goos linux --goarch amd64 \
-       --output /tmp/gotth-bb-an04-04-release-6bccce3-b
-     cmp /tmp/gotth-bb-an04-04-release-6bccce3-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
-       /tmp/gotth-bb-an04-04-release-6bccce3-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
-     cmp /tmp/gotth-bb-an04-04-release-6bccce3-a/SHA256SUMS \
-       /tmp/gotth-bb-an04-04-release-6bccce3-b/SHA256SUMS
+       --output /tmp/gotth-bb-an04-04-release-1d1e100-b
+     cmp /tmp/gotth-bb-an04-04-release-1d1e100-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
+       /tmp/gotth-bb-an04-04-release-1d1e100-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+     cmp /tmp/gotth-bb-an04-04-release-1d1e100-a/SHA256SUMS \
+       /tmp/gotth-bb-an04-04-release-1d1e100-b/SHA256SUMS
 
 Results
 -------
@@ -92,9 +92,9 @@ Results
 - The representative checkpoint contained 25,000 accounts, 25,000 groups,
   25,000 areas, 8,333 area mappings, 100,000 ordinary topics, 1,000,000
   ordinary posts, four report states, three report audit rows, and one
-  additional 250,001-node depth-32 topic. Population took 3.271286074s for
-  administration identities, 35.120052357s for ordinary topics/posts, and
-  6.748662007s for the deep topic.
+  additional 250,001-node depth-32 topic. Population took 3.258660369s for
+  administration identities, 35.103511374s for ordinary topics/posts, and
+  6.588724255s for the deep topic.
 - Dashboard reconciliation returned 25,000 users (24,500 members, 249
   moderators, 251 administrators), 196 effectively suspended users, 99,901
   nondeleted topics, 998,022 nondeleted/nonredacted posts, one open report,
@@ -105,16 +105,19 @@ Results
   the already admitted search/activity/unread/mark-read paths. Assertions
   retained actor materialization, bounded sentinels, primary-key/index starts,
   authorization predicates, nonmultiplying memberships, and the 250,001-node
-  unread bound.
+  unread bound. Every administration read was also executed with a real
+  non-administrator actor; structural assertions proved zero actor rows and
+  zero actual loops for every query-specific private relation outside the
+  actor subtree.
 - Final resource snapshot: database 814,831,283 bytes; topics 49,192,960
   bytes; posts 730,710,016 bytes; PostgreSQL temporary bytes 3,301,801,554;
-  Go heap 3,072,552 bytes; Go total allocation 25,207,848 bytes; Go system
-  allocation 26,925,320 bytes; process RSS 24,756 KiB.
+  Go heap 3,730,008 bytes; Go total allocation 29,028,592 bytes; Go system
+  allocation 26,900,744 bytes; process RSS 26,848 KiB.
 - Coexistence ran ordinary read, recent activity, first-unread, publication,
   mark-read, and search on independent connections. All completed;
   cancellation passed; connections returned from one to one. Observed
-  durations were 5.110347ms, 15.592125ms, 20.948005ms, 29.302189ms,
-  31.533074ms, and 1.752600162s respectively.
+  durations were 5.934957ms, 23.369383ms, 26.005447ms, 35.005184ms,
+  36.493462ms, and 1.766589955s respectively.
 - Full migration and restricted-role tests passed fresh/upgrade/rollback,
   exact head 000010, readiness, packaged runtime grants, denied operations,
   writer timeouts, commit-unknown inspection, concurrency, audit rollback,
@@ -129,9 +132,9 @@ Results
   role mutation and visible focus; mobile/desktop overflow; and current-admin
   demotion followed by session loss.
 - The two Linux/amd64 archives were byte-identical:
-  SHA-256 608f0889ce86449773d8a404d449651d6feeda49785fa57228153438581080d2
+  SHA-256 a4fb1d1443428b39ad94327526bd11efed2db264061eaaef7d045a05393c31c7
   Their checksum files were byte-identical:
-  SHA-256 2ddaae8bf06a5474f6c97c16d3d88e41e54cc822c0f6977e73a7f72800b235a2
+  SHA-256 691a3d58d8d4ed1ecedf07ef15f7f517fa09cee97dac789a6581093c87f833e1
 
 Rejected attempts and repairs
 -----------------------------
@@ -143,6 +146,12 @@ Rejected attempts and repairs
   though they are rendered as input values, and then expected the member's
   pre-mutation display name. Both assertions were corrected to inspect the
   authoritative rendered controls. The five-run final gate followed.
+- Cold admission review 2 rejected the first retained administration plan
+  checker because unrelated JSON token co-occurrence did not prove actor-fence
+  dominance or denied execution. The repaired checker parses the plan tree,
+  runs every private administration read with a real member actor in custom
+  and forced-generic modes, and proves all query-specific private relation
+  nodes outside the zero-row actor subtree have zero actual loops.
 - One preliminary package command precreated the output directories, which the
   package tool correctly rejects. The final commands used nonexistent output
   paths and produced the byte-identical artifacts recorded above.
