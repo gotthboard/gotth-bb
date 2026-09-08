@@ -7,10 +7,6 @@ Tested executable/methodology commit:
 Tested tree:
   972ef5eb4566f751f8f815942ab61172a4199270
 
-Detailed predecessor evidence:
-  docs/evidence/an04-03-administration-http-a996c09.txt
-  docs/evidence/an04-03-administration-http-3b7a5b4.txt
-
 Final source delta
 ------------------
 
@@ -28,6 +24,18 @@ name, 4,000-rune description, 2,000-byte reason, maximum int32 display order,
 maximum positive initial group ID, and longest relevant closed enum values.
 Both reach mocks that assert every exact service argument and return one valid
 result. Neither proof relies on a field that the application rejects.
+
+Rejected candidates and repairs
+-------------------------------
+
+Cold review and exact-tree execution rejected earlier candidates for changing
+generated Tailwind output beneath an old content-addressed name; accepting a
+group-visible area with zero mappings; allowing an incomplete final service
+constructor; weak browser mutation arguments; incomplete form/body/size proof;
+asymmetric header-CSRF media-type parsing; a transient DevTools context failure
+during navigation; and conflating parser-cap data with legal fields. The final
+source repairs each defect, preserves the exact stylesheet digest, and keeps
+persistent browser errors fatal after the fixed wait bound.
 
 Exact-tree gates
 ----------------
