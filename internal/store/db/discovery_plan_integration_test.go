@@ -1034,6 +1034,21 @@ func processRSSKiB() string {
 
 func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configured *pgx.ConnConfig, observer *pgx.Conn, publicAreaID, ownerID, readerID, groupID int64, population discoveryPlanPopulation) {
 	t.Helper()
+	observedAt := time.Date(2026, 9, 8, 16, 0, 0, 0, time.UTC)
+	authenticationTokenHash := bytes.Repeat([]byte{0x5a}, 32)
+	var baselineDashboardTopics, baselineDashboardPosts int64
+	if population.administration {
+		if _, err := observer.Exec(ctx, `INSERT INTO public.sessions
+    (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at)
+VALUES ($1, $2, $3, $3, $3, $4)`, authenticationTokenHash, ownerID, observedAt.Add(-time.Minute), observedAt.Add(time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		if err := observer.QueryRow(ctx, `SELECT
+    (SELECT count(*) FROM public.topics WHERE deleted_at IS NULL),
+    (SELECT count(*) FROM public.posts WHERE deleted_at IS NULL AND redacted_at IS NULL)`).Scan(&baselineDashboardTopics, &baselineDashboardPosts); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var baselineConnections int64
 	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()`).Scan(&baselineConnections); err != nil {
 		t.Fatal(err)
@@ -1148,6 +1163,45 @@ func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configur
 					return fmt.Errorf("mark-read returned invalid boundary: %+v", row)
 				}
 				return tx.Commit(ctx)
+			}},
+		)
+	}
+	if population.administration {
+		actions = append(actions,
+			coexistenceAction{name: "authentication", action: func(ctx context.Context, connection *pgx.Conn) error {
+				row, err := New(connection).GetActiveSession(ctx, GetActiveSessionParams{
+					TokenHash:  authenticationTokenHash,
+					ObservedAt: pgtype.Timestamptz{Time: observedAt, Valid: true},
+					IdleCutoff: pgtype.Timestamptz{Time: observedAt.Add(-30 * time.Minute), Valid: true},
+				})
+				if err == nil && (row.UserID != ownerID || row.Role != "administrator") {
+					return fmt.Errorf("authentication returned invalid actor: %+v", row)
+				}
+				return err
+			}},
+			coexistenceAction{name: "moderation", action: func(ctx context.Context, connection *pgx.Conn) error {
+				rows, err := New(connection).ListActiveReportsForModeration(ctx, ListActiveReportsForModerationParams{
+					ActorUserID: ownerID,
+					ActorRole:   "administrator",
+					ObservedAt:  pgtype.Timestamptz{Time: observedAt, Valid: true},
+					PageOffset:  0,
+					PageLimit:   51,
+				})
+				if err == nil && (len(rows) != 2 || rows[0].TotalActive != 2) {
+					return fmt.Errorf("moderation returned invalid active reports: %+v", rows)
+				}
+				return err
+			}},
+			coexistenceAction{name: "administration", action: func(ctx context.Context, connection *pgx.Conn) error {
+				dashboard, err := New(connection).LoadAdministrationDashboard(ctx, ownerID)
+				contentAtBaseline := dashboard.Topics == baselineDashboardTopics && dashboard.Posts == baselineDashboardPosts
+				contentAfterPublication := dashboard.Topics == baselineDashboardTopics+1 && dashboard.Posts == baselineDashboardPosts+1
+				if err == nil && (!dashboard.ActorPresent || dashboard.UsersTotal != 25_000 ||
+					(!contentAtBaseline && !contentAfterPublication) ||
+					dashboard.OpenReports != 1 || dashboard.InReviewReports != 1) {
+					return fmt.Errorf("administration returned invalid dashboard: %+v", dashboard)
+				}
+				return err
 			}},
 		)
 	}
