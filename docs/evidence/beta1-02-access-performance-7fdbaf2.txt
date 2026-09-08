@@ -1,0 +1,142 @@
+Beta.1 B1-02 accessibility, usability, and representative-plan evidence
+=======================================================================
+
+Production implementation commit:
+  f91a6fbc4a0786dc1aa850db8aeb4fb269b5fddc
+Production implementation tree:
+  1759e433729c4706f003514cc1de6450fce5cfbe
+Final B1-02 test methodology commit:
+  7fdbaf2a05a84a4eb3625847bcd6375832a8f6af
+Final B1-02 test methodology tree:
+  d444afface2bfb58755a8f28a72e83c6bc783908
+Admitted B1-00 contract commit:
+  28143d74f284d59f13bcc9dbe613c84f207b0423
+
+Environment
+-----------
+
+- Designated evidence host `development`, Linux/amd64.
+- Go 1.26.5-X:nodwarf5 host bootstrap toolchain, PostgreSQL 17.10 in the
+  task-owned loopback-only `gotth-bb-beta1-b101-pg` container.
+- Caddy 2.11.4, Chromium 151.0.7922.71 Arch Linux, Node.js 26.5.1, npm 12.0.2.
+- Test-only axe-core 4.13.0, exactly pinned in package.json/package-lock.json.
+  It is not linked into or shipped with any application binary or browser page.
+
+Browser and accessibility gate
+------------------------------
+
+The exact methodology commit above ran:
+
+  GOTTH_BB_BROWSER_CADDY=1 go test -tags=integration -count=1 -v \
+    -run '^(TestAdministrationKeyboardAndNoScriptThroughCaddy|TestAbuseRejectionNoScriptThroughCaddy|TestUnreadControlsKeyboardAndNoScriptThroughCaddy|TestDiscoveryBrowserThroughCaddy)$' \
+    ./internal/httpui
+
+The empty and `/bb` base paths both passed native no-script topic creation,
+blocked-destination 422, publication-rate 429, edit, and administrator-settings
+journeys. Drafts and safe fields survived rejection. The tests separately
+covered discovery, unread navigation/mark-read, administrator dashboard,
+accounts, groups, memberships, area access/archive/restore, site settings,
+HTMX history, session revocation, restricted-area transitions, empty/populated
+and continuation states. Existing focused HTTP suites retain validation,
+conflict, capacity 503, unexpected failure recovery, full-page/fragment status,
+focus-after-swap, no duplicated shell/footer, logout, and stale-session paths.
+
+Real Chromium Tab and Enter events reached the expected controls. The tests
+inspected nonzero computed focus outlines, the full accessibility tree, the
+single main region and named navigation/headings/controls, and successful
+server mutations. No keyboard trap or unnamed tested control was observed.
+JavaScript-disabled pages retained ordinary native forms and links; the audit
+injection was isolated from the administrator no-script journey after an early
+attempt proved that temporarily enabling execution could let HTMX attach.
+
+Axe ran WCAG 2 A/AA and WCAG 2.1 A/AA rules on topic-create, 422/429 error,
+post-edit, settings, populated-administration, account-detail, and unread pages.
+It reported zero violations. Topic-create/error/edit/settings pages had zero
+incomplete rules. Administration and unread pages reported only `color-contrast`
+as incomplete because Axe cannot infer a background through the fixed header's
+`from-blue-950` to `to-slate-950` gradient. Every reported node was header text:
+white title/navigation/logout text or blue-100 description text. Manual WCAG
+relative-luminance checks against both gradient endpoints produced the exact
+worst/best ratios:
+
+  #ffffff on #172554: 14.69:1
+  #ffffff on #020617: 20.17:1
+  #dbeafe on #172554: 12.04:1
+  #dbeafe on #020617: 16.53:1
+
+All exceed 4.5:1, including normal-sized text; the large title also exceeds
+3:1. The state surfaces retain textual `New`, `Read`, report status, error
+headings/messages, and disabled/archived wording rather than color-only cues.
+There is no remaining automated or manual contrast exception.
+
+At 320 CSS pixels and at 200% page zoom in a 640-CSS-pixel viewport, topic
+creation, settings, unread, empty administration, and populated administration
+all retained `document.documentElement.scrollWidth <= innerWidth`. The existing
+desktop repetition also passed at 1280 by 900 CSS pixels. Wide rendered post
+tables/code remain locally scrollable by design rather than widening the page.
+
+Representative PostgreSQL gate
+------------------------------
+
+The production code at the methodology commit is byte-identical to production
+implementation tree `1759e43`. On its B1-02 candidate ancestor `c4dbb67`, the
+following exact gate ran; later commits only expose browser-test audit details:
+
+  GOTTH_BB_RUN_AN04_ADMISSION_EVIDENCE=1 \
+  GOTTH_BB_TEST_DATABASE_URL='<redacted loopback disposable URL>' \
+    go test -tags=integration -run '^TestDiscoveryPlansOnPostgreSQL17$' \
+    -count=1 -timeout=35m -v ./internal/store/db
+
+It passed in 139.43 seconds with 25,000 accounts, 25,000 groups, 25,000 areas,
+8,333 mappings, 100,000 ordinary topics, 1,000,000 ordinary posts, and a
+250,001-node depth-32 topic. The final database measured 815,052,467 bytes;
+topics 49,192,960 bytes; posts 730,710,016 bytes. The process recorded
+HeapAlloc 3,283,256 bytes, TotalAlloc 29,258,496 bytes, Go Sys 27,416,840
+bytes, RSS 24,604 KiB, 376 temp files, and 3,321,945,682 temp bytes after all
+plans. These are host observations, not general latency or memory promises.
+
+Forced custom and forced generic plans passed for search, activity, direct
+post, board, area, topic, unread, report, moderation, and administration
+surfaces. The gate checks bounded rows/query counts and continuation edges and
+requires visitor/member/moderator denial plans to execute no protected scan.
+Administration reconciliation, all report states/audits, unread actor exclusion,
+deep-thread traversal, malformed counts, timeout, and cancellation passed.
+
+One synchronized coexistence wave completed ordinary read (5.999 ms),
+authentication (8.799 ms), activity (17.737 ms), first unread (22.814 ms),
+moderation (23.896 ms), publication (34.262 ms), mark-read (36.218 ms),
+administration (261.116 ms), and search (1.762 s) without error. Database
+connections returned from observer-only baseline 1 to final 1; cancellation
+passed.
+
+The exact production tree also passed the 1,000-account contention gate:
+
+  GOTTH_BB_RUN_AN05_ADMISSION_EVIDENCE=1 \
+  GOTTH_BB_TEST_DATABASE_URL='<redacted loopback disposable URL>' \
+    go test -tags=integration \
+    -run '^TestAN05PublicationPopulationAdmissionOnPostgreSQL17$' \
+    -count=1 -timeout=25m -v ./internal/forum
+
+All 3,000 publications completed. The pool peak was 33 database connections
+including the observer and returned to 1. Peak locks were 1,938, peak waiters
+6, cancellation passed, no temp file was created, and the production
+transaction-local statement/lock timeouts remained 2 seconds/250 milliseconds.
+Five race-instrumented repetitions of the same population and five complete
+dual-base-path browser repetitions remain retained in
+`docs/evidence/an05-04-integrated-1abbeab.txt`.
+
+Rejected attempts and boundary
+------------------------------
+
+- The first Axe attempt ran while Chromium page execution was disabled and its
+  asynchronous promise was collected. Enabling execution within the active
+  administrator no-script journey then allowed HTMX to attach and invalidated
+  a later navigation. Both results were rejected. The final test completes the
+  isolated native journey before running the automated audit.
+- Axe's gradient contrast incompletes were not relabeled as passes. Exact
+  targets/colors and worst-case endpoint ratios are recorded above.
+- No UI redesign or production query change was necessary. The only B1-02 code
+  is pinned test tooling and evidence output.
+- No durable deployment data was changed. The representative databases are
+  disposable task state. Beta.1 release, tag, merge, deployment, provider
+  disable, and owner confirmation remain outside B1-02.

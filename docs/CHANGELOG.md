@@ -5,6 +5,41 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Close Beta.1 accessibility and representative-plan admission
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- pinned test-only axe-core browser audit and retained manual-review output
+- exact 320-CSS-pixel and 200%-zoom reflow checks in existing Caddy journeys
+- Beta.1 accessibility/performance evidence and requirement traceability
+
+Explanation:
+
+The existing keyboard/no-script, HTMX, failure, and representative-scale gates
+now close the remaining Beta evidence gaps without changing runtime behavior.
+Automated WCAG A/AA checks report zero violations; the only automated
+incompletes are fixed-header gradient contrast, whose exact endpoints pass
+manual worst-case contrast calculation. The same production tree passes custom
+and generic plans on 25,000 accounts, 100,000 topics, 1,000,000 posts, the
+250,001-node deep topic, mixed subsystem coexistence, and 1,000-account
+publication contention.
+
+Verification:
+
+- Caddy 2.11.4 / Chromium 151 keyboard, no-script, Axe, 320-pixel, 200%-zoom,
+  failure/draft, history, and accessibility-tree checks
+- PostgreSQL 17.10 representative custom/generic plans, cancellation,
+  connection cleanup, resources, coexistence, and publication contention
+- retained AN-03 through AN-05 core journey and five-repetition evidence
+
+Risks / non-goals:
+
+- observations on the designated host are not universal performance promises
+- no cosmetic redesign, runtime dependency, migration, release, or deployment
+  is introduced by this unit
+
 ### 2026-09-08 — Close the Beta.1 route and pre-release security inventory
 
 Commit: current commit; hash assigned by Git after commit

@@ -64,11 +64,11 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-003` | local roles/groups/memberships | AN-04 integrated evidence | implemented |
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
-| `UX-001` | responsive server-rendered surface | existing browser checks; complete Beta reflow/zoom audit pending B1-02 | blocked |
-| `UX-002` | semantic keyboard-operable core flows | focused browser checks; complete Beta keyboard audit pending B1-02 | blocked |
-| `UX-003` | labels, descriptions, errors, status regions | focused HTTP/browser checks; complete Beta audit pending B1-02 | blocked |
+| `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
+| `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
+| `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |
 | `UX-004` | ordinary HTML with HTMX-equivalent enhancement | full/HTMX/no-script tests through AN-05 | implemented |
-| `UX-005` | diagnosable failed HTMX behavior | focused handler/browser tests; complete Beta failure journey pending B1-02 | blocked |
+| `UX-005` | diagnosable failed HTMX behavior | B1-02 failure/draft/focus/history plus focused handler/browser evidence | implemented |
 | `SEC-001` | CSRF validation on unsafe routes | CSRF middleware and every mutation's HTTP tests | implemented |
 | `SEC-002` | scoped Secure/HttpOnly/SameSite cookies | B1-01 exact cookie construction and two-base-path Caddy inspection; live deployment smoke remains B1-05 | implemented |
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |
