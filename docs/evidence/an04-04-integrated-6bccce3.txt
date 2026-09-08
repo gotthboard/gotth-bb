@@ -1,0 +1,158 @@
+AN-04-04 integrated admission summary
+=====================================
+
+Tested executable and methodology commit:
+  6bccce39ea4e322518e12f3389baf96c7df13e46
+Tested tree:
+  0c007212596ee50d1841a65f8fe5b144d639cfd8
+Base AN-04-03 evidence commit:
+  8e85433bfc67fd20f273891c344bebe0291c0d6a
+Offline bundle:
+  /tmp/gotth-bb-an04-04-member.bundle
+  SHA-256 bcd3d13c42b23d1326221043f3864bcd47b0d7be7ab3827c00fb0348165fc0e0
+
+Environment
+-----------
+
+- PostgreSQL 17.10 on x86_64-pc-linux-gnu
+- Go 1.26.6 linux/amd64
+- Node.js 26.7.0 and npm 12.0.2 for deterministic generation
+- Node.js 26.5.1 for the designated browser evidence host
+- Caddy 2.11.4
+- Chromium 151.0.7922.71
+
+Exact gates
+-----------
+
+The following commands ran from clean checkouts of the tested commit.
+`GOTTH_BB_TEST_DATABASE_URL` named the disposable PostgreSQL 17.10 database.
+
+1. Deterministic generation and local custody:
+
+     test "$(node --version)" = "v26.7.0"
+     test "$(npm --version)" = "12.0.2"
+     npm ci --ignore-scripts
+     make generate
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     test -z "$(gofmt -l .)"
+     git diff --check
+     test -z "$(git status --short)"
+
+2. Repository-wide static/unit/race/coverage gate on `development`:
+
+     scripts/test-alpha3-evidence-custody.sh
+     go vet -mod=readonly ./...
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+3. Full PostgreSQL serial integration/coverage gate:
+
+     GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 \
+       go test -mod=readonly -tags=integration -count=1 -p=1 -cover ./...
+
+4. Full PostgreSQL integration/race gate:
+
+     GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 \
+       go test -mod=readonly -tags=integration -count=1 -p=2 -race \
+       -covermode=atomic ./...
+
+5. Representative population, plan, resource, cancellation, and coexistence:
+
+     GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+       GOTTH_BB_RUN_AN04_ADMISSION_EVIDENCE=1 \
+       go test -mod=readonly -tags=integration \
+       -run '^TestDiscoveryPlansOnPostgreSQL17$' -count=1 -v \
+       ./internal/store/db
+
+6. Browser-through-Caddy matrix, five repetitions:
+
+     GOTTH_BB_BROWSER_CADDY=1 go test -mod=readonly -tags=integration \
+       -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+       -count=5 -v ./internal/httpui
+
+7. Reproducible Linux/amd64 package gate:
+
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
+       --commit 6bccce39ea4e322518e12f3389baf96c7df13e46 \
+       --goos linux --goarch amd64 \
+       --output /tmp/gotth-bb-an04-04-release-6bccce3-a
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
+       --commit 6bccce39ea4e322518e12f3389baf96c7df13e46 \
+       --goos linux --goarch amd64 \
+       --output /tmp/gotth-bb-an04-04-release-6bccce3-b
+     cmp /tmp/gotth-bb-an04-04-release-6bccce3-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
+       /tmp/gotth-bb-an04-04-release-6bccce3-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+     cmp /tmp/gotth-bb-an04-04-release-6bccce3-a/SHA256SUMS \
+       /tmp/gotth-bb-an04-04-release-6bccce3-b/SHA256SUMS
+
+Results
+-------
+
+- Every final exact-tree gate passed.
+- The representative checkpoint contained 25,000 accounts, 25,000 groups,
+  25,000 areas, 8,333 area mappings, 100,000 ordinary topics, 1,000,000
+  ordinary posts, four report states, three report audit rows, and one
+  additional 250,001-node depth-32 topic. Population took 3.271286074s for
+  administration identities, 35.120052357s for ordinary topics/posts, and
+  6.748662007s for the deep topic.
+- Dashboard reconciliation returned 25,000 users (24,500 members, 249
+  moderators, 251 administrators), 196 effectively suspended users, 99,901
+  nondeleted topics, 998,022 nondeleted/nonredacted posts, one open report,
+  and one in-review report. All four report states and all three required
+  report audits were present. A canceled dashboard failed closed.
+- Forced custom and generic JSON plans passed for account list/detail,
+  account groups, group list, area list/detail/groups, dashboard counts, and
+  the already admitted search/activity/unread/mark-read paths. Assertions
+  retained actor materialization, bounded sentinels, primary-key/index starts,
+  authorization predicates, nonmultiplying memberships, and the 250,001-node
+  unread bound.
+- Final resource snapshot: database 814,831,283 bytes; topics 49,192,960
+  bytes; posts 730,710,016 bytes; PostgreSQL temporary bytes 3,301,801,554;
+  Go heap 3,072,552 bytes; Go total allocation 25,207,848 bytes; Go system
+  allocation 26,925,320 bytes; process RSS 24,756 KiB.
+- Coexistence ran ordinary read, recent activity, first-unread, publication,
+  mark-read, and search on independent connections. All completed;
+  cancellation passed; connections returned from one to one. Observed
+  durations were 5.110347ms, 15.592125ms, 20.948005ms, 29.302189ms,
+  31.533074ms, and 1.752600162s respectively.
+- Full migration and restricted-role tests passed fresh/upgrade/rollback,
+  exact head 000010, readiness, packaged runtime grants, denied operations,
+  writer timeouts, commit-unknown inspection, concurrency, audit rollback,
+  and authorization-leakage matrices. Integration coverage included
+  `internal/administration` 75.3%, `internal/httpui` 72.1%,
+  `internal/store` 97.1%, and migrations 100.0%.
+- Five browser repetitions passed through the `/bb` base path. The matrix
+  covers empty/populated dashboards; 51-account and 51-group continuation;
+  HTMX push-history back/forward; group create/rename; membership-driven
+  restricted-area loss/gain; area archive/restore and group revoke/grant;
+  site name/description/theme/rules propagation; JavaScript-disabled keyboard
+  role mutation and visible focus; mobile/desktop overflow; and current-admin
+  demotion followed by session loss.
+- The two Linux/amd64 archives were byte-identical:
+  SHA-256 608f0889ce86449773d8a404d449651d6feeda49785fa57228153438581080d2
+  Their checksum files were byte-identical:
+  SHA-256 2ddaae8bf06a5474f6c97c16d3d88e41e54cc822c0f6977e73a7f72800b235a2
+
+Rejected attempts and repairs
+-----------------------------
+
+- Cold admission review 1 rejected the first browser matrix because it did
+  not prove 51-group continuation, membership-driven userspace access
+  loss/gain, or HTMX history. The repaired matrix covers all three clauses.
+- The repaired browser fixture initially inspected group names as text even
+  though they are rendered as input values, and then expected the member's
+  pre-mutation display name. Both assertions were corrected to inspect the
+  authoritative rendered controls. The five-run final gate followed.
+- One preliminary package command precreated the output directories, which the
+  package tool correctly rejects. The final commands used nonexistent output
+  paths and produced the byte-identical artifacts recorded above.
+- One preliminary local orchestration command invoked the obsolete
+  `make verify-alpha3-evidence` target after successful generation. The
+  repository has no such target. The current custody script named above then
+  passed, and the final exact-tree command uses only that script.
+
+Boundary
+--------
+
+This evidence admits AN-04-04 only. It does not authorize or record AN-05,
+a tag, a release, or a deployment.
