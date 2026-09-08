@@ -5,6 +5,43 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Add monotonic AN-03 mark-read service
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- authorization-first PostgreSQL mark-read boundary and private-marker query
+- explicit read-committed transaction service with unknown-outcome handling
+- unit and PostgreSQL integration tests for retries, concurrency, races,
+  revocation, deletion, cancellation, and publication non-interference
+
+Explanation:
+
+Advance one authenticated member's private topic marker through the greatest
+currently eligible post written by somebody else. PostgreSQL selects the
+boundary and applies a conditional `GREATEST` upsert; clients supply no
+watermark. Equal, lower, stale, and concurrent attempts preserve both the
+marker and `read_at`. An explicit read-committed transaction lets the
+validation statement observe a concurrent winning upsert without inheriting a
+deployment's configurable default isolation level.
+
+Verification:
+
+- deterministic sqlc generation and focused unit race/coverage
+- PostgreSQL 17 integration/race loops covering authorization, idempotency,
+  concurrent devices, post races, cancellation, and unknown commit outcomes
+- source and integration proof that topic/reply publication never mutates
+  private read markers
+- repository-wide vet, race/coverage, PostgreSQL integration, and two fresh
+  independent CLEAN reviews before handoff
+
+Risks / non-goals:
+
+- commit failures remain explicitly unknown; callers inspect or safely retry
+- this checkpoint adds no HTTP route, CSRF handling, first-unread navigation,
+  UI, PR, push, merge, tag, release, or deployment
+
 ### 2026-09-07 — Admit bounded AN-03 unread-state contract
 
 Commit: current commit; hash assigned by Git after commit

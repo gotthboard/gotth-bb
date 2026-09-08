@@ -30,14 +30,35 @@ func (tx *stubTransaction) Rollback(ctx context.Context) error {
 }
 
 type stubTransactionBeginner struct {
-	tx     pgx.Tx
-	err    error
-	called bool
+	tx      pgx.Tx
+	err     error
+	called  bool
+	options pgx.TxOptions
 }
 
 func (beginner *stubTransactionBeginner) Begin(context.Context) (pgx.Tx, error) {
 	beginner.called = true
 	return beginner.tx, beginner.err
+}
+
+func (beginner *stubTransactionBeginner) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	beginner.called = true
+	beginner.options = options
+	return beginner.tx, beginner.err
+}
+
+func TestWithinTxOptionsUsesExactMode(t *testing.T) {
+	t.Parallel()
+
+	tx := &stubTransaction{}
+	beginner := &stubTransactionBeginner{tx: tx}
+	options := pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadWrite}
+	if err := WithinTxOptions(context.Background(), beginner, options, func(*db.Queries) error { return nil }); err != nil {
+		t.Fatalf("WithinTxOptions() returned error: %v", err)
+	}
+	if beginner.options != options || !tx.commitCalled || tx.rollbackCalled {
+		t.Fatalf("transaction = (options %+v, commit %t, rollback %t)", beginner.options, tx.commitCalled, tx.rollbackCalled)
+	}
 }
 
 func TestWithinTxCommitsSuccessfulAction(t *testing.T) {

@@ -24,10 +24,33 @@ var errNilTransaction = errors.New("transaction begin returned no transaction")
 func WithinTx(ctx context.Context, beginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }, action func(*db.Queries) error) (result error) {
+	if beginner == nil {
+		return fmt.Errorf("transaction beginner is required")
+	}
+	return withinTx(ctx, beginner.Begin, action)
+}
+
+// WithinTxOptions is WithinTx with an explicit PostgreSQL transaction mode.
+// It exists for operations whose correctness depends on a fixed isolation
+// level rather than the server's configurable default.
+//
+// Complexity is identical to WithinTx.
+func WithinTxOptions(ctx context.Context, beginner interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}, options pgx.TxOptions, action func(*db.Queries) error) (result error) {
+	if beginner == nil {
+		return fmt.Errorf("transaction beginner is required")
+	}
+	return withinTx(ctx, func(ctx context.Context) (pgx.Tx, error) {
+		return beginner.BeginTx(ctx, options)
+	}, action)
+}
+
+func withinTx(ctx context.Context, begin func(context.Context) (pgx.Tx, error), action func(*db.Queries) error) (result error) {
 	if ctx == nil {
 		return fmt.Errorf("transaction context is required")
 	}
-	if beginner == nil {
+	if begin == nil {
 		return fmt.Errorf("transaction beginner is required")
 	}
 	if action == nil {
@@ -36,7 +59,7 @@ func WithinTx(ctx context.Context, beginner interface {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("transaction canceled: %w", err)
 	}
-	tx, err := beginner.Begin(ctx)
+	tx, err := begin(ctx)
 	if tx == nil {
 		if err != nil {
 			return fmt.Errorf("begin transaction: %w", err)

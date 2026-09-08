@@ -83,6 +83,19 @@ func TestPublishingRowQueriesPreserveScanFailure(t *testing.T) {
 	}
 }
 
+func TestPublishingSQLNeverTouchesPrivateReadMarkers(t *testing.T) {
+	t.Parallel()
+
+	for name, query := range map[string]string{
+		"topic": createTopicAndFirstPost,
+		"reply": createReplyAndAdvanceTopic,
+	} {
+		if strings.Contains(query, "topic_reads") {
+			t.Fatalf("%s publication SQL touches private read markers", name)
+		}
+	}
+}
+
 func TestLockAreaGroupIDsBindsScansClosesAndPreservesFailures(t *testing.T) {
 	t.Parallel()
 
