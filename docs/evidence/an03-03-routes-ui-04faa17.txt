@@ -1,0 +1,115 @@
+AN-03-03 exact-candidate evidence
+================================
+
+Executable/methodology commit:
+  04faa17b591d07f6e1f0844b876e47099f49ca4b
+Tree:
+  f76404add92e1f30f8eba10f73d2f415a8f7360d
+Base:
+  77959572abcd3c3da96eccbdf1c9dd745f1674fc
+Bundle SHA-256:
+  0cd52487b02f41e9103d5ce21fdc252845b79d260113bc3d621d62399d3f4713
+
+Environment
+-----------
+
+Designated evidence host:
+  Linux 7.1.5-arch1-2 x86_64 GNU/Linux
+  Go 1.26.6 linux/amd64
+  Node v26.7.0
+  npm 12.0.2
+  PostgreSQL 17.10
+  Caddy v2.11.4
+  Chromium 151.0.7922.71 Arch Linux
+
+Generation, custody, and static gates
+-------------------------------------
+
+Commands, from a detached clone of the exact bundle:
+
+  make generate
+  test -z "$(git status --porcelain)"
+  scripts/test-alpha3-evidence-custody.sh
+  test -z "$(gofmt -l $(git ls-files --cached --others --exclude-standard -- '*.go'))"
+  go vet -mod=readonly ./...
+
+Result: PASS. Templ, sqlc, CSS, HTMX, and application-script generation
+produced zero tracked or untracked drift. Alpha.3 custody and formatting were
+clean; vet emitted no diagnostic.
+
+Unit race and coverage gate
+---------------------------
+
+Command:
+
+  GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+Result: PASS. The exact route grammar, authorization/revalidation-before-body
+ordering, strict header/form CSRF alternatives, bounded body, fixed failures,
+base-path URLs, ordinary 303 and HTMX 204 navigation, inclusive page-10,000
+boundary, 250,001 direct fallback, authenticated/visitor presentation shape,
+and malformed private state all passed. Representative package coverage was
+89.7% for internal/forum, 74.4% for internal/httpui, 96.6% for internal/store,
+and 100.0% for migrations.
+
+PostgreSQL 17 integration and race gate
+---------------------------------------
+
+Command:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 \
+    go test -mod=readonly -tags=integration -count=1 -p=2 \
+      -race -covermode=atomic ./...
+
+Result: PASS. The suite exercised fresh and upgrade migrations through 000009,
+authorization-first unread reads and writes, group/staff/revocation cases,
+concurrent marker ordering, deletion/redaction/restoration, private topic-page
+state, and first-unread target selection against PostgreSQL 17.10.
+Representative integration coverage was 95.0% for internal/forum, 74.4% for
+internal/httpui, 97.1% for internal/store, and 100.0% for migration,
+readiness, and migrations.
+
+Browser-through-Caddy gate
+--------------------------
+
+Command:
+
+  GOTTH_BB_BROWSER_CADDY=1 \
+    go test -mod=readonly -tags=integration \
+      -run '^TestUnreadControlsKeyboardAndNoScriptThroughCaddy$' \
+      -count=1 -v ./internal/httpui
+
+Result: PASS in 1.35 seconds for the Go package and 0.91 seconds for the
+Chromium scenario. Caddy served the `/bb` base path to a JavaScript-disabled
+Chromium instance. The accessibility tree exposed the named first-unread link
+and mark-read button; native Tab/Enter activated both ordinary controls; the
+first target resolved to its stable post fragment; and the mark-read POST
+returned to a refreshed `Read` topic with both mutation controls removed.
+Presentation tests independently require the shipped `hx-get`, `hx-post`,
+`hx-target`, and `hx-swap` entry points, while handler tests prove their exact
+HTMX response protocol.
+
+Integrity and limits
+--------------------
+
+Commands:
+
+  git diff --check
+  git fsck --no-dangling
+  test -z "$(git status --porcelain)"
+
+Result: PASS.
+
+This boundary does not rerun the representative population/plan/resource or
+release-artifact reproducibility gates. Those are integrated AN-03-04 gates;
+the committed AN-03-01 and AN-03-02 evidence remains the current 25,000-topic,
+250,000-post plan checkpoint. Package statement coverage includes generated
+Templ and sqlc code; no artificial scanner permutations were added merely to
+inflate that number.
+
+Scope statement
+---------------
+
+This candidate implements AN-03-03 only: the first-unread and mark-read HTTP
+routes, progressive controls, and browser evidence. It performs no PR, push,
+merge, tag, release, deployment, AN-03-04 population admission, or AN-04 work.
