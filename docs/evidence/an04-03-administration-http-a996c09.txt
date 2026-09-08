@@ -52,8 +52,8 @@ Result: PASS. Direct tests prove the exact field set and service arguments for
 all seven AN-04-03 mutations; IDs occur only in canonical paths; area creation
 accepts the required positive or empty initial group states; duplicate and
 unknown fields fail without a second service call; declared 16-KiB and 64-KiB
-overages fail before a body read; and both exact limits admit worst-case
-percent-encoded bodies. Missing, stale, and non-administrator sessions plus an
+overages fail before a body read; and both exact parser limits admit synthetic
+percent-encoded boundary bodies. Missing, stale, and non-administrator sessions plus an
 invalid CSRF header fail before reading the request body. The repair also put
 the route limit around ParseForm after valid header CSRF, closing an actual
 unbounded-header-body path.

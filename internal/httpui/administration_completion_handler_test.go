@@ -344,7 +344,7 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 	}
 }
 
-func TestAdministrationCompletionAcceptsExactWorstCaseWireLimits(t *testing.T) {
+func TestAdministrationCompletionAcceptsExactParserWireLimits(t *testing.T) {
 	t.Parallel()
 	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
 	token := validCSRFTokenForTest(0x51)
@@ -391,6 +391,60 @@ func TestAdministrationCompletionAcceptsExactWorstCaseWireLimits(t *testing.T) {
 	}
 }
 
+func TestAdministrationCompletionWorstCaseLegalFormsFitWireLimits(t *testing.T) {
+	t.Parallel()
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	token := validCSRFTokenForTest(0x51)
+	worstName := strings.Repeat("💩", 120)
+	worstGroupName := strings.Repeat("💩", 80)
+	worstDescription := strings.Repeat("💩", 4000)
+	worstReason := strings.Repeat("💩", 500)
+
+	t.Run("small form", func(t *testing.T) {
+		services := administrationCompletionTestServices()
+		calls := 0
+		services.RenameGroup = func(_ context.Context, actor auth.AccessContext, groupID int64, name, reason string, revision int64, requestID pgtype.UUID) (administration.GroupMutationResult, error) {
+			calls++
+			if actor.UserID != 1 || groupID != 9223372036854775807 || name != worstGroupName || reason != worstReason || revision != 9223372036854775806 || !requestID.Valid {
+				t.Fatalf("worst small form args = (%+v,%d,%q,%q,%d,%+v)", actor, groupID, name, reason, revision, requestID)
+			}
+			return administration.GroupMutationResult{GroupID: groupID, Revision: revision + 1, AuditID: 1}, nil
+		}
+		handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = withModerationTestRequestID(t, handler)
+		form := url.Values{"_csrf": {token}, "name": {worstGroupName}, "reason": {worstReason}, "revision": {"9223372036854775806"}}
+		if length := len(form.Encode()); length > maximumAdministrationSmallFormBytes {
+			t.Fatalf("worst legal small form length = %d, limit %d", length, maximumAdministrationSmallFormBytes)
+		}
+		assertAdministrationFormResult(t, handler, "/admin/groups/9223372036854775807", form, admin, "/bb/admin/groups", &calls)
+	})
+
+	t.Run("area form", func(t *testing.T) {
+		services := administrationCompletionTestServices()
+		calls := 0
+		services.CreateArea = func(_ context.Context, actor auth.AccessContext, input administration.AreaCoreInput, requestID pgtype.UUID) (administration.AreaCompletionResult, error) {
+			calls++
+			if actor.UserID != 1 || input.Slug != strings.Repeat("a", 80) || input.Name != worstName || input.Description != worstDescription || input.DisplayOrder != 2147483647 || input.Visibility != policy.VisibilityGroups || input.PostingMode != policy.PostingReadOnly || input.InitialGroupID != 9223372036854775807 || input.Reason != worstReason || input.Revision != 0 || !requestID.Valid {
+				t.Fatalf("worst area form args = (%+v,%+v,%+v)", actor, input, requestID)
+			}
+			return administration.AreaCompletionResult{AreaID: 9, Slug: input.Slug, Revision: 1, AuditID: 1}, nil
+		}
+		handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = withModerationTestRequestID(t, handler)
+		form := url.Values{"_csrf": {token}, "slug": {strings.Repeat("a", 80)}, "name": {worstName}, "description": {worstDescription}, "display_order": {"2147483647"}, "visibility": {"groups"}, "posting_mode": {"read_only"}, "initial_group_id": {"9223372036854775807"}, "reason": {worstReason}}
+		if length := len(form.Encode()); length > maximumAdministrationAreaFormBytes {
+			t.Fatalf("worst legal area form length = %d, limit %d", length, maximumAdministrationAreaFormBytes)
+		}
+		assertAdministrationFormResult(t, handler, "/admin/areas", form, admin, "/bb/admin/areas/9", &calls)
+	})
+}
+
 func encodedAdministrationFormAtLimit(t *testing.T, form url.Values, field string, limit int64) string {
 	t.Helper()
 	values := cloneValues(form)
@@ -399,7 +453,7 @@ func encodedAdministrationFormAtLimit(t *testing.T, form url.Values, field strin
 	if remaining < 0 {
 		t.Fatalf("base form exceeds limit: %d", remaining)
 	}
-	values.Set(field, strings.Repeat("\x00", remaining/3)+strings.Repeat("a", remaining%3))
+	values.Set(field, strings.Repeat("💩", remaining/12)+strings.Repeat("a", remaining%12))
 	encoded := values.Encode()
 	if len(encoded) != int(limit) {
 		t.Fatalf("encoded form length = %d, want %d", len(encoded), limit)

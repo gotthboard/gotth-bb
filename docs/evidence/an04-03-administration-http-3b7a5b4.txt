@@ -22,6 +22,14 @@ URL-encoded media-type check for header- and body-token CSRF, and a browser
 wait loop that preserves persistent DevTools errors while allowing the
 execution context to disappear briefly during a real navigation.
 
+The later final-tree review also separated parser-cap evidence from valid-field
+evidence. Synthetic valid-UTF-8 bodies prove the exact 16/64-KiB parser
+boundaries. Separate forms containing maximum legal NFC/control-free Unicode
+group names, area names, 4,000-rune descriptions, 2,000-byte audit reasons,
+and maximum canonical numeric fields pass through exact service-argument
+checks while remaining within their respective caps. No rejected control byte
+is used to support the legal-field claim.
+
 Pinned generation
 -----------------
 
