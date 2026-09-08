@@ -16,8 +16,9 @@ export async function auditAccessibility(send, sessionId, evaluate, label, scrip
       nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary }))
     })),
     incomplete: incomplete.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.length }))
-  }))`);
+    }))`);
     assert.deepEqual(result.violations, [], `${label} accessibility violations: ${JSON.stringify(result.violations)}`);
+    console.log(`A11Y label=${JSON.stringify(label)} violations=0 incomplete=${JSON.stringify(result.incomplete)}`);
     return result;
   } finally {
     if (scriptDisabled) await send("Emulation.setScriptExecutionDisabled", { value: true }, sessionId);
@@ -28,10 +29,12 @@ export async function auditReflow(send, sessionId, evaluate, label) {
   await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, sessionId);
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
   assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true, `${label} overflows at 320 CSS pixels`);
+  console.log(`REFLOW label=${JSON.stringify(label)} width=320 zoom=100 result=pass`);
 
   await send("Emulation.setDeviceMetricsOverride", { width: 640, height: 720, deviceScaleFactor: 1, mobile: false }, sessionId);
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 2 }, sessionId);
   assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true, `${label} overflows at 200% zoom`);
+  console.log(`REFLOW label=${JSON.stringify(label)} width=640 zoom=200 result=pass`);
 
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
   await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
