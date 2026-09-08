@@ -1,0 +1,163 @@
+AN-05-02 transactional-publication-limit evidence
+=================================================
+
+Tested executable and methodology commit:
+  c71dd070beccf37f2cd2ef207a819e8a858453f7
+Tested tree:
+  2c68e73a0d73de183d721ac16e6b557b3542d9d3
+AN-05-01 base commit:
+  6bec48386307d69c32ba6c5c072272515e1a1e86
+Admitted AN-05 contract commit:
+  eed3c2d01ea5064f350467314262665dabdfbc90
+
+Environment
+-----------
+
+- Local Go 1.26.6-X:nodwarf5 on Linux 7.1.8-arch1-3 x86_64.
+- Pinned local Node.js 26.7.0 and npm 12.0.2 for deterministic generation.
+- Remote validation host `development`: Go 1.26.5-X:nodwarf5 on Linux
+  7.1.5-arch1-2 x86_64.
+- PostgreSQL 17.10 container image
+  `postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d`.
+- No production host, service, database, tag, release, or deployment changed.
+
+Exact gates
+-----------
+
+1. Pinned deterministic generation and repository integrity on the exact
+   local checkout:
+
+     test "$(node --version)" = v26.7.0
+     test "$(npm --version)" = 12.0.2
+     GOMAXPROCS=2 make generate
+     test -z "$(git status --porcelain=v1)"
+     GOMAXPROCS=2 go vet ./...
+     git diff --check
+     git fsck --no-dangling
+
+2. Remote tree custody and static gate. The tracked working tree was indexed
+   in an isolated task-owned directory and `git write-tree` had to equal the
+   tested tree before and after the command:
+
+     test "$(git write-tree)" = 2c68e73a0d73de183d721ac16e6b557b3542d9d3
+     git diff --exit-code
+     GOMAXPROCS=4 go vet ./...
+     git diff --check
+     test "$(git write-tree)" = 2c68e73a0d73de183d721ac16e6b557b3542d9d3
+
+3. Repository-wide unit race and coverage:
+
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+4. PostgreSQL 17.10 serial integration and coverage:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32803/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=1 -cover ./...
+
+5. PostgreSQL 17.10 integration race and atomic coverage:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32803/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 -race -covermode=atomic ./...
+
+6. Deterministic focused publication serialization repetitions:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32803/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=5 \
+       -run '^TestDurablePublicationAdmissionOnPostgreSQL17$' ./internal/forum
+
+Results
+-------
+
+- Every final exact-tree gate passed. Repository-wide race/coverage passed for
+  all packages. Serial and race PostgreSQL integration passed for all packages.
+- `internal/abuse` statement coverage was 93.6%; direct coverage for
+  `NewPublicationPolicy`, `PublicationPolicy`, `Valid`,
+  `RetryAfterSeconds`, and `PublicationReady` was 100%.
+  `DecidePublication` was 91.9%; its uncovered statements are defensive
+  overflow/impossible-interval guards following already-proven ordering checks,
+  not an untested admitted outcome.
+- PostgreSQL integration coverage was 94.3% for `internal/forum`, 100% for
+  `internal/readiness`, 100% for `migrations`, and 97.1% for `internal/store`.
+- Migration 000011 preserved an existing account's `ctid`, installed the exact
+  finite-time and tuple constraints, rejected positive/negative infinity,
+  zero/negative/100001 counts with a non-NULL start, and a nonzero count with a
+  NULL start. Fresh and upgrade migration paths, idempotence, readiness drift,
+  and the exact two-column runtime grant were exercised.
+- Runtime-role execution proved SELECT plus coherent update/reset of exactly
+  `publication_window_started_at` and `publication_count`. Unrelated-column
+  update, `created_at` update, user insert, and user delete each failed with
+  SQLSTATE 42501. Readiness also rejected a same-name CHECK impostor, default
+  drift, and any added UPDATE authority outside the two-column tuple.
+- The pure decision matrix covered new/established age boundaries, empty,
+  active, expired, clock-regressed, exactly-one-window-ahead and farther-future
+  starts, count below/equal/above policy limits, PostgreSQL year one, finite
+  minimum/maximum subtraction saturation, bounded whole-second retry, and the
+  admitted two-window burst.
+- Topic/reply transactions explicitly used read committed, installed 2s
+  statement and 250ms lock limits before the account lock, reloaded live role,
+  suspension, mute, and groups, authorized the target before counter mutation,
+  and committed the counter with the content insert. Every mocked transaction
+  stage has failure/rollback evidence.
+- PostgreSQL evidence covered all roles, live mute/suspension and a concurrent
+  suspension writer, empty and near-limit `2N+2` mixed topic/reply batches,
+  separate-account nonserialization, process restart persistence, changed
+  configuration against existing state, insert rollback, cancellation, lock
+  timeout, and both atomic outcomes for an unknown commit acknowledgement.
+- Four deterministic membership cases proved grant and revocation with the
+  membership writer first and publication first. Publication observes exactly
+  the group set serialized by the user-row lock: a committed prior grant is
+  admitted, a committed prior revocation is denied, an in-flight later grant
+  cannot retroactively admit, and an in-flight later revocation cannot
+  retroactively deny.
+- `FOR NO KEY UPDATE` retains publication serialization with every non-key
+  account mutation while remaining compatible with foreign-key `KEY SHARE`;
+  the focused PostgreSQL case proved this removes the earlier needless lock
+  conflict without permitting group drift.
+- Edits and previews performed no publication counter work. Denied target,
+  malformed actor state, renderer failure, and rate rejection had no target or
+  counter side effect.
+
+Rejected candidates and repairs
+-------------------------------
+
+- Pass 1 rejected `631f3da` because the service inherited PostgreSQL's server
+  default isolation. `7b4f6f4` pins read committed explicitly.
+  Review SHA-256:
+  `16af4ab6e25edc65353a70481e4215c560c551d27d87014e15f66f8cfbb4d6ba`.
+- Pass 2 rejected `7b4f6f4` because Go's zero `time.Time` was treated as
+  invalid even though PostgreSQL year one is finite. `b3689d9` validates the
+  pgtype finite modifier instead and proves year one plus finite extremes.
+  Review SHA-256:
+  `c6516b4652e484bbfbfa1b189e634b68b33c8efa86de6fd5e0e8619aa03abd8a`.
+- Pass 3 rejected `b3689d9` because `FOR UPDATE` needlessly conflicted with
+  foreign-key key-share readers and could create a lock-order cycle with target
+  publication. `4964feb` narrows the lock to `FOR NO KEY UPDATE` and proves
+  coexistence. Review SHA-256:
+  `b9b30952f5e268156e6a33ecfd95d7b08cbc532e78f9407935b58281607a080d`.
+- Pass 4 rejected `f4d5df3` because the required membership lock-order,
+  restricted-role execution, and several schema/time edges remained prose
+  claims. `c71dd07` adds executable proof without changing production code.
+  Review SHA-256:
+  `05648a8d6c596df2166b8c3149932805f715ab4df64cf1f7fc155c68e8f51d59`.
+
+Non-gate invocation mistakes
+----------------------------
+
+- One integration invocation used the wrong variable name
+  `GOTTH_TEST_POSTGRES_URL`; tests failed closed because
+  `GOTTH_BB_TEST_DATABASE_URL` was absent. The exact command was corrected and
+  both serial and race suites passed.
+- The first successful race suite was accidentally started a second time while
+  its unified execution session was being polled. Both runs completed with
+  exit status zero. Only the later single final run is claimed as the gate.
+- A remote `make generate` attempt stopped at the pinned Node version check
+  because `development` has Node 26.5.1. Deterministic generation was therefore
+  performed only on the canonical local Node 26.7.0/npm 12.0.2 environment;
+  remote Go vet/tests used the already-attested exact generated tree.
+
+Boundary
+--------
+
+This evidence admits AN-05-02 only. It does not implement blocked-destination
+matching, progressive rejection routes/UI, integrated AN-05 admission, a PR or
+merge, a tag, a release, or a deployment.
