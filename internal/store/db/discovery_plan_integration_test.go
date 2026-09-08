@@ -31,15 +31,18 @@ const unreadPlanTestDatabase = "gotth_bb_an03_01_plan_test"
 
 const unreadAdmissionTestDatabase = "gotth_bb_an03_04_admission_test"
 
+const administrationAdmissionTestDatabase = "gotth_bb_an04_04_admission_test"
+
 type discoveryPlanPopulation struct {
-	database      string
-	topics        int64
-	posts         int64
-	postsPerTopic int64
-	postIDOffset  int64
-	timeout       time.Duration
-	admission     bool
-	unread        bool
+	database       string
+	topics         int64
+	posts          int64
+	postsPerTopic  int64
+	postIDOffset   int64
+	timeout        time.Duration
+	admission      bool
+	unread         bool
+	administration bool
 }
 
 func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
@@ -74,7 +77,7 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 	configured := adminConfig.Copy()
 	configured.Database = population.database
 	schemaFiles := fs.FS(migrations.Files())
-	if population.unread {
+	if population.unread && !population.administration {
 		schemaFiles = migrationPrefix(t, 8)
 	}
 	if err := migration.Apply(ctx, configured, schemaFiles); err != nil {
@@ -115,6 +118,9 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.area_groups (area_id, group_id, added_by) VALUES ($1, $2, $3)`, groupAreaID, groupID, ownerID); err != nil {
 		t.Fatal(err)
+	}
+	if population.administration {
+		populateAdministrationCheckpoint(t, ctx, connection, ownerID, authorID, groupID)
 	}
 	populationStart := time.Now()
 	if _, err := connection.Exec(ctx, `SET session_replication_role = replica`); err != nil {
@@ -180,6 +186,11 @@ WHERE topic_id = 3
    OR (topic_id = 6 AND post_number = $2)`, readerID, population.postsPerTopic); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if population.administration {
+		populateAdministrationReportsAndAudit(t, ctx, connection, ownerID, authorID, population.postIDOffset)
+		verifyAdministrationCheckpoint(t, ctx, connection, ownerID, population)
+		logAdministrationResourceSnapshot(t, ctx, connection, "administration-populated")
 	}
 	if _, err := connection.Exec(ctx, `SELECT
 setval(pg_get_serial_sequence('public.topics', 'id'), $1, true),
@@ -328,6 +339,9 @@ WHERE topic_id IN (3, 6)`, readerID, population.postsPerTopic).Scan(&ownOnly, &n
 			if population.admission {
 				runFirstUnreadPlanEvidence(t, ctx, connection, mode, deepUnreadTopicID, deepUnreadPostIDOffset, readerID, groupID)
 			}
+		}
+		if population.administration {
+			runAdministrationPlanEvidence(t, ctx, connection, mode, ownerID, authorID, groupAreaID)
 		}
 	}
 	if population.admission {
@@ -564,17 +578,181 @@ func planUsesCurrentPostRelation(node explainPlanNode) bool {
 	}) != nil
 }
 
+func populateAdministrationCheckpoint(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID, targetID, firstGroupID int64) {
+	t.Helper()
+	started := time.Now()
+	if _, err := connection.Exec(ctx, `INSERT INTO public.users (display_name, role, suspended_at, suspended_until)
+SELECT 'Admission Account ' || value,
+       CASE value % 100 WHEN 0 THEN 'moderator' WHEN 1 THEN 'administrator' ELSE 'member' END,
+       CASE WHEN value % 127 = 0 THEN '2026-01-01T00:00:00Z'::timestamptz END,
+       CASE WHEN value % 127 = 0 THEN '2027-01-01T00:00:00Z'::timestamptz END
+FROM generate_series(1, 24997) AS value`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.forum_groups (name, created_by)
+SELECT 'Admission Group ' || value, $1
+FROM generate_series(1, 24999) AS value`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.forum_group_members (group_id, user_id, granted_by)
+SELECT id, $1, $2 FROM public.forum_groups WHERE id % 2 = 0`, targetID, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.areas
+    (slug, name, description, display_order, visibility, posting_mode, created_by, updated_by)
+SELECT 'admission-area-' || value,
+       'Admission Area ' || value,
+       'Representative AN-04 administration checkpoint',
+       value + 3,
+       CASE value % 3 WHEN 0 THEN 'public' WHEN 1 THEN 'authenticated' ELSE 'groups' END,
+       CASE value % 5 WHEN 0 THEN 'archived' WHEN 1 THEN 'read_only' ELSE 'normal' END,
+       $1, $1
+FROM generate_series(1, 24997) AS value`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.area_groups (area_id, group_id, added_by)
+SELECT area.id, $1, $2
+FROM public.areas AS area
+WHERE area.visibility = 'groups'
+  AND NOT EXISTS (SELECT 1 FROM public.area_groups AS mapping WHERE mapping.area_id = area.id)`, firstGroupID, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `ANALYZE public.users; ANALYZE public.forum_groups; ANALYZE public.forum_group_members; ANALYZE public.areas; ANALYZE public.area_groups`); err != nil {
+		t.Fatal(err)
+	}
+	var users, groups, areas, mappings int64
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT count(*) FROM public.users),
+    (SELECT count(*) FROM public.forum_groups),
+    (SELECT count(*) FROM public.areas),
+    (SELECT count(*) FROM public.area_groups)`).Scan(&users, &groups, &areas, &mappings); err != nil {
+		t.Fatal(err)
+	}
+	if users != 25_000 || groups != 25_000 || areas != 25_000 || mappings == 0 {
+		t.Fatalf("administration checkpoint identities users=%d groups=%d areas=%d mappings=%d", users, groups, areas, mappings)
+	}
+	t.Logf("POPULATION administration users=%d groups=%d areas=%d mappings=%d duration=%s", users, groups, areas, mappings, time.Since(started))
+}
+
+func populateAdministrationReportsAndAudit(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID, targetID, postIDOffset int64) {
+	t.Helper()
+	if _, err := connection.Exec(ctx, `INSERT INTO public.reports
+    (reported_by, topic_id, post_id, user_id, reason, status, assigned_to, resolution, resolved_by, created_at, updated_at, resolved_at)
+VALUES
+    ($1, 1, NULL, NULL, 'open admission report', 'open', NULL, NULL, NULL, '2026-01-01T00:00:03Z', '2026-01-01T00:00:03Z', NULL),
+    ($1, NULL, $3 + 2, NULL, 'review admission report', 'in_review', $1, NULL, NULL, '2026-01-01T00:00:04Z', '2026-01-01T00:00:04Z', NULL),
+    ($1, NULL, NULL, $2, 'resolved admission report', 'resolved', $1, 'resolved', $1, '2026-01-01T00:00:05Z', '2026-01-01T00:00:06Z', '2026-01-01T00:00:06Z'),
+    ($1, 2, NULL, NULL, 'dismissed admission report', 'dismissed', $1, 'dismissed', $1, '2026-01-01T00:00:07Z', '2026-01-01T00:00:08Z', '2026-01-01T00:00:08Z')`, ownerID, targetID, postIDOffset); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.moderation_actions
+    (actor_kind, actor_user_id, target_type, target_report_id, action_type, reason, previous_state, resulting_state, request_id, created_at)
+SELECT 'forum_user', $1, 'report', report.id,
+       CASE report.status WHEN 'in_review' THEN 'assign_report' WHEN 'resolved' THEN 'resolve_report' ELSE 'dismiss_report' END,
+       CASE report.status WHEN 'in_review' THEN NULL ELSE report.status END,
+       jsonb_build_object('status', 'open'), jsonb_build_object('status', report.status),
+       ('00000000-0000-4000-8000-' || lpad(report.id::text, 12, '0'))::uuid,
+       report.updated_at
+FROM public.reports AS report
+WHERE report.status <> 'open'`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `ANALYZE public.reports; ANALYZE public.moderation_actions`); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func verifyAdministrationCheckpoint(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID int64, population discoveryPlanPopulation) {
+	t.Helper()
+	dashboard, err := New(connection).LoadAdministrationDashboard(ctx, ownerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dashboard.ActorPresent || dashboard.UsersTotal != 25_000 || dashboard.Topics != population.topics ||
+		dashboard.OpenReports != 1 || dashboard.InReviewReports != 1 || dashboard.Members+dashboard.Moderators+dashboard.Administrators != dashboard.UsersTotal {
+		t.Fatalf("administration dashboard checkpoint = %+v", dashboard)
+	}
+	var expectedPosts int64
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE deleted_at IS NULL AND redacted_at IS NULL`).Scan(&expectedPosts); err != nil {
+		t.Fatal(err)
+	}
+	if dashboard.Posts != expectedPosts {
+		t.Fatalf("administration dashboard posts=%d want=%d", dashboard.Posts, expectedPosts)
+	}
+	var states, audits int64
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT count(DISTINCT status) FROM public.reports),
+    (SELECT count(*) FROM public.moderation_actions WHERE target_type = 'report')`).Scan(&states, &audits); err != nil {
+		t.Fatal(err)
+	}
+	if states != 4 || audits != 3 {
+		t.Fatalf("administration report checkpoint states=%d audits=%d", states, audits)
+	}
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := New(connection).LoadAdministrationDashboard(canceled, ownerID); err == nil {
+		t.Fatal("canceled administration dashboard returned no error")
+	}
+	t.Logf("CHECKPOINT administration dashboard=%+v report_states=%d report_audits=%d cancellation=pass", dashboard, states, audits)
+}
+
+func runAdministrationPlanEvidence(t *testing.T, ctx context.Context, connection *pgx.Conn, mode string, ownerID, targetID, areaID int64) {
+	t.Helper()
+	observedAt := "2026-09-08T16:00:00Z"
+	accountPlan := explainPrepared(t, ctx, connection, "an04_accounts", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
+		fmt.Sprintf("'%s',%d,0,51", observedAt, ownerID), mode)
+	requireAdministrationPlan(t, mode, "accounts", accountPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Actual Rows":51`})
+	detailPlan := explainPrepared(t, ctx, connection, "an04_account_detail", "timestamptz,bigint,bigint", loadAccountForAdministration,
+		fmt.Sprintf("'%s',%d,%d", observedAt, ownerID, targetID), mode)
+	requireAdministrationPlan(t, mode, "account-detail", detailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`})
+	groupsPlan := explainPrepared(t, ctx, connection, "an04_groups", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
+		fmt.Sprintf("%d,'%s',0,51", ownerID, observedAt), mode)
+	requireAdministrationPlan(t, mode, "groups", groupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Actual Rows":51`})
+	membershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
+		fmt.Sprintf("%d,'%s',%d,0,51", ownerID, observedAt, targetID), mode)
+	requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `"Actual Loops":51`, `"Actual Rows":51`})
+	areaPlan := explainPrepared(t, ctx, connection, "an04_areas", "bigint,timestamptz,integer,bigint,integer", listAreasForAdministrationPage,
+		fmt.Sprintf("%d,'%s',0,0,51", ownerID, observedAt), mode)
+	requireAdministrationPlan(t, mode, "areas", areaPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Index Name":"areas_display_idx"`, `"Actual Rows":51`})
+	areaDetailPlan := explainPrepared(t, ctx, connection, "an04_area_detail", "bigint,timestamptz,bigint", loadAreaForAdministrationPage,
+		fmt.Sprintf("%d,'%s',%d", ownerID, observedAt, areaID), mode)
+	requireAdministrationPlan(t, mode, "area-detail", areaDetailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Index Name":"areas_pkey"`})
+	areaGroupsPlan := explainPrepared(t, ctx, connection, "an04_area_groups", "bigint,timestamptz,bigint,bigint,integer", listAreaGroupsForAdministrationPage,
+		fmt.Sprintf("%d,'%s',%d,0,51", ownerID, observedAt, areaID), mode)
+	requireAdministrationPlan(t, mode, "area-groups", areaGroupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"area_groups_pkey"`, `"Actual Loops":51`, `"Actual Rows":51`})
+	dashboardPlan := explainPrepared(t, ctx, connection, "an04_dashboard", "bigint", loadAdministrationDashboard, fmt.Sprintf("%d", ownerID), mode)
+	requireAdministrationPlan(t, mode, "dashboard", dashboardPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Relation Name":"topics"`, `"Relation Name":"posts"`, `"Relation Name":"reports"`})
+}
+
+func logAdministrationResourceSnapshot(t *testing.T, ctx context.Context, connection *pgx.Conn, label string) {
+	t.Helper()
+	var usersBytes, groupsBytes, areasBytes, reportsBytes, auditsBytes int64
+	if err := connection.QueryRow(ctx, `SELECT
+    pg_total_relation_size('public.users'),
+    pg_total_relation_size('public.forum_groups'),
+    pg_total_relation_size('public.areas'),
+    pg_total_relation_size('public.reports'),
+    pg_total_relation_size('public.moderation_actions')`).Scan(&usersBytes, &groupsBytes, &areasBytes, &reportsBytes, &auditsBytes); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("RESOURCE label=%s users_bytes=%d groups_bytes=%d areas_bytes=%d reports_bytes=%d audits_bytes=%d", label, usersBytes, groupsBytes, areasBytes, reportsBytes, auditsBytes)
+}
+
 func requestedDiscoveryPlanPopulation(t *testing.T) discoveryPlanPopulation {
 	t.Helper()
 	checkpoint := os.Getenv("GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE") == "1"
 	admission := os.Getenv("GOTTH_BB_RUN_AN02_ADMISSION_EVIDENCE") == "1"
 	unread := os.Getenv("GOTTH_BB_RUN_AN03_READ_PLAN_EVIDENCE") == "1"
 	unreadAdmission := os.Getenv("GOTTH_BB_RUN_AN03_ADMISSION_EVIDENCE") == "1"
-	if boolCount(checkpoint, admission, unread, unreadAdmission) > 1 {
+	administrationAdmission := os.Getenv("GOTTH_BB_RUN_AN04_ADMISSION_EVIDENCE") == "1"
+	if boolCount(checkpoint, admission, unread, unreadAdmission, administrationAdmission) > 1 {
 		t.Fatal("set only one discovery evidence mode")
 	}
-	if !checkpoint && !admission && !unread && !unreadAdmission {
+	if !checkpoint && !admission && !unread && !unreadAdmission && !administrationAdmission {
 		t.Skip("set exactly one plan evidence mode")
+	}
+	if administrationAdmission {
+		return discoveryPlanPopulation{database: administrationAdmissionTestDatabase, topics: 100_000, posts: 1_000_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 30 * time.Minute, admission: true, unread: true, administration: true}
 	}
 	if unreadAdmission {
 		return discoveryPlanPopulation{database: unreadAdmissionTestDatabase, topics: 100_000, posts: 1_000_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 25 * time.Minute, admission: true, unread: true}
