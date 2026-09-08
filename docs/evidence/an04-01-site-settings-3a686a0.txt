@@ -1,0 +1,100 @@
+AN-04-01 exact-candidate evidence
+================================
+
+Executable/methodology commit:
+  3a686a0cdef7fe6a3a22f1ae6c08d8f583c5a51a
+Tree:
+  b5971990019e11b337b4ead43963f1245611571c
+Admitted contract base:
+  e3cc342e90166e65a5a56b7ee89990a59dc966f9
+Bundle SHA-256:
+  18c523520c8faa7a66149933699787311f056e96501ce2e1b11454253d09944e
+
+Generation and static gates
+---------------------------
+
+Commands, from a detached clone of the exact bundle on the development host:
+
+  make generate
+  git diff --exit-code
+  test -z "$(git status --porcelain=v1)"
+  go vet -mod=readonly ./...
+
+Toolchain:
+  Node v26.7.0
+  npm 12.0.2
+  Go 1.26.6
+
+Result: PASS. Templ, sqlc, CSS, HTMX, and application-script generation
+produced zero tracked or untracked drift. The generated stylesheet filename is
+the exact lowercase SHA-256 of its bytes.
+
+Transcript SHA-256 values:
+  generation: 7068235c98be5849db2bb0db970bc94296213e09be2f2cce125aaf32460300d0
+  go vet: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+Repository-wide race/coverage gate
+----------------------------------
+
+Command:
+
+  go test -count=1 -mod=readonly -race -cover ./...
+
+Result: PASS. Representative coverage was 73.8% for internal/httpui, 63.6%
+for internal/site, 93.3% for internal/readiness, 96.6% for internal/store,
+94.9% for internal/releaseartifact, 99.6% for internal/migration, and 100.0%
+for migrations. The site percentage includes the separate readiness boundary;
+the changed validation helpers are fully covered and exact service/route
+failure cases are exercised directly.
+
+Transcript SHA-256:
+  d3bede238957a397aa32059dffc03f922817aeef753b594f16e91a120bf8d4c2
+
+PostgreSQL 17 integration/race gates
+------------------------------------
+
+Commands:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=1 -mod=readonly -race -cover -tags=integration ./...
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=5 -mod=readonly -race -cover -tags=integration \
+      -run '^TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized$' \
+      ./internal/site
+
+Result: PASS on PostgreSQL 17.10. Full integration coverage was 65.6% for
+internal/site, 100.0% for internal/readiness and internal/migration, 97.1% for
+internal/store, and 100.0% for migrations. The focused five-run gate passed
+under the race detector.
+
+The functional matrix covers fresh and upgrade migration 000010, exact
+catalog/state/privilege readiness, seeded presentation compatibility, closed
+themes, finite time and positive revisions, application and database input
+defenses, current renderer attestation, narrow runtime grants, successful
+audited settings mutation, digest-only audit state, no-op/stale conflict,
+concurrent same-revision writers, suspended administrator rejection, and
+rollback of failed state/audit work. Unit and HTTP gates additionally cover
+malformed persisted projections, actor-lock mismatch, unknown commit without
+retry, exact route/query/method preflight, session and header-CSRF body
+nonconsumption, 256-KiB form rejection, and strict duplicate/unknown fields.
+
+Transcript SHA-256 values:
+  full integration/race: 60db86d0279eb105c6cce9d732e168f46955d7e925c33d8b3aebc1658cd750cd
+  focused five-run race: 5b52ce5921888b953904aee58d7a357f2bd8dd2a3d4ef220fc89cfe17909a586
+
+Cold admission
+--------------
+
+Cold passes 1 and 2 rejected actor-lock/unknown-commit and route-boundary
+verification defects. Both were repaired. Fresh passes 3 and 4 are CLEAN on
+the exact executable/methodology commit and tree above.
+
+Scope statement
+---------------
+
+This candidate implements AN-04-01 only: migration 000010, exact readiness and
+runtime grants, dynamic full-document site presentation, public rules, and the
+audited site-settings transaction/route. It adds no account/role/group
+governance, administrator dashboard/counts, AN-04 integrated admission, PR,
+push, merge, tag, release, deployment, or AN-04-02 work.
