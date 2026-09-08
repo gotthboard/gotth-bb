@@ -63,6 +63,27 @@ async function submit(send, sessionId, selector, values) {
   })()`), true);
 }
 
+async function focusSubmit(send, sessionId, selector, values) {
+  assert.equal(await evaluate(send, sessionId, `(() => {
+    const form = document.querySelector(${JSON.stringify(selector)});
+    if (!form) throw new Error("form missing");
+    for (const [name, value] of Object.entries(${JSON.stringify(values)})) {
+      const field = form.elements.namedItem(name);
+      if (!field) throw new Error("field missing: " + name);
+      field.value = value;
+    }
+    const button = form.querySelector('button[type="submit"]:not([formaction])');
+    if (!button) throw new Error("publish button missing");
+    button.focus();
+    return document.activeElement === button;
+  })()`), true);
+}
+
+async function pressEnter(send, sessionId) {
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", text: "\r", unmodifiedText: "\r", windowsVirtualKeyCode: 13 }, sessionId);
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 }, sessionId);
+}
+
 test("abuse rejections preserve ordinary forms without JavaScript", async (t) => {
   const profile = await mkdtemp(join(tmpdir(), "gotth-bb-abuse-chromium-"));
   const browser = spawn(chromium, [
@@ -109,11 +130,13 @@ test("abuse rejections preserve ordinary forms without JavaScript", async (t) =>
   const blocked = "private <sentinel> [link](https://blocked.example/path)";
   await navigate(send, sessionId, `${root}/topics/new?area=news`, `!!document.querySelector('form[action$="/topics"]')`);
   assert.equal(await evaluate(send, sessionId, "typeof htmx"), "undefined");
-  await submit(send, sessionId, `form[action$="/topics"]`, { title: "Blocked", markdown: blocked });
+  await focusSubmit(send, sessionId, `form[action$="/topics"]`, { title: "Blocked", markdown: blocked });
+  await pressEnter(send, sessionId);
   await waitFor(send, sessionId, `document.body.textContent.includes("This draft contains a blocked link")`);
   assert.equal(await evaluate(send, sessionId, `document.querySelector('textarea[name="markdown"]').value`), blocked);
 
-  await submit(send, sessionId, `form[action$="/topics"]`, { title: "Rate", markdown: "retained rate draft" });
+  await focusSubmit(send, sessionId, `form[action$="/topics"]`, { title: "Rate", markdown: "retained rate draft" });
+  await pressEnter(send, sessionId);
   await waitFor(send, sessionId, `document.body.textContent.includes("Please wait before publishing again")`);
   assert.equal(await evaluate(send, sessionId, `document.querySelector('textarea[name="markdown"]').value`), "retained rate draft");
 
