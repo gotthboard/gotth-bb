@@ -45,7 +45,13 @@ async function waitFor(send, sessionId, expression) {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   const detail = lastError ? `; last evaluation failed: ${lastError.message}` : "";
-  throw new Error(`browser condition timed out: ${expression}${detail}`);
+  let state = "";
+  try {
+    state = JSON.stringify(await evaluate(send, sessionId, `({ href: location.href, body: document.body?.textContent?.replace(/\\s+/g, " ").trim().slice(0, 500) })`));
+  } catch (error) {
+    state = `unavailable: ${error.message}`;
+  }
+  throw new Error(`browser condition timed out: ${expression}${detail}; state=${state}`);
 }
 
 async function tabTo(send, sessionId, expression, label) {

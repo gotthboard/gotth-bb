@@ -256,7 +256,8 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	browser.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_ADMINISTRATION_BROWSER_URL="+target)
 	output, err := browser.CombinedOutput()
 	if err != nil {
-		t.Fatalf("administration Chromium evidence failed: %v\n%s", err, output)
+		t.Fatalf("administration Chromium evidence failed: %v group=%q group_revision=%d area_mode=%q area_revision=%d assigned=%t site=%q session_revoked=%t\n%s",
+			err, groupName.Load(), groupRevision.Load(), areaMode.Load(), areaRevision.Load(), areaAssigned.Load(), siteName.Load(), sessionRevoked.Load(), output)
 	}
 	if !changed.Load() {
 		t.Fatal("keyboard role form did not invoke the server mutation")
