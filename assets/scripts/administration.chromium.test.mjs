@@ -192,9 +192,9 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
 
   await navigate(send, sessionId, `${target}/groups`, "document.body.textContent.includes('Groups') && typeof htmx !== 'undefined'");
   await submitForm(send, sessionId, `form[action$="/admin/groups"]`, { name: "Browser Operators", reason: "Create browser group" });
-  await waitFor(send, sessionId, "document.body.textContent.includes('Browser Operators')");
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Browser Operators'");
   await submitForm(send, sessionId, `form[action$="/admin/groups/4"]`, { name: "Renamed Browser Operators", reason: "Rename browser group" });
-  await waitFor(send, sessionId, "document.body.textContent.includes('Renamed Browser Operators')");
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
 
   await navigate(send, sessionId, `${target}/areas/3`, "document.body.textContent.includes('General') && document.body.textContent.includes('Group access')");
   const areaSelector = `form[action$="/admin/areas/3"]`;
