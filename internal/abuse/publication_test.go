@@ -31,6 +31,7 @@ func TestDecidePublicationAppliesNewAndEstablishedLimits(t *testing.T) {
 	}{
 		{name: "new below", now: started.Add(time.Minute), count: 2, want: 3},
 		{name: "new full", now: started.Add(time.Minute), count: 3, limited: true},
+		{name: "new above configured limit", now: started.Add(time.Minute), count: 4, limited: true},
 		{name: "period equality established", now: created.Add(24 * time.Hour), count: 3, want: 4},
 		{name: "established below", now: created.Add(24*time.Hour + time.Minute), count: 9, want: 10},
 		{name: "established full", now: created.Add(24*time.Hour + time.Minute), count: 10, limited: true},
@@ -76,6 +77,11 @@ func TestDecidePublicationResetsAndHandlesBoundedClockRegression(t *testing.T) {
 	decision, err = policy.DecidePublication(created, now, &future, 10)
 	if err != nil || decision.RetryAfter != policy.window || decision.RetryAfterSeconds() != 600 {
 		t.Fatalf("bounded future at limit = (%+v, %v)", decision, err)
+	}
+	exactFuture := now.Add(policy.window)
+	decision, err = policy.DecidePublication(created, now, &exactFuture, 9)
+	if err != nil || decision.StartedAt != exactFuture || decision.Count != 10 || decision.RetryAfter != 0 {
+		t.Fatalf("exact-window future below limit = (%+v, %v)", decision, err)
 	}
 }
 

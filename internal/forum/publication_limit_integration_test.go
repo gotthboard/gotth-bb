@@ -15,11 +15,13 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/abuse"
+	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const publicationLimitTestDatabase = "gotth_bb_an05_02_publication_limit_test"
@@ -92,10 +94,21 @@ RETURNING id, ctid::text`).Scan(&upgradedID, &beforeCTID); err != nil {
 	}
 	_, checkErr := connections[0].Exec(ctx, `UPDATE public.users SET publication_count=1 WHERE id=$1`, upgradedID)
 	assertPublicationCheckViolation(t, checkErr)
+	for _, statement := range []string{
+		`UPDATE public.users SET publication_window_started_at=clock_timestamp(), publication_count=0 WHERE id=$1`,
+		`UPDATE public.users SET publication_window_started_at=clock_timestamp(), publication_count=-1 WHERE id=$1`,
+		`UPDATE public.users SET publication_window_started_at=clock_timestamp(), publication_count=100001 WHERE id=$1`,
+		`UPDATE public.users SET publication_window_started_at='-infinity', publication_count=1 WHERE id=$1`,
+	} {
+		_, checkErr = connections[0].Exec(ctx, statement, upgradedID)
+		assertPublicationCheckViolation(t, checkErr)
+	}
 	_, checkErr = connections[0].Exec(ctx, `UPDATE public.users SET publication_window_started_at='infinity', publication_count=1 WHERE id=$1`, upgradedID)
 	assertPublicationCheckViolation(t, checkErr)
-	_, checkErr = connections[0].Exec(ctx, `INSERT INTO public.users (display_name, created_at) VALUES ('Infinite creation', 'infinity')`)
-	assertPublicationCheckViolation(t, checkErr)
+	for _, timestamp := range []string{"infinity", "-infinity"} {
+		_, checkErr = connections[0].Exec(ctx, `INSERT INTO public.users (display_name, created_at) VALUES ('Infinite creation', $1::timestamptz)`, timestamp)
+		assertPublicationCheckViolation(t, checkErr)
+	}
 
 	var ownerID, newID, establishedID, mutedID int64
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
@@ -399,6 +412,153 @@ VALUES ('FK coexistence account', clock_timestamp() - interval '2 days', clock_t
 	}
 	assertPublicationTuple(t, ctx, connections[0], coexistID, 1)
 
+	var membershipGroupID, membershipID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Publication membership group', $1) RETURNING id`, ownerID).Scan(&membershipGroupID); err != nil {
+		t.Fatal(err)
+	}
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
+VALUES ('Publication membership account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&membershipID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.areas (slug, name, visibility, posting_mode, created_by, updated_by)
+VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.area_groups (area_id, group_id, added_by)
+	SELECT id, $1, $2 FROM public.areas WHERE slug='publication-group'`, membershipGroupID, ownerID); err != nil {
+		t.Fatal(err)
+	}
+	membershipActor := policy.AccessContext{Authenticated: true, UserID: membershipID, Role: policy.RoleMember}
+	administrator := policy.AccessContext{Authenticated: true, UserID: ownerID, Role: policy.RoleAdministrator}
+
+	// Membership-first grant: the administration service holds the user lock
+	// while blocked on the group row. Publication must wait, then observe the
+	// committed grant and succeed.
+	groupBlocker, err := connections[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groupBlocker.QueryRow(ctx, `SELECT id FROM public.forum_groups WHERE id=$1 FOR UPDATE`, membershipGroupID).Scan(&membershipGroupID); err != nil {
+		t.Fatal(err)
+	}
+	membershipResult := make(chan publicationMembershipChangeResult, 1)
+	go func() {
+		revision, changeErr := changePublicationMembership(ctx, connections[2], administrator, membershipID, membershipGroupID, true, 1, 21)
+		membershipResult <- publicationMembershipChangeResult{revision: revision, err: changeErr}
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
+	publicationResult := make(chan error, 1)
+	go func() {
+		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Membership-first grant", "body")
+		publicationResult <- publishErr
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
+	if err := groupBlocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if changed := <-membershipResult; changed.err != nil || changed.revision != 2 {
+		t.Fatalf("membership-first grant = (%d, %v)", changed.revision, changed.err)
+	}
+	if err := <-publicationResult; err != nil {
+		t.Fatalf("publication after membership-first grant = %v", err)
+	}
+
+	// Membership-first revoke: publication waits on the same user lock, then
+	// must observe the committed revocation and fail without spending capacity.
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET publication_window_started_at=NULL, publication_count=0 WHERE id=$1`, membershipID); err != nil {
+		t.Fatal(err)
+	}
+	groupBlocker, err = connections[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groupBlocker.QueryRow(ctx, `SELECT id FROM public.forum_groups WHERE id=$1 FOR UPDATE`, membershipGroupID).Scan(&membershipGroupID); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		revision, changeErr := changePublicationMembership(ctx, connections[2], administrator, membershipID, membershipGroupID, false, 2, 22)
+		membershipResult <- publicationMembershipChangeResult{revision: revision, err: changeErr}
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
+	go func() {
+		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Membership-first revoke", "body")
+		publicationResult <- publishErr
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
+	if err := groupBlocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if changed := <-membershipResult; changed.err != nil || changed.revision != 3 {
+		t.Fatalf("membership-first revoke = (%d, %v)", changed.revision, changed.err)
+	}
+	if err := <-publicationResult; !errors.Is(err, ErrPublishingDenied) {
+		t.Fatalf("publication after membership-first revoke = %v", err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], membershipID, 0)
+
+	// Publication-first grant: hold the area row after publication has locked
+	// and loaded the actor. The grant waits on the actor row; publication must
+	// use the earlier absent membership and deny before the grant commits.
+	areaBlocker, err := connections[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var membershipAreaID int64
+	if err := areaBlocker.QueryRow(ctx, `SELECT id FROM public.areas WHERE slug='publication-group' FOR UPDATE`).Scan(&membershipAreaID); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Publication-first grant", "body")
+		publicationResult <- publishErr
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
+	go func() {
+		revision, changeErr := changePublicationMembership(ctx, connections[2], administrator, membershipID, membershipGroupID, true, 3, 23)
+		membershipResult <- publicationMembershipChangeResult{revision: revision, err: changeErr}
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
+	if err := areaBlocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-publicationResult; !errors.Is(err, ErrPublishingDenied) {
+		t.Fatalf("publication-first absent membership = %v", err)
+	}
+	if changed := <-membershipResult; changed.err != nil || changed.revision != 4 {
+		t.Fatalf("publication-first grant = (%d, %v)", changed.revision, changed.err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], membershipID, 0)
+
+	// Publication-first revoke: publication has loaded the committed grant and
+	// holds the user lock. Revocation waits, so publication succeeds before the
+	// membership change commits.
+	areaBlocker, err = connections[0].Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := areaBlocker.QueryRow(ctx, `SELECT id FROM public.areas WHERE id=$1 FOR UPDATE`, membershipAreaID).Scan(&membershipAreaID); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Publication-first revoke", "body")
+		publicationResult <- publishErr
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
+	go func() {
+		revision, changeErr := changePublicationMembership(ctx, connections[2], administrator, membershipID, membershipGroupID, false, 4, 24)
+		membershipResult <- publicationMembershipChangeResult{revision: revision, err: changeErr}
+	}()
+	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
+	if err := areaBlocker.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-publicationResult; err != nil {
+		t.Fatalf("publication-first present membership = %v", err)
+	}
+	if changed := <-membershipResult; changed.err != nil || changed.revision != 5 {
+		t.Fatalf("publication-first revoke = (%d, %v)", changed.revision, changed.err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], membershipID, 1)
+
 	var canceledID int64
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
 VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&canceledID); err != nil {
@@ -471,6 +631,30 @@ func runConcurrentPublicationBatch(t *testing.T, ctx context.Context, config *pg
 		}
 	}
 	return succeeded, limited
+}
+
+type publicationMembershipChangeResult struct {
+	revision int64
+	err      error
+}
+
+func changePublicationMembership(ctx context.Context, connection *pgx.Conn, administrator policy.AccessContext, userID, groupID int64, grant bool, revision int64, requestByte byte) (int64, error) {
+	result, err := administration.ChangeGroupMembership(
+		ctx,
+		connection,
+		func() time.Time { return time.Now().UTC() },
+		administrator,
+		userID,
+		groupID,
+		grant,
+		"Prove publication membership serialization",
+		revision,
+		pgtype.UUID{Bytes: [16]byte{requestByte}, Valid: true},
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.Revision, nil
 }
 
 func waitForPublicationLock(t *testing.T, ctx context.Context, observer *pgx.Conn, backendPID int32) {

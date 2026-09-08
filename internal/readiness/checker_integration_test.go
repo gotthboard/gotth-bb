@@ -211,6 +211,33 @@ WHERE namespace.nspname = 'public' AND search_state.relname = 'search_projection
 	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("restricted Check() rejected exact release after packaged grant: %v", err)
 	}
+	allowed, err := restricted.Exec(ctx, `UPDATE public.users
+SET publication_window_started_at=created_at, publication_count=1
+WHERE display_name='Readiness Administrator'`)
+	if err != nil || allowed.RowsAffected() != 1 {
+		t.Fatalf("runtime publication-column update = (%s, %v)", allowed, err)
+	}
+	allowed, err = restricted.Exec(ctx, `UPDATE public.users
+SET publication_window_started_at=NULL, publication_count=0
+WHERE display_name='Readiness Administrator'`)
+	if err != nil || allowed.RowsAffected() != 1 {
+		t.Fatalf("runtime publication-column reset = (%s, %v)", allowed, err)
+	}
+	for _, denied := range []struct {
+		name      string
+		statement string
+	}{
+		{name: "unrelated column", statement: `UPDATE public.users SET display_name=display_name WHERE display_name='Readiness Administrator'`},
+		{name: "account creation time", statement: `UPDATE public.users SET created_at=created_at WHERE display_name='Readiness Administrator'`},
+		{name: "account insert", statement: `INSERT INTO public.users (display_name) VALUES ('Forbidden runtime insert')`},
+		{name: "account delete", statement: `DELETE FROM public.users WHERE display_name='Readiness Administrator'`},
+	} {
+		_, deniedErr := restricted.Exec(ctx, denied.statement)
+		postgresError = nil
+		if !errors.As(deniedErr, &postgresError) || postgresError.Code != "42501" {
+			t.Fatalf("runtime %s error = %v, want SQLSTATE 42501", denied.name, deniedErr)
+		}
+	}
 	if _, err := connection.Exec(ctx, `GRANT UPDATE (display_name) ON public.users TO `+roleIdentifier); err != nil {
 		t.Fatalf("widen runtime user-column authority: %v", err)
 	}
