@@ -740,6 +740,48 @@ entry gate for the first test-user build.
   record after confirmation.
 - **Dependency/worktree:** B1-04 merged; release is built from merged `main`.
 
+### B1-06: Beta.1 narrow-screen search corrective release
+
+- **Problem and outcome:** the first live Beta.1 accessibility pass found that
+  the search date filters forced two columns below the `sm` breakpoint and
+  overflowed a 320 CSS-pixel viewport. Preserve the failed published release
+  identity and ship one traceable corrective Beta.1 artifact whose filters
+  stack on narrow screens.
+- **Requirements:** Beta responsive/reflow acceptance, immutable release
+  identity, guarded delivery, deployment smoke, and owner-confirmation rules.
+- **In scope:** the one responsive-class correction; exact content-addressed
+  stylesheet regeneration and route inventory; a browser-through-Caddy
+  negative control on `1.0.0-beta.1` and positive checks at both supported base
+  paths; deterministic generation, vet, repository-wide race/coverage,
+  PostgreSQL 17 integration/race, two fresh CLEAN reviews, guarded merge and
+  mirror; annotated `1.0.0-beta.1.1` tag; byte-identical package/image rebuild;
+  application-only replacement; live reflow/smoke; owner confirmation.
+- **Out of scope:** rewriting or deleting `1.0.0-beta.1`, schema or grant
+  changes, unrestricted enrollment, production/stable claims, RC.1, or feature
+  work unrelated to this demonstrated defect.
+- **Trust and permission:** existing designated-user, Caddy identity,
+  Authentik, secret-file, nonroot, read-only, and capability boundaries remain
+  unchanged. The successor tag and deployment use the already-authorized
+  Beta.1 release scope without widening access.
+- **Data and migration:** none; PostgreSQL remains at migration head 000011 and
+  the existing container and durable mount retain identity.
+- **Failure and retry:** any positive-control failure, reproducibility mismatch,
+  review finding, remote divergence, smoke failure, or owner rejection withholds
+  known-good status. `1.0.0-beta.1` remains immutable failed evidence. Before
+  replacement, the existing application remains running; after replacement,
+  the schema-compatible prior image is the bounded application rollback target.
+- **Acceptance:** the old tree fails the exact regression gate, the repaired
+  tree passes it and all affected admission gates, two fresh reviews are CLEAN,
+  remotes/tag/artifacts resolve to one commit, live smoke and reflow pass, and
+  the owner answer is recorded before known-good status.
+- **Rollback/recovery:** exact prior Beta.1 image/configuration and retained
+  backups; application-only rollback because this correction has no data change.
+- **Evidence:** `docs/evidence/beta1-06-mobile-search-<commit>.txt`, corrective
+  release record, and known-good record after confirmation.
+- **Dependency/worktree:** B1-05 produced the immutable failed Beta.1 candidate;
+  corrective work uses `feature/beta-1-mobile-search-repair` and stops before
+  RC.1.
+
 Beta.1 adds no new product feature beyond repairing a demonstrated version 1.0
 gap. Scheduled/off-host backup retention, alert routing, final dependency and
 license review, migration freeze, production deployment, and stable operator

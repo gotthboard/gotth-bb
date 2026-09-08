@@ -813,6 +813,23 @@ described as disaster recovery.
 - [ ] Release record and known limitations published.
 - [ ] Owner confirms the real workflow before known-good is recorded.
 
+### 18.2 Beta.1 corrective successor
+
+If a defect is found after `1.0.0-beta.1` is published but before owner
+confirmation, do not rewrite or delete the tag. A correction that remains
+inside the admitted Beta.1 product and trust boundary uses the next canonical
+SemVer identity `1.0.0-beta.1.1`. Its record must name `1.0.0-beta.1` as a
+failed candidate, demonstrate a negative control on the failed tree and a
+positive control on the repair, pass the affected admission gates and two fresh
+cold reviews, then use a guarded merge and annotated successor tag.
+
+When the correction has no data or permission change, deployment replaces only
+the application container, preserves PostgreSQL/Caddy/configuration identity,
+retains the failed image and backups, and repeats exact artifact identity,
+hardening, Caddy, smoke, log-redaction, and affected browser/accessibility
+checks. The corrective successor still requires affirmative owner confirmation
+before it becomes known-good. This procedure does not admit RC.1 or stable work.
+
 ## 19. Operational decisions
 
 The active Alpha.2 deployment resolves the following Beta baseline without
