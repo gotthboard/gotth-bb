@@ -142,6 +142,9 @@ func ChangeUserSuspension(
 		if suspend == currentlySuspended {
 			return ErrUserModerationConflict
 		}
+		if target.AdministrationRevision == int64(^uint64(0)>>1) {
+			return ErrUserModerationConflict
+		}
 		if suspend && target.Role == "administrator" {
 			administrators, countErr := queries.CountActiveAdministrators(mutationContext, observedAt)
 			if countErr != nil {
@@ -223,7 +226,6 @@ func validSuspensionReason(reason string) bool {
 // and auxiliary space is tight Theta(1).
 func validSuspensionTarget(target db.LockUserForSuspensionRow, expectedID int64) bool {
 	if target.ID != expectedID || target.ID <= 0 || !validUserRole(target.Role) || target.AdministrationRevision <= 0 ||
-		target.AdministrationRevision == int64(^uint64(0)>>1) ||
 		!finiteTimestamp(target.CreatedAt) || !finiteTimestamp(target.UpdatedAt) ||
 		target.UpdatedAt.Time.Before(target.CreatedAt.Time) ||
 		target.MutedUntil.Valid && (!finiteTimestamp(target.MutedUntil) || !target.MutedUntil.Time.After(target.CreatedAt.Time)) {
