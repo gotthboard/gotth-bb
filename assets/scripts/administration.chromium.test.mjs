@@ -71,6 +71,27 @@ async function assertVisibleFocus(send, sessionId) {
   assert.notEqual(focus.width, "0px");
 }
 
+async function navigate(send, sessionId, url, condition) {
+  await send("Page.navigate", { url }, sessionId);
+  await waitFor(send, sessionId, `document.readyState === 'complete' && (${condition})`);
+}
+
+async function submitForm(send, sessionId, selector, values) {
+  const expression = `(() => {
+    const form = document.querySelector(${JSON.stringify(selector)});
+    if (!form) throw new Error("form not found: " + ${JSON.stringify(selector)});
+    for (const [name, value] of Object.entries(${JSON.stringify(values)})) {
+      const field = form.elements.namedItem(name);
+      if (!field) throw new Error("field not found: " + name);
+      field.value = value;
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    form.requestSubmit();
+    return true;
+  })()`;
+  assert.equal(await evaluate(send, sessionId, expression), true);
+}
+
 test("administration remains keyboard operable without JavaScript", async (t) => {
   const profile = await mkdtemp(join(tmpdir(), "gotth-bb-administration-chromium-"));
   const browser = spawn(chromium, [
@@ -142,4 +163,59 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await assertVisibleFocus(send, sessionId);
   await pressEnter(send, sessionId);
   await waitFor(send, sessionId, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Updated Member')");
+
+  await send("Emulation.setScriptExecutionDisabled", { value: false }, sessionId);
+  const root = target.replace(/\/admin$/, "");
+
+  await navigate(send, sessionId, `${root}/__test/empty`, "location.pathname.endsWith('/admin') && document.body.textContent.includes('Board administration')");
+  assert.equal(await evaluate(send, sessionId, `(() => {
+    const metrics = Object.fromEntries([...document.querySelectorAll("dl > div")].map((node) => [node.querySelector("dt").textContent.trim(), node.querySelector("dd").textContent.trim()]));
+    return metrics.Accounts === "0" && metrics.Topics === "0" && metrics["Visible posts"] === "0";
+  })()`), true);
+
+  await navigate(send, sessionId, `${root}/__test/populated`, "location.pathname.endsWith('/admin') && document.body.textContent.includes('52')");
+  await send("Emulation.setDeviceMetricsOverride", { width: 375, height: 667, deviceScaleFactor: 1, mobile: true }, sessionId);
+  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true);
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
+  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true);
+
+  await navigate(send, sessionId, `${target}/accounts`, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next accounts')");
+  assert.equal(await evaluate(send, sessionId, "[...document.querySelectorAll('main a')].some((link) => link.textContent.trim() === 'Local Member')"), true);
+  assert.equal(await evaluate(send, sessionId, `(() => { const link = [...document.querySelectorAll("main a")].find((node) => node.textContent.trim() === "Next accounts"); link.click(); return true; })()`), true);
+  await waitFor(send, sessionId, "location.search === '?after=51' && document.body.textContent.includes('Continuation Account')");
+
+  await navigate(send, sessionId, `${target}/groups`, "document.body.textContent.includes('Groups') && typeof htmx !== 'undefined'");
+  await submitForm(send, sessionId, `form[action$="/admin/groups"]`, { name: "Browser Operators", reason: "Create browser group" });
+  await waitFor(send, sessionId, "document.body.textContent.includes('Browser Operators')");
+  await submitForm(send, sessionId, `form[action$="/admin/groups/4"]`, { name: "Renamed Browser Operators", reason: "Rename browser group" });
+  await waitFor(send, sessionId, "document.body.textContent.includes('Renamed Browser Operators')");
+
+  await navigate(send, sessionId, `${target}/areas/3`, "document.body.textContent.includes('General') && document.body.textContent.includes('Group access')");
+  const areaSelector = `form[action$="/admin/areas/3"]`;
+  const areaValues = { name: "General", description: "Browser area", display_order: "3", visibility: "groups", initial_group_id: "4", reason: "Change browser area" };
+  await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "archived" });
+  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'archived'");
+  await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "normal" });
+  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'normal'");
+
+  const areaGroupSelector = `form[action$="/admin/areas/3/groups/4"]`;
+  await submitForm(send, sessionId, areaGroupSelector, { reason: "Revoke browser area access" });
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Grant'");
+  await submitForm(send, sessionId, areaGroupSelector, { reason: "Grant browser area access" });
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Revoke'");
+
+  await navigate(send, sessionId, `${target}/settings`, "document.body.textContent.includes('Site settings')");
+  await submitForm(send, sessionId, `form[action$="/admin/settings"]`, {
+    site_name: "Updated Browser Board",
+    site_description: "Updated browser description",
+    brand_theme: "rose",
+    rules_markdown: "# Updated browser rules",
+    reason: "Update browser presentation",
+  });
+  await waitFor(send, sessionId, "document.body.textContent.includes('Updated Browser Board') && document.documentElement.dataset.brandTheme === 'rose'");
+  await navigate(send, sessionId, `${root}/rules`, "document.body.textContent.includes('Updated browser rules') && document.body.textContent.includes('Updated Browser Board')");
+
+  await navigate(send, sessionId, `${target}/accounts/1`, "document.body.textContent.includes('Browser Administrator')");
+  await submitForm(send, sessionId, `form[action$="/admin/accounts/1/role"]`, { role: "member", reason: "Revoke browser session" });
+  await waitFor(send, sessionId, "location.pathname.endsWith('/login')");
 });
