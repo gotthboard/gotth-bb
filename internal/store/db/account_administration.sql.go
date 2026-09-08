@@ -253,6 +253,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > $2::timestamptz
           OR forum_user.suspended_until <= $2::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), target AS MATERIALIZED (
     SELECT forum_user.id
     FROM actor
@@ -342,6 +343,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > $1::timestamptz
           OR forum_user.suspended_until <= $1::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $1::timestamptz)
 ), account AS MATERIALIZED (
     SELECT target.id, target.display_name, target.role,
            target.suspended_at, target.suspended_until,
@@ -435,6 +437,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > $2::timestamptz
           OR forum_user.suspended_until <= $2::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), candidate AS MATERIALIZED (
     SELECT forum_group.id, forum_group.name, forum_group.created_at,
            forum_group.updated_at, forum_group.administration_revision
@@ -517,6 +520,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > $1::timestamptz
           OR forum_user.suspended_until <= $1::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $1::timestamptz)
 ), target AS MATERIALIZED (
     SELECT forum_user.id, forum_user.display_name, forum_user.role,
            forum_user.suspended_at, forum_user.suspended_until,

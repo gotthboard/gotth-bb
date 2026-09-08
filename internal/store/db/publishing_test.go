@@ -151,6 +151,8 @@ func (row publishingRow) Scan(destinations ...any) error {
 	}
 	for index, value := range row.values {
 		switch destination := destinations[index].(type) {
+		case *bool:
+			*destination = value.(bool)
 		case *int64:
 			*destination = value.(int64)
 		case *int32:

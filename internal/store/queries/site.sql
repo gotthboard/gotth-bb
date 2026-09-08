@@ -20,6 +20,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
           OR forum_user.suspended_until <= sqlc.arg(observed_at)::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= sqlc.arg(observed_at)::timestamptz)
 )
 SELECT (settings.singleton IS TRUE)::boolean AS settings_present,
        COALESCE(settings.site_name, '')::text AS site_name,
@@ -53,6 +54,7 @@ WHERE forum_user.id = sqlc.arg(actor_user_id)
       OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
       OR forum_user.suspended_until <= sqlc.arg(observed_at)::timestamptz
   )
+  AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= sqlc.arg(observed_at)::timestamptz)
 FOR UPDATE OF forum_user;
 
 -- name: LockSiteSettings :one

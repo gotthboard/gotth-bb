@@ -24,7 +24,7 @@ func TestAccountAdministrationProjectionQueriesFenceAuthorityAndBindLimits(t *te
 				_, err := queries.ListAccountsForAdministration(context.Background(), ListAccountsForAdministrationParams{ObservedAt: observedAt, ActorUserID: 7, AfterUserID: 50, PageLimit: 51})
 				return err
 			},
-			required: []string{"actor AS MATERIALIZED", "JOIN LATERAL", "FROM actor", "ORDER BY forum_user.id", "LIMIT $4", "LEFT JOIN account ON true"},
+			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $1", "JOIN LATERAL", "FROM actor", "ORDER BY forum_user.id", "LIMIT $4", "LEFT JOIN account ON true"},
 		},
 		{
 			name: "account groups", wantArgs: []any{int64(7), observedAt, int64(41), int64(50), int32(51)},
@@ -32,7 +32,15 @@ func TestAccountAdministrationProjectionQueriesFenceAuthorityAndBindLimits(t *te
 				_, err := queries.ListAccountGroupsForAdministration(context.Background(), ListAccountGroupsForAdministrationParams{ActorUserID: 7, ObservedAt: observedAt, TargetUserID: 41, AfterGroupID: 50, PageLimit: 51})
 				return err
 			},
-			required: []string{"actor AS MATERIALIZED", "target AS MATERIALIZED", "FROM target", "JOIN LATERAL", "LIMIT $5", "membership.user_id = target.id"},
+			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "target AS MATERIALIZED", "FROM target", "JOIN LATERAL", "LIMIT $5", "membership.user_id = target.id"},
+		},
+		{
+			name: "account detail", wantArgs: []any{observedAt, int64(7), int64(41)},
+			invoke: func(queries *Queries) error {
+				_, err := queries.LoadAccountForAdministration(context.Background(), LoadAccountForAdministrationParams{ObservedAt: observedAt, ActorUserID: 7, TargetUserID: 41})
+				return err
+			},
+			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $1", "target AS MATERIALIZED", "FROM actor", "forum_user.id = $3", "LEFT JOIN target ON true"},
 		},
 		{
 			name: "groups", wantArgs: []any{int64(7), observedAt, int64(50), int32(51)},
@@ -40,13 +48,18 @@ func TestAccountAdministrationProjectionQueriesFenceAuthorityAndBindLimits(t *te
 				_, err := queries.ListGroupsForAdministration(context.Background(), ListGroupsForAdministrationParams{ActorUserID: 7, ObservedAt: observedAt, AfterGroupID: 50, PageLimit: 51})
 				return err
 			},
-			required: []string{"actor AS MATERIALIZED", "FROM actor", "JOIN LATERAL", "ORDER BY group_row.id", "LIMIT $4"},
+			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "FROM actor", "JOIN LATERAL", "ORDER BY group_row.id", "LIMIT $4"},
 		},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			database := &publishingDBTX{rows: &publishingRows{}}
+			database := &publishingDBTX{
+				rows: &publishingRows{},
+				row: publishingRow{values: []any{
+					true, int64(41), "Account", "member", false, observedAt, observedAt, int64(1),
+				}},
+			}
 			if err := test.invoke(New(database)); err != nil || !reflect.DeepEqual(database.args, test.wantArgs) {
 				t.Fatalf("projection query = (error %v, args %#v)", err, database.args)
 			}

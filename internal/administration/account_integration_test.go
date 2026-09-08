@@ -200,6 +200,9 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); er
 	if _, err := CreateGroup(ctx, connections[0], func() time.Time { return observedAt.Add(7 * time.Second) }, actor, "Denied Group", "Reject muted administrator", testAdministrationRequestID(14)); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("muted administrator CreateGroup() error = %v", err)
 	}
+	if _, err := ListAccounts(ctx, querier, actor, observedAt.Add(7*time.Second), 0); !errors.Is(err, ErrAccountAdministrationDenied) {
+		t.Fatalf("muted administrator ListAccounts() error = %v", err)
+	}
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = NULL WHERE id = $1`, actorID); err != nil {
 		t.Fatalf("unmute restricted-runtime actor: %v", err)
 	}

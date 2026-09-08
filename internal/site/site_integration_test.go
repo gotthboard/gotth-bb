@@ -13,6 +13,7 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -167,8 +168,14 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 	if successes != 1 || conflicts != 1 {
 		t.Fatalf("concurrent results = (%d success, %d conflict)", successes, conflicts)
 	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = $2 WHERE id = $1`, actorID, observedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("mute administrator: %v", err)
+	}
+	if _, err := LoadEditable(ctx, db.New(connections[0]), actor, observedAt.Add(3*time.Second)); !errors.Is(err, ErrDenied) {
+		t.Fatalf("muted administrator LoadEditable() error = %v, want denied", err)
+	}
 
-	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET suspended_at = $2, suspended_until = $3, suspension_reason = 'Readiness test suspension' WHERE id = $1`, actorID, observedAt.Add(time.Second), observedAt.Add(time.Hour)); err != nil {
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = NULL, suspended_at = $2, suspended_until = $3, suspension_reason = 'Readiness test suspension' WHERE id = $1`, actorID, observedAt.Add(time.Second), observedAt.Add(time.Hour)); err != nil {
 		t.Fatalf("suspend administrator: %v", err)
 	}
 	deniedInput := inputs[0]

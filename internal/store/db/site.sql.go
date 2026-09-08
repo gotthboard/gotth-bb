@@ -40,6 +40,7 @@ WITH actor AS MATERIALIZED (
           OR forum_user.suspended_at > $2::timestamptz
           OR forum_user.suspended_until <= $2::timestamptz
       )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 )
 SELECT (settings.singleton IS TRUE)::boolean AS settings_present,
        COALESCE(settings.site_name, '')::text AS site_name,
@@ -186,6 +187,7 @@ WHERE forum_user.id = $1
       OR forum_user.suspended_at > $2::timestamptz
       OR forum_user.suspended_until <= $2::timestamptz
   )
+  AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 FOR UPDATE OF forum_user
 `
 
