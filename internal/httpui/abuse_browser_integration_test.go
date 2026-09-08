@@ -5,6 +5,7 @@ package httpui
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,7 +112,16 @@ func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 		t.Fatalf("construct settings handler: %v", err)
 	}
 	token := validCSRFTokenForTest(0x51)
+	sessionCookie, err := newSessionCookie(
+		"gotth_bb_session", builder, true,
+		base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x52}, sessionCookieTokenBytes)),
+		time.Date(2026, time.September, 9, 0, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("construct browser session cookie: %v", err)
+	}
 	application := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		http.SetCookie(response, &sessionCookie)
 		identityMutex.Lock()
 		identityRequests++
 		if forwarded := request.Header.Values("X-Forwarded-For"); len(forwarded) != 1 || forwarded[0] != "127.0.0.1" || len(request.Header.Values("Forwarded")) != 0 || len(request.Header.Values("X-Real-IP")) != 0 {
@@ -170,7 +180,7 @@ func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 		t.Fatalf("start Caddy: %v", err)
 	}
 	defer func() { cancelCaddy(); _ = command.Wait() }()
-	waitForAbuseCaddy(t, publicBase+"/topics/new?area=news", &caddyLog)
+	waitForAbuseCaddy(t, publicBase+"/topics/new?area=news", basePath, &caddyLog)
 
 	browser := exec.Command(node, "--test", filepath.Join("..", "..", "assets", "scripts", "abuse-rejection.chromium.test.mjs"))
 	browser.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_ABUSE_BROWSER_URL="+publicBase)
@@ -278,7 +288,7 @@ func (observer *browserAbuseObserver) snapshot() []abuse.Event {
 	return append([]abuse.Event(nil), observer.events...)
 }
 
-func waitForAbuseCaddy(t *testing.T, target string, log *bytes.Buffer) {
+func waitForAbuseCaddy(t *testing.T, target, basePath string, log *bytes.Buffer) {
 	t.Helper()
 	client := &http.Client{Timeout: 250 * time.Millisecond}
 	deadline := time.Now().Add(5 * time.Second)
@@ -286,13 +296,27 @@ func waitForAbuseCaddy(t *testing.T, target string, log *bytes.Buffer) {
 		response, err := client.Get(target)
 		if err == nil {
 			_ = response.Body.Close()
-			if response.StatusCode == http.StatusOK && strings.Contains(response.Header.Get("Cache-Control"), "no-store") && hasBetaBrowserSecurityHeaders(response.Header) {
+			if response.StatusCode == http.StatusOK && strings.Contains(response.Header.Get("Cache-Control"), "no-store") && hasBetaBrowserSecurityHeaders(response.Header) && hasBetaSessionCookie(response, basePath) {
 				return
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("Caddy did not serve abuse route: %s", log.String())
+}
+
+func hasBetaSessionCookie(response *http.Response, basePath string) bool {
+	wantPath := "/"
+	if basePath != "" {
+		wantPath = basePath
+	}
+	for _, cookie := range response.Cookies() {
+		if cookie.Name == "gotth_bb_session" {
+			return cookie.Value != "" && cookie.Path == wantPath && cookie.Domain == "" &&
+				cookie.HttpOnly && cookie.Secure && cookie.SameSite == http.SameSiteLaxMode && !cookie.Expires.IsZero()
+		}
+	}
+	return false
 }
 
 func hasBetaBrowserSecurityHeaders(header http.Header) bool {
