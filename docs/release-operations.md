@@ -238,8 +238,8 @@ notes, screenshots, or repository files.
   partial index, including `author_id`, scans `posts` and can block writers; its
   finite-time constraint validation scans `topic_reads`. Both are measured
   maintenance work even though no row backfill or rewrite occurs. A legacy
-  nonfinite `read_at` aborts
-  the entire migration and leaves the ledger at 000008; inspect and apply a
+  nonfinite `read_at` aborts the entire migration and leaves the ledger at
+  000008; inspect and apply a
   reviewed forward repair before retrying rather than deleting or inventing
   marker state.
 - Connections require the deployment's approved transport protection.
@@ -412,8 +412,8 @@ required sequence is:
    AN-03 migration 000009 then adds and validates the finite `read_at` check
    and builds the regular partial visible-post index with included `author_id`.
    It performs no read-state backfill, cursor phase, or custom completion step.
-   Keep the application
-   stopped while the ordinary migration transaction scans the relations and
+   Keep the application stopped while the ordinary migration transaction scans
+   the relations and
    holds its schema/index locks; record elapsed time, locks, buffers, relation
    sizes, and I/O. A failed transaction leaves neither change in the migration
    ledger. A legacy `infinity` or `-infinity` value therefore fails closed at

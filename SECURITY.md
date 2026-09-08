@@ -41,8 +41,9 @@ personalized unread field or anonymous tracking row, and marker state dormant
 behind revoked access cannot restore that access.
 
 Safe reads and every publication path write no markers. A current signed-in
-user's CSRF-protected mark-read POST is the only mutation; the server selects a
-watermark from currently eligible posts by other authors and uses `GREATEST`.
+user's CSRF-protected mark-read POST is the only read-workflow mutation; the
+server selects a watermark from currently eligible posts by other authors and
+uses `GREATEST`. Existing hard-delete foreign-key cascades still remove rows.
 Suspension preserves the existing fail-closed session invalidation boundary;
 the stored marker becomes unavailable and public reads use visitor semantics.
 Mute does not hide read state while the session retains direct read access.

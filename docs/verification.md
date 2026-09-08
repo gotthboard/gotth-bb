@@ -810,12 +810,13 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
 - canonical path and no-query grammars before session/body/database work,
   login/revalidation behavior, exactly one body-free `X-CSRF-Token` header or
   exactly one `_csrf` URL-encoded field and no other body field, fixed
-  `400`/`404`/`503`, base-path URLs, and ordinary/HTMX response equivalence
-  without echoing IDs or state;
+  `400`/`403`/`404`/`503`, base-path URLs, mark-read ordinary empty 303 and HTMX
+  empty 204 `HX-Location` equivalence, and no echoed IDs or state;
 - first unread at the root, equal-time/number boundaries, deleted/redacted
   gaps, tombstone ancestors, staff tree shape, page 1, page 10,000, the 250,001
   direct-post fallback, no-unread root redirect, and concurrent access
-  revocation between requests; and
+  revocation between requests; ordinary empty 303 and HTMX empty 204
+  `HX-Location` path/fragment/history equivalence; and
 - authenticated full-page/HTMX `private, no-store`, retained visitor cache
   behavior, no marker-derived shared-cache entry, no-JavaScript controls,
   visible focus, semantic state text, keyboard activation, and screen-reader
@@ -858,14 +859,14 @@ outcome, idempotent rerun, readiness, and the absence of backfill or fabricated
 marker rows. Legacy `infinity`/`-infinity` must abort the whole transaction,
 leave the ledger at 000008, and require inspected forward repair before retry.
 Retain relation size, elapsed time, lock mode/wait, buffers, and I/O for the
-`posts` index scan and
-`topic_reads` constraint validation.
+`posts` index scan and `topic_reads` constraint validation.
 
 The representative checkpoint contains at least 25,000 topics and 250,000
 posts; integrated admission reuses at least 100,000 topics and 1,000,000 posts
 across public, authenticated, group, hidden, deleted, redacted, shallow/deep
-trees, sparse/dense markers, and 0/1/25/26/250,000/250,001 boundaries. Corpus
-sizes are evidence points, never publication quotas.
+trees, sparse/dense markers, own-post-only and newest-own-post scan cases, and
+0/1/25/26/250,000/250,001 boundaries. Corpus sizes are evidence points, never
+publication quotas.
 
 Retain `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` under custom and forced-
 generic plans for authenticated board counts, bounded area states,
@@ -877,9 +878,11 @@ targeted visible-post shapes.
 Planner observations do not become hints or universal latency guarantees.
 
 Measure allocations, RSS, temporary I/O, database connections, cancellation,
-and coexistence with topic/reply publication. First-unread must cap tree
-placement at 250,001 identities; area results at 25 topics; mark-read at one
-marker row. The exact board count is openly population-dependent.
+five-second read/first-unread and two-second mark-read deadlines, transaction-
+local statement/lock timeouts, and coexistence with topic/reply publication.
+First-unread must cap tree placement at 250,001 identities; area results at 25
+topics; mark-read at one marker row. The exact board count and actor-excluding
+post scans are openly population-dependent.
 
 ### 20.4 Admission gates
 

@@ -536,7 +536,10 @@ Only the first 250,001 renderable nodes are considered for page placement.
 Targets within the existing 10,000-page boundary use the canonical topic-page
 fragment; a later target uses the already-bounded direct-post route rather than
 expanding topic pagination. No unread target redirects to the canonical topic
-root.
+root. Ordinary navigation uses an empty 303; HTMX uses the existing same-origin
+`HX-Location` main-region navigation so the canonical path and fragment are
+pushed without a full-document reload. Login and revalidation alone retain the
+browser-level `HX-Redirect` session transition.
 
 Soft deletion, redaction, and current-actor authorship exclude a post from
 unread eligibility without rewriting markers. Restoration of another author's
@@ -551,9 +554,16 @@ posts. It performs no backfill, renumbering, cursor population, or read
 inference. The regular index build and constraint validation scan existing
 relations and are treated as real maintenance work, not described as free
 because the logical change is small. A legacy nonfinite `read_at` aborts the
-whole transaction and leaves the
-migration ledger at 000008 for operator inspection and forward repair; the
-migration neither deletes nor invents marker state.
+whole transaction and leaves the migration ledger at 000008 for operator
+inspection and forward repair; the migration neither deletes nor invents
+marker state.
+
+The partial post index bounds storage shape, not work. Excluding the current
+actor can scan a whole topic when all recent posts are theirs; exact board
+counts are likewise population-dependent. Five-second read/first-unread and
+two-second mark-read contexts, statement timeouts no longer than those
+contexts, and the database pool bound failure, but do not manufacture a
+constant-time claim.
 
 ## 11. Rendering and client behavior
 

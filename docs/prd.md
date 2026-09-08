@@ -493,7 +493,8 @@ mutations:
    never change it. `POST /topics/{topicID}/read`, protected by the existing
    session, revalidation, and CSRF boundary, marks through the highest currently
    readable post by another author selected by the server. It accepts no
-   client-owned watermark. This POST is the only marker mutation.
+   client-owned watermark. This POST is the only read-workflow marker mutation;
+   existing hard-delete foreign-key cascades still remove marker rows.
 3. A member's own posts never create that member's `new` or `unread` state.
    Topic/reply publication, edits, moderation, direct-post reads, search,
    activity, and first-unread navigation do not change markers.

@@ -1922,20 +1922,24 @@ or terminality.
 `POST /topics/{topicID}/read` accepts one canonical positive decimal int64 path
 segment and no raw query. A noncanonical path remains the generic fixed `404`;
 any query is fixed `400`. Both reject before session lookup, body read, CSRF
-validation, or database work. The route then preserves the
-existing CSRF grammar: exactly one `X-CSRF-Token` header is validated without
-reading a body, or a bounded `application/x-www-form-urlencoded` body contains
-exactly one `_csrf` field. With header authority the body must be empty; with
-form authority no other field is accepted. The wire bound is 4,096 bytes. The
-route requires a current local authenticated member/staff session and Authentik
-revalidation; it never accepts a watermark, user ID, role, group, return URL,
-or topic field.
+validation, or database work. The route next authenticates. A missing current
+session redirects to login and a stale session redirects to revalidation,
+without reading the body or probing the topic. A current local authenticated
+member/staff session then preserves the existing CSRF grammar: exactly one
+`X-CSRF-Token` header is validated without reading a body, or a bounded
+`application/x-www-form-urlencoded` body contains exactly one `_csrf` field.
+After header validation, the route-specific body parser requires an empty body;
+after form validation, it requires exactly that one `_csrf` field and no other
+field. The wire bound is 4,096 bytes. CSRF failure is fixed `403`; strict body
+failure is fixed `400`; neither performs database work or reflects input. The
+route never accepts a watermark, user ID, role, group, return URL, or topic
+field. Every outcome is `Cache-Control: private, no-store`.
 
 One transaction applies the complete direct-topic authorization predicate,
 selects the greatest currently readable post number through
 `posts_topic_unread_visible_idx`, excluding `author_id = actor.user_id`, and
 upserts the current actor's row. A topic with no eligible other-authored post is
-a successful no-op. Conflict update sets
+a successful no-op that creates no marker. Conflict update sets
 `last_read_post_number = GREATEST(old, selected)` and changes `read_at` to the
 same finite database sample only under `WHERE selected > old`; an equal or
 lower boundary performs no row update. A retry is idempotent.
@@ -1945,8 +1949,10 @@ failure performs no database work; database/cancellation failure is fixed
 `503` with no partial response.
 
 Ordinary success is an empty `303` to the builder-owned canonical topic root.
-HTMX success is `204` with the equivalent same-origin `HX-Location` main-region
-reload. The form is shown only for a `new` or `unread` topic, but the
+HTMX success is an empty `204` with the equivalent same-origin `HX-Location`
+JSON object containing the canonical topic root, `target: "#main-content"`, and
+`swap: "outerHTML"`; HTMX fetches that root, swaps the main region, and pushes
+the canonical URL. The form is shown only for a `new` or `unread` topic, but the
 transaction remains authoritative. This preference write appends no moderation
 audit row. Topic/reply publication, edit, preview, delete, restore, redact,
 moderation, and move paths do not write read state.
@@ -1970,8 +1976,9 @@ target, it materializes at most the first 250,001 renderable identities in the
 exact actor-visible tombstone rules and `thread_path` order of
 `GetVisibleTopicPostPage` to locate that target. No unread target yields empty
 `303` to the canonical topic root. An
-ordinal from 1 through 250,000 yields the canonical 25-node topic page and
-`#post-<id>` fragment, omitting `page=1`. A target not found inside that bound
+ordinal from 1 through 250,000 yields page
+`((ordinal - 1) / 25) + 1` and the canonical 25-node topic-page URL with
+`#post-<id>`, omitting `page=1`. A target not found inside that bound
 uses the canonical `/posts/<id>` direct-post route. Absence from the bounded
 identity set selects that fallback; the statement does not scan an unbounded
 tree to prove absence and does not widen topic pagination.
@@ -1980,19 +1987,22 @@ The statement returns no body/source and validates topic/post identity,
 positive target number, ordinal bounds, and deterministic target selection.
 Missing, deleted, hidden, or inaccessible topics are fixed `404`; SQL,
 cancellation, malformed rows, or URL construction failure is fixed `503`.
-Every outcome is `private, no-store`. Redirects are equivalent for ordinary and
-HTMX requests and use `HX-Redirect` only where the existing session-boundary
-contract requires it.
+Every outcome is `private, no-store`. A successful ordinary request returns an
+empty `303` with builder-owned `Location`. A successful HTMX request returns an
+empty `204` with the existing same-origin `HX-Location` JSON object containing
+the same canonical path and fragment, `target: "#main-content"`, and
+`swap: "outerHTML"`; HTMX fetches the destination, swaps the main region, and
+pushes that canonical URL. `HX-Redirect` remains reserved for login and
+revalidation session boundaries.
 
 ### 20.5 Deletion, revocation, and concurrency
 
 Soft-deleted, redacted, or current-actor-authored posts do not create unread
 state. If such a position was the only unread one, the indicator may disappear
-without advancing the
-marker. Restoration of another author's post above the marker becomes unread;
-restoration at or below it remains read. Hard post purge does not lower a
-marker. Topic soft deletion,
-hiding, area-policy change, group removal, or suspension makes the marker
+without advancing the marker. Restoration of another author's post above the
+marker becomes unread; restoration at or below it remains read. Hard post
+purge does not lower a marker. Topic soft deletion, hiding, area-policy change,
+group removal, or suspension makes the marker
 non-authoritative and invisible but does not delete it. Suspension retains the
 existing immediate active-session failure, so subsequent public reads use
 visitor semantics and no mark-read authority. Mute does not hide state or the
@@ -2024,10 +2034,15 @@ deletes, or fabricates a marker.
 
 Area pages remain fixed at 25 topics. First-unread ordinal work materializes at
 most 250,001 renderable identities and returns one target. Mark-read returns no
-content. The board index exact count remains population-dependent like its
-existing exact topic/post counts; no constant-time or universal latency claim
-is made. New SQL has bounded application contexts and statement timeouts, is
-cancellation-safe, and runs without an in-request retry.
+content and writes at most one marker row, but its eligible-head scan is not
+constant work. Authenticated board/area reads and first-unread have one
+five-second application context; mark-read has one two-second context. Each
+statement sets a transaction-local `statement_timeout` no longer than its
+context and `lock_timeout=250ms`; these schedule cancellation rather than
+guaranteeing hard latency. Board counts and actor-excluding post scans remain
+population-dependent, including the own-post-only worst case. No universal
+latency claim is made. New SQL is cancellation-safe and runs without an
+in-request retry.
 
 Application logs retain route pattern, fixed outcome, status, duration, and
 bounded row/count metrics only. They exclude user/topic IDs, marker existence,
