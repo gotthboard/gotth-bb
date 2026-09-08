@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -20,6 +21,15 @@ type unreadRequestBody struct {
 	reads  int
 	closes int
 }
+
+type failingAbuseLogHandler struct{}
+
+func (failingAbuseLogHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (failingAbuseLogHandler) Handle(context.Context, slog.Record) error {
+	return fmt.Errorf("logging failed")
+}
+func (handler failingAbuseLogHandler) WithAttrs([]slog.Attr) slog.Handler { return handler }
+func (handler failingAbuseLogHandler) WithGroup(string) slog.Handler      { return handler }
 
 func (body *unreadRequestBody) Read([]byte) (int, error) {
 	body.reads++
@@ -126,6 +136,67 @@ func TestRequestAdmissionFailureDoesNotTouchRequestBody(t *testing.T) {
 	handler.ServeHTTP(response, request)
 	if response.Code != http.StatusTooManyRequests || nextCalls != 1 || body.reads != 0 || body.closes != 0 {
 		t.Fatalf("response = %d, next calls %d, body reads %d closes %d", response.Code, nextCalls, body.reads, body.closes)
+	}
+}
+
+func TestRequestAdmissionLoggingFailureCannotChangeSelectedResponse(t *testing.T) {
+	t.Parallel()
+	observer, err := abuse.NewObserver(slog.New(failingAbuseLogHandler{}))
+	if err != nil {
+		t.Fatalf("NewObserver() returned error: %v", err)
+	}
+	handler, err := NewRequestAdmissionHandler(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	}), newTestRequestLimiter(t, 1, 1), observer, false)
+	if err != nil {
+		t.Fatalf("NewRequestAdmissionHandler() returned error: %v", err)
+	}
+	handler, err = observability.NewRequestIDMiddleware(handler, func() (string, error) {
+		return strings.Repeat("c", 32), nil
+	})
+	if err != nil {
+		t.Fatalf("NewRequestIDMiddleware() returned error: %v", err)
+	}
+	for call, want := range []int{http.StatusNoContent, http.StatusTooManyRequests} {
+		request := httptest.NewRequest(http.MethodPost, "http://board.example/topics?secret=query", strings.NewReader("secret-body"))
+		request.RemoteAddr = "192.0.2.33:80"
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != want {
+			t.Fatalf("call %d status = %d, want %d", call, response.Code, want)
+		}
+	}
+}
+
+func TestRequestAdmissionObserverLogContainsNoClientOrRequestInput(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	observer, err := abuse.NewObserver(slog.New(slog.NewJSONHandler(&output, nil)))
+	if err != nil {
+		t.Fatalf("NewObserver() returned error: %v", err)
+	}
+	handler, err := NewRequestAdmissionHandler(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	}), newTestRequestLimiter(t, 1, 1), observer, false)
+	if err != nil {
+		t.Fatalf("NewRequestAdmissionHandler() returned error: %v", err)
+	}
+	handler, err = observability.NewRequestIDMiddleware(handler, func() (string, error) {
+		return strings.Repeat("d", 32), nil
+	})
+	if err != nil {
+		t.Fatalf("NewRequestIDMiddleware() returned error: %v", err)
+	}
+	for range 2 {
+		request := httptest.NewRequest(http.MethodPost, "http://board.example/topics?secret-query", strings.NewReader("secret-body"))
+		request.RemoteAddr = "192.0.2.44:80"
+		handler.ServeHTTP(httptest.NewRecorder(), request)
+	}
+	logged := output.String()
+	if !strings.Contains(logged, `"class":"request_rate"`) ||
+		strings.Contains(logged, "192.0.2.44") || strings.Contains(logged, "secret-query") || strings.Contains(logged, "secret-body") ||
+		strings.Contains(logged, `"configured_limit"`) || strings.Contains(logged, `"map_occupancy"`) {
+		t.Fatalf("observer log = %q", logged)
 	}
 }
 
