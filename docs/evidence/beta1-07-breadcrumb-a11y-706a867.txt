@@ -114,6 +114,32 @@ Security checks
 - govulncheck: No vulnerabilities found; log SHA-256
   3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5
 
+Cold-review repair and exact final-code rerun
+---------------------------------------------
+
+The first cold review rejected one nonfunctional but real repository defect:
+an added assertion in `static_test.go` was not gofmt-clean. Commit
+0759508ba90d3f2e1803aacd1c8e72b8ffec1abb corrected only that whitespace.
+The candidate then regenerated cleanly, passed a repository-wide gofmt check,
+and repeated every final-tree gate rather than inheriting the earlier result:
+
+- repository race/coverage: PASS; log SHA-256
+  24712f7bbea9867bebde5fde73443f1172e1f1831a1d0d1659bb380c45313cf9
+- PostgreSQL integration/race/atomic coverage: PASS; log SHA-256
+  5c37cda1417c3b0b8725e28553418582cbad2b24de169401eebf5ebdcecf1c93
+- complete affected Caddy/Chromium matrix: PASS; zero Axe violations; log
+  SHA-256
+  5eb94ab9c8fbe55e6d36e5f3049304ad3bf4ad77ce13d8fb4e2f214dd5c6b49e
+- gitleaks final history: CLEAN; log SHA-256
+  e7e84126172845656498431699ca4b1eb6120c4efe09d2867081e2801837dde9
+- gitleaks final tree: CLEAN; log SHA-256
+  42d66faeea532e277c4cc8db62d0f255320c68ba86ab33a8737d986222278a67
+- final govulncheck: No vulnerabilities found; log SHA-256
+  3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5
+
+Because a review finding resets the clean-pass counter, no earlier review is
+counted toward the two required fresh CLEAN reviews on the final tree.
+
 Admission limits
 ----------------
 
