@@ -93,7 +93,7 @@ func TestAccountAdministrationPlansOnPostgreSQL17(t *testing.T) {
 
 		membershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
 			fmt.Sprintf("%d,'%s',%d,0,51", actorID, observedAt, targetID), mode)
-		requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_pkey"`, `"Plan Rows":51`})
+		requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `user_id =`, `group_id =`, `"Actual Loops":51`, `"Plan Rows":51`})
 
 		continuityPlan := explainPrepared(t, ctx, connection, "an04_active_administrators", "timestamptz", countActiveAdministrators,
 			fmt.Sprintf("'%s'", observedAt), mode)
