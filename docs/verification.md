@@ -928,10 +928,12 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
 - default and updated site presentation, separate shell/rules/edit projections,
   one singleton round trip for rules/settings pages, proof that ordinary shells
   do not select/copy rules bodies, every closed
-  theme, rejected arbitrary theme/CSS/HTML/URL/control input, GFM and sanitizer
-  fixtures, source/HTML size
-  boundaries, exact empty source/HTML sentinel, rejection of every other blank
-  source, stale/no-op/overflowing settings, digest-only bounded audit,
+  theme, rejected arbitrary theme/CSS/HTML/URL and name/description controls,
+  GFM and sanitizer fixtures, source/HTML size
+  boundaries, exact empty source/HTML sentinel, byte-for-byte acceptance of
+  every nonempty source admitted by `render.RenderMarkdown` including
+  decomposed Unicode, rejection of every other blank source, stale/no-op/
+  overflowing settings, digest-only bounded audit,
   renderer/audit failure, two-instance next-read propagation, empty/nonempty
   public rules, and no raw Markdown or private
   revision metadata in public output; and
@@ -945,10 +947,10 @@ sessions before and after successful and failed requests. A committed mutation
 must have its exact audit state; a failed mutation must have neither state nor
 audit/session side effects. Unknown commit tests report uncertainty and inspect
 before any explicit retry. Application tests cover missing, blank, Unicode-
-space-only, multiline, control-bearing, non-NFC, boundary, and oversized
-reasons. Direct database tests cover NULL requirements (including
+space-only, multiline, control-bearing, decomposed Unicode, boundary, and
+oversized reasons. Direct database tests cover NULL requirements (including
 `reinstate_user`), byte boundaries, ASCII-space trim, and POSIX controls without
-pretending PostgreSQL duplicates the application's Unicode-space/NFC rules.
+pretending PostgreSQL duplicates the application's Unicode-space rules.
 
 ### 21.2 HTTP, privacy, and accessibility matrix
 
@@ -1013,7 +1015,9 @@ allocations, RSS, database connections, cancellation, two-second statement and
 250-millisecond transaction-local lock timeouts for every writer, commit-
 unknown/no-retry behavior, 512-KiB response overflow, and coexistence with
 login, topic/reply publication, moderation, discovery, unread reads, and mark-
-read. Corpus sizes are evidence points, not content/account quotas.
+read. Concurrency evidence also proves non-continuity writers do not acquire the
+governance singleton and serialize safely against role/suspension through their
+actor-row locks. Corpus sizes are evidence points, not content/account quotas.
 
 ### 21.4 Admission gates
 

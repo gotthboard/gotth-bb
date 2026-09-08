@@ -650,19 +650,23 @@ as unknown and does not retry it.
 
 Group create/rename and single membership grant/revoke are separate audited
 transactions. Names remain case-insensitively unique. A mapping mutation locks
-governance, actor/target users in ID order, and the one group; revalidates the
-numeric user revision; changes exactly one mapping; increments the revision;
-and appends exactly one grant/revoke audit. A no-op or stale revision conflicts.
-Version 1.0 omits group deletion because its existing foreign-key cascades would
-otherwise make area authorization disappear as a side effect of a
-superficially local action.
+actor/target users in ID order and then the one group; revalidates the numeric
+user revision; changes exactly one mapping; increments the revision; and
+appends exactly one grant/revoke audit. The actor-row lock serializes authority
+with concurrent role/suspension changes without abusing the governance
+singleton as a global administration mutex. A no-op or stale revision
+conflicts. Version 1.0 omits group deletion because its existing foreign-key
+cascades would otherwise make area authorization disappear as a side effect of
+a superficially local action.
 
 Every administration writer uses read committed isolation and installs the
 same transaction-local two-second statement and 250-millisecond lock bounds
 before its first application lock. Cancellation rolls back; commit failure is
 reported as unknown and is never retried automatically. The HTML forms carry
 one numeric revision and expected closed value where needed, while target IDs
-come only from canonical paths rather than redundant body fields.
+come only from canonical paths rather than redundant body fields. Only
+bootstrap, role, and suspension transitions lock governance because only they
+can change the active-administrator set.
 
 Area administration retains one audited core transaction but replaces the
 timestamp token with the numeric administration revision. Renaming changes only

@@ -2101,11 +2101,13 @@ ordinary migration transaction:
   `users`, `forum_groups`, and `areas`; application mutations increment them
   atomically and reject overflow;
 - bound the site name to 1–80 Unicode scalar values, the description to 0–280,
-  rules source to 65,536 bytes, and rules HTML to 262,144 bytes; reject control
-  characters in database checks where PostgreSQL can express the rule and
-  enforce strict UTF-8/NFC at the application boundary; close themes to `blue`,
-  `cyan`, `emerald`, `amber`, or `rose` and the renderer version to exact
-  `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`;
+  rules source to 65,536 bytes, and rules HTML to 262,144 bytes; reject name/
+  description controls in database checks where PostgreSQL can express the
+  rule and enforce strict UTF-8/NFC for those two fields at the application
+  boundary; preserve nonempty rules source byte-for-byte under the exact
+  admitted Markdown-source boundary rather than normalizing it; close themes
+  to `blue`, `cyan`, `emerald`, `amber`, or `rose` and the renderer version to
+  exact `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`;
 - require `rules_markdown` and `rules_html` to be either both exact empty
   strings or both nonempty, making the empty-rules state a closed sentinel;
 - seed the current presentation (`GOTTH Board`, `Community discussions, plainly
@@ -2155,9 +2157,9 @@ single-line 1–2,000-byte boundary. The application rejects it before a
 transaction. The database applies the byte/control/ASCII-trim defense above
 to every present audit reason and requires a non-NULL reason for every AN-04
 audit action, including the reinstatement action exposed from account detail.
-The application remains responsible for strict UTF-8, NFC, and Unicode-space
+The application remains responsible for strict UTF-8 and Unicode-space
 semantics that PostgreSQL's locale-sensitive character classes cannot honestly
-duplicate.
+duplicate; reason text does not gain an NFC requirement.
 
 Unless a narrower section says otherwise, every AN-04 writer uses read
 committed isolation, sets transaction-local `statement_timeout` to no more
@@ -2201,21 +2203,21 @@ The administrator settings form accepts exactly `_csrf`, `site_name`,
 `site_description`, `brand_theme`, `rules_markdown`, `reason`, and `revision`.
 The form body is at most 256 KiB, which admits the worst-case form encoding of
 the 65,536-byte rules source plus the bounded scalar fields. Text is strict
-UTF-8/NFC, has no controls other than line feed in Markdown, and has no
-surrounding whitespace where the field contract forbids it. `revision` is the
-canonical positive decimal administration revision from the database. Before
-opening a transaction, the service validates the closed theme. Exact empty
-rules source produces the exact empty HTML sentinel with the current renderer
-version; every nonempty source must be nonblank and renders/sanitizes through
-the admitted `render.RenderMarkdown` boundary. No other path manufactures
-trusted rules HTML.
+UTF-8; site name and description are NFC/control-free and have no surrounding
+whitespace where their field contract forbids it. Rules source is exact empty
+or is accepted byte-for-byte by the admitted `render.RenderMarkdown` boundary;
+the settings layer neither normalizes it nor invents a stricter character
+policy. `revision` is the canonical positive decimal administration revision
+from the database. Before opening a transaction, the service validates the
+closed theme. Exact empty rules source produces the exact empty HTML sentinel
+with the current renderer version; every nonempty source renders/sanitizes
+through that boundary. No other path manufactures trusted rules HTML.
 
 The transaction sets `statement_timeout` to at most two seconds and
-`lock_timeout` to 250 milliseconds, locks the governance singleton, locks and
-revalidates the current unsuspended administrator row, locks the settings
-singleton, compares the exact revision, rejects a no-op or revision overflow,
-updates every settings field and renderer tuple, increments the revision by
-one, and appends one
+`lock_timeout` to 250 milliseconds, locks and revalidates the current
+unsuspended administrator row, locks the settings singleton, compares the
+exact revision, rejects a no-op or revision overflow, updates every settings
+field and renderer tuple, increments the revision by one, and appends one
 `update_site_settings` audit. Previous/resulting audit objects contain only the
 bounded name, description, theme, renderer version, and SHA-256 digests of the
 rules source and HTML; rules bodies never enter the audit row's 16-KiB JSON
@@ -2263,21 +2265,21 @@ the handler renders 50 and row 51 is only a next sentinel. Create accepts
 exactly `_csrf`, `name`, and `reason`. Rename takes its sole group ID from the
 canonical path and accepts exactly `_csrf`, `name`, `reason`, and the positive
 numeric `revision`. Neither body accepts a target ID. Both revalidate the actor
-in the transaction by locking governance and then the actor row before
-inserting or locking the group, reject no-op/stale/overflow state, increment
-the group administration revision on rename, and append one immutable group-
-target audit. Groups are not deleted in version 1.0.
+in the transaction by locking the actor row before inserting or locking the
+group, reject no-op/stale/overflow state, increment the group administration
+revision on rename, and append one immutable group-target audit. Groups are not
+deleted in version 1.0.
 
 A group-membership mutation targets one canonical positive account ID and one
 canonical positive group ID and accepts exactly `_csrf`, closed `action`
 (`grant` or `revoke`), `reason`, and the target account's positive numeric
-revision. The transaction locks governance, actor and target users in ascending
-ID order, then the one group; revalidates the active administrator, active
-target, group, and revision; rejects a no-op or revision overflow; changes
-exactly one mapping; increments the target administration revision; and appends
-exactly one matching grant/revoke audit under the request ID. That audit targets
-the user and stores the one group ID plus previous/resulting membership boolean
-in bounded state. Any mapping,
+revision. The transaction locks actor and target users in ascending ID order,
+then the one group; revalidates the active administrator, active target, group,
+and revision; rejects a no-op or revision overflow; changes exactly one
+mapping; increments the target administration revision; and appends exactly one
+matching grant/revoke audit under the request ID. That audit targets the user
+and stores the one group ID plus previous/resulting membership boolean in
+bounded state. Any mapping,
 revision, or audit failure rolls back the whole mutation. Local group access
 changes on the next protected request because session authentication reloads
 memberships.
@@ -2327,10 +2329,10 @@ The existing area core transaction remains the sole create/rename/reorder/
 visibility/posting-mode mutation. AN-04 makes it revalidate the current
 administrator inside the transaction, use and increment the positive numeric
 administration revision, preserve the immutable slug, and append one audit row.
-Create locks governance, the actor row, and any required initial group before
-inserting the area and mapping. Update locks governance, the actor row, the
-target area, and any required initial group in that order. The area/group
-mapping writer uses the same prefix through its locked target area.
+Create locks the actor row and any required initial group before inserting the
+area and mapping. Update locks the actor row, target area, and any required
+initial group in that order. The area/group mapping writer uses the same prefix
+through its locked target area.
 `GET /admin/areas` accepts no query or exactly the canonical
 `after_order=<nonnegative int32>&after_id=<positive int64>` pair. Its
 authorization-first query returns at most 26 areas ordered by
@@ -2357,11 +2359,11 @@ that mapping in the same transaction. Updating an already group-visible area
 preserves its mappings; leaving group visibility removes them in the same core
 transaction. A separate area/group mutation accepts exactly `_csrf`, closed
 `action` (`grant` or `revoke`), `reason`, and the area's numeric revision. It
-locks governance, actor, area, and group in that order; rejects stale/no-op/
-overflow state, an area not currently group-visible, and revoking the last
-mapping; changes one mapping; increments the area revision; and appends exactly
-one `grant_area_group` or `revoke_area_group` audit targeted to the area with
-the one group ID and previous/resulting assignment boolean in bounded state.
+locks actor, area, and group in that order; rejects stale/no-op/overflow state,
+an area not currently group-visible, and revoking the last mapping; changes one
+mapping; increments the area revision; and appends exactly one
+`grant_area_group` or `revoke_area_group` audit targeted to the area with the
+one group ID and previous/resulting assignment boolean in bounded state.
 
 Area core audit objects contain only slug, name, lowercase hexadecimal SHA-256
 of the exact description UTF-8 bytes, display order, visibility, posting mode,
