@@ -289,11 +289,40 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 				requireUnreadAuthorizationPlan(t, mode, shape.name+"-area", "visible_area", topicPlan, true, shape.isStaff, shape.requireGroupSubplan)
 				t.Logf("PLAN mode=%s actor=%s query=area\n%s", mode, shape.name, topicPlan)
 			}
+			markArguments := fmt.Sprintf("3,false,ARRAY[]::bigint[],%d", readerID)
+			markPlan := explainPrepared(t, ctx, connection, "an03_mark_read", "bigint,boolean,bigint[],bigint", markTopicReadBoundary, markArguments, mode)
+			requireMarkReadAuthorizationPlan(t, mode, markPlan)
+			t.Logf("PLAN mode=%s actor=member query=mark-read\n%s", mode, markPlan)
 		}
 	}
 	if population.admission {
 		runDiscoveryCoexistenceEvidence(t, ctx, configured, connection, publicAreaID, ownerID, groupID, population)
 		logDiscoveryResourceSnapshot(t, ctx, connection, "completed")
+	}
+}
+
+func requireMarkReadAuthorizationPlan(t *testing.T, mode, encoded string) {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
+		t.Fatalf("%s decode mark-read plan: documents=%d error=%v", mode, len(document), err)
+	}
+	root := document[0].Plan
+	authorized := findPlanNode(&root, func(node *explainPlanNode) bool {
+		return node.SubplanName == "CTE authorized_topic"
+	})
+	boundary := findPlanNode(&root, func(node *explainPlanNode) bool {
+		return node.SubplanName == "CTE boundary"
+	})
+	if authorized == nil || boundary == nil ||
+		!planUsesConditionedRelation(*authorized, "areas", "visibility") ||
+		!planUsesConditionedRelation(*authorized, "topics", "deleted_at") ||
+		!planUsesConditionedRelation(*authorized, "topics", "state") {
+		t.Fatalf("%s mark-read plan lost materialized authorization fence: %s", mode, encoded)
+	}
+	if !planUsesConditionedRelation(*boundary, "posts", "author_id") ||
+		!planUsesIndex(*boundary, "posts_topic_unread_visible_idx") {
+		t.Fatalf("%s mark-read plan lost actor-excluding indexed boundary: %s", mode, encoded)
 	}
 }
 
