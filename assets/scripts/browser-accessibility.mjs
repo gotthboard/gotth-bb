@@ -15,7 +15,10 @@ export async function auditAccessibility(send, sessionId, evaluate, label, scrip
       id, impact, help,
       nodes: nodes.map(({ target, failureSummary }) => ({ target, failureSummary }))
     })),
-    incomplete: incomplete.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.length }))
+    incomplete: incomplete.map(({ id, impact, nodes }) => ({
+      id, impact,
+      nodes: nodes.map(({ target, failureSummary, any, all, none }) => ({ target, failureSummary, any, all, none }))
+    }))
     }))`);
     assert.deepEqual(result.violations, [], `${label} accessibility violations: ${JSON.stringify(result.violations)}`);
     console.log(`A11Y label=${JSON.stringify(label)} violations=0 incomplete=${JSON.stringify(result.incomplete)}`);
