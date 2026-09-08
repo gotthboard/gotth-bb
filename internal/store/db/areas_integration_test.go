@@ -244,6 +244,20 @@ VALUES ($1, 101, 1, $2)`, readerID, fixtureTime.Add(5*time.Minute)); err != nil 
 			}
 		})
 	}
+	if _, err := connection.Exec(ctx, `SET session_replication_role = replica;
+UPDATE public.topics SET next_post_number = 2 WHERE id = 101;
+SET session_replication_role = origin`); err != nil {
+		t.Fatalf("create read-head drift fixture: %v", err)
+	}
+	drifted, err := queries.ListAuthenticatedVisibleAreaSummaries(ctx, ListAuthenticatedVisibleAreaSummariesParams{ActorUserID: readerID})
+	if err != nil || len(drifted) != 2 || drifted[0].Slug != "public" || drifted[0].ReadStateValid {
+		t.Fatalf("drifted authenticated summary = (%+v, %v), want invalid public read state", drifted, err)
+	}
+	if _, err := connection.Exec(ctx, `SET session_replication_role = replica;
+UPDATE public.topics SET next_post_number = 4 WHERE id = 101;
+SET session_replication_role = origin`); err != nil {
+		t.Fatalf("restore read-head drift fixture: %v", err)
+	}
 	var markerCount int
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.topic_reads`).Scan(&markerCount); err != nil || markerCount != 1 {
 		t.Fatalf("area summary reads mutated markers = (%d, %v)", markerCount, err)

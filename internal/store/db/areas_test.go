@@ -95,6 +95,7 @@ func TestListAuthenticatedVisibleAreaSummariesBindsActorAndScansUnreadCount(t *t
 		"ag.group_id = ANY($2::bigint[])", "post.author_id <> $3::bigint",
 		"marker.user_id = $3::bigint", "unread_topic_count", "read_state_valid",
 		"GROUP BY topic.id, topic.area_id, topic.next_post_number", "count(*) FILTER",
+		"head.read_head <= head.next_post_number - 1",
 	} {
 		if !strings.Contains(database.query, required) {
 			t.Fatalf("authenticated area-summary query lacks %q", required)

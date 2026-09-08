@@ -419,11 +419,20 @@ read_state_counts AS (
               )
         )::bigint AS unread_topic_count,
         bool_and(
-            marker.user_id IS NULL
-            OR (
-                marker.last_read_post_number > 0
-                AND marker.last_read_post_number <= head.next_post_number - 1
-                AND pg_catalog.isfinite(marker.read_at)
+            (
+                head.read_head IS NULL
+                OR (
+                    head.read_head > 0
+                    AND head.read_head <= head.next_post_number - 1
+                )
+            )
+            AND (
+                marker.user_id IS NULL
+                OR (
+                    marker.last_read_post_number > 0
+                    AND marker.last_read_post_number <= head.next_post_number - 1
+                    AND pg_catalog.isfinite(marker.read_at)
+                )
             )
         ) AS read_state_valid
     FROM eligible_read_heads AS head
