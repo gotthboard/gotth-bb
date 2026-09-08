@@ -596,6 +596,8 @@ for the version 1.0 single-process deployment:
    Every actor, including staff, is subject to the limit. Edits and previews do
    not spend publication capacity because they create no post, but blocked-link
    policy still applies to both.
+   New-account strictness applies to this authenticated publication budget,
+   not the pre-authentication client-address request budget.
 4. Publication accounting is constant-size state on the local account row and
    commits in the same PostgreSQL transaction as the topic or reply. Concurrent
    requests serialize on that account, and validation, authorization, database,
@@ -611,8 +613,9 @@ for the version 1.0 single-process deployment:
    links using the admitted GFM parse; code spans/blocks and ordinary text do
    not become false positives. Relative links remain outside external-link
    policy.
-6. Topic, reply, edit, and their preview paths use the same immutable link
-   policy and fail before persistence when any destination is blocked. Existing
+6. Topic, reply, edit, their preview paths, and administrator community-rules
+   updates use the same immutable link policy and fail before persistence when
+   any destination is blocked. Existing
    stored content is not retroactively rewritten or hidden. Version 1.0 does
    not fetch destinations, follow redirects, run reputation services, inspect
    DNS answers, or claim that exact-URL rules defeat arbitrary URL shorteners.

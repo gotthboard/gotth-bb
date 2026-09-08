@@ -724,6 +724,9 @@ not accidental durability. The application configuration and release checks
 therefore reject any claim that multiple app replicas provide one global
 request budget. A later multi-instance design requires a new contract rather
 than silently weakening this one.
+Because this rejection occurs before authentication, request admission does
+not and cannot select policy by account age. The stricter new-account rule is
+owned only by the authenticated durable publication transaction.
 
 Migration 000011 adds only two constant-size publication-window columns to
 `users`: a nullable finite start and a nonnegative count with an exact
@@ -759,7 +762,8 @@ The GFM renderer parses valid Markdown once, visits resolved link, image, and
 automatic-link destinations, applies the immutable policy, and renders the
 same admitted AST only if it passes. This avoids a parser disagreement between
 preview and persistence. Code and non-link text are not searched for URL-like
-substrings. Topic, reply, edit, and preview all cross that same function.
+substrings. Topic, reply, edit, their previews, and the public community-rules
+settings writer all cross that same function.
 Policy rejection returns no matched destination or rule, and existing stored
 content is not rescanned during reads or migration.
 

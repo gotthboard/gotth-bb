@@ -1058,6 +1058,8 @@ loopback requires exactly one overwritten address for charged requests;
 development/test direct requests reject forwarded identity. Caddy evidence
 inspects the adapted configuration and proves an attacker-supplied forwarding
 header is overwritten before the application sees it.
+Authenticated accounts of every age receive the same request budget; tests
+prove no account/session lookup is added to this pre-authentication boundary.
 
 With a deterministic clock and digest source, limiter tests cover counts
 0/1/N/N+1, exact expiry equality, negative clock movement, concurrent calls,
@@ -1111,12 +1113,13 @@ and exact-URL rules are exercised at 0/1/256 entries. Assertions prove the same
 AST is scanned and rendered, the first rejection retains no destination/rule,
 and no network or DNS call occurs.
 
-Topic/reply/edit preview and mutation tests prove identical allowed/blocked
-results and one explicit policy at every call site. Preview/edit never touch
-publication counters. Topic/reply validation or blocked policy happens before
+Topic/reply/edit preview and mutation plus community-rules settings tests prove
+identical allowed/blocked results and one explicit policy at every call site.
+Preview/edit/settings never touch publication counters. Topic/reply validation
+or blocked policy happens before
 transaction begin; current account and target authorization happen before
 counter mutation. Existing stored blocked content remains readable and is not
-rewritten. No actor role bypasses policy.
+rewritten, including stored community rules. No actor role bypasses policy.
 
 HTTP tests cover ordinary and HTMX `429` with positive integer `Retry-After`,
 draft preservation after safe parsing, fixed `422` blocked-draft presentation,

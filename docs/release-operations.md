@@ -525,7 +525,8 @@ Every deployed prerelease verifies:
 - Once AN-05 is present, verify Caddy overwrites client identity; health/static
   exemptions; a disposable client's bounded request rejection; established and
   new-account publication rejection/expiry; allowed and blocked domain/exact-
-  URL drafts through preview and mutation; fixed `Retry-After`; and absence of
+  URL drafts through preview, post mutation, and disposable community-rules
+  update; fixed `Retry-After`; and absence of
   client/account/content/rule values from application logs. Restore the exact
   configured rules file and rate profile after the smoke test.
 - Logout revokes the local session.

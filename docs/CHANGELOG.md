@@ -14,7 +14,8 @@ Affected files:
 - immutable rate and blocked-destination configuration boundary
 - bounded process-local client request windows and trusted Caddy identity
 - migration 000011 constant-size transactional publication counters
-- shared GFM destination policy, progressive rejection UI, observability, and
+- shared post/community-rules GFM destination policy, progressive rejection
+  UI, observability, and
   serial AN-05-01 through AN-05-04 plan/evidence gates
 
 Explanation:

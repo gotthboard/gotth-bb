@@ -516,8 +516,10 @@ are:
 3. **AN-05-03 — blocked destinations and progressive rejection UI.** Parse the
    admitted GFM document once; apply canonical bounded domain/exact-URL rules
    to resolved links, images, and automatic links; and wire identical policy
-   through topic/reply/edit previews and mutations. Add fixed field-safe `422`
-   and draft-preserving `429` full-page/HTMX behavior, no-JavaScript/browser-
+   through topic/reply/edit previews and mutations plus the administrator
+   community-rules writer without charging edit/preview/settings publication
+   capacity. Add fixed field-safe `422` and draft-preserving `429` full-page/
+   HTMX behavior, no-JavaScript/browser-
    through-Caddy evidence, and fixed-class observability without addresses,
    accounts, content, URLs, or rules.
 4. **AN-05-04 — integrated admission and AN delivery.** Reproduce generated

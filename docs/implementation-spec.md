@@ -2510,11 +2510,14 @@ rules-renderer, or authorization checks to run an older binary.
 
 ### 22.1 Immutable configuration
 
-`config.Load` requires and validates the seven AN-05 rate settings and
-`ABUSE_RULES_FILE` before opening PostgreSQL or a listener. `AbusePolicy` owns
-plain validated values and an immutable blocked-destination matcher; it exposes
-no raw rules or mutable map. Startup accepts an exact empty rules file as no
-blocked destinations but rejects a missing file.
+`config.Load` requires and validates the seven AN-05 rate settings and the
+`ABUSE_RULES_FILE` path. Before opening PostgreSQL or a listener,
+`abuse.LoadPolicy` descriptor-opens and validates the file and returns one
+`AbusePolicy` containing plain rate values and an immutable blocked-destination
+matcher. It exposes no raw rules or mutable map. Startup accepts an exact empty
+rules file as no blocked destinations but rejects a missing file. The request
+limiter reads its 256-bit digest key from `crypto/rand` in that same pre-I/O
+construction phase; entropy failure aborts startup.
 
 The rules file is UTF-8 with LF line endings, no BOM, CR, NUL, controls, blank
 lines, or comments. It contains at most 256 nonempty lines and is strictly
@@ -2578,6 +2581,8 @@ router. Its exemption classifier is a closed method/path matcher shared with
 the static/health dispatch contract; unknown paths are charged. `429` and `503`
 set `Cache-Control: no-store` and `Retry-After` and write a fixed small body.
 The middleware does not read or close the request body.
+It applies one client-address profile regardless of eventual authentication;
+no post-authentication request limiter or account-age lookup is added.
 
 ### 22.3 Migration 000011 and durable publication windows
 
@@ -2636,19 +2641,22 @@ and `mailto` destinations remain governed by the existing renderer/sanitizer
 and do not match external rules. A malformed HTTP(S)-looking destination is a
 normal Markdown validation failure, not a bypass.
 
-`RenderTopicDraft`, `RenderReplyDraft`, `CreateTopic`, `CreateReply`, and
-`EditPost` receive the immutable policy explicitly. Every call site, including
-tests, supplies either the validated runtime policy or a deliberate validated
-empty policy; there is no optional argument, package global, or compatibility
-wrapper that production can accidentally use. Preview and mutation use the
-same service function. A blocked result is typed separately for the fixed
-observer class but unwraps to field-safe Markdown validation; it retains no
-source, destination, or rule.
+`RenderTopicDraft`, `RenderReplyDraft`, `CreateTopic`, `CreateReply`,
+`EditPost`, and the nonempty community-rules rendering path receive the
+immutable policy explicitly. Every call site, including tests, supplies either
+the validated runtime policy or a deliberate validated empty policy; there is
+no optional argument, package global, or compatibility wrapper that production
+can accidentally use. Preview and mutation use the same service function. A
+blocked result is typed separately for the fixed observer class but unwraps to
+field-safe Markdown validation; it retains no source, destination, or rule.
 
 Publication rate applies only to committed new topic/reply rows. Edit and all
 preview routes enforce the destination policy but do not call the publication
-counter. Delete, moderation, administration, OIDC, and read routes do neither.
-Existing rows are not backfilled or rescanned.
+counter. The administrator settings update enforces it for nonempty community-
+rules Markdown before beginning its existing audited transaction and likewise
+spends no publication capacity. Delete, other moderation/administration, OIDC,
+and read routes do neither. Existing post and rules rows are not backfilled or
+rescanned.
 
 ### 22.5 HTTP and observability
 
@@ -2657,7 +2665,8 @@ escaped submitted draft and fixed “Please wait before publishing again” text
 status `429`, `Retry-After`, and `private, no-store`. HTMX receives the same
 main-region presentation and status; neither path redirects. A blocked
 destination uses the existing Markdown field presentation with fixed “This
-draft contains a blocked link” text and `422`. Preview uses the same result.
+draft contains a blocked link” text and `422`. Preview and settings use the same
+result and settings preserve the escaped source plus current revision.
 No response distinguishes domain from exact-URL match.
 
 One injected `AbuseObserver` emits only the fixed class, the fixed
