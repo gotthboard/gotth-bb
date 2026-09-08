@@ -728,11 +728,13 @@ than silently weakening this one.
 Migration 000011 adds only two constant-size publication-window columns to
 `users`: a nullable finite start and a nonnegative count with an exact
 null/zero consistency check; it also makes account creation time finite because
-account age is now security policy. A topic or reply transaction locks and revalidates
-the current account before area/topic authorization, reads database time,
-selects the configured established or new-account limit from immutable startup
-policy, and either rejects or updates the counter in the same commit as the
-post. One account can therefore block only its own concurrent publication.
+account age is now security policy. A topic or reply transaction locks and
+revalidates the current account, then reloads its local groups under the same
+user-row serialization used by membership changes. It authorizes the area or
+topic with that database-current actor, samples database time immediately
+before the counter decision, and either rejects or updates the counter in the
+same commit as the post. One account can therefore block only its own
+concurrent publication.
 Edits and previews do not consume capacity. Every role is limited, and a role
 change does not manufacture a bypass.
 
@@ -745,10 +747,12 @@ The mechanism stores no event history and needs no cleanup job.
 
 Blocked-link policy is one immutable startup value loaded from a bounded,
 descriptor-validated regular file. Lines are sorted, unique canonical
-`domain=` or `url=` rules. Domain rules use IDNA ASCII and match an exact host
-or dot-delimited subdomain. Exact URL rules admit only HTTP(S), prohibit
-credentials in rules, canonicalize host and default port, treat an empty path as `/`,
-retain escaped path/query, and ignore fragments. The configured set is limited
+`domain=` or `url=` rules. Domain rules use IDNA ASCII, reject IP literals and
+trailing dots, and match an exact host or dot-delimited subdomain. Exact URL
+rules admit only HTTP(S), prohibit credentials in rules, support canonical IP
+literals or IDNA DNS hosts without trailing dots, canonicalize default ports,
+treat an empty path as `/`, retain escaped path/query, and ignore fragments.
+The configured set is limited
 to 256 rules and 64 KiB; empty policy is explicit rather than missing.
 
 The GFM renderer parses valid Markdown once, visits resolved link, image, and

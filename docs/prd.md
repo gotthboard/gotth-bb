@@ -667,6 +667,7 @@ implementation begins:
 3. Maximum delay between an Authentik disable and forum access revocation.
 4. Whether public areas are enabled at first deployment or merely supported.
 5. Content retention duration for soft-deleted posts and audit events.
+
 The initial rate-limit profile and new-account period are resolved by the AN-05
 acceptance boundary. They remain operator configuration, not hard-coded product
 law.

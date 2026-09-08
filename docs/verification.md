@@ -1046,7 +1046,8 @@ empty rules; canonical decimal and duration boundaries; cross-field new versus
 established counts; file path length/clean/root/NUL cases; symlink, directory,
 device, replacement-race, short-read, overflow, invalid UTF-8/line ending/
 control, unsorted, duplicate, and 0/1/256/257-rule files. Rules cover DNS label,
-IDNA, IPv4/IPv6-literal rejection, URL scheme/userinfo/port/path/query/fragment,
+IDNA, domain-rule IPv4/IPv6/trailing-dot rejection, exact-URL canonical IPv4/
+IPv6, URL scheme/userinfo/port/path/query/fragment,
 and already-canonical requirements. Failure messages and whole-config
 formatting must contain no rules, paths, URLs, secrets, or unrelated values.
 
@@ -1082,7 +1083,8 @@ Service tests cover member/moderator/administrator accounts, age immediately
 below/equal/above the new-account boundary, empty/active/expired window,
 counts below/equal/above configured limit, database clock before account
 creation, malformed stored tuples, suspension/mute/role drift, missing actor,
-read-only/archived/restricted/locked/missing targets, validation failure,
+concurrent group grant/revocation in both lock orders, read-only/archived/
+restricted/locked/missing targets, validation failure,
 renderer/policy failure, insert/update/audit-independent failure,
 cancellation, lock timeout, and begin/commit failure. Before/after inspection
 proves denied or failed publication has neither post/topic/counter effects;

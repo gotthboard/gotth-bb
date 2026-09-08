@@ -2525,11 +2525,12 @@ domain=example.org
 url=https://example.org/exact/path?key=value
 ```
 
-Domain input is converted through the `golang.org/x/net/idna` lookup profile,
-lowercased, stripped of no implicit trailing dot, and then required to satisfy
-DNS label/length rules. IP literals are rejected as domain rules. URLs require
-lowercase `http` or `https`, no userinfo, an IDNA-valid host, and no opaque
-form. Default `:80`/`:443` is removed, empty path becomes `/`, dot segments are
+Domain input rejects a trailing dot and IP literal, is converted through the
+`golang.org/x/net/idna` lookup profile, lowercased, and then required to satisfy
+DNS label/length rules. URLs require lowercase `http` or `https`, no userinfo,
+no opaque form, and either a canonical `netip` IPv4/IPv6 literal or an IDNA DNS
+host without a trailing dot. IPv6 retains brackets. Default `:80`/`:443` is
+removed, empty path becomes `/`, dot segments are
 cleaned without decoding escaped separators, fragment is discarded, and raw
 query is retained. Rules with a nondefault numeric port remain port-specific.
 Any input that does not already equal the emitted canonical rule fails startup;
@@ -2599,9 +2600,13 @@ check, and exact grant delta at migration head 000011.
 
 Before its existing area/topic locks, each topic/reply transaction locks the
 current user row and returns only id, role, suspension/mute facts, `created_at`,
-and the publication tuple plus `clock_timestamp()`. The service rejects an
-invalid row, changed/suspended/muted actor, or pre-creation database time before
-revealing target policy. It chooses the strict limit when
+and the publication tuple. It rejects an invalid, changed, suspended, or muted
+actor, then reloads the current local group IDs while holding the user lock.
+Membership writers lock that same row before changing a mapping, so the
+transaction authorizes target policy with one database-current actor rather
+than the request snapshot. After target authorization and immediately before
+counter mutation, a separate statement reads `clock_timestamp()`. The service
+rejects database time before account creation. It chooses the strict limit when
 `database_now < created_at + NEW_ACCOUNT_PERIOD`; equality is established.
 The current window remains active while
 `database_now < window_started_at + PUBLISH_RATE_WINDOW`. An elapsed or empty
