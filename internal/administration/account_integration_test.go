@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,10 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const accountAdministrationTestDatabase = "gotth_bb_an04_account_administration_test"
+const (
+	accountAdministrationTestDatabase = "gotth_bb_an04_account_administration_test"
+	accountAdministrationTestRole     = "gotth_bb_an04_account_administration_runtime"
+)
 
 func TestAccountAdministrationGovernanceOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -195,6 +199,71 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); er
 	}
 	if _, err := CreateGroup(ctx, connections[0], func() time.Time { return observedAt.Add(7 * time.Second) }, actor, "Denied Group", "Reject muted administrator", testAdministrationRequestID(14)); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("muted administrator CreateGroup() error = %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = NULL WHERE id = $1`, actorID); err != nil {
+		t.Fatalf("unmute restricted-runtime actor: %v", err)
+	}
+
+	roleIdentifier := pgx.Identifier{accountAdministrationTestRole}.Sanitize()
+	_, _ = admin.Exec(ctx, "DROP ROLE IF EXISTS "+roleIdentifier)
+	if _, err := admin.Exec(ctx, "CREATE ROLE "+roleIdentifier+" NOLOGIN"); err != nil {
+		t.Fatalf("create restricted runtime role: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupContext, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = connections[0].Exec(cleanupContext, "DROP OWNED BY "+roleIdentifier)
+		_, _ = admin.Exec(cleanupContext, "DROP ROLE IF EXISTS "+roleIdentifier)
+	})
+	baselineGrants := `
+GRANT USAGE ON SCHEMA public TO ` + roleIdentifier + `;
+GRANT SELECT, UPDATE ON public.users TO ` + roleIdentifier + `;
+GRANT SELECT, UPDATE ON public.sessions TO ` + roleIdentifier + `;
+GRANT SELECT, INSERT ON public.moderation_actions TO ` + roleIdentifier + `;
+GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIdentifier + `;`
+	if _, err := connections[0].Exec(ctx, baselineGrants); err != nil {
+		t.Fatalf("grant baseline runtime privileges: %v", err)
+	}
+	grantTemplate, err := os.ReadFile("../../deploy/postgresql/runtime-grants.sql")
+	if err != nil {
+		t.Fatalf("read runtime grant contract: %v", err)
+	}
+	const rolePlaceholder = `:"runtime_role"`
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 7 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 7", strings.Count(string(grantTemplate), rolePlaceholder))
+	}
+	if _, err := connections[0].Exec(ctx, strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)); err != nil {
+		t.Fatalf("apply runtime grant contract: %v", err)
+	}
+	var runtimeTargetID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Restricted Runtime Member') RETURNING id`).Scan(&runtimeTargetID); err != nil {
+		t.Fatalf("insert restricted runtime target: %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {
+		t.Fatalf("assume restricted runtime role: %v", err)
+	}
+	runtimeAt := observedAt.Add(8 * time.Second)
+	runtimeGroup, runtimeErr := CreateGroup(ctx, connections[0], func() time.Time { return runtimeAt }, actor, "Runtime Members", "Create through the packaged runtime grant", testAdministrationRequestID(20))
+	if runtimeErr != nil || runtimeGroup.GroupID <= 0 {
+		t.Fatalf("restricted runtime CreateGroup() = (%+v, %v)", runtimeGroup, runtimeErr)
+	}
+	runtimeRename, runtimeErr := RenameGroup(ctx, connections[0], func() time.Time { return runtimeAt.Add(time.Second) }, actor, runtimeGroup.GroupID, "Runtime Accounts", "Rename through the packaged runtime grant", runtimeGroup.Revision, testAdministrationRequestID(21))
+	if runtimeErr != nil || runtimeRename.Revision != 2 {
+		t.Fatalf("restricted runtime RenameGroup() = (%+v, %v)", runtimeRename, runtimeErr)
+	}
+	runtimeMembership, runtimeErr := ChangeGroupMembership(ctx, connections[0], func() time.Time { return runtimeAt.Add(2 * time.Second) }, actor, runtimeTargetID, runtimeGroup.GroupID, true, "Grant through the packaged runtime grant", 1, testAdministrationRequestID(22))
+	if runtimeErr != nil || runtimeMembership.Revision != 2 {
+		t.Fatalf("restricted runtime ChangeGroupMembership() = (%+v, %v)", runtimeMembership, runtimeErr)
+	}
+	runtimeRole, runtimeErr := ChangeAccountRole(ctx, connections[0], func() time.Time { return runtimeAt.Add(3 * time.Second) }, actor, runtimeTargetID, policy.RoleModerator, policy.RoleMember, "Change role through the packaged runtime grant", runtimeMembership.Revision, testAdministrationRequestID(23))
+	if runtimeErr != nil || runtimeRole.Role != policy.RoleModerator || runtimeRole.Revision != 3 {
+		t.Fatalf("restricted runtime ChangeAccountRole() = (%+v, %v)", runtimeRole, runtimeErr)
+	}
+	if _, err := connections[0].Exec(ctx, `DELETE FROM public.forum_groups WHERE id = $1`, runtimeGroup.GroupID); err == nil {
+		t.Fatal("restricted runtime role deleted a forum group")
+	}
+	if _, err := connections[0].Exec(ctx, "RESET ROLE"); err != nil {
+		t.Fatalf("reset restricted runtime role: %v", err)
 	}
 }
 

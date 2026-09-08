@@ -50,14 +50,16 @@ func TestChangeUserSuspensionCommitsExactTransitions(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			tx := &userSuspensionTestTx{actor: activeSuspensionTarget(11, "moderator", testCreatedAt().Add(-2*time.Hour), testCreatedAt().Add(-time.Hour)), target: test.target, auditID: test.wantResult.AuditID}
-			result, err := ChangeUserSuspension(context.Background(), userSuspensionTestBeginner{tx: tx}, func() time.Time { return test.clock },
+			beginner := &userSuspensionTestBeginner{tx: tx}
+			result, err := ChangeUserSuspension(context.Background(), beginner, func() time.Time { return test.clock },
 				policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, test.suspend, "Clear reason", requestID)
 			if err != nil || result != test.wantResult {
 				t.Fatalf("ChangeUserSuspension() = (%+v, %v), want %+v", result, err, test.wantResult)
 			}
 			if !reflect.DeepEqual(tx.steps, test.wantSteps) || tx.observedAt != test.wantObservedAt || tx.suspendedAt != test.wantSuspendedAt || tx.updatedAt != test.wantUpdatedAt ||
 				tx.actorID != 11 || tx.targetID != 41 || tx.reason != "Clear reason" || tx.requestID != requestID ||
-				tx.previousAt != test.target.SuspendedAt || tx.previousUntil != test.target.SuspendedUntil || tx.previousReason != test.target.SuspensionReason {
+				tx.previousAt != test.target.SuspendedAt || tx.previousUntil != test.target.SuspendedUntil || tx.previousReason != test.target.SuspensionReason ||
+				beginner.options.IsoLevel != pgx.ReadCommitted || beginner.options.AccessMode != "" || beginner.options.DeferrableMode != "" {
 				t.Fatalf("transaction = %+v", tx)
 			}
 		})
@@ -87,7 +89,7 @@ func TestChangeUserSuspensionEnforcesHierarchyAndAdministratorContinuity(t *test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			tx := &userSuspensionTestTx{actor: activeSuspensionTarget(test.actor.UserID, storedRole(test.actor.Role), testCreatedAt(), testCreatedAt()), target: test.target, administrators: test.administrators, auditID: 83}
-			result, err := ChangeUserSuspension(context.Background(), userSuspensionTestBeginner{tx: tx}, testModerationNow,
+			result, err := ChangeUserSuspension(context.Background(), &userSuspensionTestBeginner{tx: tx}, testModerationNow,
 				test.actor, 41, true, "Reason", requestID)
 			if result != test.wantResult || !errors.Is(err, test.wantCause) || tx.changeCalls != test.wantChanges || tx.committed != (test.wantCause == nil) || tx.rolledBack == (test.wantCause == nil) {
 				t.Fatalf("ChangeUserSuspension() = (%+v, %v), tx %+v", result, err, tx)
@@ -131,7 +133,7 @@ func TestChangeUserSuspensionRevalidatesLockedActorAndOrdersUserLocks(t *testing
 				lockedTarget = target
 			}
 			tx := &userSuspensionTestTx{actor: test.actor, target: lockedTarget, auditID: 84}
-			result, err := ChangeUserSuspension(context.Background(), userSuspensionTestBeginner{tx: tx}, testModerationNow,
+			result, err := ChangeUserSuspension(context.Background(), &userSuspensionTestBeginner{tx: tx}, testModerationNow,
 				access, 41, true, "Reason", requestID)
 			if test.wantDenied {
 				if result != (UserSuspensionResult{}) || !errors.Is(err, ErrUserModerationDenied) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
@@ -247,7 +249,7 @@ func TestChangeUserSuspensionTypesInputAndStateConflicts(t *testing.T) {
 		{target: expiredSuspensionTarget(41, "member")},
 	} {
 		tx := &userSuspensionTestTx{actor: activeSuspensionTarget(11, "administrator", testCreatedAt(), testCreatedAt()), target: test.target}
-		result, err := ChangeUserSuspension(context.Background(), userSuspensionTestBeginner{tx: tx}, testModerationNow, actor, 41, test.suspend, "reason", requestID)
+		result, err := ChangeUserSuspension(context.Background(), &userSuspensionTestBeginner{tx: tx}, testModerationNow, actor, 41, test.suspend, "reason", requestID)
 		if result != (UserSuspensionResult{}) || !errors.Is(err, ErrUserModerationConflict) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
 			t.Fatalf("state conflict = (%+v, %v), tx %+v", result, err, tx)
 		}
@@ -265,6 +267,8 @@ func TestChangeUserSuspensionRollsBackTransactionFailures(t *testing.T) {
 		target        db.LockUserForSuspensionRow
 	}{
 		{name: "begin", failure: "begin", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
+		{name: "configure", failure: "configure", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
+		{name: "invalid configure", failure: "invalid-configure", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
 		{name: "governance", failure: "governance", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
 		{name: "false governance", failure: "false-governance", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
 		{name: "first user", failure: "first-user", suspend: true, target: activeSuspensionTarget(41, "member", testCreatedAt(), testCreatedAt())},
@@ -283,7 +287,7 @@ func TestChangeUserSuspensionRollsBackTransactionFailures(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			tx := &userSuspensionTestTx{actor: activeSuspensionTarget(11, "administrator", testCreatedAt(), testCreatedAt()), target: test.target, administrators: 2, auditID: 81, failure: test.failure}
-			beginner := userSuspensionTestBeginner{tx: tx}
+			beginner := &userSuspensionTestBeginner{tx: tx}
 			if test.failure == "begin" {
 				beginner.err = errModerationTest
 			}
@@ -338,11 +342,13 @@ func expiredSuspensionTarget(id int64, role string) db.LockUserForSuspensionRow 
 }
 
 type userSuspensionTestBeginner struct {
-	tx  *userSuspensionTestTx
-	err error
+	tx      *userSuspensionTestTx
+	err     error
+	options pgx.TxOptions
 }
 
-func (beginner userSuspensionTestBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+func (beginner *userSuspensionTestBeginner) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	beginner.options = options
 	if beginner.err != nil {
 		return nil, beginner.err
 	}
@@ -369,6 +375,12 @@ type userSuspensionTestTx struct {
 func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	switch {
 	case strings.Contains(query, "ConfigureAdministrationTransaction"):
+		if tx.failure == "configure" {
+			return userModerationTestRow{err: errModerationTest}
+		}
+		if tx.failure == "invalid-configure" {
+			return userModerationTestRow{values: []any{"3s", "250ms"}}
+		}
 		return userModerationTestRow{values: []any{"2s", "250ms"}}
 	case strings.Contains(query, "LockGovernanceState"):
 		tx.steps = append(tx.steps, "governance")
