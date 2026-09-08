@@ -1,0 +1,101 @@
+AN-04-03 final exact-tree evidence
+==================================
+
+Identity
+--------
+
+Tested executable/methodology commit:
+  3b7a5b463cc24e20b82bd9eb799296e5119ed050
+
+Tested tree:
+  6bdabc0132feb8e263f45d84460011c6a251f1bf
+
+Parent admitted AN-04-02 commit:
+  8f53557
+
+The detailed first exact-candidate transcript remains in:
+  docs/evidence/an04-03-administration-http-a996c09.txt
+  SHA-256 26eb2d338df57f4171c9e7b4389c3099403c6f4482955000c00074199ead095b
+
+The final candidate adds two repairs over that tested source: one shared exact
+URL-encoded media-type check for header- and body-token CSRF, and a browser
+wait loop that preserves persistent DevTools errors while allowing the
+execution context to disappear briefly during a real navigation.
+
+Pinned generation
+-----------------
+
+Host: agenthost
+Versions: Node v26.7.0, npm 12.0.2
+
+Commands:
+  make generate
+  git diff --exit-code
+  git status --porcelain=v1
+
+Result: PASS with zero generated drift. The stylesheet remains under its exact
+SHA-256 name and hashes to:
+  3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa
+
+Exact-tree Go and PostgreSQL gates
+----------------------------------
+
+Host: development
+PostgreSQL: 17.10 (Debian 17.10-1.pgdg13+1)
+
+Commands:
+  scripts/test-alpha3-evidence-custody.sh
+  test -z "$(gofmt -l $(git ls-files --cached --others --exclude-standard -- '*.go'))"
+  go vet -mod=readonly ./...
+  go test -mod=readonly -race \
+    -coverprofile=/tmp/gotth-bb-an04-03-3b7a5b4-unit.cover ./...
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=1 ./...
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=2 -race -covermode=atomic ./...
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=1 \
+      -coverprofile=/tmp/gotth-bb-an04-03-3b7a5b4-integration.cover ./...
+
+Result: PASS. Selected integration coverage remained:
+  internal/administration  75.3%
+  internal/auth            97.2%
+  internal/forum           95.0%
+  internal/httpui          72.1%
+  internal/migration       100.0%
+  internal/readiness       100.0%
+  internal/store           97.1%
+  migrations               100.0%
+
+Browser-through-Caddy stability gate
+------------------------------------
+
+Host: development
+Versions: Caddy v2.11.4, Chromium 151.0.7922.71 Arch Linux, Node v26.5.1
+
+Command:
+  GOTTH_BB_BROWSER_CADDY=1 \
+    go test -mod=readonly -tags=integration \
+      -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+      -count=5 -v ./internal/httpui
+
+Result: PASS five consecutive times. Every run used JavaScript-disabled native
+keyboard navigation through Caddy and the /bb base path, asserted accessibility
+names and visible focus, and completed the exact role mutation. Each browser
+package reported one pass and zero failures, skips, cancellations, or todos.
+
+One immediately preceding run failed while polling the GET account-detail
+navigation because DevTools briefly returned an `Uncaught` evaluation during
+document replacement. It failed before form submission and therefore did not
+implicate the media-type boundary. The repaired wait loop records the last
+evaluation error and still fails after the fixed 2.5-second bound if the
+condition or error persists; it does not turn a persistent browser failure into
+a pass.
+
+Scope
+-----
+
+This is AN-04-03 evidence only. AN-04-04 still owns the representative
+population, structural plan, resource/coexistence, package reproducibility,
+and whole-feature admission. No PR, push, merge, tag, release, or deployment
+is established by this file.
