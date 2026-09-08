@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+func TestNewPublicationPolicyAcceptsOnlyValidatedLimits(t *testing.T) {
+	t.Parallel()
+	policy, err := NewPublicationPolicy(10, 3, 10*time.Minute, 24*time.Hour)
+	if err != nil || !policy.Valid() {
+		t.Fatalf("NewPublicationPolicy(valid) = (%+v, %v)", policy, err)
+	}
+	if policy, err := NewPublicationPolicy(0, 3, 10*time.Minute, 24*time.Hour); err == nil || policy.Valid() {
+		t.Fatalf("NewPublicationPolicy(invalid) = (%+v, %v)", policy, err)
+	}
+}
+
 func TestDecidePublicationAppliesNewAndEstablishedLimits(t *testing.T) {
 	t.Parallel()
 	policy := PublicationPolicy{establishedLimit: 10, newAccountLimit: 3, window: 10 * time.Minute, newAccountPeriod: 24 * time.Hour}
@@ -160,5 +171,22 @@ func TestDecidePublicationExposesAdmittedTwoWindowBurst(t *testing.T) {
 	window := decision.StartedAt
 	if rejected, err := policy.DecidePublication(created, now, &window, decision.Count); err != nil || rejected.RetryAfter != policy.window {
 		t.Fatalf("next-window limit = (%+v, %v)", rejected, err)
+	}
+}
+
+func TestPublicationRetryAfterSecondsIsBoundedCeiling(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		retry time.Duration
+		want  int64
+	}{
+		{retry: 0, want: 0},
+		{retry: -time.Nanosecond, want: 0},
+		{retry: time.Second, want: 1},
+		{retry: time.Second + time.Nanosecond, want: 2},
+	} {
+		if got := (PublicationDecision{RetryAfter: test.retry}).RetryAfterSeconds(); got != test.want {
+			t.Fatalf("RetryAfterSeconds(%s) = %d, want %d", test.retry, got, test.want)
+		}
 	}
 }
