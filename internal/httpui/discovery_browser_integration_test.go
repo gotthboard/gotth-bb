@@ -246,7 +246,7 @@ func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	target := publicBase + "/topics/42"
 	waitForDiscoveryCaddy(t, target, &caddyLog)
 
-	browser := exec.Command(node, "--test", "assets/scripts/unread-controls.chromium.test.mjs")
+	browser := exec.Command(node, "--test", filepath.Join("..", "..", "assets", "scripts", "unread-controls.chromium.test.mjs"))
 	browser.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_UNREAD_BROWSER_URL="+target)
 	output, err := browser.CombinedOutput()
 	if err != nil {
