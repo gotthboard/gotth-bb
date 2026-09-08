@@ -263,7 +263,7 @@ WITH actor AS MATERIALIZED (
            EXISTS (
                SELECT 1
                FROM public.forum_group_members AS membership
-               WHERE membership.user_id = target.id
+               WHERE membership.user_id = $3
                  AND membership.group_id = forum_group.id
            )::boolean AS member
     FROM target
