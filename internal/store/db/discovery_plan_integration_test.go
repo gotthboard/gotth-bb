@@ -719,7 +719,7 @@ func runAdministrationPlanEvidence(t *testing.T, ctx context.Context, connection
 	requireAdministrationPlan(t, mode, "area-detail", areaDetailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Index Name":"areas_pkey"`})
 	areaGroupsPlan := explainPrepared(t, ctx, connection, "an04_area_groups", "bigint,timestamptz,bigint,bigint,integer", listAreaGroupsForAdministrationPage,
 		fmt.Sprintf("%d,'%s',%d,0,51", ownerID, observedAt, areaID), mode)
-	requireAdministrationPlan(t, mode, "area-groups", areaGroupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"area_groups_pkey"`, `"Actual Loops":51`, `"Actual Rows":51`})
+	requireAdministrationPlan(t, mode, "area-groups", areaGroupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"area_groups_pkey"`, `area_id =`, `"Actual Rows":51`})
 	dashboardPlan := explainPrepared(t, ctx, connection, "an04_dashboard", "bigint", loadAdministrationDashboard, fmt.Sprintf("%d", ownerID), mode)
 	requireAdministrationPlan(t, mode, "dashboard", dashboardPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Relation Name":"topics"`, `"Relation Name":"posts"`, `"Relation Name":"reports"`})
 }
