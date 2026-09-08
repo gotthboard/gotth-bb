@@ -71,7 +71,7 @@ func (policy PublicationPolicy) DecidePublication(
 	windowStartedAt *time.Time,
 	count int32,
 ) (PublicationDecision, error) {
-	if !policy.Valid() || createdAt.IsZero() || databaseNow.IsZero() {
+	if !policy.Valid() {
 		return PublicationDecision{}, fmt.Errorf("publication admission state is invalid")
 	}
 	createdAt = createdAt.UTC()
@@ -94,7 +94,7 @@ func (policy PublicationPolicy) DecidePublication(
 		return PublicationDecision{StartedAt: databaseNow, Count: 1}, nil
 	}
 	startedAt := windowStartedAt.UTC()
-	if startedAt.IsZero() || startedAt.Before(createdAt) || count < 1 || count > 100_000 {
+	if startedAt.Before(createdAt) || count < 1 || count > 100_000 {
 		return PublicationDecision{}, fmt.Errorf("publication window tuple is invalid")
 	}
 	if startedAt.After(databaseNow) {

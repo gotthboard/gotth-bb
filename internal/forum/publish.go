@@ -414,7 +414,7 @@ func admitPublication(ctx context.Context, queries *db.Queries, publicationPolic
 }
 
 func finitePublishingTime(value pgtype.Timestamptz) bool {
-	return value.Valid && value.InfinityModifier == pgtype.Finite && !value.Time.IsZero()
+	return value.Valid && value.InfinityModifier == pgtype.Finite
 }
 
 func publishingRole(value string) (policy.Role, bool) {

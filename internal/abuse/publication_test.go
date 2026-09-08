@@ -85,8 +85,6 @@ func TestDecidePublicationRejectsMalformedState(t *testing.T) {
 		count   int32
 	}{
 		{name: "invalid policy", policy: PublicationPolicy{}, created: created, now: now},
-		{name: "zero creation", policy: valid, now: now},
-		{name: "zero database time", policy: valid, created: created},
 		{name: "database before creation", policy: valid, created: created, now: created.Add(-time.Microsecond)},
 		{name: "empty tuple nonzero count", policy: valid, created: created, now: now, count: 1},
 		{name: "start before creation", policy: valid, created: created, now: now, start: &before, count: 1},
@@ -101,6 +99,23 @@ func TestDecidePublicationRejectsMalformedState(t *testing.T) {
 				t.Fatalf("DecidePublication() = (%+v, %v), want rejection", decision, err)
 			}
 		})
+	}
+}
+
+func TestDecidePublicationAcceptsFinitePostgreSQLYearOne(t *testing.T) {
+	t.Parallel()
+	policy := PublicationPolicy{establishedLimit: 10, newAccountLimit: 3, window: 2 * time.Hour, newAccountPeriod: 24 * time.Hour}
+	created := time.Time{}
+	now := created.Add(time.Hour)
+
+	decision, err := policy.DecidePublication(created, now, nil, 0)
+	if err != nil || decision.StartedAt != now || decision.Count != 1 {
+		t.Fatalf("year-one empty tuple = (%+v, %v)", decision, err)
+	}
+	started := created
+	decision, err = policy.DecidePublication(created, now, &started, 1)
+	if err != nil || decision.StartedAt != created || decision.Count != 2 {
+		t.Fatalf("year-one active tuple = (%+v, %v)", decision, err)
 	}
 }
 

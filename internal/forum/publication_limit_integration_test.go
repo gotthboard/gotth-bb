@@ -120,6 +120,16 @@ VALUES ('normal', 'Normal', 'normal', $1, $1), ('staff-only', 'Staff only', 'rea
 	if err != nil {
 		t.Fatal(err)
 	}
+	var yearOneID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at) VALUES ('Year one account', '0001-01-01 00:00:00+00') RETURNING id`).Scan(&yearOneID); err != nil {
+		t.Fatal(err)
+	}
+	yearOneActor := policy.AccessContext{Authenticated: true, UserID: yearOneID, Role: policy.RoleMember}
+	if _, err := CreateTopic(ctx, connections[0], limits, yearOneActor, "normal", "Finite year one", "body"); err != nil {
+		t.Fatalf("finite PostgreSQL year-one publication: %v", err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], yearOneID, 1)
+
 	newActor := policy.AccessContext{Authenticated: true, UserID: newID, Role: policy.RoleMember}
 	first, err := CreateTopic(ctx, connections[0], limits, newActor, "normal", "First new topic", "body")
 	if err != nil {
