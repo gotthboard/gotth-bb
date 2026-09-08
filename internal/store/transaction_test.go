@@ -61,6 +61,20 @@ func TestWithinTxOptionsUsesExactMode(t *testing.T) {
 	}
 }
 
+func TestWithinTxOptionsPreservesValidationOrder(t *testing.T) {
+	t.Parallel()
+
+	if err := WithinTx(nil, nil, nil); err == nil || err.Error() != "transaction context is required" {
+		t.Fatalf("WithinTx(nil) error = %v, want context requirement", err)
+	}
+	if err := WithinTxOptions(nil, nil, pgx.TxOptions{}, nil); err == nil || err.Error() != "transaction context is required" {
+		t.Fatalf("WithinTxOptions(nil) error = %v, want context requirement", err)
+	}
+	if err := WithinTxOptions(context.Background(), nil, pgx.TxOptions{}, nil); err == nil || err.Error() != "transaction beginner is required" {
+		t.Fatalf("WithinTxOptions(nil beginner) error = %v, want beginner requirement", err)
+	}
+}
+
 func TestWithinTxCommitsSuccessfulAction(t *testing.T) {
 	t.Parallel()
 
