@@ -35,6 +35,175 @@ func TestMarkTopicReadCommitsServerSelectedBoundary(t *testing.T) {
 	}
 }
 
+func TestFirstUnreadMapsBoundedAndDirectTargets(t *testing.T) {
+	t.Parallel()
+
+	finite := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	for _, test := range []struct {
+		name string
+		row  firstUnreadTestRow
+		want FirstUnreadTarget
+	}{
+		{name: "no target", row: validFirstUnreadRow(finite)},
+		{name: "first page", row: firstUnreadTargetRow(finite, 91, 5, 1), want: FirstUnreadTarget{PostID: 91, Page: 1}},
+		{name: "later page", row: firstUnreadTargetRow(finite, 92, 5, 26), want: FirstUnreadTarget{PostID: 92, Page: 2}},
+		{name: "beyond bounded tree", row: firstUnreadTargetRow(finite, 93, 5, 0), want: FirstUnreadTarget{PostID: 93, Direct: true}},
+		{name: "sentinel direct", row: firstUnreadTargetRow(finite, 94, 5, 250001), want: FirstUnreadTarget{PostID: 94, Direct: true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tx := &firstUnreadTestTx{row: test.row}
+			got, err := FirstUnread(context.Background(), firstUnreadTestBeginner{tx: tx}, validMarkReadActor(), 41)
+			if err != nil || got != test.want || !tx.committed || tx.rolledBack || tx.configureCalls != 1 || tx.queryCalls != 1 {
+				t.Fatalf("FirstUnread() = (%+v, %v), transaction (commit %t rollback %t configure %d query %d)", got, err, tx.committed, tx.rolledBack, tx.configureCalls, tx.queryCalls)
+			}
+			if !reflect.DeepEqual(tx.args, []any{int64(41), false, []int64(nil), int64(11)}) {
+				t.Fatalf("FirstUnread() args = %#v", tx.args)
+			}
+		})
+	}
+}
+
+func TestFirstUnreadRejectsInputsAndMalformedRows(t *testing.T) {
+	t.Parallel()
+
+	finite := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, test := range []struct {
+		name     string
+		ctx      context.Context
+		beginner interface {
+			BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+		}
+		actor   policy.AccessContext
+		topicID int64
+	}{
+		{name: "nil context", beginner: panicFirstUnreadBeginner{}, actor: validMarkReadActor(), topicID: 41},
+		{name: "visitor", ctx: context.Background(), beginner: panicFirstUnreadBeginner{}, actor: policy.AccessContext{}, topicID: 41},
+		{name: "suspended", ctx: context.Background(), beginner: panicFirstUnreadBeginner{}, actor: policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, Suspended: true}, topicID: 41},
+		{name: "invalid topic", ctx: context.Background(), beginner: panicFirstUnreadBeginner{}, actor: validMarkReadActor()},
+		{name: "canceled", ctx: canceled, beginner: panicFirstUnreadBeginner{}, actor: validMarkReadActor(), topicID: 41},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got, err := FirstUnread(test.ctx, test.beginner, test.actor, test.topicID); err == nil || got != (FirstUnreadTarget{}) {
+				t.Fatalf("FirstUnread() = (%+v, %v), want zero/error", got, err)
+			}
+		})
+	}
+	for _, test := range []struct {
+		name string
+		row  firstUnreadTestRow
+	}{
+		{name: "wrong topic", row: firstUnreadTestRow{values: []any{int64(42), int32(7), pgtype.Int4{}, pgtype.Timestamptz{}, int32(0), pgtype.Int8{}, pgtype.Int4{}, pgtype.Int8{}}}},
+		{name: "partial target", row: firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{}, pgtype.Timestamptz{}, int32(5), pgtype.Int8{Int64: 91, Valid: true}, pgtype.Int4{}, pgtype.Int8{}}}},
+		{name: "missing target despite unread", row: firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{}, pgtype.Timestamptz{}, int32(5), pgtype.Int8{}, pgtype.Int4{}, pgtype.Int8{}}}},
+		{name: "target not above marker", row: firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{Int32: 5, Valid: true}, finite, int32(5), pgtype.Int8{Int64: 91, Valid: true}, pgtype.Int4{Int32: 5, Valid: true}, pgtype.Int8{Int64: 1, Valid: true}}}},
+		{name: "invalid ordinal", row: firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{}, pgtype.Timestamptz{}, int32(5), pgtype.Int8{Int64: 91, Valid: true}, pgtype.Int4{Int32: 5, Valid: true}, pgtype.Int8{Int64: -1, Valid: true}}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			tx := &firstUnreadTestTx{row: test.row}
+			if got, err := FirstUnread(context.Background(), firstUnreadTestBeginner{tx: tx}, validMarkReadActor(), 41); err == nil || got != (FirstUnreadTarget{}) || tx.committed || !tx.rolledBack {
+				t.Fatalf("FirstUnread() = (%+v, %v), transaction (commit %t rollback %t)", got, err, tx.committed, tx.rolledBack)
+			}
+		})
+	}
+}
+
+func validFirstUnreadRow(finite pgtype.Timestamptz) firstUnreadTestRow {
+	return firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{Int32: 5, Valid: true}, finite, int32(5), pgtype.Int8{}, pgtype.Int4{}, pgtype.Int8{}}}
+}
+
+func firstUnreadTargetRow(finite pgtype.Timestamptz, postID int64, postNumber int32, ordinal int64) firstUnreadTestRow {
+	node := pgtype.Int8{}
+	if ordinal != 0 {
+		node = pgtype.Int8{Int64: ordinal, Valid: true}
+	}
+	return firstUnreadTestRow{values: []any{int64(41), int32(7), pgtype.Int4{Int32: 4, Valid: true}, finite, int32(5), pgtype.Int8{Int64: postID, Valid: true}, pgtype.Int4{Int32: postNumber, Valid: true}, node}}
+}
+
+type panicFirstUnreadBeginner struct{}
+
+func (panicFirstUnreadBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	panic("first-unread transaction must not begin")
+}
+
+type firstUnreadTestBeginner struct{ tx *firstUnreadTestTx }
+
+func (beginner firstUnreadTestBeginner) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	if options != (pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}) {
+		panic("first-unread transaction must be repeatable-read and read-only")
+	}
+	return beginner.tx, nil
+}
+
+type firstUnreadTestTx struct {
+	pgx.Tx
+	row                        firstUnreadTestRow
+	args                       []any
+	configureCalls, queryCalls int
+	committed, rolledBack      bool
+}
+
+func (tx *firstUnreadTestTx) Exec(_ context.Context, query string, _ ...any) (pgconn.CommandTag, error) {
+	if !strings.Contains(query, "ConfigureUnreadReadTransaction") ||
+		!strings.Contains(query, "set_config('statement_timeout', '5000ms', true)") ||
+		!strings.Contains(query, "set_config('work_mem', '4MB', true)") {
+		panic("unexpected first-unread configuration query")
+	}
+	tx.configureCalls++
+	return pgconn.CommandTag{}, nil
+}
+
+func (tx *firstUnreadTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
+	if !strings.Contains(query, "GetFirstUnreadTarget") {
+		panic("unexpected first-unread query")
+	}
+	tx.queryCalls++
+	tx.args = append([]any(nil), arguments...)
+	return tx.row
+}
+
+func (tx *firstUnreadTestTx) Commit(context.Context) error {
+	tx.committed = true
+	return nil
+}
+
+func (tx *firstUnreadTestTx) Rollback(context.Context) error {
+	tx.rolledBack = true
+	return nil
+}
+
+type firstUnreadTestRow struct {
+	values []any
+	err    error
+}
+
+func (row firstUnreadTestRow) Scan(destinations ...any) error {
+	if row.err != nil {
+		return row.err
+	}
+	for index, value := range row.values {
+		switch destination := destinations[index].(type) {
+		case *int64:
+			*destination = value.(int64)
+		case *int32:
+			*destination = value.(int32)
+		case *pgtype.Int4:
+			*destination = value.(pgtype.Int4)
+		case *pgtype.Int8:
+			*destination = value.(pgtype.Int8)
+		case *pgtype.Timestamptz:
+			*destination = value.(pgtype.Timestamptz)
+		default:
+			panic("unexpected first-unread destination")
+		}
+	}
+	return nil
+}
+
 func TestMarkTopicReadAcceptsIdempotentAndEmptyBoundaries(t *testing.T) {
 	t.Parallel()
 

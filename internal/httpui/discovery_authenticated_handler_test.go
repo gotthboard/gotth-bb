@@ -43,7 +43,7 @@ func TestAuthenticatedDiscoveryPreflightRunsBeforeSessionLookup(t *testing.T) {
 	handler, err := newAuthenticatedHandler(
 		callbackTestURLBuilder(t), service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
 		panicTopicPostPageLoader, store.MaximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &discoveryServices, verifyActivityCursor,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &discoveryServices, verifyActivityCursor, nil,
 		url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)
 	if err != nil {

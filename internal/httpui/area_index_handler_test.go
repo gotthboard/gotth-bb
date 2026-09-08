@@ -135,6 +135,50 @@ func TestAreaIndexHandlerRendersEmptyAndRedactedUnavailableStates(t *testing.T) 
 	}
 }
 
+func TestAreaIndexHandlerKeepsUnreadCountsPrivateAndComplete(t *testing.T) {
+	t.Parallel()
+
+	builder, view := areaIndexTestBuilderAndView(t)
+	for _, test := range []struct {
+		name          string
+		authenticated bool
+		count         *int64
+		wantStatus    int
+		wantLabel     bool
+	}{
+		{name: "authenticated", authenticated: true, count: func() *int64 { value := int64(2); return &value }(), wantStatus: http.StatusOK, wantLabel: true},
+		{name: "visitor", wantStatus: http.StatusOK},
+		{name: "authenticated missing count", authenticated: true, wantStatus: http.StatusServiceUnavailable},
+		{name: "visitor leaked count", count: func() *int64 { value := int64(2); return &value }(), wantStatus: http.StatusServiceUnavailable},
+		{name: "negative count", authenticated: true, count: func() *int64 { value := int64(-1); return &value }(), wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, err := newAreaIndexHandler(builder, view, func(context.Context, auth.AccessContext) ([]store.VisibleAreaSummary, error) {
+				return []store.VisibleAreaSummary{{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, UnreadTopicCount: test.count}}, nil
+			})
+			if err != nil {
+				t.Fatalf("newAreaIndexHandler() returned error: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodGet, "/", nil)
+			access := auth.AccessContext{}
+			if test.authenticated {
+				access = auth.AccessContext{Authenticated: true, UserID: 11, Role: auth.RoleMember}
+			}
+			ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{Access: access})
+			ctx = context.WithValue(ctx, unreadControlsContextKey{}, true)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request.WithContext(ctx))
+			gotLabel := strings.Contains(response.Body.String(), "2 unread topics")
+			if response.Code != test.wantStatus || gotLabel != test.wantLabel {
+				t.Fatalf("unread count response = (status %d label %t body %q)", response.Code, gotLabel, response.Body.String())
+			}
+			if test.authenticated && response.Header().Get("Cache-Control") != "private, no-store" {
+				t.Fatalf("authenticated cache policy = %q", response.Header().Get("Cache-Control"))
+			}
+		})
+	}
+}
+
 func TestAreaIndexHandlerShowsLogoutVerificationFailureOnlyToAuthenticatedSession(t *testing.T) {
 	t.Parallel()
 

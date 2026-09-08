@@ -28,6 +28,7 @@ type VisibleTopicPostPage struct {
 	Number     int32
 	TotalPosts int64
 	TotalPages int64
+	ReadState  *ReadState
 }
 
 // GetVisibleTopicPostPage validates one canonical authority and bounded topic

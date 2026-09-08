@@ -64,6 +64,9 @@ func newAreaTopicListHandler(builder URLBuilder, maximumPage int32, load AreaTop
 			return
 		}
 		authentication := sessionAuthenticationFromContext(request.Context())
+		if authentication.Access.Authenticated {
+			response.Header().Set("Cache-Control", "private, no-store")
+		}
 		loaded, loadErr := load(request.Context(), authentication.Access, slug, pageNumber)
 		if loadErr != nil {
 			if errors.Is(loadErr, pgx.ErrNoRows) {
@@ -109,11 +112,32 @@ func newAreaTopicListHandler(builder URLBuilder, maximumPage int32, load AreaTop
 			if topic.ReplyCount == 1 {
 				replyLabel = "1 reply"
 			}
-			items[index] = areaTopicListItem{
+			item := areaTopicListItem{
 				Title: topic.Title, URL: topicURL, StateLabel: stateLabel, Pinned: topic.PinnedAt.Valid,
 				ReplyLabel: replyLabel, Author: topic.AuthorDisplayName,
 				LastActivity: topic.LastActivityAt.Time.UTC().Format("Jan 2, 2006 15:04 MST"),
 			}
+			if unreadControlsEnabled(request.Context()) && authentication.Access.Authenticated && topic.ReadState != nil {
+				switch *topic.ReadState {
+				case store.ReadStateNew:
+					item.ReadStateLabel = "New"
+				case store.ReadStateUnread:
+					item.ReadStateLabel = "Unread"
+				case store.ReadStateRead:
+					item.ReadStateLabel = "Read"
+				default:
+					invalid = true
+				}
+				if *topic.ReadState == store.ReadStateNew || *topic.ReadState == store.ReadStateUnread {
+					item.FirstUnreadURL, buildErr = builder.Path("topics", strconv.FormatInt(topic.TopicID, 10), "unread")
+					if buildErr != nil {
+						invalid = true
+					}
+				}
+			} else if unreadControlsEnabled(request.Context()) && (authentication.Access.Authenticated || topic.ReadState != nil) {
+				invalid = true
+			}
+			items[index] = item
 		}
 		segments := []string{"areas", slug}
 		view, viewErr := newPageView(builder, loaded.Area.Name, segments...)

@@ -14,11 +14,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/discovery"
+	"github.com/gotthboard/gotth-bb/internal/forum"
+	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -135,6 +139,123 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 		t.Fatalf("marked discovery 400 did not replace the HTMX target: %s", errorDOM.String())
 	}
 	t.Logf("browser-through-Caddy admitted: caddy=%s chromium=%s bytes=%d", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), len(document))
+}
+
+func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
+	if os.Getenv("GOTTH_BB_BROWSER_CADDY") != "1" {
+		t.Skip("set GOTTH_BB_BROWSER_CADDY=1 on the designated evidence host")
+	}
+	caddy, err := exec.LookPath("caddy")
+	if err != nil {
+		t.Fatalf("locate Caddy: %v", err)
+	}
+	chromium, err := exec.LookPath("chromium")
+	if err != nil {
+		t.Fatalf("locate Chromium: %v", err)
+	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("locate Node: %v", err)
+	}
+	port := reserveDiscoveryTestPort(t)
+	publicBase := fmt.Sprintf("http://127.0.0.1:%d/bb", port)
+	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
+	var marked atomic.Bool
+
+	topicHandler, err := newTopicPostListHandler(builder, store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+		page := topicPostTestPage(1)
+		state := store.ReadStateNew
+		if marked.Load() {
+			state = store.ReadStateRead
+		}
+		page.ReadState = &state
+		return page, nil
+	})
+	if err != nil {
+		t.Fatalf("construct topic handler: %v", err)
+	}
+	unreadInner, err := newUnreadHandler(builder, UnreadHTTPServices{
+		FirstUnread: func(context.Context, auth.AccessContext, int64) (forum.FirstUnreadTarget, error) {
+			if marked.Load() {
+				return forum.FirstUnreadTarget{}, nil
+			}
+			return forum.FirstUnreadTarget{PostID: 101, Page: 1}, nil
+		},
+		MarkRead: func(context.Context, auth.AccessContext, int64) error {
+			marked.Store(true)
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("construct unread handler: %v", err)
+	}
+	unreadHandler, err := newUnreadPreflightHandler(builder, unreadInner)
+	if err != nil {
+		t.Fatalf("construct unread preflight: %v", err)
+	}
+	authentication := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 11, Role: auth.RoleMember}}
+	token := validCSRFTokenForTest(0x51)
+	withPrivateAuthority := func(request *http.Request) *http.Request {
+		ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, authentication)
+		ctx = context.WithValue(ctx, csrfTokenContextKey{}, token)
+		ctx = context.WithValue(ctx, unreadControlsContextKey{}, true)
+		return request.WithContext(ctx)
+	}
+	application := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/static/" + appStylesheetFilename:
+			staticAssetHandler("text/css; charset=utf-8", appStylesheet).ServeHTTP(response, request)
+		case "/static/htmx-2.0.10.min.js":
+			staticAssetHandler("text/javascript; charset=utf-8", htmxScript).ServeHTTP(response, request)
+		case "/static/" + discoveryResponseFilename:
+			staticAssetHandler("text/javascript; charset=utf-8", discoveryResponseScript).ServeHTTP(response, request)
+		case "/static/" + markdownToolbarFilename:
+			staticAssetHandler("text/javascript; charset=utf-8", markdownToolbarScript).ServeHTTP(response, request)
+		case "/topics/42":
+			routeContext := chi.NewRouteContext()
+			routeContext.URLParams.Add("topicID", "42")
+			ctx := context.WithValue(request.Context(), chi.RouteCtxKey, routeContext)
+			topicHandler.ServeHTTP(response, withPrivateAuthority(request.WithContext(ctx)))
+		case "/topics/42/unread", "/topics/42/read":
+			unreadHandler.ServeHTTP(response, withPrivateAuthority(request))
+		default:
+			http.NotFound(response, request)
+		}
+	})
+	upstream := httptest.NewServer(application)
+	defer upstream.Close()
+
+	directory := t.TempDir()
+	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n handle_path /bb/* {\n  reverse_proxy %s\n }\n}\n", port, upstream.URL)
+	configurationPath := filepath.Join(directory, "Caddyfile")
+	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
+		t.Fatalf("write temporary Caddyfile: %v", err)
+	}
+	caddyContext, cancelCaddy := context.WithCancel(context.Background())
+	var caddyLog bytes.Buffer
+	command := exec.CommandContext(caddyContext, caddy, "run", "--config", configurationPath, "--adapter", "caddyfile")
+	command.Stdout, command.Stderr = &caddyLog, &caddyLog
+	if err := command.Start(); err != nil {
+		cancelCaddy()
+		t.Fatalf("start Caddy: %v", err)
+	}
+	defer func() {
+		cancelCaddy()
+		_ = command.Wait()
+	}()
+	target := publicBase + "/topics/42"
+	waitForDiscoveryCaddy(t, target, &caddyLog)
+
+	browser := exec.Command(node, "--test", "assets/scripts/unread-controls.chromium.test.mjs")
+	browser.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_UNREAD_BROWSER_URL="+target)
+	output, err := browser.CombinedOutput()
+	if err != nil {
+		t.Fatalf("unread Chromium evidence failed: %v\n%s", err, output)
+	}
+	if !marked.Load() {
+		t.Fatal("keyboard mark-read form did not invoke the server mutation")
+	}
+	t.Logf("unread browser-through-Caddy admitted: caddy=%s chromium=%s node=%s\n%s", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
 }
 
 func reserveDiscoveryTestPort(t *testing.T) int {

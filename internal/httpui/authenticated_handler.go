@@ -53,7 +53,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -84,7 +84,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -116,7 +116,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
-		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -162,7 +162,7 @@ func NewAuthenticatedModeratedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil, nil, nil,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil, nil, nil, nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -205,7 +205,7 @@ func NewAuthenticatedReportedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, nil, nil,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, nil, nil, nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -254,7 +254,59 @@ func NewAuthenticatedDiscoveredForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
-		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, nil,
+		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		sessionCookieName, secure, checkReadiness,
+	)
+}
+
+// NewAuthenticatedUnreadForumHandler adds AN-03 first-unread navigation and
+// explicit mark-read writes to the complete AN-02 browser surface.
+func NewAuthenticatedUnreadForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
+	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
+	reports ReportHTTPServices,
+	discovery DiscoveryHTTPServices,
+	verifyActivityCursor ActivityCursorVerifier,
+	unread UnreadHTTPServices,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
+	sessionCookieName string,
+	secure bool,
+	checkReadiness ReadinessChecker,
+) (http.Handler, error) {
+	if unread.FirstUnread == nil || unread.MarkRead == nil {
+		return nil, fmt.Errorf("browser unread services are required")
+	}
+	if verifyActivityCursor == nil {
+		return nil, fmt.Errorf("browser discovery cursor verifier is required")
+	}
+	if reports.Create == nil || reports.List == nil || reports.Load == nil || reports.Process == nil || reports.Extended == nil {
+		return nil, fmt.Errorf("browser report services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, &unread,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -291,6 +343,7 @@ func newAuthenticatedHandler(
 	reports *ReportHTTPServices,
 	discovery *DiscoveryHTTPServices,
 	verifyActivityCursor activityCursorVerifier,
+	unread *UnreadHTTPServices,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -316,6 +369,12 @@ func newAuthenticatedHandler(
 		basePublicHandler := publicHandler
 		publicHandler = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			basePublicHandler.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), reportFormsContextKey{}, true)))
+		})
+	}
+	if unread != nil {
+		basePublicHandler := publicHandler
+		publicHandler = http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			basePublicHandler.ServeHTTP(response, request.WithContext(context.WithValue(request.Context(), unreadControlsContextKey{}, true)))
 		})
 	}
 	loginHandler, err := newLoginStartHandler(
@@ -521,6 +580,21 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct discovery preflight boundary: %w", discoveryErr)
 		}
 	}
+	var unreadHandler http.Handler
+	if unread != nil {
+		inner, unreadErr := newUnreadHandler(builder, *unread)
+		if unreadErr != nil {
+			return nil, fmt.Errorf("construct unread routes: %w", unreadErr)
+		}
+		authenticated, unreadErr := newSessionAuthenticationHandler(inner, service.AuthenticateSession, sessionCookieName, builder, secure)
+		if unreadErr != nil {
+			return nil, fmt.Errorf("construct unread session boundary: %w", unreadErr)
+		}
+		unreadHandler, unreadErr = newUnreadPreflightHandler(builder, authenticated)
+		if unreadErr != nil {
+			return nil, fmt.Errorf("construct unread preflight boundary: %w", unreadErr)
+		}
+	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -576,6 +650,21 @@ func newAuthenticatedHandler(
 		case "/":
 			authenticatedPublicHandler.ServeHTTP(response, request)
 		default:
+			if unreadHandler != nil && request.URL.RawPath == "" {
+				identifierAndSuffix, topicPath := strings.CutPrefix(request.URL.Path, "/topics/")
+				identifier, unreadPath := "", false
+				if request.Method == http.MethodGet {
+					identifier, unreadPath = strings.CutSuffix(identifierAndSuffix, "/unread")
+				} else if request.Method == http.MethodPost {
+					identifier, unreadPath = strings.CutSuffix(identifierAndSuffix, "/read")
+				}
+				if topicPath && unreadPath && identifier != "" && !strings.ContainsRune(identifier, '/') {
+					if _, identifierErr := parseTopicID(identifier); identifierErr == nil {
+						unreadHandler.ServeHTTP(response, request)
+						return
+					}
+				}
+			}
 			if discoveryHandler != nil && request.Method == http.MethodGet && request.URL.RawPath == "" {
 				identifier, directPostPath := strings.CutPrefix(request.URL.Path, "/posts/")
 				if directPostPath && identifier != "" && !strings.ContainsRune(identifier, '/') {

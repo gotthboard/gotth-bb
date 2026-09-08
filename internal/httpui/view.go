@@ -69,6 +69,7 @@ type areaIndexItem struct {
 	LatestURL    string
 	LatestAuthor string
 	LatestAt     string
+	UnreadLabel  string
 }
 
 type areaTopicListView struct {
@@ -83,33 +84,39 @@ type areaTopicListView struct {
 }
 
 type areaTopicListItem struct {
-	Title        string
-	URL          string
-	StateLabel   string
-	Pinned       bool
-	ReplyLabel   string
-	Author       string
-	LastActivity string
+	Title          string
+	URL            string
+	StateLabel     string
+	Pinned         bool
+	ReplyLabel     string
+	Author         string
+	LastActivity   string
+	ReadStateLabel string
+	FirstUnreadURL string
 }
 
 type topicPostPageView struct {
-	AreaName    string
-	AreaURL     string
-	Title       string
-	StateLabel  string
-	Pinned      bool
-	Author      string
-	Started     string
-	Posts       []topicPostItem
-	Number      int32
-	TotalPosts  int64
-	PreviousURL string
-	NextURL     string
-	ReplyForm   publishingFormView
-	ShowReply   bool
-	Moderation  []topicModerationView
-	Extended    []extendedModerationView
-	Report      reportFormView
+	AreaName       string
+	AreaURL        string
+	Title          string
+	StateLabel     string
+	Pinned         bool
+	Author         string
+	Started        string
+	Posts          []topicPostItem
+	Number         int32
+	TotalPosts     int64
+	PreviousURL    string
+	NextURL        string
+	ReplyForm      publishingFormView
+	ShowReply      bool
+	Moderation     []topicModerationView
+	Extended       []extendedModerationView
+	Report         reportFormView
+	ReadStateLabel string
+	FirstUnreadURL string
+	MarkReadAction string
+	CSRFToken      string
 }
 
 type topicModerationView struct {

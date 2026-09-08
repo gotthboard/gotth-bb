@@ -498,6 +498,40 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 			t.Fatalf("publishing marker count = %d, want %d", got, before)
 		}
 	})
+
+	t.Run("first unread and topic page share one private read model", func(t *testing.T) {
+		topic := insertUnreadTopic(t, ctx, connection, areas["public"], "First unread", []int64{readerID, otherID, readerID, otherID}, baseTime.Add(17*time.Hour))
+		target, err := FirstUnread(ctx, connection, reader, topic.id)
+		if err != nil || target != (FirstUnreadTarget{PostID: topic.postIDs[1], Page: 1}) {
+			t.Fatalf("initial FirstUnread() = (%+v, %v)", target, err)
+		}
+		page, err := LoadVisibleTopicPostPage(ctx, connection, reader, topic.id, 1)
+		if err != nil || page.ReadState == nil || *page.ReadState != "new" {
+			t.Fatalf("initial LoadVisibleTopicPostPage() = (state %v, %v)", page.ReadState, err)
+		}
+		visitorPage, err := LoadVisibleTopicPostPage(ctx, connection, policy.AccessContext{}, topic.id, 1)
+		if err != nil || visitorPage.ReadState != nil {
+			t.Fatalf("visitor LoadVisibleTopicPostPage() = (state %v, %v)", visitorPage.ReadState, err)
+		}
+		if err := MarkTopicRead(ctx, connection, reader, topic.id); err != nil {
+			t.Fatalf("MarkTopicRead() returned error: %v", err)
+		}
+		target, err = FirstUnread(ctx, connection, reader, topic.id)
+		if err != nil || target != (FirstUnreadTarget{}) {
+			t.Fatalf("read FirstUnread() = (%+v, %v)", target, err)
+		}
+		page, err = LoadVisibleTopicPostPage(ctx, connection, reader, topic.id, 1)
+		if err != nil || page.ReadState == nil || *page.ReadState != "read" {
+			t.Fatalf("read LoadVisibleTopicPostPage() = (state %v, %v)", page.ReadState, err)
+		}
+		groupTopic := insertUnreadTopic(t, ctx, connection, areas["group"], "First unread group", []int64{otherID}, baseTime.Add(18*time.Hour))
+		if _, err := FirstUnread(ctx, connection, reader, groupTopic.id); !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatalf("unauthorized FirstUnread() error = %v, want missing", err)
+		}
+		if target, err := FirstUnread(ctx, connection, readerWithGroup, groupTopic.id); err != nil || target.PostID != groupTopic.postIDs[0] || target.Page != 1 || target.Direct {
+			t.Fatalf("authorized group FirstUnread() = (%+v, %v)", target, err)
+		}
+	})
 }
 
 type unreadTopicFixture struct {

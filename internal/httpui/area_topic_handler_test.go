@@ -94,6 +94,50 @@ func TestAreaTopicListHandlerRendersEmptyFirstPageWithoutPagination(t *testing.T
 	}
 }
 
+func TestAreaTopicListHandlerRendersOnlyAuthenticatedReadState(t *testing.T) {
+	t.Parallel()
+
+	activity := pgtype.Timestamptz{Time: time.Now().UTC(), Valid: true}
+	for _, test := range []struct {
+		name          string
+		authenticated bool
+		state         *store.ReadState
+		wantStatus    int
+		wantControls  bool
+	}{
+		{name: "authenticated new", authenticated: true, state: func() *store.ReadState { value := store.ReadStateNew; return &value }(), wantStatus: http.StatusOK, wantControls: true},
+		{name: "visitor", wantStatus: http.StatusOK},
+		{name: "authenticated missing state", authenticated: true, wantStatus: http.StatusServiceUnavailable},
+		{name: "visitor leaked state", state: func() *store.ReadState { value := store.ReadStateUnread; return &value }(), wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, err := newAreaTopicListHandler(areaTopicTestBuilder(t), store.MaximumTopicPage, func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
+				return store.VisibleAreaTopicPage{
+					Area:   db.Area{ID: 1, Slug: "public", Name: "Public"},
+					Topics: []store.VisibleAreaTopic{{TopicID: 41, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 1, ReadState: test.state}},
+					Number: 1, TotalTopics: 1, TotalPages: 1,
+				}, nil
+			})
+			if err != nil {
+				t.Fatalf("newAreaTopicListHandler() returned error: %v", err)
+			}
+			access := auth.AccessContext{}
+			if test.authenticated {
+				access = auth.AccessContext{Authenticated: true, UserID: 11, Role: auth.RoleMember}
+			}
+			request := areaTopicTestRequest("/areas/public", "public", access)
+			request = request.WithContext(context.WithValue(request.Context(), unreadControlsContextKey{}, true))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			body := response.Body.String()
+			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `href="/bb/topics/41/unread"`) && strings.Contains(body, ">New<")
+			if response.Code != test.wantStatus || gotControls != test.wantControls {
+				t.Fatalf("read-state response = (status %d controls %t body %q)", response.Code, gotControls, body)
+			}
+		})
+	}
+}
+
 func TestAreaTopicListHandlerRendersOpenHiddenAndSingularReply(t *testing.T) {
 	t.Parallel()
 

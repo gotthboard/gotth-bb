@@ -57,6 +57,10 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 	}
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		authentication := sessionAuthenticationFromContext(request.Context())
+		unreadEnabled := unreadControlsEnabled(request.Context())
+		if authentication.Access.Authenticated {
+			response.Header().Set("Cache-Control", "private, no-store")
+		}
 		notice := areaIndexNoNotice
 		if authentication.Access.Authenticated {
 			switch request.URL.RawQuery {
@@ -86,6 +90,19 @@ func newAreaIndexHandler(builder URLBuilder, view pageView, list AreaIndexLister
 			item := areaIndexItem{
 				Name: area.Name, Description: area.Description, URL: areaURL,
 				TopicCount: summary.TopicCount, PostCount: summary.PostCount,
+			}
+			if unreadEnabled && authentication.Access.Authenticated && summary.UnreadTopicCount == nil ||
+				unreadEnabled && !authentication.Access.Authenticated && summary.UnreadTopicCount != nil ||
+				summary.UnreadTopicCount != nil && *summary.UnreadTopicCount < 0 {
+				serveUnavailable(response, request)
+				return
+			}
+			if unreadEnabled && summary.UnreadTopicCount != nil {
+				if *summary.UnreadTopicCount == 1 {
+					item.UnreadLabel = "1 unread topic"
+				} else {
+					item.UnreadLabel = fmt.Sprintf("%d unread topics", *summary.UnreadTopicCount)
+				}
 			}
 			if latest := summary.LatestPost; latest != nil {
 				if latest.TopicID <= 0 || latest.TopicTitle == "" || latest.PostID <= 0 || latest.PostNumber <= 0 || latest.TreeOrdinal <= 0 || latest.Author == "" || latest.CreatedAt.IsZero() {

@@ -205,7 +205,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct administrator claim service: %w", err)
 	}
-	applicationHandler, err := httpui.NewAuthenticatedDiscoveredForumHandler(
+	applicationHandler, err := httpui.NewAuthenticatedUnreadForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
@@ -216,7 +216,7 @@ func run(
 		},
 		store.MaximumTopicPage,
 		func(postContext context.Context, access auth.AccessContext, topicID int64, page int32) (store.VisibleTopicPostPage, error) {
-			return store.GetVisibleTopicPostPage(postContext, queries, topicID, page, access)
+			return forumservice.LoadVisibleTopicPostPage(postContext, pool, access, topicID, page)
 		},
 		store.MaximumPostPage,
 		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
@@ -284,6 +284,14 @@ func run(
 			},
 		},
 		cursorKeyring.VerifyCursor,
+		httpui.UnreadHTTPServices{
+			FirstUnread: func(unreadContext context.Context, access auth.AccessContext, topicID int64) (forumservice.FirstUnreadTarget, error) {
+				return forumservice.FirstUnread(unreadContext, pool, access, topicID)
+			},
+			MarkRead: func(readContext context.Context, access auth.AccessContext, topicID int64) error {
+				return forumservice.MarkTopicRead(readContext, pool, access, topicID)
+			},
+		},
 		configured.RegistrationURL,
 		configured.RegistrationEnabled,
 		func(setupContext context.Context, authentication auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {

@@ -99,6 +99,49 @@ func TestTopicPostListHandlerRendersEmptyTopic(t *testing.T) {
 	}
 }
 
+func TestTopicPostListHandlerRendersOnlyAuthenticatedUnreadControls(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name          string
+		authenticated bool
+		state         *store.ReadState
+		wantStatus    int
+		wantControls  bool
+	}{
+		{name: "authenticated unread", authenticated: true, state: func() *store.ReadState { value := store.ReadStateUnread; return &value }(), wantStatus: http.StatusOK, wantControls: true},
+		{name: "visitor", wantStatus: http.StatusOK},
+		{name: "authenticated missing state", authenticated: true, wantStatus: http.StatusServiceUnavailable},
+		{name: "visitor leaked state", state: func() *store.ReadState { value := store.ReadStateNew; return &value }(), wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page := topicPostTestPage(1)
+			page.Rows = page.Rows[:1]
+			page.ReadState = test.state
+			handler, err := newTopicPostListHandler(areaTopicTestBuilder(t), store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
+				return page, nil
+			})
+			if err != nil {
+				t.Fatalf("newTopicPostListHandler() returned error: %v", err)
+			}
+			access := auth.AccessContext{}
+			if test.authenticated {
+				access = auth.AccessContext{Authenticated: true, UserID: 11, Role: auth.RoleMember}
+			}
+			request := topicPostTestRequest("/topics/42", "42", access)
+			ctx := context.WithValue(request.Context(), unreadControlsContextKey{}, true)
+			ctx = context.WithValue(ctx, csrfTokenContextKey{}, validCSRFTokenForTest(0x51))
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request.WithContext(ctx))
+			body := response.Body.String()
+			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `action="/bb/topics/42/read"`) && strings.Contains(body, ">Unread<")
+			if response.Code != test.wantStatus || gotControls != test.wantControls {
+				t.Fatalf("unread controls response = (status %d controls %t body %q)", response.Code, gotControls, body)
+			}
+		})
+	}
+}
+
 func TestTopicPostListHandlerOffersDeleteButNotEditAtExhaustedRevision(t *testing.T) {
 	t.Parallel()
 

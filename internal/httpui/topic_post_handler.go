@@ -68,6 +68,9 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			return
 		}
 		authentication := sessionAuthenticationFromContext(request.Context())
+		if unreadControlsEnabled(request.Context()) && authentication.Access.Authenticated {
+			response.Header().Set("Cache-Control", "private, no-store")
+		}
 		loaded, loadErr := load(request.Context(), authentication.Access, topicID, pageNumber)
 		if loadErr != nil {
 			if errors.Is(loadErr, pgx.ErrNoRows) {
@@ -320,6 +323,37 @@ func newTopicPostListHandler(builder URLBuilder, maximumPage int32, load TopicPo
 			Posts: posts, Number: pageNumber, TotalPosts: loaded.TotalPosts,
 			PreviousURL: previousURL, NextURL: nextURL, ReplyForm: replyForm, ShowReply: replyForm.ActionURL != "",
 			Moderation: moderationControls,
+		}
+		if unreadControlsEnabled(request.Context()) && authentication.Access.Authenticated {
+			if loaded.ReadState == nil {
+				serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+				return
+			}
+			switch *loaded.ReadState {
+			case store.ReadStateNew:
+				presentation.ReadStateLabel = "New"
+			case store.ReadStateUnread:
+				presentation.ReadStateLabel = "Unread"
+			case store.ReadStateRead:
+				presentation.ReadStateLabel = "Read"
+			default:
+				serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+				return
+			}
+			if *loaded.ReadState == store.ReadStateNew || *loaded.ReadState == store.ReadStateUnread {
+				presentation.FirstUnreadURL, viewErr = builder.Path("topics", identifier, "unread")
+				if viewErr == nil && len(token) == sessionCookieEncodedBytes {
+					presentation.MarkReadAction, viewErr = builder.Path("topics", identifier, "read")
+					presentation.CSRFToken = token
+				}
+				if viewErr != nil {
+					serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+					return
+				}
+			}
+		} else if unreadControlsEnabled(request.Context()) && loaded.ReadState != nil {
+			serveError(response, request, http.StatusServiceUnavailable, unavailableView, "Topic unavailable", "This topic is temporarily unavailable.")
+			return
 		}
 		if reportAction != "" {
 			presentation.Report = reportFormView{ActionURL: reportAction, CSRFToken: token, TargetType: "topic", TargetID: identifier, SubmitLabel: "Report topic"}

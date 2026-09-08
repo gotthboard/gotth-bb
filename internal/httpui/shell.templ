@@ -250,6 +250,9 @@ templ areaIndexContentWithAreas(view pageView, areas []areaIndexItem, notice are
 									if area.Description != "" {
 										<p class="mt-1 text-sm leading-5 text-slate-400">{ area.Description }</p>
 									}
+									if area.UnreadLabel != "" {
+										<p class="mt-1 text-sm font-semibold text-cyan-200">{ area.UnreadLabel }</p>
+									}
 								</div>
 							</div>
 							<div class="flex gap-4 text-sm text-slate-300 md:contents">
@@ -316,11 +319,17 @@ templ areaTopicListContent(view pageView, area areaTopicListView) {
 											<span class="rounded border border-amber-700 bg-amber-950/40 px-1.5 py-0.5 text-amber-200">Pinned</span>
 										}
 										<span>{ topic.StateLabel }</span>
+										if topic.ReadStateLabel != "" {
+											<span class="rounded border border-cyan-800 bg-cyan-950/40 px-1.5 py-0.5 text-cyan-200">{ topic.ReadStateLabel }</span>
+										}
 									</div>
 									<h2 class="mt-1 font-bold">
 										<a href={ topic.URL } hx-get={ topic.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">{ topic.Title }</a>
 									</h2>
 									<p class="mt-1 text-xs text-slate-400">Started by { topic.Author }</p>
+									if topic.FirstUnreadURL != "" {
+										<a href={ topic.FirstUnreadURL } class="mt-2 inline-block rounded-sm text-sm font-semibold text-cyan-200 hover:text-cyan-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
+									}
 								</div>
 							</div>
 							<p class="text-sm text-slate-300 md:text-center"><span class="font-semibold md:sr-only">Replies: </span>{ topic.ReplyLabel }</p>
@@ -362,10 +371,24 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 					<span class="rounded border border-amber-700 bg-amber-950/40 px-2 py-1 font-semibold text-amber-200">Pinned</span>
 				}
 				<span class="font-semibold text-slate-300">{ topic.StateLabel }</span>
+				if topic.ReadStateLabel != "" {
+					<span class="rounded border border-cyan-800 bg-cyan-950/40 px-2 py-1 font-semibold text-cyan-200">{ topic.ReadStateLabel }</span>
+				}
 			</div>
 			<h1 id="topic-title" class="mt-2 text-2xl font-bold tracking-tight text-blue-100 sm:text-3xl">{ topic.Title }</h1>
 			<p class="mt-2 text-sm text-slate-400">Started by { topic.Author } · { topic.Started }</p>
 			<p class="mt-1 text-sm text-slate-400">Page { topic.Number } · { topic.TotalPosts } visible conversation nodes</p>
+			if topic.FirstUnreadURL != "" {
+				<div class="mt-4 flex flex-wrap items-center gap-3">
+					<a href={ topic.FirstUnreadURL } class="rounded border border-cyan-800 px-3 py-2 text-sm font-semibold text-cyan-200 hover:border-cyan-600 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
+					if topic.MarkReadAction != "" {
+						<form method="post" action={ topic.MarkReadAction } hx-post={ topic.MarkReadAction } hx-target="#main-content" hx-swap="outerHTML">
+							<input type="hidden" name="_csrf" value={ topic.CSRFToken }/>
+							<button type="submit" class="rounded border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-slate-400 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-200">Mark topic read</button>
+						</form>
+					}
+				</div>
+			}
 			if topic.Report.ActionURL != "" {
 				@reportForm(topic.Report)
 			}
