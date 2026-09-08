@@ -14,6 +14,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/render"
+	storedb "github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -352,6 +353,75 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 		if got, _ := inspectMarker(t, ctx, connection, readerID, topic.id); got != 3 {
 			t.Fatalf("concurrent marker = %d, want 3", got)
 		}
+	})
+
+	t.Run("different boundaries converge in both commit orders", func(t *testing.T) {
+		t.Run("lower then higher", func(t *testing.T) {
+			topic := insertUnreadTopic(t, ctx, connection, areas["public"], "Lower device first", []int64{readerID, otherID, otherID}, baseTime.Add(12*time.Hour))
+			if _, err := connection.Exec(ctx, `UPDATE public.posts SET deleted_at = created_at, deleted_by = $1, deletion_reason = 'lower boundary fixture' WHERE topic_id = $2 AND post_number = 3`, ownerID, topic.id); err != nil {
+				t.Fatalf("hide higher boundary: %v", err)
+			}
+			lower, err := connections[1].BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+			if err != nil {
+				t.Fatalf("begin lower device: %v", err)
+			}
+			defer func() { _ = lower.Rollback(context.Background()) }()
+			queries := storedb.New(lower)
+			if err := queries.ConfigureMarkTopicReadTransaction(ctx); err != nil {
+				t.Fatalf("configure lower device: %v", err)
+			}
+			boundary, err := queries.MarkTopicReadBoundary(ctx, storedb.MarkTopicReadBoundaryParams{TopicID: topic.id, ActorUserID: readerID})
+			if err != nil || boundary.SelectedPostNumber != 2 || !boundary.Advanced {
+				t.Fatalf("lower boundary = (%+v, %v)", boundary, err)
+			}
+			if _, err := connections[5].Exec(ctx, `UPDATE public.posts SET deleted_at = NULL, deleted_by = NULL, deletion_reason = NULL WHERE topic_id = $1 AND post_number = 3`, topic.id); err != nil {
+				t.Fatalf("restore higher boundary: %v", err)
+			}
+			result := make(chan error, 1)
+			go func() { result <- MarkTopicRead(context.Background(), connections[4], reader, topic.id) }()
+			waitForPostgreSQLLock(t, ctx, connection, connections[4].PgConn().PID())
+			if err := lower.Commit(ctx); err != nil {
+				t.Fatalf("commit lower device: %v", err)
+			}
+			if err := <-result; err != nil {
+				t.Fatalf("higher device returned error: %v", err)
+			}
+			if got, _ := inspectMarker(t, ctx, connection, readerID, topic.id); got != 3 {
+				t.Fatalf("lower-then-higher marker = %d, want 3", got)
+			}
+		})
+
+		t.Run("higher then lower", func(t *testing.T) {
+			topic := insertUnreadTopic(t, ctx, connection, areas["public"], "Higher device first", []int64{readerID, otherID, otherID}, baseTime.Add(14*time.Hour))
+			higher, err := connections[1].BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+			if err != nil {
+				t.Fatalf("begin higher device: %v", err)
+			}
+			defer func() { _ = higher.Rollback(context.Background()) }()
+			queries := storedb.New(higher)
+			if err := queries.ConfigureMarkTopicReadTransaction(ctx); err != nil {
+				t.Fatalf("configure higher device: %v", err)
+			}
+			boundary, err := queries.MarkTopicReadBoundary(ctx, storedb.MarkTopicReadBoundaryParams{TopicID: topic.id, ActorUserID: readerID})
+			if err != nil || boundary.SelectedPostNumber != 3 || !boundary.Advanced {
+				t.Fatalf("higher boundary = (%+v, %v)", boundary, err)
+			}
+			if _, err := connections[5].Exec(ctx, `UPDATE public.posts SET deleted_at = created_at, deleted_by = $1, deletion_reason = 'lower boundary fixture' WHERE topic_id = $2 AND post_number = 3`, ownerID, topic.id); err != nil {
+				t.Fatalf("lower eligible head: %v", err)
+			}
+			result := make(chan error, 1)
+			go func() { result <- MarkTopicRead(context.Background(), connections[4], reader, topic.id) }()
+			waitForPostgreSQLLock(t, ctx, connection, connections[4].PgConn().PID())
+			if err := higher.Commit(ctx); err != nil {
+				t.Fatalf("commit higher device: %v", err)
+			}
+			if err := <-result; err != nil {
+				t.Fatalf("lower device returned error: %v", err)
+			}
+			if got, _ := inspectMarker(t, ctx, connection, readerID, topic.id); got != 3 {
+				t.Fatalf("higher-then-lower marker = %d, want 3", got)
+			}
+		})
 	})
 
 	t.Run("unknown commit is inspectable and retry safe", func(t *testing.T) {
