@@ -6,9 +6,9 @@ Production implementation commit:
 Production implementation tree:
   1759e433729c4706f003514cc1de6450fce5cfbe
 Final B1-02 test methodology commit:
-  7fdbaf2a05a84a4eb3625847bcd6375832a8f6af
+  2436ea65cb04fecb81c4f3557406c9d70cf1ad67
 Final B1-02 test methodology tree:
-  d444afface2bfb58755a8f28a72e83c6bc783908
+  aefb83d048f70e898cd98efe518677afe09ac24f
 Admitted B1-00 contract commit:
   28143d74f284d59f13bcc9dbe613c84f207b0423
 
@@ -31,7 +31,8 @@ The exact methodology commit above ran:
     -run '^(TestAdministrationKeyboardAndNoScriptThroughCaddy|TestAbuseRejectionNoScriptThroughCaddy|TestUnreadControlsKeyboardAndNoScriptThroughCaddy|TestDiscoveryBrowserThroughCaddy)$' \
     ./internal/httpui
 
-The empty and `/bb` base paths both passed native no-script topic creation,
+The empty and `/bb` base paths both passed discovery, unread, administration,
+native no-script topic creation,
 blocked-destination 422, publication-rate 429, edit, and administrator-settings
 journeys. Drafts and safe fields survived rejection. The tests separately
 covered discovery, unread navigation/mark-read, administrator dashboard,
@@ -128,6 +129,11 @@ dual-base-path browser repetitions remain retained in
 Rejected attempts and boundary
 ------------------------------
 
+- The first cold review rejected a partial base-path matrix: rejection journeys
+  covered empty and `/bb`, while discovery, unread, and administration still
+  ran only at `/bb`. The final harness runs all four controlled journeys at
+  both paths. Its first exact run then exposed a Chromium profile cleanup race;
+  teardown now uses the existing bounded retry and the exact rerun passed.
 - The first Axe attempt ran while Chromium page execution was disabled and its
   asynchronous promise was collected. Enabling execution within the active
   administrator no-script journey then allowed HTMX to attach and invalidated
