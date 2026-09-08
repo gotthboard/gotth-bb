@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	administrationservice "github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/app"
 	"github.com/gotthboard/gotth-bb/internal/auth"
@@ -46,6 +47,7 @@ type databasePool interface {
 type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
 type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
+type abuseFactory func(config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error)
 
 // newLoggedInitialAdministratorClaimer preserves the exact claim result while
 // recording an operator-visible failure cause. It deliberately logs no user,
@@ -98,7 +100,19 @@ func main() {
 		return store.OpenPool(poolContext, poolConfig)
 	}, func(authContext context.Context, configured config.Config, database auth.SessionDatabase, builder httpui.URLBuilder) (httpui.AuthenticationService, error) {
 		return configured.NewAuthenticationService(authContext, nil, database, rand.Reader, time.Now, builder.ValidateReturnPath)
-	}, discovery.LoadCursorKeyring, net.Listen); err != nil {
+	}, discovery.LoadCursorKeyring, func(configured config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error) {
+		policy, err := abuse.LoadPolicy(configured.RulesFile, abuse.RateProfile{
+			RequestLimit: configured.RequestLimit, RequestWindow: configured.RequestWindow,
+			RequestClientCapacity: configured.RequestClientCapacity,
+			PublicationLimit:      configured.PublishLimit, NewAccountLimit: configured.NewAccountPublishLimit,
+			PublicationWindow: configured.PublishWindow, NewAccountPeriod: configured.NewAccountPeriod,
+		})
+		if err != nil {
+			return abuse.Policy{}, nil, err
+		}
+		limiter, err := policy.NewRequestLimiter(rand.Reader, time.Now)
+		return policy, limiter, err
+	}, net.Listen); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb: %v\n", err)
 		os.Exit(1)
 	}
@@ -122,6 +136,7 @@ func run(
 	openPool poolFactory,
 	newAuthentication authenticationFactory,
 	loadCursorKeyring cursorKeyringFactory,
+	loadAbuse abuseFactory,
 	listen func(string, string) (net.Listener, error),
 ) error {
 	if ctx == nil {
@@ -139,6 +154,9 @@ func run(
 	if loadCursorKeyring == nil {
 		return fmt.Errorf("activity cursor keyring factory is required")
 	}
+	if loadAbuse == nil {
+		return fmt.Errorf("abuse policy factory is required")
+	}
 	if listen == nil {
 		return fmt.Errorf("service listener factory is required")
 	}
@@ -153,7 +171,16 @@ func run(
 	if err != nil {
 		return fmt.Errorf("load activity cursor keyring failed")
 	}
+	abusePolicy, requestLimiter, err := loadAbuse(configured.Abuse)
+	if err != nil || requestLimiter == nil {
+		return fmt.Errorf("load abuse policy failed")
+	}
+	_ = abusePolicy
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
+	abuseObserver, err := abuse.NewObserver(logger)
+	if err != nil {
+		return fmt.Errorf("construct abuse observer: %w", err)
+	}
 	release, err := buildinfo.Current()
 	if err != nil {
 		return fmt.Errorf("load release identity: %w", err)
@@ -368,6 +395,10 @@ func run(
 	applicationHandler, err = httpui.NewFooterLoadTimesHandler(applicationHandler, release.Version, time.Now)
 	if err != nil {
 		return fmt.Errorf("construct footer load-time boundary: %w", err)
+	}
+	applicationHandler, err = httpui.NewRequestAdmissionHandler(applicationHandler, requestLimiter, abuseObserver, configured.Environment == config.EnvironmentProduction)
+	if err != nil {
+		return fmt.Errorf("construct request admission boundary: %w", err)
 	}
 	handler, err := app.NewHTTPHandler(applicationHandler, logger, rand.Reader, time.Now)
 	if err != nil {

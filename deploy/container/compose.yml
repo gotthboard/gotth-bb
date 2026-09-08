@@ -14,11 +14,19 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_runtime_url
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
+      ABUSE_RULES_FILE: /run/config/gotth-bb-abuse-rules
     network_mode: host
     secrets:
       - database_runtime_url
       - oidc_client_secret
       - activity_cursor_keyring
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_ABUSE_RULES_FILE:?GOTTH_BB_ABUSE_RULES_FILE is required}
+        target: /run/config/gotth-bb-abuse-rules
+        read_only: true
+        bind:
+          create_host_path: false
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m

@@ -31,6 +31,7 @@ type Config struct {
 	SessionIdleTimeout        time.Duration
 	AuthRevalidateInterval    time.Duration
 	ActivityCursorKeyringFile string
+	Abuse                     AbuseConfig
 	LogLevel                  slog.Level
 }
 
@@ -196,6 +197,10 @@ func Load(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	abuseConfig, err := loadAbuseConfig(required)
+	if err != nil {
+		return Config{}, err
+	}
 
 	sessionCookieRaw, _ := lookup("SESSION_COOKIE_NAME")
 	sessionCookieName, err := ParseSessionCookieName(sessionCookieRaw)
@@ -225,6 +230,7 @@ func Load(lookup LookupEnv) (Config, error) {
 		SessionIdleTimeout:        sessionIdleTimeout,
 		AuthRevalidateInterval:    authRevalidateInterval,
 		ActivityCursorKeyringFile: activityCursorKeyringFile,
+		Abuse:                     abuseConfig,
 		LogLevel:                  logLevel,
 	}, nil
 }

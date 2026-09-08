@@ -82,11 +82,14 @@ preserves the application's production loopback-only security contract and the
 same host-local network reachability as the previous native process.
 
 Compose interpolation supplies the image name and host file paths. Database,
-OIDC, and activity-cursor keyring secret values live in separate root-managed files mounted under
-`/run/secrets`; they do not belong in the image, Compose file, or Docker image
-configuration. The application receives only the keyring's non-secret mount
-path through `ACTIVITY_CURSOR_KEYRING_FILE`. See [`docs/release-operations.md`](docs/release-operations.md)
-for the deployment and rollback contract.
+OIDC, and activity-cursor keyring secret values live in separate root-managed
+files mounted under `/run/secrets`; they do not belong in the image, Compose
+file, or Docker image configuration. The application receives only the
+keyring's non-secret mount path through `ACTIVITY_CURSOR_KEYRING_FILE`.
+AN-05's non-secret canonical abuse rules are mounted separately and read-only
+at `/run/config/gotth-bb-abuse-rules`; only that path enters the environment.
+See [`docs/release-operations.md`](docs/release-operations.md) for the deployment
+and rollback contract.
 
 Apply the release's embedded forward migrations with `DATABASE_URL` already
 present in the process environment:

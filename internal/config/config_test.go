@@ -49,6 +49,9 @@ func TestLoad(t *testing.T) {
 	if got.ActivityCursorKeyringFile != "/run/secrets/activity-cursor-keyring" {
 		t.Fatalf("ActivityCursorKeyringFile = %q", got.ActivityCursorKeyringFile)
 	}
+	if got.Abuse.RulesFile != "/run/config/gotth-bb-abuse-rules" || got.Abuse.RequestLimit != 300 || got.Abuse.RequestWindow != time.Minute || got.Abuse.RequestClientCapacity != 4096 || got.Abuse.PublishLimit != 10 || got.Abuse.NewAccountPublishLimit != 3 || got.Abuse.PublishWindow != 10*time.Minute || got.Abuse.NewAccountPeriod != 24*time.Hour {
+		t.Fatalf("Abuse = %+v", got.Abuse)
+	}
 }
 
 func TestLoadUsesOptionalDefaultsAndAllowsDevelopmentPublicClient(t *testing.T) {
@@ -95,6 +98,14 @@ func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 		"SESSION_IDLE_TIMEOUT",
 		"AUTH_REVALIDATE_INTERVAL",
 		"ACTIVITY_CURSOR_KEYRING_FILE",
+		"ABUSE_RULES_FILE",
+		"REQUEST_RATE_LIMIT",
+		"REQUEST_RATE_WINDOW",
+		"REQUEST_RATE_CLIENT_CAPACITY",
+		"PUBLISH_RATE_LIMIT",
+		"NEW_ACCOUNT_PUBLISH_RATE_LIMIT",
+		"PUBLISH_RATE_WINDOW",
+		"NEW_ACCOUNT_PERIOD",
 	}
 	for _, name := range required {
 		name := name
@@ -141,6 +152,24 @@ func TestLoadRejectsInvalidRelationships(t *testing.T) {
 		{name: "relative activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "cursor.json" }},
 		{name: "unclean activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "/run/secrets/../cursor.json" }},
 		{name: "root activity cursor keyring", change: func(values map[string]string) { values["ACTIVITY_CURSOR_KEYRING_FILE"] = "/" }},
+		{name: "relative abuse rules", change: func(values map[string]string) { values["ABUSE_RULES_FILE"] = "rules" }},
+		{name: "unclean abuse rules", change: func(values map[string]string) { values["ABUSE_RULES_FILE"] = "/run/../rules" }},
+		{name: "root abuse rules", change: func(values map[string]string) { values["ABUSE_RULES_FILE"] = "/" }},
+		{name: "NUL abuse rules", change: func(values map[string]string) { values["ABUSE_RULES_FILE"] = "/run/rules\x00file" }},
+		{name: "long abuse rules", change: func(values map[string]string) { values["ABUSE_RULES_FILE"] = "/" + strings.Repeat("a", 4096) }},
+		{name: "signed request limit", change: func(values map[string]string) { values["REQUEST_RATE_LIMIT"] = "+1" }},
+		{name: "leading-zero request limit", change: func(values map[string]string) { values["REQUEST_RATE_LIMIT"] = "01" }},
+		{name: "zero request limit", change: func(values map[string]string) { values["REQUEST_RATE_LIMIT"] = "0" }},
+		{name: "overflow request limit", change: func(values map[string]string) { values["REQUEST_RATE_LIMIT"] = "100001" }},
+		{name: "short request window", change: func(values map[string]string) { values["REQUEST_RATE_WINDOW"] = "999ms" }},
+		{name: "long request window", change: func(values map[string]string) { values["REQUEST_RATE_WINDOW"] = "25h" }},
+		{name: "zero client capacity", change: func(values map[string]string) { values["REQUEST_RATE_CLIENT_CAPACITY"] = "0" }},
+		{name: "overflow client capacity", change: func(values map[string]string) { values["REQUEST_RATE_CLIENT_CAPACITY"] = "65537" }},
+		{name: "zero publish limit", change: func(values map[string]string) { values["PUBLISH_RATE_LIMIT"] = "0" }},
+		{name: "strict limit exceeds established", change: func(values map[string]string) { values["NEW_ACCOUNT_PUBLISH_RATE_LIMIT"] = "11" }},
+		{name: "short publish window", change: func(values map[string]string) { values["PUBLISH_RATE_WINDOW"] = "0s" }},
+		{name: "short new-account period", change: func(values map[string]string) { values["NEW_ACCOUNT_PERIOD"] = "59s" }},
+		{name: "long new-account period", change: func(values map[string]string) { values["NEW_ACCOUNT_PERIOD"] = "721h" }},
 	}
 
 	for _, test := range tests {
@@ -180,23 +209,31 @@ func TestLoadRedactsMalformedSetting(t *testing.T) {
 
 func validConfigEnvironment() map[string]string {
 	return map[string]string{
-		"APP_ENV":                      "production",
-		"LISTEN_ADDR":                  "127.0.0.1:8080",
-		"PUBLIC_BASE_URL":              "https://alhstudios.com/bb",
-		"BASE_PATH":                    "/bb",
-		"DATABASE_URL":                 "postgres://gotth:database-password@127.0.0.1/gotth_bb",
-		"OIDC_ISSUER_URL":              "https://auth.example.com/application/o/gotth-bb/",
-		"OIDC_CLIENT_ID":               "gotth-bb",
-		"OIDC_CLIENT_SECRET":           "oidc-client-secret",
-		"BOOTSTRAP_ADMIN_SUBJECT":      "fixed-opaque-subject",
-		"REGISTRATION_URL":             "https://auth.example.com/if/flow/gotth-bb-enrollment/",
-		"REGISTRATION_ENABLED":         "true",
-		"SESSION_COOKIE_NAME":          "",
-		"SESSION_MAX_AGE":              "24h",
-		"SESSION_IDLE_TIMEOUT":         "30m",
-		"AUTH_REVALIDATE_INTERVAL":     "15m",
-		"ACTIVITY_CURSOR_KEYRING_FILE": "/run/secrets/activity-cursor-keyring",
-		"LOG_LEVEL":                    "debug",
+		"APP_ENV":                        "production",
+		"LISTEN_ADDR":                    "127.0.0.1:8080",
+		"PUBLIC_BASE_URL":                "https://alhstudios.com/bb",
+		"BASE_PATH":                      "/bb",
+		"DATABASE_URL":                   "postgres://gotth:database-password@127.0.0.1/gotth_bb",
+		"OIDC_ISSUER_URL":                "https://auth.example.com/application/o/gotth-bb/",
+		"OIDC_CLIENT_ID":                 "gotth-bb",
+		"OIDC_CLIENT_SECRET":             "oidc-client-secret",
+		"BOOTSTRAP_ADMIN_SUBJECT":        "fixed-opaque-subject",
+		"REGISTRATION_URL":               "https://auth.example.com/if/flow/gotth-bb-enrollment/",
+		"REGISTRATION_ENABLED":           "true",
+		"SESSION_COOKIE_NAME":            "",
+		"SESSION_MAX_AGE":                "24h",
+		"SESSION_IDLE_TIMEOUT":           "30m",
+		"AUTH_REVALIDATE_INTERVAL":       "15m",
+		"ACTIVITY_CURSOR_KEYRING_FILE":   "/run/secrets/activity-cursor-keyring",
+		"ABUSE_RULES_FILE":               "/run/config/gotth-bb-abuse-rules",
+		"REQUEST_RATE_LIMIT":             "300",
+		"REQUEST_RATE_WINDOW":            "60s",
+		"REQUEST_RATE_CLIENT_CAPACITY":   "4096",
+		"PUBLISH_RATE_LIMIT":             "10",
+		"NEW_ACCOUNT_PUBLISH_RATE_LIMIT": "3",
+		"PUBLISH_RATE_WINDOW":            "10m",
+		"NEW_ACCOUNT_PERIOD":             "24h",
+		"LOG_LEVEL":                      "debug",
 	}
 }
 
