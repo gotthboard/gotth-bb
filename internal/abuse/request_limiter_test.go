@@ -85,6 +85,54 @@ func TestRequestLimiterRestartDropsProcessLocalWindows(t *testing.T) {
 	}
 }
 
+func TestRequestLimiterCollisionConservativelySharesOneWindow(t *testing.T) {
+	t.Parallel()
+	limiter, err := NewRequestLimiter(bytes.NewReader(bytes.Repeat([]byte{0x47}, 32)), 2, 1, time.Minute, time.Now)
+	if err != nil {
+		t.Fatalf("NewRequestLimiter() returned error: %v", err)
+	}
+	limiter.digest = func([32]byte, netip.Addr) [32]byte { return [32]byte{1} }
+	if decision, _ := limiter.Admit(netip.MustParseAddr("192.0.2.1")); decision != RequestAllowed {
+		t.Fatalf("first colliding admission = %d", decision)
+	}
+	if decision, retry := limiter.Admit(netip.MustParseAddr("2001:db8::1")); decision != RequestRateLimited || retry < time.Second || retry > time.Minute {
+		t.Fatalf("second colliding admission = (%d, %s)", decision, retry)
+	}
+	if len(limiter.entries) != 1 {
+		t.Fatalf("colliding entry count = %d", len(limiter.entries))
+	}
+}
+
+func TestRequestLimiterReclaimRetainsLiveWindowsAndEarliestBoundary(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	limiter, err := NewRequestLimiter(bytes.NewReader(bytes.Repeat([]byte{0x48}, 32)), 2, 10, time.Minute, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewRequestLimiter() returned error: %v", err)
+	}
+	first := netip.MustParseAddr("192.0.2.1")
+	second := netip.MustParseAddr("192.0.2.2")
+	third := netip.MustParseAddr("192.0.2.3")
+	fourth := netip.MustParseAddr("192.0.2.4")
+	limiter.Admit(first)
+	now = now.Add(30 * time.Second)
+	limiter.Admit(second)
+	now = now.Add(30 * time.Second)
+	if decision, _ := limiter.Admit(third); decision != RequestAllowed {
+		t.Fatalf("reclaiming admission = %d", decision)
+	}
+	if len(limiter.entries) != 2 {
+		t.Fatalf("entry count after partial reclaim = %d", len(limiter.entries))
+	}
+	if decision, _ := limiter.Admit(fourth); decision != RequestCapacityLimited {
+		t.Fatalf("pre-earliest capacity admission = %d", decision)
+	}
+	now = now.Add(30 * time.Second)
+	if decision, _ := limiter.Admit(fourth); decision != RequestAllowed {
+		t.Fatalf("next-boundary admission = %d", decision)
+	}
+}
+
 func TestRequestLimiterCanonicalIdentityAndClockRegression(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
