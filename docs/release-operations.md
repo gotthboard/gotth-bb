@@ -232,11 +232,15 @@ notes, screenshots, or repository files.
 - Migration privileges are separated from runtime privileges where practical.
 - After migrations, the migration owner applies
   `deploy/postgresql/runtime-grants.sql` with the exact runtime role as psql's
-  `runtime_role` variable. The idempotent artifact's base entries grant only
-  `UPDATE(singleton)` on `governance_state`, which PostgreSQL requires for
-  `SELECT ... FOR UPDATE`, plus `SELECT` on the migration-owned
-  `content_renderer_state` readiness singleton. Table-wide governance UPDATE,
-  UPDATE on `created_at`, renderer-state mutation, and DELETE remain denied.
+  `runtime_role` variable. This is a complete idempotent runtime ACL, not an
+  incremental grant list: it first removes inherited or restored table and
+  sequence privileges, then grants the exact Beta.1 read, mutation, sequence,
+  and schema boundary. This makes a `--no-privileges` logical restore usable
+  and removes broader Alpha default privileges before service.
+- The governance entry grants only `UPDATE(singleton)`, which PostgreSQL
+  requires for `SELECT ... FOR UPDATE`, plus `SELECT` on the migration-owned
+  readiness singletons. Table-wide governance UPDATE, UPDATE on `created_at`,
+  renderer/search-state mutation, and DELETE remain denied.
 - After 000008, the same packaged artifact's search-state entry adds only
   `SELECT` on the migration-owned `search_projection_state` singleton for
   runtime readiness; runtime never owns or mutates that table.
@@ -252,7 +256,7 @@ notes, screenshots, or repository files.
   revisions, and revised audit checks. PostgreSQL's constant defaults avoid
   rewriting existing user/group/area rows, but constraint validation and audit-
   check replacement still take measured table locks and scans. The packaged
-  runtime-grant delta adds settings SELECT/column-UPDATE, group SELECT/create/
+  runtime ACL adds settings SELECT/column-UPDATE, group SELECT/create/
   rename plus `forum_groups_id_seq` usage, and membership SELECT/insert/delete.
   It preserves the pre-AN-04 baseline, adds no settings insert/delete/key
   update, adds no mapping update, and does not grant deletion of users, groups,
@@ -263,7 +267,7 @@ notes, screenshots, or repository files.
   validations still scan and lock the relation. A legacy nonfinite
   `users.created_at` aborts the entire migration; inspect and apply a reviewed
   forward data repair before retrying rather than inventing account age. The
-  runtime-grant delta
+  runtime ACL
   adds UPDATE only on `publication_window_started_at` and `publication_count`;
   it grants no table-wide account mutation.
 - Connections require the deployment's approved transport protection.
@@ -476,15 +480,11 @@ required sequence is:
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
-   after 000007 because PostgreSQL grants a newly created table only to its
-   migration owner by default; the application readiness role needs the
-   artifact's narrow `SELECT` on `content_renderer_state`. Reapplying this
-   `GRANT` artifact is idempotent. After 000008 it also supplies the exact
-   read-only `search_projection_state` grant. After 000010 it supplies the
-   exact AN-04 settings/group/membership table-column and group-sequence delta
-   without replacing the pre-AN-04 runtime baseline. After 000011 it supplies
-   UPDATE only on the two publication-window columns. Do not transfer table
-   ownership or substitute table-wide mutation privileges.
+   after a privilege-free restore and also closes broader legacy/default ACLs.
+   Reapplying the complete ACL is idempotent. It supplies read-only renderer
+   and search state, exact settings/group/membership authority, and the named
+   user-column mutations including the two publication-window columns. Do not
+   transfer ownership or substitute table-wide account/state mutation.
 11. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 12. Validate the resolved Compose model without printing its environment.

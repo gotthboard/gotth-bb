@@ -161,8 +161,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 8 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 8", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 14 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 14", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -223,13 +223,18 @@ WHERE display_name='Readiness Administrator'`)
 	if err != nil || allowed.RowsAffected() != 1 {
 		t.Fatalf("runtime publication-column reset = (%s, %v)", allowed, err)
 	}
+	allowed, err = restricted.Exec(ctx, `UPDATE public.users
+SET display_name=display_name
+WHERE display_name='Readiness Administrator'`)
+	if err != nil || allowed.RowsAffected() != 1 {
+		t.Fatalf("runtime profile-column update = (%s, %v)", allowed, err)
+	}
 	for _, denied := range []struct {
 		name      string
 		statement string
 	}{
-		{name: "unrelated column", statement: `UPDATE public.users SET display_name=display_name WHERE display_name='Readiness Administrator'`},
 		{name: "account creation time", statement: `UPDATE public.users SET created_at=created_at WHERE display_name='Readiness Administrator'`},
-		{name: "account insert", statement: `INSERT INTO public.users (display_name) VALUES ('Forbidden runtime insert')`},
+		{name: "unowned insert column", statement: `INSERT INTO public.users (display_name, bio) VALUES ('Forbidden runtime insert', 'forbidden')`},
 		{name: "account delete", statement: `DELETE FROM public.users WHERE display_name='Readiness Administrator'`},
 	} {
 		_, deniedErr := restricted.Exec(ctx, denied.statement)
@@ -238,13 +243,13 @@ WHERE display_name='Readiness Administrator'`)
 			t.Fatalf("runtime %s error = %v, want SQLSTATE 42501", denied.name, deniedErr)
 		}
 	}
-	if _, err := connection.Exec(ctx, `GRANT UPDATE (display_name) ON public.users TO `+roleIdentifier); err != nil {
+	if _, err := connection.Exec(ctx, `GRANT UPDATE (bio) ON public.users TO `+roleIdentifier); err != nil {
 		t.Fatalf("widen runtime user-column authority: %v", err)
 	}
 	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted runtime UPDATE authority outside the publication tuple")
 	}
-	if _, err := connection.Exec(ctx, `REVOKE UPDATE (display_name) ON public.users FROM `+roleIdentifier); err != nil {
+	if _, err := connection.Exec(ctx, `REVOKE UPDATE (bio) ON public.users FROM `+roleIdentifier); err != nil {
 		t.Fatalf("restore runtime user-column authority: %v", err)
 	}
 	if err := restrictedChecker.Check(ctx); err != nil {

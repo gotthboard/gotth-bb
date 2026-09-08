@@ -55,7 +55,13 @@ const publicationPrivilegeReadySQL = `SELECT
         WHERE column_state.attrelid = 'public.users'::regclass
           AND column_state.attnum > 0
           AND NOT column_state.attisdropped
-          AND column_state.attname NOT IN ('publication_window_started_at', 'publication_count')
+          AND column_state.attname NOT IN (
+              'display_name', 'email', 'avatar_url', 'role',
+              'suspended_at', 'suspended_until', 'suspension_reason',
+              'muted_until', 'updated_at', 'last_login_at',
+              'administration_revision',
+              'publication_window_started_at', 'publication_count'
+          )
           AND has_column_privilege(current_user, 'public.users', column_state.attname, 'UPDATE')
     )
 FROM pg_catalog.pg_class AS relation
@@ -68,7 +74,7 @@ const (
 )
 
 // PublicationReady attests migration 000011's exact columns, constraints, and
-// the connected runtime role's two-column mutation authority.
+// the connected runtime role's complete column-only user mutation authority.
 func PublicationReady(ctx context.Context, database readinessDatabase) error {
 	if ctx == nil || database == nil {
 		return fmt.Errorf("publication readiness boundary is incomplete")
