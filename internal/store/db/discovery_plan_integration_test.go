@@ -908,7 +908,20 @@ func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configur
 				if err != nil {
 					return err
 				}
-				if row.TopicID != 2 || row.ReadHead <= 0 || !row.TargetPostID.Valid {
+				targetPresent := row.TargetPostID.Valid && row.TargetPostNumber.Valid && row.TargetNodeOrdinal.Valid
+				targetAbsent := !row.TargetPostID.Valid && !row.TargetPostNumber.Valid && !row.TargetNodeOrdinal.Valid
+				markerPresent := row.LastReadPostNumber.Valid && row.ReadAt.Valid
+				markerAbsent := !row.LastReadPostNumber.Valid && !row.ReadAt.Valid
+				marker := int32(0)
+				if markerPresent {
+					marker = row.LastReadPostNumber.Int32
+				}
+				if row.TopicID != 2 || row.NextPostNumber < 2 || row.ReadHead <= 0 || row.ReadHead >= row.NextPostNumber ||
+					(!targetPresent && !targetAbsent) || (!markerPresent && !markerAbsent) ||
+					markerPresent && (marker <= 0 || marker >= row.NextPostNumber || row.ReadAt.InfinityModifier != pgtype.Finite) ||
+					targetAbsent && row.ReadHead > marker ||
+					targetPresent && (row.TargetPostID.Int64 <= 0 || row.TargetPostNumber.Int32 <= marker ||
+						row.TargetPostNumber.Int32 > row.ReadHead || row.TargetNodeOrdinal.Int64 <= 0 || row.TargetNodeOrdinal.Int64 > 250001) {
 					return fmt.Errorf("first-unread returned invalid state: %+v", row)
 				}
 				return nil
