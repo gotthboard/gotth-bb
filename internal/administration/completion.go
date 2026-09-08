@@ -315,7 +315,7 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 			return fmt.Errorf("lock area: %w", err)
 		}
 		if input.Slug != "" || current.AdministrationRevision != input.Revision || input.Revision == maximumAdministrationRevision {
-			return ErrAdministrationConflict
+			return fmt.Errorf("%w: stale or exhausted area core", ErrAdministrationConflict)
 		}
 		input.Slug = current.Slug
 		if current.Visibility == string(policy.VisibilityGroups) && input.Visibility == policy.VisibilityGroups && input.InitialGroupID != 0 {
@@ -352,7 +352,7 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 		previous := boundedAreaAuditState{Slug: current.Slug, Name: current.Name, DescriptionSHA256: digestBytes([]byte(current.Description)), DisplayOrder: current.DisplayOrder, Visibility: policy.Visibility(current.Visibility), PostingMode: policy.PostingMode(current.PostingMode), AdministrationRevision: current.AdministrationRevision, GroupCount: previousGroupCount, GroupIDsSHA256: previousGroupDigest}
 		resulting := boundedAreaAuditState{Slug: current.Slug, Name: input.Name, DescriptionSHA256: digestBytes([]byte(input.Description)), DisplayOrder: input.DisplayOrder, Visibility: input.Visibility, PostingMode: input.PostingMode, AdministrationRevision: input.Revision + 1, GroupCount: resultingGroupCount, GroupIDsSHA256: resultingGroupDigest}
 		if equalBoundedAreaStatesIgnoringRevision(previous, resulting) {
-			return ErrAdministrationConflict
+			return fmt.Errorf("%w: unchanged area core", ErrAdministrationConflict)
 		}
 		if groupsChanged {
 			if err := queries.DeleteAreaGroupsForAdministration(mutationContext, areaID); err != nil {
@@ -372,7 +372,7 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 		}
 		changed, err := queries.UpdateAdministrationAreaAndAudit(mutationContext, db.UpdateAdministrationAreaAndAuditParams{Name: input.Name, Description: input.Description, DisplayOrder: input.DisplayOrder, Visibility: string(input.Visibility), PostingMode: string(input.PostingMode), ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AreaID: areaID, ExpectedRevision: input.Revision, Reason: administrationReason(input.Reason), PreviousState: previousJSON, ResultingState: resultingJSON, RequestID: requestID})
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrAdministrationConflict
+			return fmt.Errorf("%w: conditional area update", ErrAdministrationConflict)
 		}
 		if err != nil {
 			return err
