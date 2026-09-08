@@ -1,0 +1,115 @@
+AN-05-01 request-admission evidence
+===================================
+
+Tested executable and methodology commit:
+  ccff9a995042a58ac37e3732a28c8ff9112fd654
+Tested tree:
+  b4d05e0fae7e58b21bcca435325299d573b0bd71
+Admitted AN-05 contract commit:
+  eed3c2d01ea5064f350467314262665dabdfbc90
+Base merged AN-04 commit:
+  d92407a6efbd1ea0e3ad98dc22283c4d0a225170
+Offline bundle:
+  /tmp/gotth-bb-an05-01-ccff9a9.bundle
+  SHA-256 e60bb5b4c0f20d1712bc91943d96b7d2c34847ab936058fc6aafd0d3f07a1a6d
+
+Environment
+-----------
+
+- Go module toolchain 1.26.6 on linux/amd64
+- Node.js 26.7.0 and npm 12.0.2 for deterministic generation
+- Caddy 2.11.4 on x86_64
+- Remote validation host `development`; no production host or service was
+  changed
+
+Exact gates
+-----------
+
+1. Pinned deterministic generation and custody on the exact local checkout:
+
+     test "$(node --version)" = v26.7.0
+     test "$(npm --version)" = 12.0.2
+     npm ci --ignore-scripts
+     make generate
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     test -z "$(gofmt -l .)"
+     git diff --check
+     test -z "$(git status --short)"
+
+2. Static, repository-wide race, and coverage gate in a clean detached
+   checkout on `development`:
+
+     scripts/test-alpha3-evidence-custody.sh
+     go vet -mod=readonly ./...
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+3. Focused admission repetitions:
+
+     GOMAXPROCS=2 go test -p=1 -run 'TestRequestAdmission' -count=25 ./internal/httpui
+     GOMAXPROCS=2 go test -p=1 -run 'TestRequestLimiter' -count=50 ./internal/abuse
+
+4. Focused abuse coverage:
+
+     GOMAXPROCS=2 go test -p=1 -coverprofile=/tmp/an05-01-abuse-final.cover ./internal/abuse
+     go tool cover -func=/tmp/an05-01-abuse-final.cover
+
+5. Caddy overwrite/removal contract:
+
+     caddy validate --config /tmp/gotth-bb-an05-01-lHDyxd/Caddyfile --adapter caddyfile
+     caddy adapt --config /tmp/gotth-bb-an05-01-lHDyxd/Caddyfile --adapter caddyfile --pretty
+
+   The adapted JSON contains an exact `X-Forwarded-For` set to
+   `{http.request.remote.host}` and removal entries for `Forwarded` and
+   `X-Real-IP`.
+
+Results
+-------
+
+- Every exact-tree gate passed. Repository-wide race coverage passed for all
+  packages. `internal/abuse` statement coverage was 94.2% in the focused gate
+  and 93.1% in the repository-wide race gate; `internal/config` was 99.7%.
+- Configuration proves all eight required AN-05 values, canonical counts,
+  bounded Go durations, the new/established relationship, and an absolute,
+  clean, non-root, NUL-free rules path of at most 4,096 bytes.
+- The loader proves descriptor custody across pathname replacement, regular
+  non-writable file enforcement, 65,536-byte and 256-rule bounds, empty and
+  maximum policies, strict ordering/uniqueness, encoding/line controls, DNS,
+  IDNA, IP, URL, port, escape, query, fragment, and dot-segment rules. Errors
+  contain no path, rule, URL, or configured value.
+- Request tests cover IPv4, IPv6, mapped IPv4, malformed peers, production
+  loopback custody, direct non-production identity, duplicate/comma/space/
+  port/zone/noncanonical forwarding, alternative identity headers, exact
+  health/static exemptions, near misses, unknown charged routes, body
+  non-consumption, 429/503 shape, capacity reclamation, restart reset, clock
+  regression, HMAC collision sharing, and exact concurrent admission.
+- Request state never exceeds configured capacity and retains only HMAC-SHA-256
+  digests, window starts, and counts. No goroutine, timer, raw address, account
+  lookup, body read, session lookup, router match, or database operation is
+  introduced by admission.
+- Observer tests prove fixed class/route/status/retry/request-ID fields, input-
+  free logs, invalid-event suppression, and that a slog handler error cannot
+  change the already selected response.
+
+Rejected attempt and repair
+---------------------------
+
+- Cold review 1 rejected candidate
+  `87da2bb86b54e8e5c0ed5d55ec07f4f970b50bdf` because direct traffic rejected
+  only `X-Forwarded-For` while silently ignoring `Forwarded` and `X-Real-IP`.
+  Candidate `d0059ea9b29352935562c91c07c1b049608958c1` rejects both alternative
+  identities in every environment and adds regression coverage.
+- Before that freeze, focused review found terminal `/.` and `/..` paths could
+  normalize to a false double slash. Candidate
+  `87da2bb86b54e8e5c0ed5d55ec07f4f970b50bdf` repaired the canonicalizer and
+  added root-result cases.
+- Final test-only commits prove every observer terminal class, file/input
+  boundaries, logging-error isolation, HMAC collision sharing, and staggered
+  capacity reclamation without changing executable behavior.
+
+Boundary
+--------
+
+This evidence admits AN-05-01 only. It does not implement durable publication
+limits, destination matching in GFM, progressive publication/block UI,
+integrated AN-05 admission, a PR/merge, a tag, a release, or a deployment.
