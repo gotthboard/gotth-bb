@@ -97,6 +97,22 @@ Result: PASS on the implementation-equivalent tree for both supported base
 paths. The gate loads the exact stylesheet, requires stacked date rows at 320
 CSS pixels, and runs the shared 320-pixel and 200%-zoom reflow assertions.
 
+The first cold review correctly observed that changing the shared reflow helper
+also affects the abuse-rejection, administration, and unread browser gates.
+The complete affected Caddy/Chromium matrix was therefore rerun on final commit
+b4c6b8ec7647bda3243c4a398102fa0b94e55483 at both the empty base path and
+/bb:
+
+  TestAbuseRejectionNoScriptThroughCaddy
+  TestAdministrationKeyboardAndNoScriptThroughCaddy
+  TestDiscoveryBrowserThroughCaddy
+  TestUnreadControlsKeyboardAndNoScriptThroughCaddy
+
+Result: PASS. Every reflow assertion reported scrollWidth no greater than
+clientWidth. Axe reported zero violations; its pre-existing gradient
+color-contrast checks remained explicitly incomplete rather than being called
+passes. The candidate regenerated without tracked drift before this matrix.
+
 Repository-wide verification
 ----------------------------
 
