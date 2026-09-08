@@ -317,17 +317,44 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 3 {
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 7 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	statements := make([]string, 0, 6)
+	statements := make([]string, 0, 25)
 	for _, line := range strings.Split(string(grants[:len(grants)-1]), "\n") {
 		if line == "" || strings.HasPrefix(line, "--") {
 			continue
 		}
 		statements = append(statements, line)
 	}
-	const required = "GRANT UPDATE (singleton)\nON TABLE public.governance_state\nTO :\"runtime_role\";\nGRANT SELECT\nON TABLE public.content_renderer_state\nTO :\"runtime_role\";\nGRANT SELECT\nON TABLE public.search_projection_state\nTO :\"runtime_role\";"
+	const required = `GRANT UPDATE (singleton)
+ON TABLE public.governance_state
+TO :"runtime_role";
+GRANT SELECT
+ON TABLE public.content_renderer_state
+TO :"runtime_role";
+GRANT SELECT
+ON TABLE public.search_projection_state
+TO :"runtime_role";
+GRANT SELECT,
+      UPDATE (site_name, site_description, brand_theme, rules_markdown,
+              rules_html, rules_renderer_version, administration_revision,
+              updated_at)
+ON TABLE public.site_settings
+TO :"runtime_role";
+GRANT SELECT,
+      INSERT (name, created_by, created_at, updated_at),
+      UPDATE (name, updated_at, administration_revision)
+ON TABLE public.forum_groups
+TO :"runtime_role";
+GRANT USAGE, SELECT
+ON SEQUENCE public.forum_groups_id_seq
+TO :"runtime_role";
+GRANT SELECT,
+      INSERT (group_id, user_id, granted_by, created_at),
+      DELETE
+ON TABLE public.forum_group_members
+TO :"runtime_role";`
 	if strings.Join(statements, "\n") != required {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}

@@ -119,8 +119,8 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		t.Fatalf("read runtime grant contract: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if strings.Count(string(grantTemplate), rolePlaceholder) != 3 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 3", strings.Count(string(grantTemplate), rolePlaceholder))
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 7 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 7", strings.Count(string(grantTemplate), rolePlaceholder))
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	if _, err := connection.Exec(ctx, grantSQL); err != nil {
