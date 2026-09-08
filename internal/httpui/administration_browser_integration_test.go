@@ -11,15 +11,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/site"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -44,7 +49,7 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
 	services := administrationCompletionTestServices()
 	var changed atomic.Bool
-	var emptyDashboard, membership, areaAssigned, sessionRevoked atomic.Bool
+	var emptyDashboard, membership, areaAssigned, memberSession, sessionRevoked atomic.Bool
 	membership.Store(true)
 	areaAssigned.Store(true)
 	var groupName, areaMode, siteName, siteDescription, siteTheme, rulesMarkdown atomic.Value
@@ -54,7 +59,8 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	siteDescription.Store("Browser description")
 	siteTheme.Store("blue")
 	rulesMarkdown.Store("# Browser rules")
-	var groupRevision, areaRevision, siteRevision atomic.Int64
+	var memberRevision, groupRevision, areaRevision, siteRevision atomic.Int64
+	memberRevision.Store(3)
 	groupRevision.Store(5)
 	areaRevision.Store(2)
 	siteRevision.Store(1)
@@ -90,7 +96,7 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		if changed.Load() {
 			displayName = "Updated Member"
 		}
-		return administration.AccountSummary{ID: 2, DisplayName: displayName, Role: policy.RoleMember, Revision: 3}, nil
+		return administration.AccountSummary{ID: 2, DisplayName: displayName, Role: policy.RoleMember, Revision: memberRevision.Load()}, nil
 	}
 	services.ListAccountGroups = func(context.Context, auth.AccessContext, int64, int64) (administration.AccountGroupPage, error) {
 		return administration.AccountGroupPage{Groups: []administration.AccountGroup{{ID: 4, Name: groupName.Load().(string), Member: membership.Load()}}}, nil
@@ -107,17 +113,31 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 			return administration.AccountMutationResult{}, fmt.Errorf("unexpected keyboard role target: user=%d role=%d expected=%d reason=%q revision=%d", userID, role, expected, reason, revision)
 		}
 		changed.Store(true)
-		return administration.AccountMutationResult{UserID: 2, Revision: 4, AuditID: 9}, nil
+		memberRevision.Store(4)
+		return administration.AccountMutationResult{UserID: 2, Revision: memberRevision.Load(), AuditID: 9}, nil
 	}
-	services.ChangeMembership = func(_ context.Context, _ auth.AccessContext, userID, groupID int64, grant bool, _ string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
-		if userID != 2 || groupID != 4 || revision != 3 || !requestID.Valid {
+	services.ChangeMembership = func(_ context.Context, _ auth.AccessContext, userID, groupID int64, grant bool, reason string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
+		wantReason := "Grant browser membership"
+		if !grant {
+			wantReason = "Revoke browser membership"
+		}
+		if userID != 2 || groupID != 4 || reason != wantReason || revision != memberRevision.Load() || !requestID.Valid {
 			return administration.AccountMutationResult{}, fmt.Errorf("unexpected membership mutation")
 		}
 		membership.Store(grant)
-		return administration.AccountMutationResult{UserID: userID, Revision: revision + 1, AuditID: 11}, nil
+		memberRevision.Add(1)
+		return administration.AccountMutationResult{UserID: userID, Revision: memberRevision.Load(), AuditID: 11}, nil
 	}
-	services.ListGroups = func(context.Context, auth.AccessContext, int64) (administration.GroupPage, error) {
-		return administration.GroupPage{Groups: []administration.GroupSummary{{ID: 4, Name: groupName.Load().(string), Revision: groupRevision.Load()}}}, nil
+	services.ListGroups = func(_ context.Context, _ auth.AccessContext, after int64) (administration.GroupPage, error) {
+		if after > 0 {
+			return administration.GroupPage{Groups: []administration.GroupSummary{{ID: 54, Name: "Continuation Group", Revision: 1}}}, nil
+		}
+		groups := make([]administration.GroupSummary, 50)
+		groups[0] = administration.GroupSummary{ID: 4, Name: groupName.Load().(string), Revision: groupRevision.Load()}
+		for index := 1; index < len(groups); index++ {
+			groups[index] = administration.GroupSummary{ID: int64(index + 4), Name: fmt.Sprintf("Browser Group %02d", index+4), Revision: 1}
+		}
+		return administration.GroupPage{Groups: groups, NextAfter: 53}, nil
 	}
 	services.CreateGroup = func(_ context.Context, _ auth.AccessContext, name, reason string, requestID pgtype.UUID) (administration.GroupMutationResult, error) {
 		if name != "Browser Operators" || reason != "Create browser group" || !requestID.Valid {
@@ -193,6 +213,35 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		t.Fatalf("construct site settings handler: %v", err)
 	}
 	privateSite = withModerationTestRequestID(t, privateSite)
+	areaHandler, err := newAreaTopicListHandler(builder, store.MaximumTopicPage, func(_ context.Context, access auth.AccessContext, slug string, page int32) (store.VisibleAreaTopicPage, error) {
+		if slug != "restricted" || page != 1 {
+			return store.VisibleAreaTopicPage{}, pgx.ErrNoRows
+		}
+		memberOfAreaGroup := false
+		for _, groupID := range access.GroupIDs {
+			if groupID == 4 {
+				memberOfAreaGroup = true
+				break
+			}
+		}
+		if !access.Authenticated || !areaAssigned.Load() || !memberOfAreaGroup {
+			return store.VisibleAreaTopicPage{}, pgx.ErrNoRows
+		}
+		return store.VisibleAreaTopicPage{Area: db.Area{ID: 3, Slug: "restricted", Name: "Restricted browser area", Visibility: "groups", PostingMode: "normal"}, Number: 1}, nil
+	})
+	if err != nil {
+		t.Fatalf("construct restricted-area handler: %v", err)
+	}
+	areaRouter := chi.NewRouter()
+	areaRouter.Get("/areas/{slug}", areaHandler.ServeHTTP)
+	restrictedAreaDestination, err := builder.Path("areas", "restricted")
+	if err != nil {
+		t.Fatalf("build restricted-area destination: %v", err)
+	}
+	memberAccountDestination, err := builder.Path("admin", "accounts", "2")
+	if err != nil {
+		t.Fatalf("build member-account destination: %v", err)
+	}
 	adminDestination, err := builder.Path("admin")
 	if err != nil {
 		t.Fatalf("build administration destination: %v", err)
@@ -210,8 +259,20 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		case "/__test/populated":
 			emptyDashboard.Store(false)
 			http.Redirect(response, request, adminDestination, http.StatusSeeOther)
+		case "/__test/member":
+			memberSession.Store(true)
+			http.Redirect(response, request, restrictedAreaDestination, http.StatusSeeOther)
+		case "/__test/admin":
+			memberSession.Store(false)
+			http.Redirect(response, request, memberAccountDestination, http.StatusSeeOther)
 		default:
 			authentication := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+			if memberSession.Load() {
+				authentication = auth.SessionAuthentication{SessionID: 8, Access: auth.AccessContext{Authenticated: true, UserID: 2, Role: auth.RoleMember}}
+				if membership.Load() {
+					authentication.Access.GroupIDs = []int64{4}
+				}
+			}
 			if sessionRevoked.Load() {
 				authentication = auth.SessionAuthentication{}
 			}
@@ -224,7 +285,11 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 			case "/admin/settings":
 				privateSite.ServeHTTP(response, request)
 			default:
-				inner.ServeHTTP(response, request)
+				if strings.HasPrefix(request.URL.Path, "/areas/") {
+					areaRouter.ServeHTTP(response, request)
+				} else {
+					inner.ServeHTTP(response, request)
+				}
 			}
 		}
 	})

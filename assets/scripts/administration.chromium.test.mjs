@@ -195,6 +195,23 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Browser Operators'");
   await submitForm(send, sessionId, `form[action$="/admin/groups/4"]`, { name: "Renamed Browser Operators", reason: "Rename browser group" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
+  assert.equal(await evaluate(send, sessionId, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next groups')"), true);
+  assert.equal(await evaluate(send, sessionId, `(() => { const link = [...document.querySelectorAll("main a")].find((node) => node.textContent.trim() === "Next groups"); link.click(); return true; })()`), true);
+  await waitFor(send, sessionId, "location.search === '?after=53' && document.body.textContent.includes('Continuation Group')");
+  await evaluate(send, sessionId, "history.back()");
+  await waitFor(send, sessionId, "location.search === '' && document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
+  await evaluate(send, sessionId, "history.forward()");
+  await waitFor(send, sessionId, "location.search === '?after=53' && document.body.textContent.includes('Continuation Group')");
+
+  await navigate(send, sessionId, `${target}/accounts/2`, "document.body.textContent.includes('Local Member')");
+  await submitForm(send, sessionId, `form[action$="/admin/accounts/2/groups/4"]`, { action: "revoke", reason: "Revoke browser membership" });
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/accounts/2/groups/4\"] button')?.textContent.trim() === 'Grant' && document.querySelector('form[action$=\"/admin/accounts/2/role\"] input[name=\"revision\"]')?.value === '5'");
+  await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Page not found')");
+  await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Local Member')");
+  await submitForm(send, sessionId, `form[action$="/admin/accounts/2/groups/4"]`, { action: "grant", reason: "Grant browser membership" });
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/accounts/2/groups/4\"] button')?.textContent.trim() === 'Revoke' && document.querySelector('form[action$=\"/admin/accounts/2/role\"] input[name=\"revision\"]')?.value === '6'");
+  await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Restricted browser area')");
+  await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Local Member')");
 
   await navigate(send, sessionId, `${target}/areas/3`, "document.body.textContent.includes('General') && document.body.textContent.includes('Group access')");
   const areaSelector = `form[action$="/admin/areas/3"]`;
