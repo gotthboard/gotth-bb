@@ -244,14 +244,14 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_area_administration_audit();`); err 
 		t.Fatalf("last ChangeAreaGroup(revoke) error = %v", err)
 	}
 	updatedArea, err := UpdateAreaCompletion(ctx, owner, func() time.Time { return updatedAt.Add(7 * time.Minute) }, actor, completedArea.AreaID, AreaCoreInput{
-		Slug: "private", Name: "Private archive", Description: "Restricted archive", DisplayOrder: 5,
+		Name: "Private archive", Description: "Restricted archive", DisplayOrder: 5,
 		Visibility: policy.VisibilityGroups, PostingMode: policy.PostingArchived,
 		Reason: "Archive the restricted area", Revision: revokedArea.Revision,
 	}, pgtype.UUID{Bytes: [16]byte{0x76}, Valid: true})
 	if err != nil || updatedArea.Revision != 4 {
 		t.Fatalf("UpdateAreaCompletion() = (%+v, %v)", updatedArea, err)
 	}
-	if _, err := UpdateAreaCompletion(ctx, owner, time.Now, actor, completedArea.AreaID, AreaCoreInput{Slug: "private", Name: "Stale", Visibility: policy.VisibilityPublic, PostingMode: policy.PostingNormal, Reason: "Reject stale area", Revision: revokedArea.Revision}, pgtype.UUID{Bytes: [16]byte{0x77}, Valid: true}); !errors.Is(err, ErrAdministrationConflict) {
+	if _, err := UpdateAreaCompletion(ctx, owner, time.Now, actor, completedArea.AreaID, AreaCoreInput{Name: "Stale", Visibility: policy.VisibilityPublic, PostingMode: policy.PostingNormal, Reason: "Reject stale area", Revision: revokedArea.Revision}, pgtype.UUID{Bytes: [16]byte{0x77}, Valid: true}); !errors.Is(err, ErrAdministrationConflict) {
 		t.Fatalf("stale UpdateAreaCompletion() error = %v", err)
 	}
 }
