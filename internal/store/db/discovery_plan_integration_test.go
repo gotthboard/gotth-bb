@@ -29,6 +29,8 @@ const discoveryAdmissionTestDatabase = "gotth_bb_an02_04_admission_test"
 
 const unreadPlanTestDatabase = "gotth_bb_an03_01_plan_test"
 
+const unreadAdmissionTestDatabase = "gotth_bb_an03_04_admission_test"
+
 type discoveryPlanPopulation struct {
 	database      string
 	topics        int64
@@ -171,6 +173,14 @@ SELECT $1::bigint + series,
 FROM generate_series(1, $5::bigint) AS series`, population.postIDOffset, population.postsPerTopic, authorID, ownerID, population.posts); err != nil {
 		t.Fatal(err)
 	}
+	if population.unread {
+		if _, err := connection.Exec(ctx, `UPDATE public.posts
+SET author_id = $1
+WHERE topic_id = 3
+   OR (topic_id = 6 AND post_number = $2)`, readerID, population.postsPerTopic); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := connection.Exec(ctx, `SELECT
 setval(pg_get_serial_sequence('public.topics', 'id'), $1, true),
 setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topics, population.postIDOffset+population.posts); err != nil {
@@ -215,8 +225,30 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 	if topicRows != population.topics || postRows != population.posts || publicTopics == 0 || authenticatedTopics == 0 || groupTopics == 0 || hiddenTopics == 0 || deletedTopics == 0 || deletedPosts == 0 || redactedPosts == 0 || rareTopics == 0 || rarePosts == 0 || activityTimestamps >= postRows {
 		t.Fatalf("population distribution = topics=%d posts=%d visibility=%d/%d/%d hidden_topics=%d deleted_topics=%d deleted_posts=%d redacted_posts=%d rare=%d/%d activity_timestamps=%d", topicRows, postRows, publicTopics, authenticatedTopics, groupTopics, hiddenTopics, deletedTopics, deletedPosts, redactedPosts, rareTopics, rarePosts, activityTimestamps)
 	}
+	if population.unread {
+		var ownOnly, newestOwn, olderOther int64
+		if err := connection.QueryRow(ctx, `SELECT
+    count(*) FILTER (WHERE topic_id = 3 AND author_id = $1),
+    count(*) FILTER (WHERE topic_id = 6 AND post_number = $2 AND author_id = $1),
+    count(*) FILTER (WHERE topic_id = 6 AND post_number < $2 AND author_id <> $1)
+FROM public.posts
+WHERE topic_id IN (3, 6)`, readerID, population.postsPerTopic).Scan(&ownOnly, &newestOwn, &olderOther); err != nil {
+			t.Fatal(err)
+		}
+		if ownOnly != population.postsPerTopic || newestOwn != 1 || olderOther != population.postsPerTopic-1 {
+			t.Fatalf("unread actor-exclusion population own_only=%d newest_own=%d older_other=%d", ownOnly, newestOwn, olderOther)
+		}
+		t.Logf("POPULATION unread_actor_exclusion own_only_topic=3 posts=%d newest_own_topic=6 newest_own=%d older_other=%d", ownOnly, newestOwn, olderOther)
+	}
 	t.Logf("population rows topics=%d posts=%d visibility_public/authenticated/groups=%d/%d/%d hidden_topics=%d deleted_topics=%d deleted_posts=%d redacted_posts=%d rare_topics/posts=%d/%d activity_timestamps=%d duration=%s", topicRows, postRows, publicTopics, authenticatedTopics, groupTopics, hiddenTopics, deletedTopics, deletedPosts, redactedPosts, rareTopics, rarePosts, activityTimestamps, time.Since(populationStart))
 	logDiscoveryResourceSnapshot(t, ctx, connection, "populated")
+	deepUnreadTopicID, deepUnreadPostIDOffset := int64(0), int64(0)
+	if population.admission && population.unread {
+		deepUnreadTopicID = population.topics + 1
+		deepUnreadPostIDOffset = population.postIDOffset + population.posts
+		populateDeepUnreadTopic(t, ctx, connection, deepUnreadTopicID, deepUnreadPostIDOffset, groupAreaID, ownerID)
+		logDiscoveryResourceSnapshot(t, ctx, connection, "deep-unread-populated")
+	}
 
 	searchShapes := []struct {
 		name      string
@@ -293,10 +325,13 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 			markPlan := explainPrepared(t, ctx, connection, "an03_mark_read", "bigint,boolean,bigint[],bigint", markTopicReadBoundary, markArguments, mode)
 			requireMarkReadAuthorizationPlan(t, mode, markPlan)
 			t.Logf("PLAN mode=%s actor=member query=mark-read\n%s", mode, markPlan)
+			if population.admission {
+				runFirstUnreadPlanEvidence(t, ctx, connection, mode, deepUnreadTopicID, deepUnreadPostIDOffset, readerID, groupID)
+			}
 		}
 	}
 	if population.admission {
-		runDiscoveryCoexistenceEvidence(t, ctx, configured, connection, publicAreaID, ownerID, groupID, population)
+		runDiscoveryCoexistenceEvidence(t, ctx, configured, connection, publicAreaID, ownerID, readerID, groupID, population)
 		logDiscoveryResourceSnapshot(t, ctx, connection, "completed")
 	}
 }
@@ -329,6 +364,40 @@ func requireMarkReadAuthorizationPlan(t *testing.T, mode, encoded string) {
 	if !planUsesConditionedRelation(*boundary, "posts", "author_id") ||
 		!planUsesIndex(*boundary, "posts_topic_unread_visible_idx") {
 		t.Fatalf("%s mark-read plan lost actor-excluding indexed boundary: %s", mode, encoded)
+	}
+}
+
+func requireFirstUnreadAuthorizationPlan(t *testing.T, mode, boundary, encoded string, wantBoundedRows int64) {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
+		t.Fatalf("%s %s decode first-unread plan: documents=%d error=%v", mode, boundary, len(document), err)
+	}
+	root := document[0].Plan
+	authorized := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE authorized_topic" })
+	state := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE topic_state" })
+	target := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE target" })
+	bounded := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE bounded_thread" })
+	if authorized == nil || state == nil || target == nil || bounded == nil ||
+		!planUsesConditionedRelation(*authorized, "areas", "visibility") ||
+		!planUsesConditionedRelation(*authorized, "topics", "deleted_at") ||
+		!planUsesConditionedRelation(*authorized, "topics", "state") {
+		t.Fatalf("%s %s first-unread plan lost authorization fence: %s", mode, boundary, encoded)
+	}
+	groupMembership := findPlanNode(authorized, func(node *explainPlanNode) bool {
+		return node.RelationName == "area_groups" && strings.Contains(node.Filter+node.RecheckCond+node.IndexCond, "group_id")
+	})
+	if groupMembership == nil || groupMembership.Parent != "SubPlan" {
+		t.Fatalf("%s %s first-unread plan lost non-multiplying group authorization: %s", mode, boundary, encoded)
+	}
+	if findPlanNode(state, func(node *explainPlanNode) bool { return node.RelationName == "topic_reads" }) == nil ||
+		!planUsesConditionedRelation(*state, "posts", "author_id") || !planUsesIndex(*state, "posts_topic_unread_visible_idx") ||
+		!planUsesConditionedRelation(*target, "posts", "author_id") || !planUsesIndex(*target, "posts_topic_unread_visible_idx") {
+		t.Fatalf("%s %s first-unread plan lost marker or actor-excluding indexed target work: %s", mode, boundary, encoded)
+	}
+	if bounded.NodeType != "Limit" || bounded.ActualRows != wantBoundedRows || bounded.PlanRows <= 0 || bounded.PlanRows > 250001 {
+		t.Fatalf("%s %s first-unread bounded tree = type %q plan_rows %d actual_rows %d, want Limit/<=250001/%d: %s",
+			mode, boundary, bounded.NodeType, bounded.PlanRows, bounded.ActualRows, wantBoundedRows, encoded)
 	}
 }
 
@@ -500,11 +569,15 @@ func requestedDiscoveryPlanPopulation(t *testing.T) discoveryPlanPopulation {
 	checkpoint := os.Getenv("GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE") == "1"
 	admission := os.Getenv("GOTTH_BB_RUN_AN02_ADMISSION_EVIDENCE") == "1"
 	unread := os.Getenv("GOTTH_BB_RUN_AN03_READ_PLAN_EVIDENCE") == "1"
-	if boolCount(checkpoint, admission, unread) > 1 {
+	unreadAdmission := os.Getenv("GOTTH_BB_RUN_AN03_ADMISSION_EVIDENCE") == "1"
+	if boolCount(checkpoint, admission, unread, unreadAdmission) > 1 {
 		t.Fatal("set only one discovery evidence mode")
 	}
-	if !checkpoint && !admission && !unread {
+	if !checkpoint && !admission && !unread && !unreadAdmission {
 		t.Skip("set exactly one plan evidence mode")
+	}
+	if unreadAdmission {
+		return discoveryPlanPopulation{database: unreadAdmissionTestDatabase, topics: 100_000, posts: 1_000_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 25 * time.Minute, admission: true, unread: true}
 	}
 	if admission {
 		return discoveryPlanPopulation{database: discoveryAdmissionTestDatabase, topics: 100_000, posts: 1_000_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 20 * time.Minute, admission: true}
@@ -513,6 +586,114 @@ func requestedDiscoveryPlanPopulation(t *testing.T) discoveryPlanPopulation {
 		return discoveryPlanPopulation{database: unreadPlanTestDatabase, topics: 25_000, posts: 250_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 10 * time.Minute, unread: true}
 	}
 	return discoveryPlanPopulation{database: discoveryPlanTestDatabase, topics: 25_000, posts: 25_000, postsPerTopic: 1, postIDOffset: 100_000, timeout: 3 * time.Minute}
+}
+
+func populateDeepUnreadTopic(t *testing.T, ctx context.Context, connection *pgx.Conn, topicID, postIDOffset, areaID, authorID int64) {
+	t.Helper()
+	const nodes int64 = 250001
+	started := time.Now()
+	tx, err := connection.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx, `SET LOCAL session_replication_role = replica`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO public.topics
+    (id, area_id, author_id, title, state, first_post_id, latest_post_id, reply_count, next_post_number,
+     created_at, updated_at, last_activity_at, search_vector, search_projection_version)
+OVERRIDING SYSTEM VALUE
+VALUES ($1, $2, $3, 'AN-03 deep unread boundary', 'open', $4, $5, $6, $7,
+        '2025-12-31T00:00:00Z', '2025-12-31T00:00:00Z', '2025-12-31T00:00:00Z',
+        to_tsvector('pg_catalog.simple'::regconfig, 'deep unread boundary'), 'search-v1-pg17-simple-u15-p2')`,
+		topicID, areaID, authorID, postIDOffset+1, postIDOffset+nodes, nodes-1, nodes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO public.posts
+    (id, topic_id, author_id, post_number, markdown_source, rendered_html, renderer_version, revision,
+     created_at, updated_at, parent_post_id, thread_path, search_vector, search_projection_version)
+OVERRIDING SYSTEM VALUE
+SELECT $1 + series, $2, $3, series::integer, 'deep body', '<p>deep body</p>',
+       'goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2', 1,
+       '2025-12-31T00:00:00Z'::timestamptz + series * interval '1 microsecond',
+       '2025-12-31T00:00:00Z'::timestamptz + series * interval '1 microsecond',
+       CASE WHEN series = 1 THEN NULL WHEN series <= 32 THEN $1 + series - 1 ELSE $1 + 1 END,
+       CASE
+           WHEN series = 1 THEN ARRAY[1]::integer[]
+           WHEN series <= 32 THEN ARRAY(SELECT value::integer FROM generate_series(1, series) AS value)
+           ELSE ARRAY[1, series::integer]
+       END,
+       to_tsvector('pg_catalog.simple'::regconfig, 'deep body'), 'search-v1-pg17-simple-u15-p2'
+FROM generate_series(1, $4) AS series`, postIDOffset, topicID, authorID, nodes); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `SELECT
+setval(pg_get_serial_sequence('public.topics', 'id'), $1, true),
+setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, topicID, postIDOffset+nodes); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connection.Exec(ctx, `ANALYZE public.topics; ANALYZE public.posts`); err != nil {
+		t.Fatal(err)
+	}
+	var topicNodes, maxDepth int64
+	if err := connection.QueryRow(ctx, `SELECT count(*), max(cardinality(thread_path)) FROM public.posts WHERE topic_id = $1`, topicID).Scan(&topicNodes, &maxDepth); err != nil || topicNodes != nodes || maxDepth != 32 {
+		t.Fatalf("deep unread population nodes=%d max_depth=%d error=%v", topicNodes, maxDepth, err)
+	}
+	t.Logf("POPULATION deep_unread_topic=%d nodes=%d max_depth=%d post_id_range=%d..%d duration=%s", topicID, nodes, maxDepth, postIDOffset+1, postIDOffset+nodes, time.Since(started))
+}
+
+func runFirstUnreadPlanEvidence(t *testing.T, ctx context.Context, connection *pgx.Conn, mode string, topicID, postIDOffset, readerID, groupID int64) {
+	t.Helper()
+	var indexDefinition string
+	if err := connection.QueryRow(ctx, `SELECT pg_get_indexdef('public.posts_topic_unread_visible_idx'::regclass)`).Scan(&indexDefinition); err != nil || !strings.Contains(indexDefinition, "INCLUDE (author_id)") {
+		t.Fatalf("unread index payload definition=%q error=%v", indexDefinition, err)
+	}
+	boundaries := []struct {
+		name            string
+		marker          int32
+		targetOrdinal   int64
+		wantBoundedRows int64
+	}{
+		{name: "target-1", targetOrdinal: 1, wantBoundedRows: 250001},
+		{name: "target-25", marker: 24, targetOrdinal: 25, wantBoundedRows: 250001},
+		{name: "target-26", marker: 25, targetOrdinal: 26, wantBoundedRows: 250001},
+		{name: "target-250000", marker: 249999, targetOrdinal: 250000, wantBoundedRows: 250001},
+		{name: "target-250001", marker: 250000, targetOrdinal: 250001, wantBoundedRows: 250001},
+		{name: "no-target", marker: 250001},
+	}
+	for _, boundary := range boundaries {
+		if boundary.marker == 0 {
+			if _, err := connection.Exec(ctx, `DELETE FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2`, readerID, topicID); err != nil {
+				t.Fatal(err)
+			}
+		} else if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads (user_id, topic_id, last_read_post_number, read_at)
+VALUES ($1, $2, $3, '2026-01-01T00:00:02Z')
+ON CONFLICT (user_id, topic_id) DO UPDATE SET last_read_post_number = EXCLUDED.last_read_post_number, read_at = EXCLUDED.read_at`, readerID, topicID, boundary.marker); err != nil {
+			t.Fatal(err)
+		}
+		started := time.Now()
+		row, err := New(connection).GetFirstUnreadTarget(ctx, GetFirstUnreadTargetParams{TopicID: topicID, GroupIds: []int64{groupID}, ActorUserID: readerID})
+		if err != nil || row.TopicID != topicID || row.ReadHead != 250001 {
+			t.Fatalf("%s %s first-unread result topic=%d head=%d error=%v", mode, boundary.name, row.TopicID, row.ReadHead, err)
+		}
+		if boundary.targetOrdinal == 0 {
+			if row.TargetPostID.Valid || row.TargetPostNumber.Valid || row.TargetNodeOrdinal.Valid {
+				t.Fatalf("%s %s unexpectedly returned target: %+v", mode, boundary.name, row)
+			}
+		} else if !row.TargetPostID.Valid || row.TargetPostID.Int64 != postIDOffset+boundary.targetOrdinal ||
+			!row.TargetPostNumber.Valid || int64(row.TargetPostNumber.Int32) != boundary.targetOrdinal ||
+			!row.TargetNodeOrdinal.Valid || row.TargetNodeOrdinal.Int64 != boundary.targetOrdinal {
+			t.Fatalf("%s %s target mismatch: %+v", mode, boundary.name, row)
+		}
+		arguments := fmt.Sprintf("%d,false,ARRAY[%d]::bigint[],%d", topicID, groupID, readerID)
+		plan := explainPrepared(t, ctx, connection, "an03_first_unread", "bigint,boolean,bigint[],bigint", getFirstUnreadTarget, arguments, mode)
+		requireFirstUnreadAuthorizationPlan(t, mode, boundary.name, plan, boundary.wantBoundedRows)
+		t.Logf("PLAN mode=%s actor=group query=first-unread boundary=%s duration=%s\n%s", mode, boundary.name, time.Since(started), plan)
+	}
 }
 
 func boolCount(values ...bool) int {
@@ -649,29 +830,11 @@ func processRSSKiB() string {
 	return "unavailable"
 }
 
-func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configured *pgx.ConnConfig, observer *pgx.Conn, publicAreaID, ownerID, groupID int64, population discoveryPlanPopulation) {
+func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configured *pgx.ConnConfig, observer *pgx.Conn, publicAreaID, ownerID, readerID, groupID int64, population discoveryPlanPopulation) {
 	t.Helper()
 	var baselineConnections int64
 	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()`).Scan(&baselineConnections); err != nil {
 		t.Fatal(err)
-	}
-	connections := make([]*pgx.Conn, 4)
-	for index := range connections {
-		connection, err := pgx.ConnectConfig(ctx, configured.Copy())
-		if err != nil {
-			t.Fatal(err)
-		}
-		connections[index] = connection
-	}
-	start := make(chan struct{})
-	results := make(chan string, len(connections))
-	var wait sync.WaitGroup
-	run := func(name string, action func(context.Context, *pgx.Conn) error, connection *pgx.Conn) {
-		defer wait.Done()
-		<-start
-		started := time.Now()
-		err := action(ctx, connection)
-		results <- fmt.Sprintf("%s duration=%s error=%v", name, time.Since(started), err)
 	}
 	searchParameters := SearchDiscoveryPageParams{
 		IsMember: true, GroupIds: []int64{groupID}, HasQuery: true, ParsedQuery: "'common'", PageOffset: 0,
@@ -679,10 +842,11 @@ func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configur
 	activityParameters := ListRecentActivityAfterParams{
 		IsMember: true, GroupIds: []int64{groupID}, CursorCreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 1, 1, 0, 0, 0, 10_000_000, time.UTC), Valid: true}, CursorPostID: population.postIDOffset + population.posts + 1,
 	}
-	actions := []struct {
+	type coexistenceAction struct {
 		name   string
 		action func(context.Context, *pgx.Conn) error
-	}{
+	}
+	actions := []coexistenceAction{
 		{name: "discovery-search", action: func(ctx context.Context, connection *pgx.Conn) error {
 			rows, err := New(connection).SearchDiscoveryPage(ctx, searchParameters)
 			if err == nil && len(rows) == 0 {
@@ -734,6 +898,61 @@ func runDiscoveryCoexistenceEvidence(t *testing.T, ctx context.Context, configur
 			}
 			return tx.Commit(ctx)
 		}},
+	}
+	if population.unread {
+		actions = append(actions,
+			coexistenceAction{name: "first-unread", action: func(ctx context.Context, connection *pgx.Conn) error {
+				row, err := New(connection).GetFirstUnreadTarget(ctx, GetFirstUnreadTargetParams{
+					TopicID: 2, GroupIds: []int64{groupID}, ActorUserID: readerID,
+				})
+				if err != nil {
+					return err
+				}
+				if row.TopicID != 2 || row.ReadHead <= 0 || !row.TargetPostID.Valid {
+					return fmt.Errorf("first-unread returned invalid state: %+v", row)
+				}
+				return nil
+			}},
+			coexistenceAction{name: "mark-read", action: func(ctx context.Context, connection *pgx.Conn) error {
+				tx, err := connection.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+				if err != nil {
+					return err
+				}
+				defer func() { _ = tx.Rollback(context.Background()) }()
+				queries := New(tx)
+				if err := queries.ConfigureMarkTopicReadTransaction(ctx); err != nil {
+					return err
+				}
+				row, err := queries.MarkTopicReadBoundary(ctx, MarkTopicReadBoundaryParams{
+					TopicID: 2, GroupIds: []int64{groupID}, ActorUserID: readerID,
+				})
+				if err != nil {
+					return err
+				}
+				if row.TopicID != 2 || row.SelectedPostNumber <= 0 || row.SelectedPostNumber >= row.NextPostNumber {
+					return fmt.Errorf("mark-read returned invalid boundary: %+v", row)
+				}
+				return tx.Commit(ctx)
+			}},
+		)
+	}
+	connections := make([]*pgx.Conn, len(actions))
+	for index := range connections {
+		connection, err := pgx.ConnectConfig(ctx, configured.Copy())
+		if err != nil {
+			t.Fatal(err)
+		}
+		connections[index] = connection
+	}
+	start := make(chan struct{})
+	results := make(chan string, len(connections))
+	var wait sync.WaitGroup
+	run := func(name string, action func(context.Context, *pgx.Conn) error, connection *pgx.Conn) {
+		defer wait.Done()
+		<-start
+		started := time.Now()
+		err := action(ctx, connection)
+		results <- fmt.Sprintf("%s duration=%s error=%v", name, time.Since(started), err)
 	}
 	for index := range actions {
 		wait.Add(1)
