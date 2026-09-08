@@ -247,8 +247,8 @@ notes, screenshots, or repository files.
   rewriting existing user/group/area rows, but constraint validation and audit-
   check replacement still take measured table locks and scans. The packaged
   runtime grants add only the SELECT/INSERT/UPDATE privileges required by the
-  admitted operations and no DELETE on settings, users, groups, areas, or
-  mapping rows.
+  admitted operations, DELETE only on the two mapping relations, and no DELETE
+  on settings, users, groups, or areas.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.

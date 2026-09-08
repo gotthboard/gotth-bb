@@ -910,7 +910,7 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
   slug, raw-keyset behavior across concurrent reorder, initial group on
   transition, single grant/revoke, last-group protection, no-op, stale/
   overflowing revision, missing group, audit failure, and every publication
-  path while archived;
+  path while archived; core area audit count/digest at high mapping cardinality;
 - account list boundaries 0/1/50/51, canonical continuation, account detail,
   member/moderator/administrator role labels, active/future/expired/indefinite
   suspension state, paged zero/one/many memberships, 50/51 group-page
@@ -962,7 +962,8 @@ inspected for the same exclusions.
 Caddy/Chromium tests cover empty and populated dashboard, 51-account and
 51-group continuation, area archive/restore, role change followed by target session
 failure, membership-driven access loss/gain, group create/rename, site name/
-description/theme and rules propagation, base-path deployment, full-page and
+description/theme and rules propagation, discoverable base-path-built rules and
+administration navigation, base-path deployment, full-page and
 HTMX history, JavaScript disabled, keyboard-only completion, visible focus,
 semantic headings/status/errors, accessible names, and mobile/desktop widths.
 
@@ -975,6 +976,12 @@ lock/scan behavior, transaction rollback, unknown outcome,
 idempotent rerun, readiness, and prior/current artifact exact-head failure.
 Corrupt theme, nonfinite time, stale renderer, missing/duplicate settings, audit
 constraint drift, or runtime-grant drift must fail closed.
+
+Privilege evidence proves mapping DELETE succeeds only on
+`forum_group_members` and `area_groups`, while DELETE remains denied on users,
+groups, areas, settings, and audit rows. Audit evidence proves exact target
+columns and bounded state/digests for settings, role, membership, group, area,
+and area-group actions.
 
 Retain custom and forced-generic `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for
 account list/detail, group membership, area administration, role continuity,

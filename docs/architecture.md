@@ -597,9 +597,11 @@ or stale state fails rendered pages closed rather than silently substituting
 defaults.
 
 Site presentation uses three deliberately separate projections. A shell read
-returns only site name, short description, and closed theme after route-specific
-authorization and main-data work succeeds; HTMX fragments, redirects, static
-assets, health, and readiness do not perform it. The public rules read alone
+returns only site name, short description, and closed theme after exact route/
+query preflight and any protected session/role decision; it may render either a
+successful page or a branded domain error without preceding protected
+authority. HTMX fragments, redirects, static assets, health, and readiness do
+not perform it. The public rules read alone
 returns the bounded trusted rules HTML. The administrator edit read alone
 returns source, renderer metadata, and numeric revision. The service keeps no
 process-local settings cache, invalidation bus, or polling loop: a committed
@@ -667,7 +669,9 @@ session freshness, role authorization, bounded body parsing, CSRF validation,
 request-ID creation, and database mutation remain in that order. Ordinary HTML
 uses post/redirect/get; successful HTMX mutations use the existing same-origin
 main-region navigation. JavaScript does not grant authority and its absence
-does not remove a control.
+does not remove a control. The ordinary shell exposes one base-path-built public
+community-rules link; administrators additionally receive one administration
+entry rather than a row of unrelated privileged links.
 
 ## 11. Rendering and client behavior
 

@@ -2134,18 +2134,22 @@ singleton relation, all four revision columns and their positive checks,
 column types/defaults/nullability, audit target/action constraints, runtime
 grants, exact one-row cardinality, finite time, closed theme, and current
 rules-renderer tuple. The packaged grant artifact gives the runtime role only
-the SELECT/INSERT/UPDATE privileges required by the admitted operations and no
-DELETE on settings, users, groups, areas, or their mappings. Missing, duplicate,
+the SELECT/INSERT/UPDATE privileges required by the admitted operations,
+DELETE only on `forum_group_members` and `area_groups`, and no DELETE on
+settings, users, groups, or areas. Missing, duplicate,
 malformed, or stale settings fail readiness and page rendering closed. The
 application does not invent an in-memory fallback.
 
 ### 21.2 Site presentation, settings mutation, and public rules
 
 `SiteShellPresentation` contains only name, description, and closed theme. One
-primary-key query loads it after route-specific path/query/session/
-authorization and main-data work succeeds and before buffering a full browser
-document. HTMX fragments, static assets, health, readiness, redirects, and
-fixed plain unavailable responses do not perform this query.
+primary-key query loads it after exact route/query preflight and, for protected
+routes, after the session/role decision establishes that a full document will
+be rendered. It may surround successful or failed domain-data work but never
+runs before protected authorization, for a redirect, or for an HTMX fragment.
+This preserves branded validation/domain errors without moving private queries
+ahead of authority. Static assets, health, readiness, and fixed plain settings-
+unavailable responses do not perform this query.
 
 `PublicRules` is a separate primary-key projection containing only trusted
 rules HTML. `EditableSiteSettings` is a third administrator-only projection
@@ -2163,21 +2167,25 @@ intermediary cannot contradict the next-read propagation contract.
 The administrator settings form accepts exactly `_csrf`, `site_name`,
 `site_description`, `brand_theme`, `rules_markdown`, `reason`, and `revision`.
 The form body is at most 256 KiB, which admits the worst-case form encoding of
-the 65,536-byte rules source plus the bounded scalar fields. Text is strict UTF-8/NFC, has no controls other
-than line feed in Markdown, and has no surrounding whitespace where the field
-contract forbids it. `revision` is the canonical positive decimal
-administration revision from the database. Before opening a transaction, the service validates the closed
-theme and renders/sanitizes rules through the admitted GFM boundary.
+the 65,536-byte rules source plus the bounded scalar fields. Text is strict
+UTF-8/NFC, has no controls other than line feed in Markdown, and has no
+surrounding whitespace where the field contract forbids it. `revision` is the
+canonical positive decimal administration revision from the database. Before
+opening a transaction, the service validates the closed theme and renders/
+sanitizes rules through the admitted GFM boundary.
 
 The transaction sets `statement_timeout` to at most two seconds and
 `lock_timeout` to 250 milliseconds, locks the governance singleton, locks and
-revalidates the current unsuspended administrator row, locks the settings singleton, compares
-the exact revision, rejects a no-op or revision overflow, updates every settings
-field and renderer tuple, increments the revision by one, and appends one
+revalidates the current unsuspended administrator row, locks the settings
+singleton, compares the exact revision, rejects a no-op or revision overflow,
+updates every settings field and renderer tuple, increments the revision by
+one, and appends one
 `update_site_settings` audit. Previous/resulting audit objects contain only the
 bounded name, description, theme, renderer version, and SHA-256 digests of the
 rules source and HTML; rules bodies never enter the audit row's 16-KiB JSON
-boundary. Rendering or audit failure commits nothing. Commit failure is unknown
+boundary. Digests are lowercase hexadecimal SHA-256 of the exact stored UTF-8
+bytes. The row uses `target_type=site` and `target_site=true`. Rendering or
+audit failure commits nothing. Commit failure is unknown
 and is not retried automatically.
 
 Themes map only to static compiled selectors on a closed `data-brand-theme`
@@ -2220,7 +2228,9 @@ revision. The transaction locks governance, actor and target users in ascending
 ID order, then the one group; revalidates the active administrator, active
 target, group, and revision; rejects a no-op or revision overflow; changes
 exactly one mapping; increments the target administration revision; and appends
-exactly one matching grant/revoke audit under the request ID. Any mapping,
+exactly one matching grant/revoke audit under the request ID. That audit targets
+the user and stores the one group ID plus previous/resulting membership boolean
+in bounded state. Any mapping,
 revision, or audit failure rolls back the whole mutation. Local group access
 changes on the next protected request because session authentication reloads
 memberships.
@@ -2228,8 +2238,9 @@ memberships.
 ### 21.4 Role and suspension governance
 
 Role input is exactly one of `member`, `moderator`, or `administrator`, plus the
-target's current role, positive numeric administration revision, and one 1–2,000-character
-single-line audit reason. The role transaction uses read committed isolation,
+target's current role, positive numeric administration revision, and one
+1–2,000-character single-line audit reason. The role transaction uses read
+committed isolation,
 two-second statement and 250-millisecond lock timeouts, and this order:
 
 1. lock the governance singleton;
@@ -2241,7 +2252,8 @@ two-second statement and 250-millisecond lock timeouts, and this order:
    governance lock and require at least two before the change;
 6. update the target role and finite `updated_at`, and increment its
    administration revision;
-7. append one `change_role` audit with exact previous/resulting role; and
+7. append one user-targeted `change_role` audit with exact previous/resulting
+   role and administration revision; and
 8. revoke every unrevoked target session at the same database time before one
    commit.
 
@@ -2286,7 +2298,16 @@ transaction. A separate area/group mutation accepts exactly `_csrf`, closed
 locks governance, actor, area, and group in that order; rejects stale/no-op/
 overflow state and revoking the last mapping of a group-visible area; changes
 one mapping; increments the area revision; and appends exactly one
-`grant_area_group` or `revoke_area_group` audit.
+`grant_area_group` or `revoke_area_group` audit targeted to the area with the
+one group ID and previous/resulting assignment boolean in bounded state.
+
+Area core audits never serialize the complete group set. They store the mapping
+count and SHA-256 digest of sorted canonical group IDs before and after the
+change. The digest input is the concatenation of each positive ID as one
+unsigned 64-bit big-endian value; zero mappings use SHA-256 of empty bytes.
+Leaving group visibility deletes the mappings in one set-based
+statement under the locked area; its time and lock footprint are openly O(g),
+bounded by the transaction timeout, and failure is atomic.
 
 Rename changes `name`; reorder changes `display_order`; archive changes posting
 mode to `archived`; restore must explicitly select `normal` or `read_only`. An
@@ -2303,7 +2324,9 @@ administrator before aggregates. It returns nonnegative exact counts for:
 - posts with `deleted_at IS NULL AND redacted_at IS NULL`; and
 - reports separately in `open` and `in_review`.
 
-Every closed role and report state must reconcile to its returned total. A
+The three role buckets and the active/suspended buckets each reconcile to total
+users. Resolved and dismissed reports are deliberately excluded rather than
+folded into either moderation-work count. A
 negative, NULL, unknown, internally inconsistent, timed-out, canceled, or
 partially scanned result fails the whole dashboard with fixed `503`; no
 approximation or stale cache is substituted. The query is openly population-
@@ -2344,11 +2367,12 @@ service. Ordinary success is empty 303 post/redirect/get. HTMX success is empty
 the same builder-owned canonical destination. No handler retries or detaches
 work after cancellation.
 
-The global navigation has one `Administration` link to `/admin`, shown only for
-the current administrator context. Dashboard links reach areas, accounts,
-groups, and settings. All controls have labels, visible focus, semantic status
-and error text, keyboard access, and ordinary HTML fallbacks. The public rules
-link is available independently of JavaScript.
+The global navigation has one public `Community rules` link to `/rules` and one
+`Administration` link to `/admin` shown only for the current administrator
+context. Dashboard links reach areas, accounts, groups, and settings. All
+controls have labels, visible focus, semantic status and error text, keyboard
+access, and ordinary HTML fallbacks. Both links are base-path-built and work
+independently of JavaScript.
 
 Application logs retain route pattern, fixed outcome, status, duration, and
 bounded counts only. They exclude account/group IDs and names, site/rules
