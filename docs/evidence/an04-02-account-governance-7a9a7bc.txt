@@ -1,0 +1,159 @@
+AN-04-02 exact-candidate evidence
+================================
+
+Executable/methodology commit:
+  7a9a7bc5af7fdc293d885a19a71c3c46fc5a1730
+Tree:
+  9bde54ea523fd99c4c4d8113acbe944387d1d6b0
+Admitted AN-04 contract:
+  e3cc342e90166e65a5a56b7ee89990a59dc966f9
+AN-04-01 base:
+  fc7bf33f553fb8351db36bb7635d85b39c6d3870
+Bundle SHA-256:
+  32df540267e310943dea6012d715faa99ce0337b94b9dab3975fedda25eff0b6
+
+Environment
+-----------
+
+All heavy gates ran from detached clones of the exact bundle on the
+`development` host. Toolchain:
+
+  Node v26.7.0
+  npm 12.0.2
+  Go 1.26.6 linux/amd64
+  PostgreSQL 17.10 (Debian 17.10-1.pgdg13+1)
+
+The PostgreSQL DSN used the loopback-only migration test role and is redacted.
+
+Generation, custody, static, and unit gates
+-------------------------------------------
+
+Commands:
+
+  make generate
+  git diff --exit-code
+  test -z "$(git ls-files --others --exclude-standard)"
+  scripts/test-alpha3-evidence-custody.sh
+  go vet -mod=readonly ./...
+  go test -count=1 -mod=readonly -race -cover ./...
+  git diff --exit-code
+  test -z "$(git ls-files --others --exclude-standard)"
+
+Result: PASS. Templ, sqlc, CSS, HTMX, and application-script generation was
+byte-clean. Alpha.3 evidence custody, gofmt through the generator gate, vet,
+repository-wide race, coverage, and final tracked/untracked drift checks all
+passed. Representative unit coverage was 25.9% for internal/administration,
+60.7% for internal/moderation, 64.3% for internal/site, 96.6% for
+internal/store, 42.5% for generated internal/store/db, 99.6% for
+internal/migration, and 100.0% for migrations.
+
+Transcript SHA-256:
+  fdcb6a94d3b8de4acf86c410e2948e60acd2f5ed375f807d7d6d23eadf0b6622
+
+PostgreSQL 17 integration/race
+------------------------------
+
+Command:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 \
+    go test -count=1 -mod=readonly -tags=integration -p=1 \
+      -race -covermode=atomic ./...
+
+Result: PASS. Representative integration coverage was 78.0% for
+internal/administration, 83.2% for internal/moderation, 66.9% for
+internal/site, 97.1% for internal/store, 42.5% for generated
+internal/store/db, and 100.0% for internal/migration, internal/readiness, and
+migrations.
+
+The serial `-p=1` fixture discipline is load-bearing. An earlier exploratory
+invocation omitted `-p=1`; unrelated fixed-name database packages then ran in
+parallel, their teardown contended, and AN-03's intentional 250-millisecond
+lock timeout fired under foreign load. That invocation is rejected as invalid
+methodology. The exact serial replacement passed every package, including the
+previously contended unread, readiness, and schema suites. No code change was
+made in response to the invalid run.
+
+Transcript SHA-256:
+  b3a5a49831fa109d39fdb82484d7c7fb2cdc768d5c9d0bc1a5be00e45685b08b
+
+Focused repeat gate
+-------------------
+
+Command:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 \
+    go test -count=5 -mod=readonly -tags=integration -p=1 \
+      -race -covermode=atomic \
+      -run '^(TestAccountAdministrationGovernanceOnPostgreSQL17|TestUserSuspensionOnPostgreSQL17)$' \
+      ./internal/administration ./internal/moderation
+
+Result: PASS. All five account-governance and suspension/reinstatement runs
+passed under the race detector.
+
+Transcript SHA-256:
+  bcf6e788a873e24ad71d03ea55cd893208246306df079d7fc546f6b93852f2b3
+
+Representative custom/generic plans
+-----------------------------------
+
+Population:
+
+  25,000 accounts
+  25,000 groups
+  12,500 memberships for the selected target account
+
+Command:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=1 -mod=readonly -tags=integration \
+      -run '^TestAccountAdministrationPlansOnPostgreSQL17$' -v \
+      ./internal/store/db
+
+Result: PASS for forced custom and forced generic plans covering account list,
+account detail, group list, account-group membership, and active-administrator
+continuity. Both modes materialize the exact actor fence before private work.
+Account and group pages execute at 51 rows from their primary-key starts.
+Account-group projection authorizes the target, then performs exactly 51
+scalar membership probes using `forum_group_members_user_group_idx`; both
+`user_id` and `group_id` are index conditions. The prior decorrelated EXISTS
+shape, which scanned all 12,500 target memberships, was rejected and replaced.
+The continuity count observed all 25,000 accounts in 3.3 milliseconds custom
+and 5.5 milliseconds generic at this checkpoint. These are structural and
+representative observations, not planner hints or universal latency claims.
+
+Transcript SHA-256:
+  248200196ee6c37f3111e489326e278ef3d4cc70bb9b3c09d646f607f1367376
+
+Functional and failure matrix
+-----------------------------
+
+The retained tests cover authorization-first account list/detail/group reads,
+fixed denied versus missing states, strict 51/50 pagination, malformed and
+duplicate projections, closed roles, NFC/control-free group names, create and
+rename, one-membership grant/revoke, no-op/stale/overflow conflicts, ascending
+actor/target locks, transaction-local two-second statement and
+250-millisecond lock timeouts, atomic audit rollback, restricted runtime
+privileges, role-change governance serialization, final-active-administrator
+continuity, self-role denial, target-session revocation, suspension revision
+increments, current persisted mute/suspension/role revalidation, unknown commit
+without retry, and preservation of query causes.
+
+Cold admission
+--------------
+
+Cold passes before this exact candidate rejected real defects in persisted
+authority revalidation, runtime privilege proof, private site-settings
+projection, concurrent failure handling, and missing representative account
+plans. Plan review then rejected a population-sized membership join and a
+decorrelated membership scan. All were repaired. Cold pass 6 is CLEAN on the
+executable/methodology commit and tree above. Final reviews target the evidence
+commit that contains this record.
+
+Scope statement
+---------------
+
+This candidate implements AN-04-02 only: bounded account/group projections,
+audited group create/rename and membership mutations, role governance, session
+revocation, and shared suspension revisions. It adds no administration HTTP
+routes or UI, dashboard/counts, area completion, AN-04 integrated admission,
+PR, push, merge, tag, release, deployment, AN-04-03 work, or AN-05 work.
