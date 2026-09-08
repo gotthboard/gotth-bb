@@ -15,7 +15,8 @@ Affected files:
   admission tests
 - exact content-addressed static-route inventory
 - `golang.org/x/net`, `x/text`, and their required toolchain dependencies
-- raw task-list checkbox sanitizer boundary and Caddy browser-header evidence
+- raw task-list checkbox sanitizer boundary and Caddy browser-header/cookie
+  evidence
 - pinned Gitleaks false-positive boundary for one exact historical changelog
   sentence
 
@@ -36,8 +37,8 @@ Verification:
 - repository-wide race/coverage plus PostgreSQL 17 serial and race/atomic
   integration suites on the designated evidence host
 - Caddy 2.11.4 and Chromium 151 checks at empty and `/bb` base paths, including
-  proxy identity overwrite, fixed browser headers, no-script mutation failure,
-  and keyboard operation
+  proxy identity overwrite, fixed browser headers, exact scoped session-cookie
+  attributes, no-script mutation failure, and keyboard operation
 - `govulncheck` 1.7.0 reports no vulnerabilities after the repair
 - Gitleaks 8.30.1 reports no leak in the worktree or all 403 repository commits
 
