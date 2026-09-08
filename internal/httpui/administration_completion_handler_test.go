@@ -203,6 +203,235 @@ func TestAdministrationAreaMutationsTakeImmutableTargetsFromPaths(t *testing.T) 
 	}
 }
 
+func TestAdministrationCompletionRemainingMutationFormsAreExact(t *testing.T) {
+	t.Parallel()
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	token := validCSRFTokenForTest(0x51)
+
+	t.Run("account role", func(t *testing.T) {
+		services := administrationCompletionTestServices()
+		calls := 0
+		services.ChangeRole = func(_ context.Context, actor auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
+			calls++
+			if actor.UserID != 1 || userID != 2 || role != policy.RoleModerator || expected != policy.RoleMember || reason != "Promote reviewer" || revision != 3 || !requestID.Valid {
+				t.Fatalf("role args = (%+v,%d,%q,%q,%q,%d,%+v)", actor, userID, role, expected, reason, revision, requestID)
+			}
+			return administration.AccountMutationResult{UserID: 2, Revision: 4, AuditID: 8}, nil
+		}
+		handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = withModerationTestRequestID(t, handler)
+		form := url.Values{"_csrf": {token}, "role": {"moderator"}, "expected_role": {"member"}, "reason": {"Promote reviewer"}, "revision": {"3"}}
+		assertAdministrationFormResult(t, handler, "/admin/accounts/2/role", form, admin, "/bb/admin/accounts/2", &calls)
+		assertAdministrationRejectedForms(t, handler, "/admin/accounts/2/role", form, admin, &calls)
+	})
+
+	t.Run("group create", func(t *testing.T) {
+		services := administrationCompletionTestServices()
+		calls := 0
+		services.CreateGroup = func(_ context.Context, actor auth.AccessContext, name, reason string, requestID pgtype.UUID) (administration.GroupMutationResult, error) {
+			calls++
+			if actor.UserID != 1 || name != "Reviewers" || reason != "Create review group" || !requestID.Valid {
+				t.Fatalf("group args = (%+v,%q,%q,%+v)", actor, name, reason, requestID)
+			}
+			return administration.GroupMutationResult{GroupID: 6, Revision: 1, AuditID: 9}, nil
+		}
+		handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+		if err != nil {
+			t.Fatal(err)
+		}
+		handler = withModerationTestRequestID(t, handler)
+		form := url.Values{"_csrf": {token}, "name": {"Reviewers"}, "reason": {"Create review group"}}
+		assertAdministrationFormResult(t, handler, "/admin/groups", form, admin, "/bb/admin/groups", &calls)
+		assertAdministrationRejectedForms(t, handler, "/admin/groups", form, admin, &calls)
+	})
+
+	for _, test := range []struct {
+		name, initial string
+	}{
+		{name: "area create with initial group", initial: "4"},
+		{name: "area create without initial group", initial: ""},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			services := administrationCompletionTestServices()
+			calls := 0
+			services.CreateArea = func(_ context.Context, actor auth.AccessContext, input administration.AreaCoreInput, requestID pgtype.UUID) (administration.AreaCompletionResult, error) {
+				calls++
+				wantInitial := int64(0)
+				if test.initial != "" {
+					wantInitial = 4
+				}
+				if actor.UserID != 1 || input.Slug != "reviews" || input.Name != "Reviews" || input.Description != "Review discussion" || input.DisplayOrder != 7 || input.Visibility != policy.VisibilityGroups || input.PostingMode != policy.PostingNormal || input.InitialGroupID != wantInitial || input.Reason != "Create review area" || input.Revision != 0 || !requestID.Valid {
+					t.Fatalf("area args = (%+v,%+v,%+v)", actor, input, requestID)
+				}
+				return administration.AreaCompletionResult{AreaID: 9, Slug: "reviews", Revision: 1, AuditID: 10}, nil
+			}
+			handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler = withModerationTestRequestID(t, handler)
+			form := url.Values{"_csrf": {token}, "slug": {"reviews"}, "name": {"Reviews"}, "description": {"Review discussion"}, "display_order": {"7"}, "visibility": {"groups"}, "posting_mode": {"normal"}, "initial_group_id": {test.initial}, "reason": {"Create review area"}}
+			assertAdministrationFormResult(t, handler, "/admin/areas", form, admin, "/bb/admin/areas/9", &calls)
+			assertAdministrationRejectedForms(t, handler, "/admin/areas", form, admin, &calls)
+		})
+	}
+}
+
+func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T) {
+	t.Parallel()
+	services := administrationCompletionTestServices()
+	services.ChangeRole = func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error) {
+		panic("role mutation called")
+	}
+	services.CreateArea = func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error) {
+		panic("area mutation called")
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	stale := admin
+	stale.RequiresRevalidation = true
+	member := admin
+	member.Access.Role = auth.RoleMember
+	token := validCSRFTokenForTest(0x51)
+	for _, test := range []struct {
+		name           string
+		path           string
+		authentication auth.SessionAuthentication
+		header         string
+		contentLength  int64
+		wantStatus     int
+	}{
+		{name: "missing session", path: "/admin/accounts/2/role", wantStatus: http.StatusSeeOther},
+		{name: "stale session", path: "/admin/accounts/2/role", authentication: stale, wantStatus: http.StatusSeeOther},
+		{name: "member", path: "/admin/accounts/2/role", authentication: member, wantStatus: http.StatusForbidden},
+		{name: "invalid header csrf", path: "/admin/accounts/2/role", authentication: admin, header: validCSRFTokenForTest(0x52), wantStatus: http.StatusForbidden},
+		{name: "small form declared oversized", path: "/admin/accounts/2/role", authentication: admin, header: token, contentLength: maximumAdministrationSmallFormBytes + 1, wantStatus: http.StatusBadRequest},
+		{name: "area form declared oversized", path: "/admin/areas", authentication: admin, header: token, contentLength: maximumAdministrationAreaFormBytes + 1, wantStatus: http.StatusBadRequest},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			body := &countingAdministrationBody{Reader: strings.NewReader("secret=body")}
+			request := httptest.NewRequest(http.MethodPost, test.path, body)
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			if test.header != "" {
+				request.Header.Set(csrfHeaderName, test.header)
+			}
+			if test.contentLength > 0 {
+				request.ContentLength = test.contentLength
+			}
+			ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, test.authentication)
+			ctx = context.WithValue(ctx, csrfTokenContextKey{}, token)
+			request = request.WithContext(ctx)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || body.reads != 0 {
+				t.Fatalf("response = (status %d, reads %d, body %q)", response.Code, body.reads, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdministrationCompletionAcceptsExactWorstCaseWireLimits(t *testing.T) {
+	t.Parallel()
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	token := validCSRFTokenForTest(0x51)
+	for _, test := range []struct {
+		name, path, padField, location string
+		limit                          int64
+		form                           url.Values
+	}{
+		{name: "small form", path: "/admin/groups", padField: "reason", location: "/bb/admin/groups", limit: maximumAdministrationSmallFormBytes, form: url.Values{"_csrf": {token}, "name": {"Reviewers"}, "reason": {""}}},
+		{name: "area form", path: "/admin/areas", padField: "description", location: "/bb/admin/areas/3", limit: maximumAdministrationAreaFormBytes, form: url.Values{"_csrf": {token}, "slug": {"reviews"}, "name": {"Reviews"}, "description": {""}, "display_order": {"7"}, "visibility": {"groups"}, "posting_mode": {"normal"}, "initial_group_id": {"4"}, "reason": {"Create review area"}}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			services := administrationCompletionTestServices()
+			calls := 0
+			if test.path == "/admin/groups" {
+				services.CreateGroup = func(context.Context, auth.AccessContext, string, string, pgtype.UUID) (administration.GroupMutationResult, error) {
+					calls++
+					return administration.GroupMutationResult{GroupID: 4, Revision: 1, AuditID: 1}, nil
+				}
+			} else {
+				services.CreateArea = func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error) {
+					calls++
+					return administration.AreaCompletionResult{AreaID: 3, Revision: 1, AuditID: 1}, nil
+				}
+			}
+			handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler = withModerationTestRequestID(t, handler)
+			body := encodedAdministrationFormAtLimit(t, test.form, test.padField, test.limit)
+			request := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, admin)
+			ctx = context.WithValue(ctx, csrfTokenContextKey{}, token)
+			request = request.WithContext(ctx)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != test.location || calls != 1 || response.Body.Len() != 0 {
+				t.Fatalf("exact limit = (status %d, location %q, calls %d, length %d, body %q)", response.Code, response.Header().Get("Location"), calls, len(body), response.Body.String())
+			}
+		})
+	}
+}
+
+func encodedAdministrationFormAtLimit(t *testing.T, form url.Values, field string, limit int64) string {
+	t.Helper()
+	values := cloneValues(form)
+	values.Set(field, "")
+	remaining := int(limit) - len(values.Encode())
+	if remaining < 0 {
+		t.Fatalf("base form exceeds limit: %d", remaining)
+	}
+	values.Set(field, strings.Repeat("\x00", remaining/3)+strings.Repeat("a", remaining%3))
+	encoded := values.Encode()
+	if len(encoded) != int(limit) {
+		t.Fatalf("encoded form length = %d, want %d", len(encoded), limit)
+	}
+	return encoded
+}
+
+func assertAdministrationFormResult(t *testing.T, handler http.Handler, path string, form url.Values, authentication auth.SessionAuthentication, location string, calls *int) {
+	t.Helper()
+	before := *calls
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, areaAdministrationTestRequest(http.MethodPost, path, form, authentication))
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != location || *calls != before+1 || response.Body.Len() != 0 {
+		t.Fatalf("valid form = (status %d, location %q, calls %d, body %q)", response.Code, response.Header().Get("Location"), *calls, response.Body.String())
+	}
+}
+
+func assertAdministrationRejectedForms(t *testing.T, handler http.Handler, path string, form url.Values, authentication auth.SessionAuthentication, calls *int) {
+	t.Helper()
+	before := *calls
+	unknown := cloneValues(form)
+	unknown.Set("target_id", "9")
+	duplicate := cloneValues(form)
+	for key := range duplicate {
+		if key != "_csrf" {
+			duplicate[key] = append(duplicate[key], duplicate[key][0])
+			break
+		}
+	}
+	for _, invalid := range []url.Values{unknown, duplicate} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, areaAdministrationTestRequest(http.MethodPost, path, invalid, authentication))
+		if response.Code != http.StatusBadRequest || *calls != before {
+			t.Fatalf("invalid form = (status %d, calls %d, body %q)", response.Code, *calls, response.Body.String())
+		}
+	}
+}
+
 func TestAdministrationPreflightRejectsBeforeBodyOrDelegation(t *testing.T) {
 	t.Parallel()
 	calls := 0

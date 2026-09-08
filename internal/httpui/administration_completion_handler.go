@@ -514,6 +514,11 @@ func parseAdministrationForm(response http.ResponseWriter, request *http.Request
 		renderAdministrationError(response, request, view, http.StatusForbidden, "Request verification failed", "Reload the administration page and try again.")
 		return nil, false
 	}
+	if request.ContentLength > limit {
+		renderAdministrationError(response, request, view, http.StatusBadRequest, "Invalid form", "The form body is too large.")
+		return nil, false
+	}
+	request.Body = http.MaxBytesReader(response, request.Body, limit)
 	if err := request.ParseForm(); err != nil {
 		renderAdministrationError(response, request, view, http.StatusBadRequest, "Invalid form", "Reload the administration page and try again.")
 		return nil, false
