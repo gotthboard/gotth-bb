@@ -1,0 +1,150 @@
+Beta.1 B1-04 integrated admission evidence
+==========================================
+
+Exact executable and methodology commit:
+  146659142a24014e888b76b935bf854cc32c1e72
+Exact tree:
+  a209eff674049e300d8e492b216096424003b73a
+Admitted Beta contract commit:
+  28143d74f284d59f13bcc9dbe613c84f207b0423
+Merged AN-05 base:
+  822c9bbf1debba1c41337d58641c5a6c58c046a0
+
+Environment and custody
+-----------------------
+
+- Designated evidence host `development`, Linux/amd64, PostgreSQL 17.10,
+  Caddy 2.11.4, Chromium 151.0.7922.71, Go 1.26.6, exact Node.js 26.7.0,
+  and exact npm 12.0.2.
+- The clean checkout resolved to the commit/tree above. Transfer bundle
+  SHA-256 was
+  `7a1f3bb274d9ec64c853a5953ba307390f104040fcdef0d084ec94d5f4e9432c`.
+  `git status --porcelain`, `git diff --check`, and `git fsck --full --strict`
+  passed after every generated and test artifact stayed outside the checkout.
+- Deterministic template, sqlc, CSS, htmx, and script generation produced no
+  tracked or untracked generated delta. The hostile evidence-custody suite,
+  formatting check, and `go vet -mod=readonly ./...` passed.
+
+Repository, security, and PostgreSQL gates
+------------------------------------------
+
+- Repository-wide `go test -mod=readonly -race -cover ./...` passed. Notable
+  coverage was package CLI 89.1%, release artifact 94.9%, authentication
+  92.4%, forum 88.6%, HTTP 72.5%, migration 99.6%, readiness 90.6%, and store
+  96.6%. The branch-heavy HTTP surface is supplemented by the complete
+  focused, integration, and browser gates below.
+- `govulncheck ./...` reported no vulnerabilities. Redacted Gitleaks source
+  and history scans covered about 6.54 MB and all 429 commits with no finding.
+- Complete PostgreSQL 17.10 serial integration/coverage and race/atomic
+  integration/coverage passed. Serial coverage included authentication 97.2%,
+  forum 93.7%, moderation 83.6%, store 97.1%, search projection 77.5%, and
+  100% migrations and readiness. The exact logs have SHA-256
+  `7b95ad1e78d4a36fa87416c0cd53848006979f6e6edd5cc591eb38a3c9fa9c84`
+  and
+  `644a0271b8b809b6caff3ef1dfccc34cfd7369251bd4103a8976aada06102403`.
+- The deterministic route, disclosure, identity, authorization, cookie,
+  header, CSRF, OIDC, input, renderer, proxy identity, limiter, and log
+  boundaries all passed through the repository and PostgreSQL suites. No live
+  provider mutation occurred; the designated live provider-disable check
+  remains owned by B1-05.
+
+Browser, accessibility, and resource gates
+-------------------------------------------
+
+- Five complete Caddy/Chromium repetitions passed for both empty and `/bb`
+  base paths. They covered the fixed proxy identity overwrite, exact security
+  headers and scoped cookie, visitor/member/staff disclosure, discovery,
+  unread, administration, blocked-destination and publication-rate rejection,
+  draft preservation, keyboard Tab/Enter operation, native no-JavaScript
+  fallbacks, 320-CSS-pixel reflow, 200% zoom, accessibility trees, and Axe
+  WCAG 2 A/AA and WCAG 2.1 A/AA checks. The only Axe incomplete is the already
+  admitted gradient-background inference limitation whose exact endpoint
+  contrast ratios exceed the required thresholds. Browser log SHA-256:
+  `5a0fbb2a3f9f3785021449c3472334cdda93150265b7f1a29d16509254c1e8b4`.
+- The exact representative gate passed with 25,000 accounts, groups, and
+  areas; 100,000 ordinary topics; 1,000,000 ordinary posts; and a 250,001-node
+  depth-32 topic. Forced custom and generic plans passed for every named read,
+  moderation, administration, and denial surface. Concurrent authentication,
+  ordinary reads, activity, unread, moderation, publication, mark-read,
+  administration, and search completed without error; database connections
+  returned from 1 to 1 and cancellation passed. Final database size was
+  815,077,043 bytes; posts were 730,710,016 bytes. Log SHA-256:
+  `7aedabb861757ebf93f0f2dd2acbdb434e937a6b8f504fcdc25d654c61a1ac3a`.
+- Five race-instrumented 1,000-account contention repetitions completed 3,000
+  publications each. Every run returned database connections to the
+  observer-only baseline of 1, retained the two-second statement and
+  250-millisecond lock timeouts, passed cancellation, and created no temporary
+  file. Log SHA-256:
+  `21304a4fefc09ac073e1f3d42a1a21545f1b4e51488a03be13202197efcf7920`.
+
+Upgrade, restore, package, and image
+------------------------------------
+
+- The B1-03 stopped Alpha.2-to-Beta rehearsal remains exact for all production
+  code in this candidate. B1-04 additionally restored the retained canonical
+  Beta archive, SHA-256
+  `634f9e4eb20d4404b7ee83af9c5a87fcebc885b5bd2b3ba21171b6bbd6627f65`,
+  with the exact candidate helper into a clean pinned PostgreSQL 17 tmpfs
+  instance in 870 ms. Migration ledger 1..11/count 11, critical counts
+  users/topics/posts/reports/actions 1/3/21/0/7, renderer 21/21 complete, and
+  search 3 topics/21 posts complete all reconciled. The packaged complete ACL
+  admitted required profile/publication column writes while rejecting
+  table-wide user UPDATE, `created_at` UPDATE, and renderer-state mutation.
+  A deliberate second restore failed closed because the target was not clean
+  and left the post count at 21.
+- Two independent package builds for `1.0.0-beta.1`, Linux/amd64, were
+  byte-identical. Archive SHA-256:
+  `c51f105eb83326832669ff341e59452f2ce62c50a4cb45c66da6dec9fe934a3f`.
+  Checksum-file SHA-256:
+  `b3460d38b38f755e3b86f387f236555180608f9e00c4a948c0dfbb952cd9e06b`.
+  The package contains the immutable release identity, dependency manifest,
+  exact complete runtime ACL, Compose model, Containerfile, and entrypoint.
+- The verified archive produced candidate image ID
+  `sha256:1abb63f2bb07fe29b25f6c999589cb3f044e5a26b2fbea6de082ad22871aefa0`.
+  Saved image-tar SHA-256 was
+  `b8d7cad312746c2b3c0cdb26706c4be3cada421b12ef227e5f0846a5d661170f`.
+  Image labels carry the exact version/commit; UID/GID is 65532:65532; the
+  entrypoint is fixed; no deployment environment is embedded. Resolved
+  Compose retains host networking, read-only root, bounded tmpfs, all-capability
+  drop, no-new-privileges, secret files, and application-only replacement.
+- Package text, image context, extracted root filesystem, image/container
+  inspect records, resolved Compose, and all non-plan logs passed redacted
+  secret scans. The raw strings of all three ELF binaries produced six
+  identical generic-key findings; exact byte comparison proved each was solely
+  the public `golang.org/x/oauth2 v0.36.0` build-info checksum already present
+  in committed `go.sum`. Removing exactly that public line left a clean
+  6.26 MB scan. PostgreSQL EXPLAIN JSON produced 17 generic-key false positives
+  solely on plan fields such as `Cache Key`; removing only the complete plan
+  JSON lines left all measurements and non-plan output clean. No broad
+  allowlist was added.
+
+Rejected attempts and repair
+----------------------------
+
+- The first exact B1-04 repository-wide race/coverage pass rejected
+  `cmd/package`. Its runtime-grants validator still encoded the old incremental
+  eight-reference policy and refused the complete fourteen-reference ACL
+  admitted by B1-03. Weakening the database policy was rejected. The validator
+  now matches the exact comment-independent complete ACL and has explicit
+  regressions for a missing initial revoke, table-wide users UPDATE, and any
+  unexpected table or sequence grant. All exact admission gates above restarted
+  from the repair commit.
+- The first image-context probe invoked the forum server as if it had the
+  migrate/operator `version` subcommand. It stopped before image construction.
+  The corrected gate used the two documented database-free CLI identities and
+  then completed the image checks.
+- The clean-restore verification first named obsolete renderer/search
+  singleton columns. The restore and ACL had already committed correctly;
+  actual catalog columns were inspected before the read-only reconciliation
+  query was corrected. No restore or migration was retried blindly.
+
+Boundary
+--------
+
+This is B1-04 admission evidence, not a tag or deployment record. The
+evidence-only commit after this methodology commit changes no executable,
+migration, package input, deployment file, or generated asset. Two fresh cold
+reviews must verify that claim and the entire B1-04 contract before guarded
+delivery. Tagging, release publication, live migration, application
+replacement, provider-disable proof, owner confirmation, and known-good status
+remain exclusively B1-05. RC.1 remains out of scope.
