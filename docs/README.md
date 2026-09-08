@@ -11,12 +11,17 @@ but it may not silently change one.
 5. [Traceability and verification](verification.md)
 6. [Release and operations](release-operations.md)
 
+Beta.1 supporting inventories are [requirement traceability](beta1-traceability.md)
+and the [route and authority inventory](beta1-routes.md). They are verified
+against the governing PRD and production source; they do not create runtime
+policy or route registration.
+
 Implementation history is recorded in the [change log](CHANGELOG.md).
 
-The current target is `1.0.0-alpha.N`: AN-03 unread state is merged and the
-AN-04 administration-completion contract is admitted for serial implementation.
-AN-05 abuse controls, beta, release-candidate, and stable admission remain
-subsequent boundaries before `1.0.0`.
+The current target is `1.0.0-beta.1`: every named Alpha.N feature through
+AN-05 is merged, and the Beta.1 contract is being admitted before serial
+implementation. Beta.1 delivery, release-candidate, and stable admission remain
+separate boundaries before `1.0.0`.
 
 ## Document status
 

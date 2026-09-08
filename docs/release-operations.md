@@ -733,17 +733,111 @@ in the real user workflow. Only after owner confirmation is the exact commit,
 artifact digest, migration head, and configuration schema recorded as a known-
 good reference. Passing automation alone does not claim that user confirmation.
 
-## 18. Open operational decisions
+## 18. Beta.1 release procedure
 
-Before alpha deployment, the owner must select or confirm:
+Beta.1 upgrades the actual active Alpha.2 container deployment. The disabled
+native Alpha.1 systemd unit is retained historical state, not an active service
+and not a valid rollback claim. The preflight release record resolves the live
+container, image, Compose project/configuration, loopback listener, Caddy
+adapted configuration, PostgreSQL container/image/data mount, migration head,
+grants, and current public smoke state before any mutation.
 
-1. Inbound port-forwarding path to the Caddy host, if the public DNS target is
-   not terminated directly on `development`.
-2. PostgreSQL backup destination; PostgreSQL 17 remains the supported alpha
-   contract and must not be silently replaced by the host's PostgreSQL 18.
-3. Authentik client and approved profile claims; the deployed issuer host is
-   `https://auth.dannyhunn.com`.
-4. Initial administrator issuer/subject, alpha access policy, and test users.
-5. Session/revalidation lifetimes.
-6. Soft-deletion and audit retention.
-7. Monitoring and alert destination.
+Proceed in this order:
+
+1. Verify the annotated `1.0.0-beta.1` tag resolves to the admitted merged
+   `main` commit and both canonical/mirror remotes agree.
+2. Build twice from the tagged archive; require byte-identical packages and
+   matching version/commit identity in forum, migration, and operator binaries.
+   Record package, checksum-file, SBOM/dependency, image, and source digests.
+3. Resolve the current live Alpha.2 Compose configuration and environment file
+   without printing secrets. Record the existing application image and a
+   schema-compatible rollback decision rather than merely naming the disabled
+   systemd service.
+4. Verify durable-mount identity, PostgreSQL 17 health/version, free space,
+   database identity, exact migration head, current runtime grants, readiness,
+   and the pre-upgrade smoke matrix.
+5. Create and verify a fresh logical database backup plus a non-secret
+   configuration/release inventory. Record digests, destination failure domain,
+   elapsed time, and the precise restoration command without embedding a
+   database URL or secret.
+6. Restore that backup into a clean task-owned PostgreSQL 17 instance. Rehearse
+   the complete stopped upgrade through 000011, renderer/search completion,
+   packaged runtime grants, readiness, application smoke, and Beta logical
+   backup/clean restore. Do not continue on any missing row, grant, digest,
+   readiness, or rollback evidence.
+7. Stop and drain only the active application container. Preserve the
+   PostgreSQL container, bind mount, Caddy, secrets, previous application image,
+   release directory, and Compose configuration.
+8. Create and verify the exact pre-upgrade database backup again after the
+   application is stopped. Run the packaged migration/completion commands and
+   packaged runtime grants using secret files or protected environment input,
+   never process arguments or broad logs.
+9. Inspect migration head, renderer/search completion, schema constraints,
+   runtime grants, and critical row/count continuity before starting Beta.1.
+10. Validate the resolved Beta Compose model without printing its environment;
+    start only the new application container from the recorded image digest.
+11. Prove health, nonroot/read-only/capability hardening, loopback listener,
+    journald logging, Caddy identity overwrite, Authentik callback/revalidation,
+    and the complete Beta smoke/leakage/accessibility matrix.
+12. Record rollback feasibility against the now-current schema. If the previous
+    Alpha.2 artifact cannot run at migration head 000011, rollback means restore
+    the verified pre-upgrade backup before restarting that artifact or apply a
+    reviewed forward repair; do not start it optimistically.
+13. Publish the release record and known limitations for designated test users.
+    Ask the owner to exercise the real browser workflow. Only an affirmative
+    answer records the commit, artifact/image digest, migration head, and
+    configuration identity as known-good.
+
+The initial Beta backup/restore gate may honestly use same-host backup storage
+for the restricted test deployment when that failure domain is published.
+Automated scheduling, off-host copies, retention, encryption policy, alerting,
+and production RPO/RTO remain stable-release work. Same-host storage is not
+described as disaster recovery.
+
+### 18.1 Beta.1 release checklist
+
+- [ ] Admitted merged commit and both remotes agree.
+- [ ] Annotated Beta.1 tag resolves to that commit.
+- [ ] Two package builds are byte-identical; identities and digests recorded.
+- [ ] SBOM/dependency and secret scans pass.
+- [ ] Active Alpha.2 container/database/configuration baseline captured.
+- [ ] Fresh stopped pre-upgrade backup verifies.
+- [ ] Clean-instance Alpha.2-to-Beta.1 upgrade rehearsal passes.
+- [ ] Clean-instance Beta logical backup/restore rehearsal passes.
+- [ ] Live stopped migrations/completions and runtime grants pass.
+- [ ] PostgreSQL container and durable mount identities are preserved.
+- [ ] Only the application container is replaced.
+- [ ] Health, hardening, Caddy, Authentik, complete smoke, leakage, and
+      accessibility checks pass.
+- [ ] Prior artifact, pre-upgrade backup, and exact rollback decision retained.
+- [ ] Release record and known limitations published.
+- [ ] Owner confirms the real workflow before known-good is recorded.
+
+## 19. Operational decisions
+
+The active Alpha.2 deployment resolves the following Beta baseline without
+placing secret or personal values in the repository:
+
+- the public Caddy/TLS path terminates on `development` and proxies to the
+  loopback-only application listener;
+- the application uses the dedicated PostgreSQL 17 container and durable bind
+  mount, not the host's PostgreSQL 18 installation;
+- the dedicated Authentik client, approved profile claims, first administrator,
+  and designated test identities exist in protected deployment/audit state;
+- session maximum age is 24 hours, idle timeout is 8 hours, and Authentik
+  revalidation interval is 30 minutes; and
+- the initial restricted-Beta logical backup destination remains the existing
+  root-owned same-host board backup area, with that failure domain published as
+  a limitation.
+
+Changing any resolved identity, lifetime, listener, database, or backup
+boundary requires explicit owner approval and fresh affected evidence.
+
+The following decisions remain open for their later affected behavior:
+
+1. Whether Beta test users receive public areas or only the existing restricted
+   area policy.
+2. Soft-deletion and audit retention duration.
+3. Scheduled/off-host backup destination, retention, encryption policy, and
+   failure alerting before stable.
+4. Monitoring and alert destination plus owner-approved thresholds.

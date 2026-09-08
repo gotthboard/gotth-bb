@@ -637,7 +637,66 @@ AN-05 adds no CAPTCHA, reputation network, DNS block service, content scanning
 worker, automatic moderation action, account deletion, global IP identity,
 horizontal rate-limit coordination, release authority, or deployment.
 
-## 14. Stable 1.0 acceptance boundary
+## 14. Beta.1 acceptance boundary
+
+`1.0.0-beta.1` is the first version 1.0 build offered to designated ordinary
+test users as feature-complete. It is acceptable only when all of the following
+hold on one exact candidate:
+
+1. Every version 1.0 requirement ID in sections 5.1 through 5.8 has an
+   implemented surface or an explicit non-applicable explanation consistent
+   with the version 1.0 non-goals. No knowingly absent core feature is hidden
+   behind a limitation.
+2. A route-and-method inventory accounts for every current full-page, HTMX,
+   direct-object, summary, count, canonical/metadata, mutation, and error
+   surface. The complete applicable leakage matrix passes for visitor, member,
+   group member, moderator, administrator, suspended, revoked, and stale-session
+   states without revealing restricted existence or occupancy.
+3. The pre-beta security gate passes: dependency and secret scans; CSRF,
+   cookie, browser-header, OIDC return-path, injection, XSS, proxy-identity,
+   limiter-bypass, and bounded-log checks. No known critical security or
+   data-loss defect is admitted.
+4. Designated test users can complete login, navigation, search, unread,
+   topic/reply/edit, report, moderation, and administration journeys with
+   ordinary HTML. Core journeys remain responsive and keyboard-accessible;
+   HTMX enhancement preserves focus, errors, status, history, authorization,
+   and submitted drafts.
+5. Representative-data evidence covers every core page's bounded query count,
+   pagination boundary, custom and generic PostgreSQL plan structure, pool and
+   cancellation behavior, and coexistence with authenticated reads and writes.
+   Beta.1 adds no scale or latency promise beyond the measured single-process
+   deployment.
+6. Authentik disable takes effect no later than the deployed revalidation
+   interval, which is recorded with the release. Local role, group, suspension,
+   mute, and target-session revocation takes effect on the next protected
+   request. Neither path claims propagation faster than the evidence proves.
+7. An actual supported alpha database is backed up, upgraded to the Beta.1
+   schema with the application stopped, granted only the packaged runtime
+   privileges, and smoke-tested. Failure and unknown migration outcomes use the
+   documented inspect/forward-repair/restore decisions rather than an invented
+   down-migration.
+8. An initial backup/restore rehearsal creates a digested PostgreSQL backup and
+   a non-secret configuration/release inventory, restores into a clean supported
+   PostgreSQL instance, reapplies the packaged runtime grants, and passes
+   readiness plus application smoke tests. Elapsed backup and recovery times
+   and the actual failure domain are recorded.
+9. Known limitations and residual risks are published. Same-host-only backup,
+   absent scheduling/retention/alerting, or restricted test-user access may be
+   declared Beta limitations; restricted-content disclosure, authentication or
+   authorization bypass, unrecoverable migration, and known application-caused
+   data loss may not.
+10. The admitted commit produces two byte-identical immutable packages and one
+    tagged release artifact. Deployment uses that artifact, preserves an exact
+    pre-upgrade backup and rollback record, and passes the Beta smoke matrix
+    through Caddy before the owner is asked to confirm the real workflow.
+
+Beta.1 does not authorize public production use, unrestricted enrollment,
+horizontal replicas, new version 2 features, a stable durability claim, or the
+RC.1 artifact/migration freeze. Feedback discovered after Beta.1 admission is
+corrected through reviewable Beta work before RC.1; feedback is not a circular
+prerequisite for opening the first Beta to testers.
+
+## 15. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -651,7 +710,7 @@ horizontal rate-limit coordination, release authority, or deployment.
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 15. Constraints and assumptions
+## 16. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -662,22 +721,31 @@ horizontal rate-limit coordination, release authority, or deployment.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 16. Open owner decisions
+## 17. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
-implementation begins:
+behavior changes:
 
-1. Exact Authentik issuer URL and client/application identifier.
-2. Exact issuer/subject pair for the first audited local administrator grant.
-3. Maximum delay between an Authentik disable and forum access revocation.
-4. Whether public areas are enabled at first deployment or merely supported.
-5. Content retention duration for soft-deleted posts and audit events.
+1. Whether public areas are enabled for Beta test users or merely supported.
+2. Content retention duration for soft-deleted posts and audit events.
+
+The deployed Alpha already has an exact Authentik issuer/client and an audited
+first-administrator issuer/subject. Those environment-specific identifiers stay
+in protected configuration/audit state, not this public product document; the
+Beta release preflight must verify that they remain unchanged without recording
+secret or personal values.
+
+For the initial Beta.1 deployment, the maximum delay between an Authentik
+disable and protected forum access revocation retains the existing deployed
+30-minute revalidation interval. This is an operator-configured maximum, not a
+claim of immediate provider event propagation. Changing it requires an owner
+decision and a new exact-boundary verification before deployment.
 
 The initial rate-limit profile and new-account period are resolved by the AN-05
 acceptance boundary. They remain operator configuration, not hard-coded product
 law.
 
-## 17. Change control
+## 18. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update

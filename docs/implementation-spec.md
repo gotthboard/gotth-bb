@@ -2717,7 +2717,145 @@ head readiness. Rollback is forward repair/current artifact or a verified pre-
 000011 database restore. Running an older binary is forbidden because it would
 publish without the admitted durable counter and would fail readiness.
 
-## 23. Definition of implementation complete
+## 23. Beta.1 admission and recovery
+
+Beta.1 changes no runtime feature boundary unless the admitted inventories find
+a concrete version 1.0 defect. Its implementation consists of deterministic
+inventory/gate code, scoped defect corrections, two direct logical-recovery
+scripts packaged with the release, and exact release/deployment evidence.
+
+### 23.1 Requirement and route inventories
+
+One repository test parses the PRD's exact bold requirement-ID grammar and the
+canonical Beta traceability data. It rejects omitted, duplicate, unknown, or
+malformed IDs and empty implementation/evidence references. The traceability
+data is test/evidence input; production does not parse it and it cannot grant
+authority or register routes.
+
+One HTTP-package test uses Go's parser and syntax tree to extract literal
+method/pattern registrations from the exact production router construction
+sources. Middleware-owned liveness, readiness, and content-addressed static
+routes are appended explicitly. The canonical reviewed inventory records
+method, normalized path pattern, actor/session class, CSRF use, response mode,
+cache class, database/mutation/audit effect, and denial class. Tests compare the
+extracted method/pattern set to that inventory in both directions. A separate
+template and redirect-source scan compares emitted static route/action shapes
+to it. Dynamic identifiers normalize to their registered brace pattern;
+test-only sources are excluded explicitly. Production router construction is
+not refactored into a metadata framework merely to make the test convenient;
+request dispatch remains the existing standard-library router.
+
+### 23.2 Leakage, accessibility, and representative gates
+
+The Beta integration harness composes existing service boundaries with
+deterministic identities, policy fixtures, clocks, and fault injectors. It does
+not add an application backdoor. Every route record selects its applicable
+actor/state/leakage cases; an empty selection for a database-backed or
+authorization-sensitive route is a test failure. Full-page and HTMX requests
+share the same route and service path. Browser checks run only through Caddy
+and record adapted configuration before accepting forwarded client identity.
+
+Automated accessibility checks use the rendered accessibility tree and a pinned
+local checker when available; manual keyboard, focus, zoom, reflow, contrast,
+and status evidence remains required because automated success is not a human
+usability claim. The harness stores no credentials or restricted page bodies in
+Git. Screenshots and trees are retained only when they contain disposable
+fixtures and materially prove a named row.
+
+Representative-plan checks reuse the existing deterministic population and
+plan parsers. Beta adds one table of core routes and expected maximum query
+counts/row bounds; it does not introduce a generic benchmark framework. Both
+custom and generic plans are structurally inspected. Every resource test
+captures a pre-wave baseline and requires pool/goroutine/file-descriptor state
+to converge back to that baseline within a bounded interval.
+
+### 23.3 Logical backup helper
+
+The release adds `deploy/postgresql/backup-logical.sh`. It accepts exactly an
+existing PostgreSQL container name and an absolute output archive path. The
+container name uses Docker's conservative ASCII name grammar; the output parent
+must already exist, be an absolute real directory, and the final archive and
+`.sha256` sidecar must not exist. The helper sets `umask 077`, creates its
+temporary regular file in the output directory, and rejects symlink/non-regular
+targets.
+
+It runs the pinned PostgreSQL 17 container's own `pg_dump` as the container's
+`postgres` operating-system user. Inside the container, `POSTGRES_USER` and
+`POSTGRES_DB` select the local migration-owner connection; no database URL or
+password becomes a host process argument. The exact dump is custom format,
+`--no-privileges`, `--serializable-deferrable`, and a five-second lock-wait
+timeout. Output streams once through Docker into the temporary host file. After
+successful close, the helper asks the same pinned container's `pg_restore
+--list` to validate the archive, syncs the file, computes SHA-256, atomically
+renames the archive, then atomically installs a fixed-format sidecar. A final
+archive without a valid matching sidecar is incomplete and cannot be restored
+or released. Failure removes only helper-owned temporary files; it never
+overwrites an existing backup.
+
+The helper emits one bounded success line with basename, byte count, and digest.
+Errors name the failed stage without connection data, environment values, dump
+contents, or broad command output. Cancellation and signal handling stop the
+pipeline and leave no admitted final pair.
+
+### 23.4 Logical restore helper
+
+The release adds `deploy/postgresql/restore-logical.sh`. It accepts exactly a
+clean task-owned PostgreSQL 17 container name and an absolute archive path. The
+archive must be a non-symlink regular file with a matching fixed-format
+`.sha256` sidecar. The helper verifies the digest and validates the archive with
+the target container's pinned `pg_restore --list` before database work.
+
+The target container must report PostgreSQL major 17, must expose nonempty
+`POSTGRES_USER` and `POSTGRES_DB`, and its target database must contain no
+non-extension user relations and no migration ledger. The helper then streams
+the archive once to `pg_restore --exit-on-error --single-transaction
+--no-privileges` as the container's `postgres` operating-system user and
+migration-owner database role. A restore failure leaves the task-owned target
+for inspection; it is not silently dropped or retried. A second run rejects the
+now-nonempty database.
+
+Runtime privileges are deliberately absent from the archive and restore. The
+operator must apply the exact packaged `runtime-grants.sql` after creating the
+target runtime role, then run migration-head/readiness and application smoke
+checks. The helper emits only archive basename, digest, target container name,
+and a fixed committed result; no row data or credential is output.
+
+Both helpers have shell syntax/static checks plus fake-Docker tests for argument
+grammar, existing/symlink targets, short/failed output, archive/list/digest
+failure, atomic admission, clean-target refusal, restore failure, cancellation,
+redaction, and exact command/stdin ordering. A real PostgreSQL 17 integration
+creates a source database with every migration and representative private/audit
+state, backs it up, restores it into a distinct clean container/database,
+reapplies packaged grants, and proves row/schema identity, readiness, and smoke.
+
+### 23.5 Alpha.2 upgrade and release state machine
+
+The rehearsal begins from a logical copy of the actual Alpha.2 database at
+migration 000005. The stopped migration runner applies 000006 through 000011;
+the renderer and search completion commands run at their required boundaries,
+and packaged grants are reapplied after all schema changes. Fixtures prove
+stable identities, content trees, reports/audits, visibility, and counts survive
+the full chain. Failure injection covers each migration/completion boundary and
+unknown outcomes; no test mutates the live database.
+
+Live release follows the state machine in `release-operations.md`. The active
+Docker application container is the only application service stopped/replaced.
+The disabled Alpha.1 systemd unit is never started as a fallback. PostgreSQL,
+its bind mount, Caddy, root-owned configuration/secrets, the previous image and
+Compose environment, and the verified pre-upgrade backup are preserved.
+
+The release artifact includes both logical-recovery helpers with mode `0755`,
+the runtime-grant artifact, container files, dependency manifest, and exact
+release identity. Package construction loads each file from the specified
+commit, validates bounded text bytes and modes, and includes them in normalized
+archive ordering. Two independent builds must be byte-identical.
+
+After migration 000011, Alpha.2 is not an executable rollback against the live
+schema. Until owner confirmation, rollback is current Beta/forward repair or a
+verified pre-upgrade restore followed by the preserved Alpha.2 artifact. Only
+owner confirmation records the Beta commit/artifact as known-good.
+
+## 24. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

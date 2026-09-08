@@ -1164,3 +1164,169 @@ identical release-package gates. Evidence records exact commit/tree, commands,
 tool/database/browser/proxy versions, checksums, results, and gaps. Two fresh
 independent cold reviews must both be CLEAN on that exact state before PR and
 guarded fast-forward delivery.
+
+## 23. Beta.1 evidence contract
+
+Beta.1 binds the complete version 1.0 surface to one candidate without
+pretending that RC.1's final evidence/freeze gate or stable's production
+recovery posture has already passed.
+
+### 23.1 Requirement and route closure
+
+The Beta traceability record expands every requirement ID from PRD sections
+5.1 through 5.8 into exactly one row containing:
+
+- requirement ID and exact governing text location;
+- implementation package, query, route, template, migration, or operator
+  procedure;
+- automated and manual evidence identifiers;
+- `implemented`, `inapplicable`, or `blocked` state;
+- an exact explanation for `inapplicable`, limited to a PRD non-goal; and
+- the defect/reference that blocks admission when state is `blocked`.
+
+No requirement may be marked implemented only because a neighboring grouped
+traceability row passed. The generated requirement-ID set is compared to the
+record in both directions so omitted, duplicate, or invented IDs fail.
+
+The route record is derived from the exact candidate's router registrations and
+augmented by middleware-owned health/static handling. It records method,
+canonical path pattern, actor/session requirement, CSRF use, full-page/HTMX
+mode, cache policy, database use, mutation/audit effect, and expected
+missing/denied behavior. A second inventory scans form actions, links,
+`HX-Redirect`, and redirect builders so an emitted endpoint absent from the
+router record fails. Dynamic test-only routes and future-version surfaces are
+identified explicitly rather than ignored.
+
+### 23.2 Leakage, identity, and pre-beta security matrix
+
+For each applicable read or mutation surface, tests exercise visitor, current
+member, matching/nonmatching group member, moderator, administrator, locally
+suspended, revoked-session, and Authentik-stale-session states. Restricted
+fixtures cover hidden/deleted/redacted topic and post state, authenticated and
+group areas, read-only/archived modes, report targets and queue summaries,
+search rank/count/snippet, recent activity, unread counts/redirects, direct
+post resolution, breadcrumbs/canonical metadata, administration counts, and
+full-page/HTMX errors. Assertions compare status class, headers, redirect
+shape, response length class where relevant, database work, and absence of
+fixture sentinels; they do not normalize a real timing leak by merely accepting
+different `403`/`404` results.
+
+The exact Beta candidate also passes:
+
+- module/dependency known-vulnerability scanning with the scanner database and
+  version recorded; unavailable scanning blocks rather than reports success;
+- repository-history, worktree, package, image, and resolved-container secret
+  scanning without publishing matched secret material;
+- method and CSRF coverage for every mutation;
+- Secure, HttpOnly, SameSite, Path, CSP, frame, MIME, referrer, and cache-header
+  inspection through Caddy;
+- OIDC issuer/audience/signature/state/nonce/PKCE/callback/return-path tests;
+- parameter, query/body boundary, SQL-injection, stored/reflected XSS, and
+  sanitizer corpus tests;
+- request/publication limiter bypass, restart, capacity, proxy-spoofing, and
+  adapted-Caddy overwrite tests; and
+- bounded application log review for tokens, cookies, credentials, identities,
+  addresses, restricted content, queries, drafts, rules, and target URLs.
+
+The deployed Beta record states the configured Authentik revalidation interval.
+An isolated designated identity is disabled at the provider and may retain only
+the already admitted public anonymous surface until the next protected request
+at or after that interval enters reauthorization and fails. The old local
+session cannot regain authority. Separate database tests prove local role,
+group, suspension, mute, and target-session revocation on the next protected
+request. No evidence may claim immediate Authentik disable propagation.
+
+### 23.3 Accessibility, usability, and representative-data matrix
+
+Core browser journeys are:
+
+1. visitor navigation, rules, search, activity, and restricted denial;
+2. member login, topic creation/preview, parent-addressed reply, edit,
+   soft-delete, unread navigation/mark-read, and report submission;
+3. matching/nonmatching group access transitions;
+4. moderator report assignment/note/resolution and topic/post/account actions;
+5. administrator settings, accounts, roles, groups, memberships, areas, and
+   dashboard; and
+6. logout, stale session revalidation, validation/conflict, `422`, `429`,
+   capacity `503`, and unexpected request failure recovery.
+
+Each journey runs through Caddy at empty and `/bb` base paths where the test
+harness controls configuration. Ordinary HTML is exercised with JavaScript
+disabled; HTMX-enabled repetitions prove history, focus, status/error
+announcements, draft preservation, and no duplicated shell/footer. Automated
+accessibility results are followed by retained manual keyboard evidence for
+tab order, skip/navigation landmarks, heading structure, accessible names,
+labels/descriptions/errors, visible focus, no trap, and control operability.
+Record 320 CSS pixel reflow, 200% zoom, mobile and desktop viewports, contrast,
+non-color state cues, browser/version, screenshots or accessibility-tree
+snapshots where useful, and every manual gap.
+
+The representative PostgreSQL 17 population retains at least 25,000 accounts,
+100,000 topics, 1,000,000 ordinary posts, the admitted depth-32 topic, current
+report/admin/search/unread fixtures, and 1,000-account publication contention.
+For index, area list, topic, direct post, search, activity, unread, report queue,
+moderation, and administration pages, record query count, rows, buffers,
+custom/generic plan structure, elapsed time, allocations where measured, pool
+peak/return-to-baseline, cancellation, and bounded continuation edges. A mixed
+wave runs authentication, ordinary reads, discovery, unread, publication,
+moderation, administration, and backup observation without accepting a partial
+result or leaked private state. These are observations, not a latency or
+multi-replica claim.
+
+### 23.4 Alpha.2 upgrade and initial recovery matrix
+
+Before touching the live Alpha.2 database, capture without secrets:
+
+- exact application commit/version/image and Compose/Caddy identities;
+- PostgreSQL image/version, database identity, migration head, relation sizes,
+  runtime/migration roles, and grants;
+- durable mount identity and free-space check;
+- configuration key inventory and digests of non-secret deployment artifacts;
+- active readiness/smoke state; and
+- exact rollback artifact, configuration, and pre-upgrade backup destination.
+
+The first rehearsal restores a digested copy of the live Alpha.2 database into
+a clean task-owned PostgreSQL 17 instance. With the application stopped for the
+database under test, run migrations 000006 through 000011, renderer and search
+completion, packaged runtime grants, exact-head readiness, and the complete
+application smoke matrix. Record locks, scans, I/O, elapsed time, schema heads,
+row/count continuity, audits, private visibility, and failed/unknown-outcome
+procedures. The live release repeats the same stopped sequence only after this
+rehearsal passes and a fresh exact pre-upgrade backup verifies.
+
+Initial recovery creates a second digested logical backup of the Beta schema
+plus a non-secret configuration/release inventory, restores it into another
+clean PostgreSQL 17 instance, reapplies only packaged runtime grants, and runs
+readiness plus smoke using the exact candidate artifact. Record backup and
+restore durations, sizes, digests, recovery point, recovery time, cleanup, and
+the honest storage failure domain. Beta may publish same-host-only storage,
+missing scheduling/retention/encryption/alerting, and lack of production RPO/RTO
+as limitations; stable cannot inherit those claims without its later gate.
+
+No rehearsal runs `docker compose down -v`, deletes or rewrites the live data
+mount, puts database URLs in process arguments/evidence, or treats a destructive
+down migration as rollback.
+
+### 23.5 Integrated admission, release, and confirmation
+
+On one exact final candidate, run deterministic SQL/Templ/static generation,
+gofmt, vet, repository-wide unit race/relevant coverage, full PostgreSQL 17
+integration/race, the complete Beta requirement/route/leakage/security,
+accessibility/browser, representative-data/resource, upgrade/recovery,
+package/image/SBOM, log-redaction, and repository-integrity gates. Produce two
+byte-identical Linux/amd64 packages. Evidence records exact commit/tree,
+commands, environment/tool versions, timestamps, digests, results, and gaps.
+
+Two fresh independent cold reviews must both say CLEAN on that exact state.
+Only then may the guarded PR fast-forward to `main` and mirror. The annotated
+`1.0.0-beta.1` tag is created only on the merged commit; the release package
+and image are rebuilt or verified from that tag. Deployment preserves the
+PostgreSQL container/data mount, replaces only the application after the
+stopped migration/grant step, and runs the complete smoke and rollback checks
+through Caddy for designated test users.
+
+The release record publishes known limitations and retains the prior artifact,
+pre-upgrade backup, failed-step recovery decision, tag, commit, tree, package,
+image, schema, and configuration identities. The candidate becomes known-good
+only after the owner confirms the real browser workflow. Beta.1 completion
+stops before RC.1; no migration or artifact freeze is implied.

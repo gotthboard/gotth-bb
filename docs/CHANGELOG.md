@@ -5,6 +5,49 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Admit the Beta.1 closure and recovery contract
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- explicit PRD Beta.1 acceptance boundary
+- exact per-requirement and route/authority inventories
+- serial B1-00 through B1-05 feature, verification, recovery, delivery, and
+  release/deployment gates
+- logical PostgreSQL backup/clean-restore helper contract and actual Alpha.2
+  container/schema upgrade state machine
+
+Explanation:
+
+The named version 1.0 feature increments are merged, but that does not make a
+Beta release by declaration. This contract requires exact closure of every PRD
+requirement and present route, the pre-beta security/leakage matrix, complete
+core accessibility and representative-plan evidence, and a real upgrade and
+clean restore from the active Alpha.2 Docker/database baseline. It keeps test
+inventory out of runtime authority and keeps same-host-only backup honest as a
+restricted-Beta limitation rather than pretending it is disaster recovery.
+
+Verification:
+
+- PRD and traceability inventories contain the same 68 unique requirement IDs
+- the reviewed inventory contains 61 production method/pattern rows
+- the active Alpha.2 container and migration 000005 baseline were inspected
+  read-only; the pinned PostgreSQL 17.10 local logical-dump path works without
+  exposing a database URL or password in host process arguments
+- document links and `git diff --check` pass
+- two fresh CLEAN contract reviews are required on one exact commit before
+  B1-00 is DONE
+
+Risks / non-goals:
+
+- Beta.1 remains restricted test-user software, not production or stable
+- same-host initial recovery does not cover host-loss disaster recovery;
+  scheduling, off-host retention, encryption policy, alerting, and recovery
+  budgets remain later gates
+- no version 2 feature, runtime route registry, horizontal replica, RC.1
+  freeze, tag, release, or deployment is introduced at contract admission
+
 ### 2026-09-08 — Admit bounded AN-05 basic-abuse-control contract
 
 Commit: current commit; hash assigned by Git after commit

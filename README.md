@@ -19,11 +19,12 @@ Authentik as the identity provider.
 forum presentation and parent-addressed threaded replies while preserving the
 server-rendered and HTMX fallback contracts.
 
-Unreleased development through AN-04 is merged. AN-05 is the remaining
-version 1.0 feature boundary: bounded request/publication limits and basic
-blocked-destination policy. Its admitted design is deliberately single-process
-at the HTTP edge and PostgreSQL-transactional for publication; it does not
-claim distributed rate limiting.
+Unreleased development through AN-05 is merged, completing the named version
+1.0 feature surface. Beta.1 admission is the current boundary: complete
+requirement/route/leakage and security closure, core accessibility and
+representative-plan evidence, an actual Alpha.2 upgrade plus logical
+backup/clean-restore rehearsal, reproducible delivery, and a guarded Beta
+deployment. It does not claim RC.1 evidence freeze or stable recovery posture.
 
 Project documentation lives in [`docs/`](docs/README.md).
 
@@ -142,8 +143,10 @@ has at least one active administrator.
 
 ## Installation, compatibility, and support
 
-The application is at 1.0.0-alpha.2. Existing alpha tags predate the GitHub
-module identity; no tag is moved or replaced.
+The latest tagged application is 1.0.0-alpha.2. Existing alpha tags predate the
+GitHub module identity; no tag is moved or replaced. Untagged `main` contains
+the complete named Alpha.N feature surface through AN-05 and is advancing
+through the separate Beta.1 admission gate.
 
 No post-migration version has been tagged. To inspect the current source
 before the first admitted release:

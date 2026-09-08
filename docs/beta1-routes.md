@@ -1,0 +1,82 @@
+# Beta.1 route and authority inventory
+
+This is the reviewed production route inventory for B1-00. Paths are shown
+without `BASE_PATH`; the same route set must work at the empty and `/bb` base
+paths. `optional` means the route may resolve a session to personalize or widen
+an already authorized read, not that session state may weaken visitor policy.
+Every dynamic response is non-cacheable when authenticated or error-bearing;
+the gate verifies the exact emitted header for each state.
+
+`Mutation` means durable PostgreSQL state may change. `Audit` means the same
+transaction must append the immutable forum audit record. OIDC attempt/session
+state and read markers are explicit mutations but are not moderation audits.
+
+| Method | Pattern | Authority | CSRF | Cache class | DB / Mutation / Audit | Missing or denied |
+| --- | --- | --- | --- | --- | --- | --- |
+| `GET` | `/` | optional session | no | visitor dynamic or `private, no-store` | yes / no / no | bounded page or `503` |
+| `GET` | `/areas/{slug}` | optional session plus area policy | no | visitor dynamic or `private, no-store` | yes / no / no | equivalent `404` |
+| `GET` | `/topics/{topicID}` | optional session plus topic/area policy | no | visitor dynamic or `private, no-store` | yes / no / no | equivalent `404` |
+| `GET` | `/health/live` | public | no | `no-store` | no / no / no | fixed `200` while process serves |
+| `GET` | `/health/ready` | public bounded readiness | no | `no-store` | yes / no / no | fixed `503` without detail |
+| `GET, HEAD` | `/static/{app-css-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/htmx-2.0.10.min.js` | public exact version | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/{discovery-script-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/{toolbar-script-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET` | `/login` | public | no | `no-store` | yes / OIDC attempt / no | bounded `400`/`503` |
+| `GET` | `/auth/callback` | one-time OIDC state | no | `no-store` | yes / identity plus session / no | fixed failed-login result |
+| `GET` | `/auth/revalidate` | existing local session | no | `no-store` | yes / OIDC attempt / no | login or bounded failure |
+| `POST` | `/logout` | current local session | yes | `no-store` | yes / session revoke / no | fixed recovery/error |
+| `GET` | `/register` | public only when operator gate is enabled | no | `no-store` | no / no / no | `404` while disabled |
+| `GET` | `/setup` | designated current/revalidated member | no | `no-store` | yes / no / no | login/revalidate/closed result |
+| `POST` | `/setup/administrator` | designated current/revalidated member | yes | `no-store` | yes / role, session / yes | fixed closed/denied/error |
+| `GET` | `/rules` | public | no | `no-store` | yes / no / no | bounded `404`/`503` |
+| `GET` | `/search` | optional session plus result policy | no | `private, no-store` | yes / no / no | bounded `400`/`503` |
+| `GET` | `/activity` | optional session plus result policy | no | `private, no-store` | yes / no / no | bounded `400`/`503` |
+| `GET` | `/posts/{postID}` | optional session plus post/area policy | no | `private, no-store` | yes / no / no | equivalent `404` |
+| `GET` | `/topics/{topicID}/unread` | current/revalidated member plus topic policy | no | `private, no-store` | yes / no / no | equivalent `404` or canonical redirect |
+| `POST` | `/topics/{topicID}/read` | current/revalidated member plus topic policy | yes | `private, no-store` | yes / read marker / no | equivalent `404`/fixed error |
+| `GET` | `/topics/new` | current/revalidated member plus area policy | no | `no-store` | yes / no / no | login/revalidate/denied/not found |
+| `POST` | `/topics/preview` | current/revalidated member plus area/content policy | yes | `private, no-store` | yes / no / no | field-safe bounded error |
+| `POST` | `/topics` | current/revalidated member plus area/content/rate policy | yes | `private, no-store` | yes / topic, post, counter / no | field-safe `4xx`/bounded `5xx` |
+| `POST` | `/topics/{topicID}/replies/preview` | current/revalidated member plus topic/content policy | yes | `private, no-store` | yes / no / no | equivalent `404`/field-safe error |
+| `POST` | `/topics/{topicID}/replies` | current/revalidated member plus topic/content/rate policy | yes | `private, no-store` | yes / post, counter / no | equivalent `404`/field-safe error |
+| `GET` | `/posts/{postID}/edit` | current/revalidated author plus post policy | no | `no-store` | yes / no / no | equivalent `404`/denied |
+| `POST` | `/posts/{postID}/edit/preview` | current/revalidated author plus content policy | yes | `private, no-store` | yes / no / no | equivalent `404`/field-safe error |
+| `POST` | `/posts/{postID}/edit` | current/revalidated author plus content policy | yes | `private, no-store` | yes / post / no | equivalent `404`/conflict/error |
+| `POST` | `/posts/{postID}/delete` | current/revalidated author plus post policy | yes | `no-store` | yes / soft delete / no | equivalent `404`/conflict/error |
+| `POST` | `/reports` | current/revalidated member plus target policy | yes | `no-store` | yes / report / no | equivalent target absence/field error |
+| `GET` | `/moderation/reports` | current/revalidated moderator or administrator | no | `no-store` | yes / no / no | fixed `403` or bounded error |
+| `GET` | `/moderation/reports/{reportID}` | current/revalidated moderator or administrator | no | `no-store` | yes / no / no | equivalent `404` |
+| `POST` | `/moderation/reports/{reportID}/claim` | current/revalidated moderator or administrator | yes | `no-store` | yes / report / yes | equivalent `404`/conflict/error |
+| `POST` | `/moderation/reports/{reportID}/notes` | current/revalidated moderator or administrator | yes | `no-store` | yes / note/report / yes | equivalent `404`/conflict/error |
+| `POST` | `/moderation/reports/{reportID}/resolve` | current/revalidated moderator or administrator | yes | `no-store` | yes / report / yes | equivalent `404`/conflict/error |
+| `POST` | `/moderation/reports/{reportID}/dismiss` | current/revalidated moderator or administrator | yes | `no-store` | yes / report / yes | equivalent `404`/conflict/error |
+| `POST` | `/moderation/actions` | current/revalidated moderator or administrator plus target/action policy | yes | `no-store` | yes / target / yes | equivalent target absence/field error |
+| `GET` | `/moderation/users/{userID}` | current/revalidated moderator or administrator | no | `no-store` | yes / no / no | equivalent `404`/fixed `403` |
+| `POST` | `/moderation/users/{userID}/suspend` | current/revalidated moderator or administrator | yes | `no-store` | yes / suspension, sessions / yes | equivalent `404`/continuity/error |
+| `POST` | `/moderation/users/{userID}/reinstate` | current/revalidated moderator or administrator | yes | `no-store` | yes / suspension / yes | equivalent `404`/conflict/error |
+| `POST` | `/topics/{topicID}/lock` | current/revalidated moderator or administrator plus topic policy | yes | `no-store` | yes / topic / yes | equivalent `404`/conflict/error |
+| `POST` | `/topics/{topicID}/unlock` | current/revalidated moderator or administrator plus topic policy | yes | `no-store` | yes / topic / yes | equivalent `404`/conflict/error |
+| `POST` | `/topics/{topicID}/hide` | current/revalidated moderator or administrator plus topic policy | yes | `no-store` | yes / topic / yes | equivalent `404`/conflict/error |
+| `POST` | `/topics/{topicID}/restore` | current/revalidated moderator or administrator plus topic policy | yes | `no-store` | yes / topic / yes | equivalent `404`/conflict/error |
+| `GET` | `/admin` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `GET` | `/admin/settings` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/settings` | current/revalidated administrator | yes | `private, no-store` | yes / settings / yes | fixed `403`/conflict/field error |
+| `GET` | `/admin/accounts` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `GET` | `/admin/accounts/{userID}` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
+| `POST` | `/admin/accounts/{userID}/role` | current/revalidated administrator | yes | `private, no-store` | yes / role, sessions / yes | equivalent `404`/continuity/conflict |
+| `POST` | `/admin/accounts/{userID}/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / membership / yes | equivalent `404`/conflict/error |
+| `GET` | `/admin/groups` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/groups` | current/revalidated administrator | yes | `private, no-store` | yes / group / yes | fixed `403`/conflict/field error |
+| `POST` | `/admin/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / group / yes | equivalent `404`/conflict/error |
+| `GET` | `/admin/areas` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/areas` | current/revalidated administrator | yes | `private, no-store` | yes / area / yes | fixed `403`/conflict/field error |
+| `GET` | `/admin/areas/{areaID}` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
+| `POST` | `/admin/areas/{areaID}` | current/revalidated administrator | yes | `private, no-store` | yes / area / yes | equivalent `404`/conflict/error |
+| `POST` | `/admin/areas/{areaID}/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / area membership / yes | equivalent `404`/conflict/error |
+
+All other method/path/query/raw-path forms go through the bounded not-found or
+method-denial behavior and must not reach an inner session, body, or database
+boundary when preflight rejects them. Future RSS, notification, related-topic,
+API, federation, media, and attachment routes do not exist in version 1.0 and
+are explicitly outside the applicable Beta leakage set.

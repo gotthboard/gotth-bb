@@ -547,15 +547,203 @@ Entry gates:
 - Known limitations are documented and do not include critical security or
   data-loss defects.
 
-Beta work emphasizes:
+Beta.1 is delivered through the following serial units in one isolated
+`feature/beta-1-admission` worktree. Feedback from ordinary test users begins
+after Beta.1 deployment and is corrected before RC.1; it is not a circular
+entry gate for the first test-user build.
 
-- Real user feedback and usability corrections.
-- Accessibility audit of all core flows.
-- Query plans and pagination under representative data.
-- Authentik disable/session-revalidation behavior and immediate local
-  role/group revocation.
-- Backup/restore implementation and initial rehearsal.
-- Operator dashboards, logs, and actionable error behavior.
+### B1-00: contract, inventory, and traceability admission
+
+- **Problem and outcome:** replace the coarse Beta heading with an executable
+  contract and account for every version 1.0 requirement before code changes.
+- **Requirements:** all version 1.0 requirement IDs and Beta.1 acceptance.
+- **In scope:** PRD Beta boundary; exact current route/method inventory;
+  per-requirement implementation/evidence/gap ledger; applicable leakage,
+  accessibility, security, performance, upgrade, recovery, release, and
+  deployment matrices.
+- **Out of scope:** declaring RC evidence complete, new product behavior,
+  unrestricted enrollment, public production, or version 2 features.
+- **Trust and permission:** documentation may describe existing authority but
+  cannot widen it. Any real behavior or authority gap returns to the governing
+  PRD/architecture/specification before implementation.
+- **Data and migration:** none. The contract identifies the deployed Alpha.2
+  schema/source used by later upgrade evidence.
+- **Failure and retry:** an unaccounted requirement, route, owner decision, or
+  rollback boundary blocks admission. Re-running inventory generation must be
+  deterministic and non-mutating.
+- **Acceptance:** document links and requirement IDs resolve; grouped claims
+  expand to the exact applicable surfaces; two cold contract reviews are CLEAN
+  on one commit.
+- **Rollback/recovery:** revert the documentation commit; no runtime state is
+  touched.
+- **Evidence:** retained review notes plus the admitted contract commit.
+- **Dependency/worktree:** merged AN-05 at `822c9bbf`; sole Beta.1 worktree.
+
+### B1-01: requirement, leakage, and pre-beta security closure
+
+- **Problem and outcome:** prove that the feature-complete claim is true across
+  every present route and alternate disclosure path, and repair only concrete
+  gaps the inventory exposes.
+- **Requirements:** all functional IDs, with emphasis on `ID-001`–`ID-013`,
+  `ACL-001`–`ACL-008`, `SEC-001`–`SEC-005`, and `OPS-005`.
+- **In scope:** deterministic route/method extraction; complete applicable
+  leakage/access matrix; session, role, group, suspension, mute, and Authentik
+  revalidation boundaries; dependency/vulnerability and secret scans; CSRF,
+  cookie/header, OIDC return-path, SQL/parameter, XSS, proxy identity, limiter,
+  log-redaction, full-page, and HTMX checks.
+- **Out of scope:** Authentik administrative credentials, instant provider
+  disable propagation, external scanners that require uploading private source,
+  or future RSS/API/federation surfaces.
+- **Trust and permission:** all authorization stays server-side. Test identities,
+  content, addresses, tokens, and secrets stay disposable or redacted.
+- **Data and migration:** no migration is planned. A discovered schema defect
+  stops for an upstream contract update and a separately reviewable migration.
+- **Failure and retry:** absence and denial remain indistinguishable where
+  required; unavailable identity, database, or entropy fails closed. Security
+  tools must fail the gate when unavailable or inconclusive rather than silently
+  skip.
+- **Acceptance:** every applicable row in the Beta leakage/security matrix
+  passes on empty and `/bb` base paths; the candidate's 30-minute Authentik
+  revalidation configuration and next-request local revocation behavior are
+  proved without logging identity or secret values. Live provider-disable proof
+  remains part of B1-05 deployment evidence.
+- **Rollback/recovery:** revert scoped code/test corrections. No deployment is
+  performed in this unit.
+- **Evidence:** `docs/evidence/beta1-01-security-<commit>.txt`.
+- **Dependency/worktree:** B1-00 DONE; same worktree.
+
+### B1-02: core accessibility, usability, and representative plans
+
+- **Problem and outcome:** make every core Beta journey operable by designated
+  test users without a mouse or JavaScript and prove that complete pages remain
+  bounded under representative data.
+- **Requirements:** `READ-001`–`READ-006`, `UX-001`–`UX-005`, plus the visible
+  portions of forum, moderation, and administration requirements.
+- **In scope:** visitor/member/group/moderator/administrator journeys; automated
+  accessibility checks; manual keyboard order, names, headings, landmarks,
+  labels, descriptions, error/status announcements, HTMX focus/history, visible
+  focus, contrast, 320-CSS-pixel reflow, 200% zoom, JavaScript-off fallbacks;
+  exact query counts, continuation edges, custom/generic plans, allocation and
+  latency observations, pool/cancellation behavior, mixed read/write
+  coexistence on the representative corpus, and existing administrator/operator
+  views, bounded logs, request IDs, and actionable error presentation.
+- **Out of scope:** cosmetic redesign, WCAG certification, browser families not
+  available in the admitted environment, synthetic benchmark promises, or
+  horizontal-scale claims. No metrics backend is invented because version 1.0
+  has no product requirement for one; the release records the existing bounded
+  observable signals and the missing stable monitoring/alerting work.
+- **Trust and permission:** accessibility and performance instrumentation cannot
+  expose restricted data or create unbounded metric labels.
+- **Data and migration:** disposable deterministic population only; no durable
+  deployment mutation.
+- **Failure and retry:** a keyboard trap, lost control/draft, inaccessible error,
+  unbounded row/query path, authorization-dependent plan leak, or partial result
+  fails the unit. Measurements record warm-up, repetitions, and environment.
+- **Acceptance:** the exact Beta accessibility/performance matrix passes through
+  Caddy at both base paths; any automation gap has manual evidence, risk, owner,
+  and target release.
+- **Rollback/recovery:** revert scoped UI/query corrections and discard only the
+  task-owned population.
+- **Evidence:** `docs/evidence/beta1-02-access-performance-<commit>.txt`.
+- **Dependency/worktree:** B1-01 DONE; same worktree.
+
+### B1-03: Alpha.2 upgrade and initial backup/restore rehearsal
+
+- **Problem and outcome:** prove the actual deployed Alpha.2 database can reach
+  Beta.1 without data loss and that the resulting state can be restored into a
+  clean PostgreSQL 17 instance by documented commands.
+- **Requirements:** `OPS-001`–`OPS-005` and Beta.1 recovery acceptance.
+- **In scope:** capture exact live baseline; stopped/drained preflight; digested
+  logical PostgreSQL backup; non-secret configuration, Caddy, Compose, release,
+  migration, and grant inventory; upgrade 000006 through 000011 including
+  renderer/search completion; packaged runtime grants; readiness/application
+  smoke; clean-instance restore; measured backup/recovery time; and explicit
+  same-host failure-domain limitation.
+- **Out of scope:** destructive down migrations, deleting the active database,
+  off-host scheduling, retention automation, encryption policy, alert routing,
+  production RPO/RTO promises, or stable operator handoff.
+- **Trust and permission:** secrets never enter broad archives, command lines,
+  evidence, images, or logs. Database/service mutation starts only after the
+  exact pre-upgrade backup and rollback target are verified.
+- **Data and migration:** the live Alpha.2 database advances to migration head
+  only during the later release step. Rehearsal first uses a restored copy; the
+  clean-restore target is task-owned and disposable.
+- **Failure and retry:** unknown backup, migration, grant, or commit outcomes are
+  inspected before retry. A failed rehearsal leaves the live database untouched.
+  A failed release upgrade restores the verified pre-upgrade backup or uses a
+  reviewed forward repair; an older binary never runs against incompatible head.
+- **Acceptance:** rehearsal and release records show source/destination identity,
+  digest, schema heads, elapsed times, grants, readiness, smoke, cleanup, and the
+  exact rollback decision.
+- **Rollback/recovery:** verified Alpha.2 artifact/configuration plus the exact
+  pre-upgrade database backup; no volume deletion or Compose `down -v`.
+- **Evidence:** `docs/evidence/beta1-03-upgrade-restore-<commit>.txt` plus the
+  deployment record outside Git where it contains environment-specific details.
+- **Dependency/worktree:** B1-02 DONE; same worktree; release mutation remains
+  gated until B1-05.
+
+### B1-04: integrated admission and guarded delivery
+
+- **Problem and outcome:** bind all Beta claims to one reproducible candidate
+  and deliver only that reviewed tree to `main`.
+- **Requirements:** complete Beta.1 acceptance boundary.
+- **In scope:** deterministic generation; formatting; vet; repository-wide race
+  and relevant coverage; PostgreSQL 17 integration/race; exact route/leakage,
+  accessibility, security, upgrade/restore, representative population/resource,
+  Caddy/Chromium, log-redaction, repository-integrity, and two byte-identical
+  package gates; two fresh CLEAN reviews; PR; guarded fast-forward-only merge;
+  Forgejo/GitHub mirror parity.
+- **Out of scope:** tag, deployment, branch deletion, squash, force, rewrite,
+  RC.1, or stable admission.
+- **Trust and permission:** review cannot execute mutations; delivery uses the
+  existing approved Forgejo and mirror identities without widening access.
+- **Data and migration:** disposable gate databases only.
+- **Failure and retry:** any mismatch, skipped applicable gate, review finding,
+  or remote divergence stops delivery. Fixes rerun affected gates and then the
+  exact final admission set.
+- **Acceptance:** two independent fresh reviews say CLEAN on the exact final
+  commit/tree; the guarded PR merge and both remotes resolve to it.
+- **Rollback/recovery:** before merge, discard or revert scoped commits; after
+  merge, use a reviewed forward revert, never history rewrite.
+- **Evidence:** `docs/evidence/beta1-04-integrated-<commit>.txt` and final handoff.
+- **Dependency/worktree:** B1-03 rehearsal DONE; same worktree.
+
+### B1-05: Beta.1 release, deployment, and owner confirmation
+
+- **Problem and outcome:** turn the admitted merged commit into one traceable
+  Beta.1 artifact running for designated test users with a real rollback path.
+- **Requirements:** Beta.1 release identity, deployment, smoke, recovery, and
+  known-good-reference rules.
+- **In scope:** annotated `1.0.0-beta.1` tag on merged `main`; immutable package
+  and image from that tag; digest/SBOM/dependency record; pre-upgrade backup;
+  live Alpha.2-to-Beta.1 migration and grants; application-only replacement;
+  Caddy/Authentik/PostgreSQL and complete Beta smoke; rollback record; published
+  limitations; owner workflow confirmation; known-good commit/artifact record.
+- **Out of scope:** public production, unrestricted enrollment, deleting prior
+  artifacts or backups, RC.1, stable claims, or automatic promotion.
+- **Trust and permission:** designated test-user restriction remains. Secrets
+  stay in existing root-owned files and secret mounts. The tag and deployment
+  are external side effects and use only the explicitly authorized candidate.
+- **Data and migration:** live database advances to exact head under stopped
+  maintenance with verified backup. The PostgreSQL container and durable bind
+  mount retain identity.
+- **Failure and retry:** failed preflight does not mutate; unknown outcomes are
+  inspected; failed application replacement rolls back only when schema-compatible;
+  otherwise use verified restore or reviewed forward repair. No known-good claim
+  is made before owner confirmation.
+- **Acceptance:** tag, commit, artifact/image digests, migration head, grants,
+  container identity/hardening, Caddy behavior, smoke results, limitations,
+  rollback target, and owner answer are recorded.
+- **Rollback/recovery:** exact prior artifact/configuration and verified
+  pre-upgrade backup; preserve failed-release evidence.
+- **Evidence:** release record, Beta smoke/rollback evidence, and known-good
+  record after confirmation.
+- **Dependency/worktree:** B1-04 merged; release is built from merged `main`.
+
+Beta.1 adds no new product feature beyond repairing a demonstrated version 1.0
+gap. Scheduled/off-host backup retention, alert routing, final dependency and
+license review, migration freeze, production deployment, and stable operator
+handoff remain later gates unless a Beta defect requires an upstream change.
 
 ## 7. Milestone `1.0.0-rc.1`
 

@@ -916,7 +916,57 @@ the new service becomes ready.
 - Audit insertion failure: roll back the audited mutation.
 - Access-state load failure: deny access.
 
-## 15. Evolution
+## 15. Beta.1 admission and recovery architecture
+
+Beta.1 adds no second application architecture. It closes and verifies the
+existing single-Caddy, single-Go-process, single-PostgreSQL design. Requirement
+and route inventories are build/review artifacts derived from the exact source
+syntax and checked against a canonical reviewed inventory; they do not become
+runtime registries, reflection layers, policy engines, or alternate routers.
+Production authorization continues to flow through the explicit router,
+session, policy, service, and SQL boundaries already defined.
+
+The accessibility and leakage harness drives the same public HTTP surface
+through Caddy. It may use controlled identities, fixtures, base paths, clocks,
+and failure injection, but it does not add test-only authority to the released
+binary. Representative-data checks observe exact SQL plans, rows, buffers,
+connections, cancellation, allocation, and response behavior. They do not add
+a cache, metrics backend, background worker, or load-balancing claim merely to
+make the evidence machinery look like product architecture.
+
+Beta recovery uses PostgreSQL's documented logical dump/restore boundary plus
+the immutable release package. The backup stream is written to a newly created
+operator-owned regular file, hashed after successful close, and admitted only
+when `pg_restore --list` and a clean PostgreSQL 17 restore succeed. Database
+credentials enter `pg_dump`, `pg_restore`, migration, and smoke processes only
+through protected environment/secret-file mechanisms, never an argument,
+archive, release record, or broad log. A separate non-secret inventory records
+the release, schema, grants, Caddy/Compose configuration identities, required
+configuration keys, and external secret references without their values.
+
+The upgrade state machine is explicit:
+
+```text
+observe Alpha.2 -> verify backup/rollback -> rehearse on restored copy
+-> stop application -> verify final backup -> migrate/complete/grant
+-> inspect head and continuity -> start Beta.1 -> smoke -> owner confirmation
+```
+
+Before the live stop, failures leave Alpha.2 untouched. After the application
+stops but before migration commits, restart is allowed only after inspecting
+the actual schema outcome. Once migrations through 000011 commit, the Alpha.2
+binary is not a schema-compatible rollback target; recovery is the admitted
+Beta artifact/forward repair or restoration of the verified pre-upgrade backup
+before Alpha.2 restarts. The PostgreSQL container and durable bind mount are
+never replaced as an application rollback shortcut.
+
+The initial Beta rehearsal may retain backup bytes on the same host because it
+is a restricted test deployment, but that failure domain is an explicit
+limitation. Scheduling, off-host storage, retention, encryption policy,
+alerting, and production recovery budgets remain later operational admission,
+not hidden properties of a successful one-time restore.
+
+## 16. Evolution
 
 Version 2 adds background delivery, object storage, and richer content without
 splitting the monolith. Version 3 adds communication and trust state. Version 4
@@ -927,7 +977,7 @@ Those later boundaries are introduced only when their mechanics exist. Version
 1.0 shall not build fake service abstractions for imaginary distributed
 components.
 
-## 16. Rejected alternatives
+## 17. Rejected alternatives
 
 - **Local authentication:** duplicates Authentik and creates unnecessary secret
   handling.
@@ -941,3 +991,10 @@ components.
   or ownership that justifies them.
 - **Trusting forwarded host/prefix values:** allows request-controlled URL and
   callback behavior.
+- **Runtime requirement/route registry for Beta evidence:** duplicates explicit
+  code paths and risks making test metadata an authorization mechanism.
+- **Filesystem or container-volume copy as the Beta database backup:** couples
+  correctness to a live PostgreSQL storage layout and cannot prove a clean
+  logical restore.
+- **Treating the disabled Alpha.1 systemd unit as rollback:** ignores the active
+  Alpha.2 container and the schema compatibility boundary.
