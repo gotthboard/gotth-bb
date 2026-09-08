@@ -335,8 +335,8 @@ func run(
 				ChangeRole: func(adminContext context.Context, access auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AccountMutationResult, error) {
 					return administrationservice.ChangeAccountRole(adminContext, pool, time.Now, access, userID, role, expected, reason, revision, requestID)
 				},
-				ListAreas: func(adminContext context.Context, access auth.AccessContext, after int64) (administrationservice.AreaPage, error) {
-					return administrationservice.ListAreaPage(adminContext, queries, access, time.Now(), after)
+				ListAreas: func(adminContext context.Context, access auth.AccessContext, afterOrder int32, afterID int64) (administrationservice.AreaPage, error) {
+					return administrationservice.ListAreaPage(adminContext, queries, access, time.Now(), afterOrder, afterID)
 				},
 				LoadArea: func(adminContext context.Context, access auth.AccessContext, areaID, after int64) (administrationservice.AreaDetail, error) {
 					return administrationservice.LoadAreaDetail(adminContext, queries, access, time.Now(), areaID, after)

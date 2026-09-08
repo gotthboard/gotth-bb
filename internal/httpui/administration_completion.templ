@@ -8,7 +8,7 @@ templ administrationPage(view pageView, body templ.Component) {
 
 templ administrationContent(view pageView, body templ.Component) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
-		<nav aria-label="Administration" class="mb-8 flex flex-wrap gap-4 text-sm">
+		<nav aria-label="Administration" class="mb-6 flex flex-wrap gap-4 text-sm">
 			<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Overview</a>
 			<a href={ view.AdminURL + "/accounts" } hx-get={ view.AdminURL + "/accounts" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Accounts</a>
 			<a href={ view.AdminURL + "/groups" } hx-get={ view.AdminURL + "/groups" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Groups</a>
@@ -24,7 +24,7 @@ templ administrationDashboardBody(page administrationDashboardView) {
 		<p class="text-sm font-semibold uppercase tracking-wider text-cyan-300">Administration</p>
 		<h1 id="administration-title" class="mt-2 text-3xl font-bold text-white">Board administration</h1>
 		<p class="mt-3 text-slate-300">Exact counts observed at { page.ObservedAt }.</p>
-		<dl class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+		<dl class="mt-8 grid gap-4 sm:grid-cols-2">
 			@administrationMetric("Accounts", page.Users)
 			@administrationMetric("Active accounts", page.ActiveUsers)
 			@administrationMetric("Suspended accounts", page.SuspendedUsers)
@@ -45,7 +45,7 @@ templ administrationMetric(label string, value int64) {
 
 templ administrationAccountsBody(page administrationAccountsView) {
 	<section aria-labelledby="accounts-title"><h1 id="accounts-title" class="text-3xl font-bold text-white">Accounts</h1>
-		<ul class="mt-6 space-y-3">
+		<ul class="mt-6 space-y-4">
 			for _, account := range page.Accounts {
 				<li class="rounded-lg border border-slate-800 bg-slate-900 p-4"><a class="font-semibold text-cyan-200" href={ account.URL } hx-get={ account.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">{ account.DisplayName }</a><p class="mt-1 text-sm text-slate-400">{ account.Role } · { account.Status }</p></li>
 			}
@@ -60,13 +60,13 @@ templ administrationAccountBody(page administrationAccountView) {
 	<section aria-labelledby="account-title"><h1 id="account-title" class="text-3xl font-bold text-white">{ page.DisplayName }</h1><p class="mt-2 text-slate-300">{ page.Role } · { page.Status }</p>
 		<form method="post" action={ page.RoleAction } hx-post={ page.RoleAction } class="mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-5">
 			<input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="expected_role" value={ page.Role }/><input type="hidden" name="revision" value={ page.Revision }/>
-		<label>Role <select name="role" class="ml-2 bg-slate-950"><option selected?={ page.Role == "member" } value="member">member</option><option selected?={ page.Role == "moderator" } value="moderator">moderator</option><option selected?={ page.Role == "administrator" } value="administrator">administrator</option></select></label>
-			<label>Audit reason <input required name="reason" class="ml-2 bg-slate-950"/></label><button class="w-fit rounded bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Change role</button>
+		<label>Role <select name="role" class="bg-slate-950"><option selected?={ page.Role == "member" } value="member">member</option><option selected?={ page.Role == "moderator" } value="moderator">moderator</option><option selected?={ page.Role == "administrator" } value="administrator">administrator</option></select></label>
+			<label>Audit reason <input required name="reason" class="bg-slate-950"/></label><button class="w-fit rounded bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Change role</button>
 		</form>
 		<h2 class="mt-8 text-2xl font-bold text-white">Group membership</h2>
-		<ul class="mt-4 space-y-3">
+		<ul class="mt-4 space-y-4">
 			for _, group := range page.Groups {
-				<li class="rounded border border-slate-800 p-4"><span class="font-semibold">{ group.Name }</span><form method="post" action={ page.MembershipAction } hx-post={ page.MembershipAction } class="mt-2 flex flex-wrap gap-2"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="group_id" value={ strconv.FormatInt(group.ID, 10) }/><input type="hidden" name="revision" value={ page.Revision }/><input type="hidden" name="action" value={ group.Action }/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded border border-cyan-700 px-3 py-1">{ group.Label }</button></form></li>
+				<li class="rounded border border-slate-800 p-4"><span class="font-semibold">{ group.Name }</span><form method="post" action={ group.ActionURL } hx-post={ group.ActionURL } class="mt-2 flex flex-wrap gap-2"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="revision" value={ page.Revision }/><input type="hidden" name="action" value={ group.Action }/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded border border-cyan-700 px-3 py-1">{ group.Label }</button></form></li>
 			}
 		</ul>
 		if page.NextGroupsURL != "" {
@@ -78,7 +78,7 @@ templ administrationAccountBody(page administrationAccountView) {
 templ administrationGroupsBody(page administrationGroupsView) {
 	<section aria-labelledby="groups-title"><h1 id="groups-title" class="text-3xl font-bold text-white">Groups</h1>
 		<form method="post" action={ page.CreateAction } hx-post={ page.CreateAction } class="mt-6 flex flex-wrap gap-2 rounded border border-slate-800 p-4"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input required name="name" aria-label="Group name" class="bg-slate-950"/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded bg-cyan-300 px-3 py-1 text-slate-950">Create group</button></form>
-		<ul class="mt-6 space-y-3">
+		<ul class="mt-6 space-y-4">
 			for _, group := range page.Groups {
 				<li class="rounded border border-slate-800 bg-slate-900 p-4"><form method="post" action={ group.ActionURL } hx-post={ group.ActionURL } class="flex flex-wrap gap-2"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="revision" value={ group.Revision }/><input required name="name" value={ group.Name } aria-label="Group name" class="bg-slate-950"/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded border border-cyan-700 px-3 py-1">Rename</button></form></li>
 			}
@@ -91,8 +91,8 @@ templ administrationGroupsBody(page administrationGroupsView) {
 
 templ administrationAreasBody(page administrationAreasView) {
 	<section aria-labelledby="areas-admin-title"><h1 id="areas-admin-title" class="text-3xl font-bold text-white">Areas</h1>
-		<form method="post" action={ page.CreateAction } hx-post={ page.CreateAction } class="mt-6 grid gap-2 rounded border border-slate-800 p-4"><input type="hidden" name="_csrf" value={ page.CSRFToken }/>@administrationAreaFields("", "", "", "0", "public", "normal", "", "")<button class="w-fit rounded bg-cyan-300 px-3 py-1 text-slate-950">Create area</button></form>
-		<ul class="mt-6 space-y-3">
+		<form method="post" action={ page.CreateAction } hx-post={ page.CreateAction } class="mt-6 grid gap-2 rounded border border-slate-800 p-4"><input type="hidden" name="_csrf" value={ page.CSRFToken }/>@administrationAreaCreateFields()<button class="w-fit rounded bg-cyan-300 px-3 py-1 text-slate-950">Create area</button></form>
+		<ul class="mt-6 space-y-4">
 			for _, area := range page.Areas {
 				<li class="rounded border border-slate-800 bg-slate-900 p-4"><a class="font-semibold text-cyan-200" href={ area.URL } hx-get={ area.URL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">{ area.Name }</a><p class="text-sm text-slate-400">/{ area.Slug } · { area.Visibility } · { area.PostingMode } · { strconv.FormatInt(area.GroupCount, 10) } groups</p></li>
 			}
@@ -105,10 +105,11 @@ templ administrationAreasBody(page administrationAreasView) {
 
 templ administrationAreaBody(page administrationAreaView) {
 	<section aria-labelledby="area-admin-title"><h1 id="area-admin-title" class="text-3xl font-bold text-white">{ page.Name }</h1>
-		<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-6 grid gap-2 rounded border border-slate-800 p-4"><input type="hidden" name="_csrf" value={ page.CSRFToken }/>@administrationAreaFields(page.Slug, page.Name, page.Description, page.DisplayOrder, page.Visibility, page.PostingMode, page.Revision, "")<button class="w-fit rounded bg-cyan-300 px-3 py-1 text-slate-950">Update area</button></form>
-		<h2 class="mt-8 text-2xl font-bold text-white">Group access</h2><ul class="mt-4 space-y-3">
+		<p class="mt-2 text-slate-300">/{ page.Slug }</p>
+		<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-6 grid gap-2 rounded border border-slate-800 p-4"><input type="hidden" name="_csrf" value={ page.CSRFToken }/>@administrationAreaUpdateFields(page.Name, page.Description, page.DisplayOrder, page.Visibility, page.PostingMode, page.Revision)<button class="w-fit rounded bg-cyan-300 px-3 py-1 text-slate-950">Update area</button></form>
+		<h2 class="mt-8 text-2xl font-bold text-white">Group access</h2><ul class="mt-4 space-y-4">
 			for _, group := range page.Groups {
-				<li class="rounded border border-slate-800 p-4"><span>{ group.Name }</span><form method="post" action={ page.GroupActionURL } hx-post={ page.GroupActionURL } class="mt-2 flex flex-wrap gap-2"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="group_id" value={ strconv.FormatInt(group.ID, 10) }/><input type="hidden" name="revision" value={ page.Revision }/><input type="hidden" name="action" value={ group.Action }/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded border border-cyan-700 px-3 py-1">{ group.Label }</button></form></li>
+				<li class="rounded border border-slate-800 p-4"><span>{ group.Name }</span><form method="post" action={ group.ActionURL } hx-post={ group.ActionURL } class="mt-2 flex flex-wrap gap-2"><input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="revision" value={ page.Revision }/><input type="hidden" name="action" value={ group.Action }/><input required name="reason" aria-label="Audit reason" class="bg-slate-950"/><button class="rounded border border-cyan-700 px-3 py-1">{ group.Label }</button></form></li>
 			}
 		</ul>
 		if page.NextGroupsURL != "" {
@@ -117,11 +118,16 @@ templ administrationAreaBody(page administrationAreaView) {
 	</section>
 }
 
-templ administrationAreaFields(slug, name, description, order, visibility, posting, revision, initialGroup string) {
-	<label>Slug <input required name="slug" value={ slug } class="bg-slate-950"/></label><label>Name <input required name="name" value={ name } class="bg-slate-950"/></label><label>Description <textarea name="description" class="bg-slate-950">{ description }</textarea></label><label>Display order <input required type="number" min="0" name="display_order" value={ order } class="bg-slate-950"/></label>
+templ administrationAreaCreateFields() {
+	<label>Slug <input required name="slug" class="bg-slate-950"/></label>
+	@administrationAreaUpdateFields("", "", "0", "public", "normal", "")
+}
+
+templ administrationAreaUpdateFields(name, description, order, visibility, posting, revision string) {
+	<label>Name <input required name="name" value={ name } class="bg-slate-950"/></label><label>Description <textarea name="description" class="bg-slate-950">{ description }</textarea></label><label>Display order <input required type="number" min="0" name="display_order" value={ order } class="bg-slate-950"/></label>
 	<label>Visibility <select name="visibility" class="bg-slate-950"><option selected?={ visibility == "public" } value="public">public</option><option selected?={ visibility == "authenticated" } value="authenticated">authenticated</option><option selected?={ visibility == "groups" } value="groups">groups</option></select></label>
 	<label>Posting mode <select name="posting_mode" class="bg-slate-950"><option selected?={ posting == "normal" } value="normal">normal</option><option selected?={ posting == "read_only" } value="read_only">read only</option><option selected?={ posting == "archived" } value="archived">archived</option></select></label>
-	<label>Initial group ID <input name="initial_group_id" value={ initialGroup } class="bg-slate-950"/></label><label>Audit reason <input required name="reason" class="bg-slate-950"/></label>
+	<label>Initial group ID <input name="initial_group_id" class="bg-slate-950"/></label><label>Audit reason <input required name="reason" class="bg-slate-950"/></label>
 	if revision != "" {
 		<input type="hidden" name="revision" value={ revision }/>
 	}

@@ -185,9 +185,9 @@ WITH actor AS MATERIALIZED (
         SELECT a.id, a.slug, a.name, a.description, a.display_order,
                a.visibility, a.posting_mode, a.administration_revision
         FROM public.areas AS a
-        WHERE a.id > $3
-        ORDER BY a.id
-        LIMIT $4
+        WHERE (a.display_order, a.id) > ($3::integer, $4::bigint)
+        ORDER BY a.display_order, a.id
+        LIMIT $5
     ) AS area ON true
 )
 SELECT (candidate.id IS NOT NULL)::boolean AS area_present,
@@ -202,12 +202,13 @@ SELECT (candidate.id IS NOT NULL)::boolean AS area_present,
        COALESCE(candidate.group_count, 0)::bigint AS group_count
 FROM actor
 LEFT JOIN candidate ON true
-ORDER BY candidate.id NULLS LAST
+ORDER BY candidate.display_order NULLS LAST, candidate.id NULLS LAST
 `
 
 type ListAreasForAdministrationPageParams struct {
 	ActorUserID int64
 	ObservedAt  pgtype.Timestamptz
+	AfterOrder  int32
 	AfterAreaID int64
 	PageLimit   int32
 }
@@ -229,6 +230,7 @@ func (q *Queries) ListAreasForAdministrationPage(ctx context.Context, arg ListAr
 	rows, err := q.db.Query(ctx, listAreasForAdministrationPage,
 		arg.ActorUserID,
 		arg.ObservedAt,
+		arg.AfterOrder,
 		arg.AfterAreaID,
 		arg.PageLimit,
 	)
@@ -379,6 +381,41 @@ func (q *Queries) LoadAreaForAdministrationPage(ctx context.Context, arg LoadAre
 	err := row.Scan(
 		&i.ActorPresent,
 		&i.AreaPresent,
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DisplayOrder,
+		&i.Visibility,
+		&i.PostingMode,
+		&i.AdministrationRevision,
+	)
+	return i, err
+}
+
+const lockAdministrationAreaCore = `-- name: LockAdministrationAreaCore :one
+SELECT id, slug, name, description, display_order, visibility, posting_mode,
+       administration_revision
+FROM public.areas
+WHERE id = $1
+FOR UPDATE
+`
+
+type LockAdministrationAreaCoreRow struct {
+	ID                     int64
+	Slug                   string
+	Name                   string
+	Description            string
+	DisplayOrder           int32
+	Visibility             string
+	PostingMode            string
+	AdministrationRevision int64
+}
+
+func (q *Queries) LockAdministrationAreaCore(ctx context.Context, areaID int64) (LockAdministrationAreaCoreRow, error) {
+	row := q.db.QueryRow(ctx, lockAdministrationAreaCore, areaID)
+	var i LockAdministrationAreaCoreRow
+	err := row.Scan(
 		&i.ID,
 		&i.Slug,
 		&i.Name,

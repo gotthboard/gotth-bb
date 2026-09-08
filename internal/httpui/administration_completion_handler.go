@@ -33,7 +33,7 @@ type AdministrationHTTPServices struct {
 	RenameGroup       func(context.Context, auth.AccessContext, int64, string, string, int64, pgtype.UUID) (administration.GroupMutationResult, error)
 	ChangeMembership  func(context.Context, auth.AccessContext, int64, int64, bool, string, int64, pgtype.UUID) (administration.AccountMutationResult, error)
 	ChangeRole        func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error)
-	ListAreas         func(context.Context, auth.AccessContext, int64) (administration.AreaPage, error)
+	ListAreas         func(context.Context, auth.AccessContext, int32, int64) (administration.AreaPage, error)
 	LoadArea          func(context.Context, auth.AccessContext, int64, int64) (administration.AreaDetail, error)
 	CreateArea        func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
 	UpdateArea        func(context.Context, auth.AccessContext, int64, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
@@ -52,12 +52,12 @@ type administrationAccountsView struct {
 	NextURL  string
 }
 type administrationMembershipView struct {
-	ID                  int64
-	Name, Action, Label string
+	ID                             int64
+	Name, Action, Label, ActionURL string
 }
 type administrationAccountView struct {
-	DisplayName, Role, Status, Revision, RoleAction, MembershipAction, CSRFToken, NextGroupsURL string
-	Groups                                                                                      []administrationMembershipView
+	DisplayName, Role, Status, Revision, RoleAction, CSRFToken, NextGroupsURL string
+	Groups                                                                    []administrationMembershipView
 }
 type administrationGroupItemView struct{ Name, Revision, ActionURL string }
 type administrationGroupsView struct {
@@ -73,8 +73,8 @@ type administrationAreasView struct {
 	CreateAction, CSRFToken, NextURL string
 }
 type administrationAreaView struct {
-	Name, Slug, Description, DisplayOrder, Visibility, PostingMode, Revision, ActionURL, GroupActionURL, CSRFToken, NextGroupsURL string
-	Groups                                                                                                                        []administrationMembershipView
+	Name, Slug, Description, DisplayOrder, Visibility, PostingMode, Revision, ActionURL, CSRFToken, NextGroupsURL string
+	Groups                                                                                                        []administrationMembershipView
 }
 
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
@@ -200,18 +200,18 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		}
 		target, _ := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10))
 		roleAction := target + "/role"
-		membershipAction := target + "/memberships"
 		status := "active"
 		if account.Suspended {
 			status = "suspended"
 		}
-		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, MembershipAction: membershipAction, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(groups.Groups))}
+		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(groups.Groups))}
 		for index, group := range groups.Groups {
 			action, label := "grant", "Grant"
 			if group.Member {
 				action, label = "revoke", "Revoke"
 			}
-			presentation.Groups[index] = administrationMembershipView{ID: group.ID, Name: group.Name, Action: action, Label: label}
+			groupAction, _ := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10), "groups", strconv.FormatInt(group.ID, 10))
+			presentation.Groups[index] = administrationMembershipView{ID: group.ID, Name: group.Name, Action: action, Label: label, ActionURL: groupAction}
 		}
 		if groups.NextAfter > 0 {
 			presentation.NextGroupsURL, _ = builder.PathWithQuery([]string{"admin", "accounts", strconv.FormatInt(userID, 10)}, url.Values{"groups_after": {strconv.FormatInt(groups.NextAfter, 10)}})
@@ -256,20 +256,20 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		destination, _ := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10))
 		serveMutationNavigation(response, request, destination)
 	})
-	router.Post("/admin/accounts/{userID}/memberships", func(response http.ResponseWriter, request *http.Request) {
+	router.Post("/admin/accounts/{userID}/groups/{groupID}", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
 		if !ok {
 			return
 		}
 		userID, _ := parseCanonicalPositiveID(chi.URLParam(request, "userID"))
-		form, ok := parseAdministrationForm(response, request, views["account"], maximumAdministrationSmallFormBytes, []string{"_csrf", "action", "group_id", "reason", "revision"})
+		groupID, _ := parseCanonicalPositiveID(chi.URLParam(request, "groupID"))
+		form, ok := parseAdministrationForm(response, request, views["account"], maximumAdministrationSmallFormBytes, []string{"_csrf", "action", "reason", "revision"})
 		if !ok {
 			return
 		}
-		groupID, errorOne := parsePositiveFormID(form.Get("group_id"))
-		revision, errorTwo := parsePositiveFormID(form.Get("revision"))
+		revision, parseErr := parsePositiveFormID(form.Get("revision"))
 		grant, actionOK := parseGrantAction(form.Get("action"))
-		if errorOne != nil || errorTwo != nil || !actionOK {
+		if parseErr != nil || !actionOK {
 			renderAdministrationError(response, request, views["account"], http.StatusBadRequest, "Invalid form", "Reload the account and try again.")
 			return
 		}
@@ -375,8 +375,8 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		if !ok {
 			return
 		}
-		after, _ := parseAdministrationCursor(request.URL.Query(), "after")
-		page, err := services.ListAreas(request.Context(), actor, after)
+		afterOrder, afterID, _ := parseAdministrationAreaCursor(request.URL.Query())
+		page, err := services.ListAreas(request.Context(), actor, afterOrder, afterID)
 		if err != nil {
 			serveAdministrationServiceError(response, request, views["areas"], err)
 			return
@@ -387,8 +387,8 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			target, _ := builder.Path("admin", "areas", strconv.FormatInt(area.ID, 10))
 			presentation.Areas[index] = administrationAreaListItem{Name: area.Name, Slug: area.Slug, Visibility: string(area.Visibility), PostingMode: string(area.PostingMode), URL: target, GroupCount: area.GroupCount}
 		}
-		if page.NextAfter > 0 {
-			presentation.NextURL, _ = builder.PathWithQuery([]string{"admin", "areas"}, url.Values{"after": {strconv.FormatInt(page.NextAfter, 10)}})
+		if page.NextAfterID > 0 {
+			presentation.NextURL, _ = builder.PathWithQuery([]string{"admin", "areas"}, url.Values{"after_id": {strconv.FormatInt(page.NextAfterID, 10)}, "after_order": {strconv.FormatInt(int64(page.NextAfterOrder), 10)}})
 		}
 		render(response, request, views["areas"], administrationAreasBody(presentation))
 	})
@@ -431,13 +431,14 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			return
 		}
 		target, _ := builder.Path("admin", "areas", strconv.FormatInt(areaID, 10))
-		presentation := administrationAreaView{Name: detail.Area.Name, Slug: detail.Area.Slug, Description: detail.Area.Description, DisplayOrder: strconv.FormatInt(int64(detail.Area.DisplayOrder), 10), Visibility: string(detail.Area.Visibility), PostingMode: string(detail.Area.PostingMode), Revision: strconv.FormatInt(detail.Area.Revision, 10), ActionURL: target, GroupActionURL: target + "/groups", CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(detail.Groups))}
+		presentation := administrationAreaView{Name: detail.Area.Name, Slug: detail.Area.Slug, Description: detail.Area.Description, DisplayOrder: strconv.FormatInt(int64(detail.Area.DisplayOrder), 10), Visibility: string(detail.Area.Visibility), PostingMode: string(detail.Area.PostingMode), Revision: strconv.FormatInt(detail.Area.Revision, 10), ActionURL: target, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(detail.Groups))}
 		for index, group := range detail.Groups {
 			action, label := "grant", "Grant"
 			if group.Assigned {
 				action, label = "revoke", "Revoke"
 			}
-			presentation.Groups[index] = administrationMembershipView{ID: group.ID, Name: group.Name, Action: action, Label: label}
+			groupAction, _ := builder.Path("admin", "areas", strconv.FormatInt(areaID, 10), "groups", strconv.FormatInt(group.ID, 10))
+			presentation.Groups[index] = administrationMembershipView{ID: group.ID, Name: group.Name, Action: action, Label: label, ActionURL: groupAction}
 		}
 		if detail.NextAfter > 0 {
 			presentation.NextGroupsURL, _ = builder.PathWithQuery([]string{"admin", "areas", strconv.FormatInt(areaID, 10)}, url.Values{"groups_after": {strconv.FormatInt(detail.NextAfter, 10)}})
@@ -471,20 +472,20 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		destination, _ := builder.Path("admin", "areas", strconv.FormatInt(areaID, 10))
 		serveMutationNavigation(response, request, destination)
 	})
-	router.Post("/admin/areas/{areaID}/groups", func(response http.ResponseWriter, request *http.Request) {
+	router.Post("/admin/areas/{areaID}/groups/{groupID}", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
 		if !ok {
 			return
 		}
 		areaID, _ := parseCanonicalPositiveID(chi.URLParam(request, "areaID"))
-		form, ok := parseAdministrationForm(response, request, views["area"], maximumAdministrationSmallFormBytes, []string{"_csrf", "action", "group_id", "reason", "revision"})
+		groupID, _ := parseCanonicalPositiveID(chi.URLParam(request, "groupID"))
+		form, ok := parseAdministrationForm(response, request, views["area"], maximumAdministrationSmallFormBytes, []string{"_csrf", "action", "reason", "revision"})
 		if !ok {
 			return
 		}
-		groupID, e1 := parsePositiveFormID(form.Get("group_id"))
-		revision, e2 := parsePositiveFormID(form.Get("revision"))
+		revision, parseErr := parsePositiveFormID(form.Get("revision"))
 		grant, valid := parseGrantAction(form.Get("action"))
-		if e1 != nil || e2 != nil || !valid {
+		if parseErr != nil || !valid {
 			renderAdministrationError(response, request, views["area"], 400, "Invalid form", "Reload the area and try again.")
 			return
 		}
@@ -541,7 +542,10 @@ func parseAdministrationForm(response http.ResponseWriter, request *http.Request
 }
 
 func parseAdministrationAreaForm(response http.ResponseWriter, request *http.Request, view pageView, create bool) (administration.AreaCoreInput, bool) {
-	fields := []string{"_csrf", "slug", "name", "description", "display_order", "visibility", "posting_mode", "initial_group_id", "reason"}
+	fields := []string{"_csrf", "name", "description", "display_order", "visibility", "posting_mode", "initial_group_id", "reason"}
+	if create {
+		fields = append(fields, "slug")
+	}
 	if !create {
 		fields = append(fields, "revision")
 	}
@@ -571,6 +575,25 @@ func parseAdministrationAreaForm(response http.ResponseWriter, request *http.Req
 		}
 	}
 	return administration.AreaCoreInput{Slug: form.Get("slug"), Name: form.Get("name"), Description: form.Get("description"), DisplayOrder: int32(order), Visibility: policy.Visibility(form.Get("visibility")), PostingMode: policy.PostingMode(form.Get("posting_mode")), InitialGroupID: initial, Reason: form.Get("reason"), Revision: revision}, true
+}
+
+func parseAdministrationAreaCursor(values url.Values) (int32, int64, error) {
+	if len(values) == 0 {
+		return 0, 0, nil
+	}
+	if len(values) != 2 || len(values["after_order"]) != 1 || len(values["after_id"]) != 1 {
+		return 0, 0, fmt.Errorf("invalid area cursor")
+	}
+	orderText := values.Get("after_order")
+	order, err := strconv.ParseInt(orderText, 10, 32)
+	if err != nil || order < 0 || strconv.FormatInt(order, 10) != orderText {
+		return 0, 0, fmt.Errorf("invalid area order cursor")
+	}
+	id, err := parsePositiveFormID(values.Get("after_id"))
+	if err != nil {
+		return 0, 0, err
+	}
+	return int32(order), id, nil
 }
 
 func parseAdministrationCursor(values url.Values, key string) (int64, error) {
@@ -660,19 +683,26 @@ func administrationRouteValid(request *http.Request) bool {
 	}
 	path := request.URL.Path
 	method := request.Method
-	query := request.URL.Query()
+	query, err := url.ParseQuery(request.URL.RawQuery)
+	if err != nil {
+		return false
+	}
 	if path == "/admin" {
 		return method == http.MethodGet && len(query) == 0
 	}
 	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" {
 		if method == http.MethodGet {
+			if path == "/admin/areas" {
+				_, _, err := parseAdministrationAreaCursor(query)
+				return err == nil
+			}
 			_, err := parseAdministrationCursor(query, "after")
 			return err == nil
 		}
 		return method == http.MethodPost && len(query) == 0
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/admin/"), "/")
-	if len(parts) < 2 || len(parts) > 3 {
+	if len(parts) < 2 || len(parts) > 4 {
 		return false
 	}
 	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" {
@@ -690,7 +720,14 @@ func administrationRouteValid(request *http.Request) bool {
 	if len(parts) == 2 {
 		return parts[0] == "groups" || parts[0] == "areas"
 	}
-	return parts[0] == "accounts" && (parts[2] == "role" || parts[2] == "memberships") || parts[0] == "areas" && parts[2] == "groups"
+	if len(parts) == 3 {
+		return parts[0] == "accounts" && parts[2] == "role"
+	}
+	if parts[2] != "groups" || (parts[0] != "accounts" && parts[0] != "areas") {
+		return false
+	}
+	_, err = parseCanonicalPositiveID(parts[3])
+	return err == nil
 }
 
 func withAdministrationPreflight(next http.Handler) http.Handler {

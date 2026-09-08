@@ -4,6 +4,7 @@ package administration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"testing"
@@ -174,9 +175,32 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_area_administration_audit();`); err 
 		t.Fatalf("LoadDashboard() = (%+v, %v)", dashboard, err)
 	}
 	completionQuerier := db.New(owner)
-	areaPage, err := ListAreaPage(ctx, completionQuerier, actor, updatedAt.Add(time.Minute), 0)
-	if err != nil || len(areaPage.Areas) != 2 || areaPage.NextAfter != 0 || areaPage.Areas[0].Revision <= 0 {
+	areaPage, err := ListAreaPage(ctx, completionQuerier, actor, updatedAt.Add(time.Minute), 0, 0)
+	if err != nil || len(areaPage.Areas) != 2 || areaPage.NextAfterID != 0 || areaPage.Areas[0].Revision <= 0 {
 		t.Fatalf("ListAreaPage() = (%+v, %v)", areaPage, err)
+	}
+	var general AreaSummary
+	for _, area := range areaPage.Areas {
+		if area.ID == created.AreaID {
+			general = area
+		}
+	}
+	if general.ID == 0 {
+		t.Fatalf("general area missing from page: %+v", areaPage)
+	}
+	if _, err := UpdateAreaCompletion(ctx, owner, time.Now, actor, general.ID, AreaCoreInput{Name: general.Name, Description: general.Description, DisplayOrder: general.DisplayOrder, Visibility: policy.VisibilityGroups, PostingMode: general.PostingMode, Reason: "Reject a group transition without its initial group", Revision: general.Revision}, pgtype.UUID{Bytes: [16]byte{0x6a}, Valid: true}); !errors.Is(err, ErrAdministrationInput) {
+		t.Fatalf("missing initial group transition error = %v", err)
+	}
+	groupTransition, err := UpdateAreaCompletion(ctx, owner, func() time.Time { return updatedAt.Add(90 * time.Second) }, actor, general.ID, AreaCoreInput{Name: general.Name, Description: general.Description, DisplayOrder: general.DisplayOrder, Visibility: policy.VisibilityGroups, PostingMode: general.PostingMode, InitialGroupID: groupID, Reason: "Restrict the general area to its initial group", Revision: general.Revision}, pgtype.UUID{Bytes: [16]byte{0x6b}, Valid: true})
+	if err != nil || groupTransition.Revision != general.Revision+1 {
+		t.Fatalf("group transition = (%+v,%v)", groupTransition, err)
+	}
+	restoredGeneral, err := UpdateAreaCompletion(ctx, owner, func() time.Time { return updatedAt.Add(100 * time.Second) }, actor, general.ID, AreaCoreInput{Name: general.Name, Description: general.Description, DisplayOrder: general.DisplayOrder, Visibility: policy.VisibilityPublic, PostingMode: general.PostingMode, Reason: "Restore public access and remove group mappings", Revision: groupTransition.Revision}, pgtype.UUID{Bytes: [16]byte{0x6c}, Valid: true})
+	if err != nil || restoredGeneral.Revision != groupTransition.Revision+1 {
+		t.Fatalf("restore general = (%+v,%v)", restoredGeneral, err)
+	}
+	if err := owner.QueryRow(ctx, `SELECT count(*) FROM public.area_groups WHERE area_id = $1`, general.ID).Scan(&mappingCount); err != nil || mappingCount != 0 {
+		t.Fatalf("restored general mappings = (%d,%v)", mappingCount, err)
 	}
 	secondGroup, err := CreateGroup(ctx, owner, func() time.Time { return updatedAt.Add(2 * time.Minute) }, actor, "Second Members", "Create another area group", pgtype.UUID{Bytes: [16]byte{0x71}, Valid: true})
 	if err != nil {
@@ -189,6 +213,20 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_area_administration_audit();`); err 
 	}, pgtype.UUID{Bytes: [16]byte{0x72}, Valid: true})
 	if err != nil || completedArea.Revision != 1 || completedArea.AuditID <= 0 {
 		t.Fatalf("CreateAreaCompletion() = (%+v, %v)", completedArea, err)
+	}
+	var previousAudit, resultingAudit []byte
+	if err := owner.QueryRow(ctx, `SELECT previous_state, resulting_state FROM public.moderation_actions WHERE id = $1`, completedArea.AuditID).Scan(&previousAudit, &resultingAudit); err != nil {
+		t.Fatalf("load bounded area audit: %v", err)
+	}
+	var previousObject, resultingObject map[string]any
+	if err := json.Unmarshal(previousAudit, &previousObject); err != nil || len(previousObject) != 0 {
+		t.Fatalf("create previous audit = (%s,%v)", previousAudit, err)
+	}
+	if err := json.Unmarshal(resultingAudit, &resultingObject); err != nil {
+		t.Fatalf("decode create resulting audit: %v", err)
+	}
+	if _, exists := resultingObject["description"]; exists || resultingObject["description_sha256"] == nil || resultingObject["group_ids"] != nil || resultingObject["group_ids_sha256"] == nil || resultingObject["administration_revision"] != float64(1) {
+		t.Fatalf("create resulting audit is not bounded: %s", resultingAudit)
 	}
 	detailPage, err := LoadAreaDetail(ctx, completionQuerier, actor, updatedAt.Add(4*time.Minute), completedArea.AreaID, 0)
 	if err != nil || detailPage.Area.Revision != 1 || len(detailPage.Groups) != 2 || !detailPage.Groups[0].Assigned || detailPage.Groups[1].Assigned {

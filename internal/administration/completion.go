@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/policy"
@@ -42,8 +41,9 @@ type AreaSummary struct {
 }
 
 type AreaPage struct {
-	Areas     []AreaSummary
-	NextAfter int64
+	Areas          []AreaSummary
+	NextAfterOrder int32
+	NextAfterID    int64
 }
 
 type AreaGroup struct {
@@ -71,6 +71,18 @@ type AreaCompletionResult struct {
 	Slug                      string
 }
 
+type boundedAreaAuditState struct {
+	Slug                   string             `json:"slug"`
+	Name                   string             `json:"name"`
+	DescriptionSHA256      string             `json:"description_sha256"`
+	DisplayOrder           int32              `json:"display_order"`
+	Visibility             policy.Visibility  `json:"visibility"`
+	PostingMode            policy.PostingMode `json:"posting_mode"`
+	AdministrationRevision int64              `json:"administration_revision"`
+	GroupCount             int64              `json:"group_count"`
+	GroupIDsSHA256         string             `json:"group_ids_sha256"`
+}
+
 type completionReadQuerier interface {
 	ListAreasForAdministrationPage(context.Context, db.ListAreasForAdministrationPageParams) ([]db.ListAreasForAdministrationPageRow, error)
 	LoadAreaForAdministrationPage(context.Context, db.LoadAreaForAdministrationPageParams) (db.LoadAreaForAdministrationPageRow, error)
@@ -88,12 +100,14 @@ func LoadDashboard(ctx context.Context, beginner dashboardBeginner, actor policy
 	if !policy.CanAdminister(actor) {
 		return Dashboard{}, ErrAdministrationDenied
 	}
+	dashboardContext, cancel := context.WithTimeout(ctx, accountMutationTimeout)
+	defer cancel()
 	var result Dashboard
-	err := store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(queries *db.Queries) error {
-		if err := configureAccountTransaction(ctx, queries); err != nil {
+	err := store.WithinTxOptions(dashboardContext, beginner, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(queries *db.Queries) error {
+		if err := configureAccountTransaction(dashboardContext, queries); err != nil {
 			return err
 		}
-		row, err := queries.LoadAdministrationDashboard(ctx, actor.UserID)
+		row, err := queries.LoadAdministrationDashboard(dashboardContext, actor.UserID)
 		if err != nil {
 			return fmt.Errorf("load dashboard: %w", err)
 		}
@@ -116,36 +130,40 @@ func LoadDashboard(ctx context.Context, beginner dashboardBeginner, actor policy
 	return result, nil
 }
 
-func ListAreaPage(ctx context.Context, querier completionReadQuerier, actor policy.AccessContext, observedAt time.Time, afterAreaID int64) (AreaPage, error) {
+func ListAreaPage(ctx context.Context, querier completionReadQuerier, actor policy.AccessContext, observedAt time.Time, afterOrder int32, afterAreaID int64) (AreaPage, error) {
 	if ctx == nil || querier == nil || !policy.CanAdminister(actor) {
 		return AreaPage{}, ErrAdministrationDenied
 	}
-	if observedAt.IsZero() || afterAreaID < 0 {
+	if observedAt.IsZero() || !finiteAdministrationTime(administrationTime(observedAt)) || afterOrder < 0 || afterAreaID < 0 || afterAreaID == 0 && afterOrder != 0 {
 		return AreaPage{}, ErrAdministrationInput
 	}
-	rows, err := querier.ListAreasForAdministrationPage(ctx, db.ListAreasForAdministrationPageParams{ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AfterAreaID: afterAreaID, PageLimit: administrationPageQueryLimit})
+	rows, err := querier.ListAreasForAdministrationPage(ctx, db.ListAreasForAdministrationPageParams{ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AfterOrder: afterOrder, AfterAreaID: afterAreaID, PageLimit: administrationAreaPageQueryLimit})
 	if err != nil {
 		return AreaPage{}, fmt.Errorf("%w: list areas: %w", ErrAdministrationUnavailable, err)
 	}
 	if len(rows) == 0 {
 		return AreaPage{}, ErrAdministrationDenied
 	}
-	page := AreaPage{Areas: make([]AreaSummary, 0, min(len(rows), administrationPageSize))}
-	previous := afterAreaID
+	if len(rows) > int(administrationAreaPageQueryLimit) {
+		return AreaPage{}, fmt.Errorf("%w: oversized area page", ErrAdministrationUnavailable)
+	}
+	page := AreaPage{Areas: make([]AreaSummary, 0, min(len(rows), administrationAreaPageSize))}
+	previousOrder, previousID := afterOrder, afterAreaID
 	for index, row := range rows {
 		if !row.AreaPresent {
-			if len(rows) != 1 || row.ID != 0 || row.Slug != "" || row.Name != "" || row.AdministrationRevision != 0 || row.GroupCount != 0 {
+			if len(rows) != 1 || row.ID != 0 || row.Slug != "" || row.Name != "" || row.Description != "" || row.DisplayOrder != 0 || row.Visibility != "" || row.PostingMode != "" || row.AdministrationRevision != 0 || row.GroupCount != 0 {
 				return AreaPage{}, fmt.Errorf("%w: malformed area page", ErrAdministrationUnavailable)
 			}
 			return page, nil
 		}
 		area := areaSummary(row.ID, row.Slug, row.Name, row.Description, row.DisplayOrder, row.Visibility, row.PostingMode, row.AdministrationRevision, row.GroupCount)
-		if !validAreaSummary(area) || area.ID <= previous {
+		if !validAreaSummary(area) || area.DisplayOrder < previousOrder || area.DisplayOrder == previousOrder && area.ID <= previousID {
 			return AreaPage{}, fmt.Errorf("%w: malformed area page", ErrAdministrationUnavailable)
 		}
-		previous = area.ID
-		if index == administrationPageSize {
-			page.NextAfter = page.Areas[len(page.Areas)-1].ID
+		previousOrder, previousID = area.DisplayOrder, area.ID
+		if index == administrationAreaPageSize {
+			last := page.Areas[len(page.Areas)-1]
+			page.NextAfterOrder, page.NextAfterID = last.DisplayOrder, last.ID
 			continue
 		}
 		page.Areas = append(page.Areas, area)
@@ -157,7 +175,7 @@ func LoadAreaDetail(ctx context.Context, querier completionReadQuerier, actor po
 	if ctx == nil || querier == nil || !policy.CanAdminister(actor) {
 		return AreaDetail{}, ErrAdministrationDenied
 	}
-	if observedAt.IsZero() || areaID <= 0 || afterGroupID < 0 {
+	if observedAt.IsZero() || !finiteAdministrationTime(administrationTime(observedAt)) || areaID <= 0 || afterGroupID < 0 {
 		return AreaDetail{}, ErrAdministrationInput
 	}
 	row, err := querier.LoadAreaForAdministrationPage(ctx, db.LoadAreaForAdministrationPageParams{ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AreaID: areaID})
@@ -177,6 +195,9 @@ func LoadAreaDetail(ctx context.Context, querier completionReadQuerier, actor po
 	groupRows, err := querier.ListAreaGroupsForAdministrationPage(ctx, db.ListAreaGroupsForAdministrationPageParams{ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AreaID: areaID, AfterGroupID: afterGroupID, PageLimit: administrationPageQueryLimit})
 	if err != nil {
 		return AreaDetail{}, fmt.Errorf("%w: list area groups: %w", ErrAdministrationUnavailable, err)
+	}
+	if len(groupRows) > int(administrationPageQueryLimit) {
+		return AreaDetail{}, fmt.Errorf("%w: oversized area group page", ErrAdministrationUnavailable)
 	}
 	detail := AreaDetail{Area: area, Groups: make([]AreaGroup, 0, min(len(groupRows), administrationPageSize))}
 	previous := afterGroupID
@@ -233,8 +254,11 @@ func CreateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrAdministrationNotFound
 			}
-			if err != nil || !validLockedGroup(group, input.InitialGroupID) {
+			if err != nil {
 				return fmt.Errorf("lock initial area group: %w", err)
+			}
+			if !validLockedGroup(group, input.InitialGroupID) {
+				return fmt.Errorf("lock initial area group returned invalid state")
 			}
 			groups = []int64{input.InitialGroupID}
 		}
@@ -245,8 +269,8 @@ func CreateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 		if err := replaceAreaGroups(mutationContext, queries, created.ID, actor.UserID, groups, administrationTime(observedAt)); err != nil {
 			return err
 		}
-		state := auditedAreaState{Slug: input.Slug, Name: input.Name, Description: input.Description, DisplayOrder: input.DisplayOrder, Visibility: input.Visibility, PostingMode: input.PostingMode, GroupIDs: groups}
-		auditID, err := insertAreaAudit(mutationContext, queries, actor.UserID, created.ID, "create_area", input.Reason, auditedAreaState{}, state, requestID, administrationTime(observedAt))
+		state := newBoundedAreaAuditState(input.Slug, input.Name, input.Description, input.DisplayOrder, input.Visibility, input.PostingMode, 1, groups)
+		auditID, err := insertBoundedAreaAudit(mutationContext, queries, actor.UserID, created.ID, "create_area", input.Reason, nil, state, requestID, administrationTime(observedAt))
 		if err != nil {
 			return err
 		}
@@ -283,40 +307,60 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 		if _, err := lockAccountActor(mutationContext, queries, actor, observedAt); err != nil {
 			return err
 		}
-		current, err := queries.LockAreaForAdministration(mutationContext, areaID)
+		current, err := queries.LockAdministrationAreaCore(mutationContext, areaID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrAdministrationNotFound
 		}
 		if err != nil {
 			return fmt.Errorf("lock area: %w", err)
 		}
-		if current.AdministrationRevision != input.Revision || input.Revision == maximumAdministrationRevision || current.Slug != input.Slug {
+		if input.Slug != "" || current.AdministrationRevision != input.Revision || input.Revision == maximumAdministrationRevision {
 			return ErrAdministrationConflict
 		}
+		input.Slug = current.Slug
 		if current.Visibility == string(policy.VisibilityGroups) && input.Visibility == policy.VisibilityGroups && input.InitialGroupID != 0 {
 			return ErrAdministrationInput
 		}
-		groups := slices.Clone(current.GroupIds)
+		if current.Visibility != string(policy.VisibilityGroups) && input.Visibility == policy.VisibilityGroups && input.InitialGroupID <= 0 {
+			return ErrAdministrationInput
+		}
+		previousGroupCount, previousGroupDigest, err := streamAreaGroupDigest(mutationContext, queries, areaID)
+		if err != nil {
+			return err
+		}
+		resultingGroupCount, resultingGroupDigest := previousGroupCount, previousGroupDigest
+		groupsChanged := false
 		if input.Visibility == policy.VisibilityGroups && current.Visibility != string(policy.VisibilityGroups) {
 			group, err := queries.LockAdministrationGroup(mutationContext, input.InitialGroupID)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return ErrAdministrationNotFound
 			}
-			if err != nil || !validLockedGroup(group, input.InitialGroupID) {
+			if err != nil {
 				return fmt.Errorf("lock initial area group: %w", err)
 			}
-			groups = []int64{input.InitialGroupID}
+			if !validLockedGroup(group, input.InitialGroupID) {
+				return fmt.Errorf("lock initial area group returned invalid state")
+			}
+			resultingGroupCount = 1
+			resultingGroupDigest = digestIDs([]int64{input.InitialGroupID})
+			groupsChanged = true
 		} else if input.Visibility != policy.VisibilityGroups {
-			groups = nil
+			resultingGroupCount = 0
+			resultingGroupDigest = digestIDs(nil)
+			groupsChanged = previousGroupCount != 0
 		}
-		previous := auditedAreaState{Slug: current.Slug, Name: current.Name, Description: current.Description, DisplayOrder: current.DisplayOrder, Visibility: policy.Visibility(current.Visibility), PostingMode: policy.PostingMode(current.PostingMode), GroupIDs: slices.Clone(current.GroupIds)}
-		resulting := auditedAreaState{Slug: input.Slug, Name: input.Name, Description: input.Description, DisplayOrder: input.DisplayOrder, Visibility: input.Visibility, PostingMode: input.PostingMode, GroupIDs: groups}
-		if equalAreaStates(previous, resulting) {
+		previous := boundedAreaAuditState{Slug: current.Slug, Name: current.Name, DescriptionSHA256: digestBytes([]byte(current.Description)), DisplayOrder: current.DisplayOrder, Visibility: policy.Visibility(current.Visibility), PostingMode: policy.PostingMode(current.PostingMode), AdministrationRevision: current.AdministrationRevision, GroupCount: previousGroupCount, GroupIDsSHA256: previousGroupDigest}
+		resulting := boundedAreaAuditState{Slug: current.Slug, Name: input.Name, DescriptionSHA256: digestBytes([]byte(input.Description)), DisplayOrder: input.DisplayOrder, Visibility: input.Visibility, PostingMode: input.PostingMode, AdministrationRevision: input.Revision + 1, GroupCount: resultingGroupCount, GroupIDsSHA256: resultingGroupDigest}
+		if equalBoundedAreaStatesIgnoringRevision(previous, resulting) {
 			return ErrAdministrationConflict
 		}
-		if !slices.Equal(current.GroupIds, groups) {
+		if groupsChanged {
 			if err := queries.DeleteAreaGroupsForAdministration(mutationContext, areaID); err != nil {
 				return fmt.Errorf("replace area groups: %w", err)
+			}
+			groups := []int64(nil)
+			if resultingGroupCount == 1 {
+				groups = []int64{input.InitialGroupID}
 			}
 			if err := replaceAreaGroups(mutationContext, queries, areaID, actor.UserID, groups, administrationTime(observedAt)); err != nil {
 				return err
@@ -366,7 +410,7 @@ func ChangeAreaGroup(ctx context.Context, beginner accountTransactionBeginner, c
 		if _, err := lockAccountActor(mutationContext, queries, actor, observedAt); err != nil {
 			return err
 		}
-		area, err := queries.LockAreaForAdministration(mutationContext, areaID)
+		area, err := queries.LockAdministrationAreaCore(mutationContext, areaID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrAdministrationNotFound
 		}
@@ -380,8 +424,11 @@ func ChangeAreaGroup(ctx context.Context, beginner accountTransactionBeginner, c
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrAdministrationNotFound
 		}
-		if err != nil || !validLockedGroup(group, groupID) {
+		if err != nil {
 			return fmt.Errorf("lock area group: %w", err)
+		}
+		if !validLockedGroup(group, groupID) {
+			return fmt.Errorf("lock area group returned invalid state")
 		}
 		assigned, err := queries.AdministrationAreaGroupExists(mutationContext, db.AdministrationAreaGroupExistsParams{AreaID: areaID, GroupID: groupID})
 		if err != nil {
@@ -424,7 +471,7 @@ func ChangeAreaGroup(ctx context.Context, beginner accountTransactionBeginner, c
 }
 
 func validAreaCoreInput(input AreaCoreInput, create bool) bool {
-	if !policy.ValidAreaSlug(input.Slug) || !validCanonicalText(input.Name, 120, false) || !validDescription(input.Description) || input.DisplayOrder < 0 || !validAdministrationReason(input.Reason) {
+	if (create && !policy.ValidAreaSlug(input.Slug)) || (!create && input.Slug != "") || !validCanonicalText(input.Name, 120, false) || !validDescription(input.Description) || input.DisplayOrder < 0 || !validAdministrationReason(input.Reason) {
 		return false
 	}
 	if input.Visibility != policy.VisibilityPublic && input.Visibility != policy.VisibilityAuthenticated && input.Visibility != policy.VisibilityGroups {
@@ -450,27 +497,77 @@ func validAreaSummary(area AreaSummary) bool {
 		(area.Visibility == policy.VisibilityGroups || area.GroupCount == 0)
 }
 
-func boundedAreaAuditStates(previous, resulting auditedAreaState) ([]byte, []byte, error) {
-	type bounded struct {
-		Slug, Name, DescriptionSHA256 string
-		DisplayOrder                  int32
-		Visibility                    policy.Visibility
-		PostingMode                   policy.PostingMode
-		GroupCount                    int
-		GroupIDsSHA256                string
-	}
-	convert := func(state auditedAreaState) bounded {
-		return bounded{Slug: state.Slug, Name: state.Name, DescriptionSHA256: digestBytes([]byte(state.Description)), DisplayOrder: state.DisplayOrder, Visibility: state.Visibility, PostingMode: state.PostingMode, GroupCount: len(state.GroupIDs), GroupIDsSHA256: digestIDs(state.GroupIDs)}
-	}
-	left, err := json.Marshal(convert(previous))
+func boundedAreaAuditStates(previous, resulting boundedAreaAuditState) ([]byte, []byte, error) {
+	left, err := json.Marshal(previous)
 	if err != nil {
 		return nil, nil, err
 	}
-	right, err := json.Marshal(convert(resulting))
+	right, err := json.Marshal(resulting)
 	if err != nil {
 		return nil, nil, err
 	}
 	return left, right, nil
+}
+
+func newBoundedAreaAuditState(slug, name, description string, order int32, visibility policy.Visibility, posting policy.PostingMode, revision int64, groupIDs []int64) boundedAreaAuditState {
+	return boundedAreaAuditState{Slug: slug, Name: name, DescriptionSHA256: digestBytes([]byte(description)), DisplayOrder: order, Visibility: visibility, PostingMode: posting, AdministrationRevision: revision, GroupCount: int64(len(groupIDs)), GroupIDsSHA256: digestIDs(groupIDs)}
+}
+
+func equalBoundedAreaStatesIgnoringRevision(left, right boundedAreaAuditState) bool {
+	left.AdministrationRevision = 0
+	right.AdministrationRevision = 0
+	return left == right
+}
+
+func streamAreaGroupDigest(ctx context.Context, queries *db.Queries, areaID int64) (int64, string, error) {
+	rows, err := queries.StreamAdministrationAreaGroupIDs(ctx, areaID)
+	if err != nil {
+		return 0, "", fmt.Errorf("stream area group identifiers: %w", err)
+	}
+	defer rows.Close()
+	hash := sha256.New()
+	var encoded [8]byte
+	var count, previous int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return 0, "", fmt.Errorf("scan area group identifier: %w", err)
+		}
+		if id <= previous {
+			return 0, "", fmt.Errorf("stream area group identifiers returned invalid order")
+		}
+		previous = id
+		count++
+		binary.BigEndian.PutUint64(encoded[:], uint64(id))
+		_, _ = hash.Write(encoded[:])
+	}
+	if err := rows.Err(); err != nil {
+		return 0, "", fmt.Errorf("stream area group identifiers: %w", err)
+	}
+	return count, hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func insertBoundedAreaAudit(ctx context.Context, queries *db.Queries, actorID, areaID int64, action, reason string, previous *boundedAreaAuditState, resulting boundedAreaAuditState, requestID pgtype.UUID, at pgtype.Timestamptz) (int64, error) {
+	previousJSON := []byte("{}")
+	var err error
+	if previous != nil {
+		previousJSON, err = json.Marshal(*previous)
+		if err != nil {
+			return 0, fmt.Errorf("encode previous bounded area state: %w", err)
+		}
+	}
+	resultingJSON, err := json.Marshal(resulting)
+	if err != nil {
+		return 0, fmt.Errorf("encode resulting bounded area state: %w", err)
+	}
+	auditID, err := queries.CreateAreaAdministrationAudit(ctx, db.CreateAreaAdministrationAuditParams{ActorUserID: pgtype.Int8{Int64: actorID, Valid: true}, AreaID: pgtype.Int8{Int64: areaID, Valid: true}, ActionType: action, Reason: administrationReason(reason), PreviousState: previousJSON, ResultingState: resultingJSON, RequestID: requestID, AtTime: at})
+	if err != nil {
+		return 0, fmt.Errorf("write bounded area audit: %w", err)
+	}
+	if auditID <= 0 {
+		return 0, fmt.Errorf("bounded area audit returned invalid identifier")
+	}
+	return auditID, nil
 }
 
 func digestBytes(value []byte) string { sum := sha256.Sum256(value); return hex.EncodeToString(sum[:]) }

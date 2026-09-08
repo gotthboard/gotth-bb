@@ -46,8 +46,8 @@ WITH actor AS MATERIALIZED (
         SELECT a.id, a.slug, a.name, a.description, a.display_order,
                a.visibility, a.posting_mode, a.administration_revision
         FROM public.areas AS a
-        WHERE a.id > sqlc.arg(after_area_id)
-        ORDER BY a.id
+        WHERE (a.display_order, a.id) > (sqlc.arg(after_order)::integer, sqlc.arg(after_area_id)::bigint)
+        ORDER BY a.display_order, a.id
         LIMIT sqlc.arg(page_limit)
     ) AS area ON true
 )
@@ -63,7 +63,7 @@ SELECT (candidate.id IS NOT NULL)::boolean AS area_present,
        COALESCE(candidate.group_count, 0)::bigint AS group_count
 FROM actor
 LEFT JOIN candidate ON true
-ORDER BY candidate.id NULLS LAST;
+ORDER BY candidate.display_order NULLS LAST, candidate.id NULLS LAST;
 
 -- name: LoadAreaForAdministrationPage :one
 WITH actor AS MATERIALIZED (
@@ -91,6 +91,13 @@ SELECT EXISTS (SELECT 1 FROM actor)::boolean AS actor_present,
        COALESCE(target.administration_revision, 0)::bigint AS administration_revision
 FROM (SELECT 1) AS seed
 LEFT JOIN target ON true;
+
+-- name: LockAdministrationAreaCore :one
+SELECT id, slug, name, description, display_order, visibility, posting_mode,
+       administration_revision
+FROM public.areas
+WHERE id = sqlc.arg(area_id)
+FOR UPDATE;
 
 -- name: ListAreaGroupsForAdministrationPage :many
 WITH actor AS MATERIALIZED (

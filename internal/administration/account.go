@@ -19,10 +19,12 @@ import (
 )
 
 const (
-	administrationPageQueryLimit  int32 = 51
-	administrationPageSize              = 50
-	accountMutationTimeout              = 2 * time.Second
-	maximumAdministrationRevision       = int64(^uint64(0) >> 1)
+	administrationPageQueryLimit     int32 = 51
+	administrationPageSize                 = 50
+	administrationAreaPageQueryLimit int32 = 26
+	administrationAreaPageSize             = 25
+	accountMutationTimeout                 = 2 * time.Second
+	maximumAdministrationRevision          = int64(^uint64(0) >> 1)
 )
 
 var (
