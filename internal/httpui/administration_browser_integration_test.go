@@ -48,7 +48,10 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		}
 		return administration.AccountSummary{ID: 2, DisplayName: displayName, Role: policy.RoleMember, Revision: 3}, nil
 	}
-	services.ChangeRole = func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error) {
+	services.ChangeRole = func(_ context.Context, actor auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
+		if actor.UserID != 1 || userID != 2 || role != policy.RoleMember || expected != policy.RoleMember || reason != "Keyboard administration evidence" || revision != 3 || !requestID.Valid {
+			return administration.AccountMutationResult{}, fmt.Errorf("unexpected keyboard role form: actor=%+v user=%d role=%d expected=%d reason=%q revision=%d request=%+v", actor, userID, role, expected, reason, revision, requestID)
+		}
 		changed.Store(true)
 		return administration.AccountMutationResult{UserID: 2, Revision: 4, AuditID: 9}, nil
 	}

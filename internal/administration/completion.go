@@ -188,7 +188,7 @@ func LoadAreaDetail(ctx context.Context, querier completionReadQuerier, actor po
 	if !row.AreaPresent {
 		return AreaDetail{}, ErrAdministrationNotFound
 	}
-	area := areaSummary(row.ID, row.Slug, row.Name, row.Description, row.DisplayOrder, row.Visibility, row.PostingMode, row.AdministrationRevision, 0)
+	area := areaSummary(row.ID, row.Slug, row.Name, row.Description, row.DisplayOrder, row.Visibility, row.PostingMode, row.AdministrationRevision, row.GroupCount)
 	if !validAreaSummary(area) || area.ID != areaID {
 		return AreaDetail{}, fmt.Errorf("%w: malformed area", ErrAdministrationUnavailable)
 	}
@@ -493,7 +493,7 @@ func validAreaSummary(area AreaSummary) bool {
 	return area.ID > 0 && area.Revision > 0 && area.GroupCount >= 0 && policy.ValidAreaSlug(area.Slug) && validCanonicalText(area.Name, 120, false) && validDescription(area.Description) && area.DisplayOrder >= 0 &&
 		(area.Visibility == policy.VisibilityPublic || area.Visibility == policy.VisibilityAuthenticated || area.Visibility == policy.VisibilityGroups) &&
 		(area.PostingMode == policy.PostingNormal || area.PostingMode == policy.PostingReadOnly || area.PostingMode == policy.PostingArchived) &&
-		(area.Visibility == policy.VisibilityGroups || area.GroupCount == 0)
+		(area.Visibility == policy.VisibilityGroups && area.GroupCount > 0 || area.Visibility != policy.VisibilityGroups && area.GroupCount == 0)
 }
 
 func boundedAreaAuditStates(previous, resulting boundedAreaAuditState) ([]byte, []byte, error) {

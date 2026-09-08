@@ -11,17 +11,19 @@ import (
 )
 
 type completionReadStub struct {
-	areas []db.ListAreasForAdministrationPageRow
+	areas      []db.ListAreasForAdministrationPageRow
+	area       db.LoadAreaForAdministrationPageRow
+	areaGroups []db.ListAreaGroupsForAdministrationPageRow
 }
 
 func (stub completionReadStub) ListAreasForAdministrationPage(context.Context, db.ListAreasForAdministrationPageParams) ([]db.ListAreasForAdministrationPageRow, error) {
 	return stub.areas, nil
 }
-func (completionReadStub) LoadAreaForAdministrationPage(context.Context, db.LoadAreaForAdministrationPageParams) (db.LoadAreaForAdministrationPageRow, error) {
-	panic("unexpected area load")
+func (stub completionReadStub) LoadAreaForAdministrationPage(context.Context, db.LoadAreaForAdministrationPageParams) (db.LoadAreaForAdministrationPageRow, error) {
+	return stub.area, nil
 }
-func (completionReadStub) ListAreaGroupsForAdministrationPage(context.Context, db.ListAreaGroupsForAdministrationPageParams) ([]db.ListAreaGroupsForAdministrationPageRow, error) {
-	panic("unexpected group load")
+func (stub completionReadStub) ListAreaGroupsForAdministrationPage(context.Context, db.ListAreaGroupsForAdministrationPageParams) ([]db.ListAreaGroupsForAdministrationPageRow, error) {
+	return stub.areaGroups, nil
 }
 
 func TestListAreaPageUsesDisplayOrderAndIDSentinel(t *testing.T) {
@@ -45,5 +47,19 @@ func TestListAreaPageAcceptsZeroOrderPositiveIDCursor(t *testing.T) {
 	page, err := ListAreaPage(context.Background(), completionReadStub{areas: []db.ListAreasForAdministrationPageRow{{AreaPresent: false}}}, policy.AccessContext{Authenticated: true, UserID: 1, Role: policy.RoleAdministrator}, time.Now(), 0, 9)
 	if err != nil || len(page.Areas) != 0 {
 		t.Fatalf("zero-order cursor page = (%+v,%v)", page, err)
+	}
+}
+
+func TestAreaReadsRejectGroupVisibilityWithoutMappings(t *testing.T) {
+	t.Parallel()
+	actor := policy.AccessContext{Authenticated: true, UserID: 1, Role: policy.RoleAdministrator}
+	observedAt := time.Now()
+	row := db.ListAreasForAdministrationPageRow{AreaPresent: true, ID: 7, Slug: "private", Name: "Private", Visibility: string(policy.VisibilityGroups), PostingMode: string(policy.PostingNormal), AdministrationRevision: 1}
+	if _, err := ListAreaPage(context.Background(), completionReadStub{areas: []db.ListAreasForAdministrationPageRow{row}}, actor, observedAt, 0, 0); !errors.Is(err, ErrAdministrationUnavailable) {
+		t.Fatalf("group-visible zero-mapping list error = %v", err)
+	}
+	detailRow := db.LoadAreaForAdministrationPageRow{ActorPresent: true, AreaPresent: true, ID: 7, Slug: "private", Name: "Private", Visibility: string(policy.VisibilityGroups), PostingMode: string(policy.PostingNormal), AdministrationRevision: 1}
+	if _, err := LoadAreaDetail(context.Background(), completionReadStub{area: detailRow}, actor, observedAt, 7, 0); !errors.Is(err, ErrAdministrationUnavailable) {
+		t.Fatalf("group-visible zero-mapping detail error = %v", err)
 	}
 }

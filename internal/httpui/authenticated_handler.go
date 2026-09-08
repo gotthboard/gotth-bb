@@ -358,6 +358,9 @@ func NewAuthenticatedSiteForumHandler(
 	if sites.Shell == nil || sites.Rules == nil || sites.Editable == nil || sites.Update == nil {
 		return nil, fmt.Errorf("browser site settings services are required")
 	}
+	if sites.Administration == nil {
+		return nil, fmt.Errorf("browser administration services are required")
+	}
 	if unread.FirstUnread == nil || unread.MarkRead == nil {
 		return nil, fmt.Errorf("browser unread services are required")
 	}

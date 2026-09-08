@@ -338,7 +338,8 @@ WITH actor AS MATERIALIZED (
       AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), target AS MATERIALIZED (
     SELECT area.id, area.slug, area.name, area.description, area.display_order,
-           area.visibility, area.posting_mode, area.administration_revision
+           area.visibility, area.posting_mode, area.administration_revision,
+           (SELECT count(*) FROM public.area_groups AS mapping WHERE mapping.area_id = area.id)::bigint AS group_count
     FROM actor
     JOIN public.areas AS area ON area.id = $3
 )
@@ -351,7 +352,8 @@ SELECT EXISTS (SELECT 1 FROM actor)::boolean AS actor_present,
        COALESCE(target.display_order, 0)::integer AS display_order,
        COALESCE(target.visibility, '')::text AS visibility,
        COALESCE(target.posting_mode, '')::text AS posting_mode,
-       COALESCE(target.administration_revision, 0)::bigint AS administration_revision
+       COALESCE(target.administration_revision, 0)::bigint AS administration_revision,
+       COALESCE(target.group_count, 0)::bigint AS group_count
 FROM (SELECT 1) AS seed
 LEFT JOIN target ON true
 `
@@ -373,6 +375,7 @@ type LoadAreaForAdministrationPageRow struct {
 	Visibility             string
 	PostingMode            string
 	AdministrationRevision int64
+	GroupCount             int64
 }
 
 func (q *Queries) LoadAreaForAdministrationPage(ctx context.Context, arg LoadAreaForAdministrationPageParams) (LoadAreaForAdministrationPageRow, error) {
@@ -389,6 +392,7 @@ func (q *Queries) LoadAreaForAdministrationPage(ctx context.Context, arg LoadAre
 		&i.Visibility,
 		&i.PostingMode,
 		&i.AdministrationRevision,
+		&i.GroupCount,
 	)
 	return i, err
 }
