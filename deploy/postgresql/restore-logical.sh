@@ -36,11 +36,29 @@ esac
 actual=$(sha256sum -- "$archive" | awk '{print $1}') || fail 'archive digest failed'
 [ "$actual" = "$expected" ] || fail 'archive digest mismatch'
 
-if ! docker exec --interactive --user postgres "$container" sh -ceu '
+child_pid=
+cancel() {
+	status=$1
+	if [ -n "$child_pid" ]; then
+		kill -TERM "$child_pid" 2>/dev/null || true
+		wait "$child_pid" 2>/dev/null || true
+		child_pid=
+	fi
+	exit "$status"
+}
+trap 'cancel 130' INT
+trap 'cancel 143' TERM
+trap 'cancel 129' HUP
+
+docker exec --interactive --user postgres "$container" sh -ceu '
   exec pg_restore --list
-' <"$archive" >/dev/null; then
+' <"$archive" >/dev/null &
+child_pid=$!
+if ! wait "$child_pid"; then
+	child_pid=
 	fail 'archive validation failed'
 fi
+child_pid=
 
 version=$(docker exec --user postgres "$container" postgres --version) || fail 'PostgreSQL version check failed'
 case "$version" in
@@ -72,11 +90,16 @@ relations=$(docker exec --user postgres "$container" sh -ceu '
 ') || fail 'clean-target inspection failed'
 [ "$relations" = 0 ] || fail 'target database is not clean'
 
-if ! docker exec --interactive --user postgres "$container" sh -ceu '
+docker exec --interactive --user postgres "$container" sh -ceu '
   exec pg_restore --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
     --exit-on-error --single-transaction --no-privileges
-' <"$archive"; then
+' <"$archive" &
+child_pid=$!
+if ! wait "$child_pid"; then
+	child_pid=
 	fail 'database restore failed; inspect target before retry'
 fi
+child_pid=
+trap - HUP INT TERM
 
 printf 'restore-logical: archive=%s sha256=%s target=%s result=committed\n' "$(basename -- "$archive")" "$actual" "$container"

@@ -8,14 +8,24 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
 
 const fakeDocker = `#!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$FAKE_DOCKER_LOG"
+block() {
+  [ "${FAKE_BLOCK_STAGE:-}" != "$1" ] || {
+    printf '%s\n' started >"$FAKE_BLOCK_MARKER"
+    trap 'printf "%s\n" stopped >"$FAKE_BLOCK_STOPPED"; exit 143' HUP INT TERM
+    while :; do sleep 1; done
+  }
+}
 case "$*" in
   *pg_dump*)
+    block dump
     [ "${FAKE_DUMP_FAIL:-0}" = 0 ] || exit 71
     if [ "${FAKE_DUMP_EMPTY:-0}" = 0 ]; then
       printf '%s' "${FAKE_ARCHIVE_CONTENT:-fake-custom-archive}"
@@ -36,6 +46,7 @@ case "$*" in
     printf '%s\n' "${FAKE_RELATIONS:-0}"
     ;;
   *"pg_restore --username="*)
+    block restore
     cat >"$FAKE_RESTORE_INPUT"
     [ "${FAKE_RESTORE_FAIL:-0}" = 0 ] || exit 75
     ;;
@@ -201,6 +212,58 @@ func TestRestoreLogicalFailsClosedBeforeOrDuringRestore(t *testing.T) {
 	}
 }
 
+func TestLogicalHelpersTerminateActiveStreamsOnCancellation(t *testing.T) {
+	for _, test := range []struct {
+		name, helper, stage string
+		prepare             func(t *testing.T, archive string)
+	}{
+		{name: "backup dump", helper: "backup-logical.sh", stage: "dump"},
+		{name: "database restore", helper: "restore-logical.sh", stage: "restore", prepare: writeDefaultPair},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newFakeDocker(t)
+			archive := cleanArchive(t)
+			if test.prepare != nil {
+				test.prepare(t, archive)
+			}
+			marker := filepath.Join(fixture.directory, "blocked")
+			stopped := filepath.Join(fixture.directory, "stopped")
+			command := fixture.command(t, test.helper, map[string]string{
+				"FAKE_BLOCK_STAGE":   test.stage,
+				"FAKE_BLOCK_MARKER":  marker,
+				"FAKE_BLOCK_STOPPED": stopped,
+			}, "clean-postgresql-17", archive)
+			if err := command.Start(); err != nil {
+				t.Fatal(err)
+			}
+			waitForFile(t, marker)
+			if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatalf("signal helper: %v", err)
+			}
+			finished := make(chan error, 1)
+			go func() { finished <- command.Wait() }()
+			select {
+			case err := <-finished:
+				if err == nil {
+					t.Fatal("canceled helper returned success")
+				}
+			case <-time.After(3 * time.Second):
+				_ = command.Process.Kill()
+				t.Fatal("canceled helper did not terminate")
+			}
+			waitForFile(t, stopped)
+			if test.helper == "backup-logical.sh" {
+				if _, err := os.Lstat(archive); !os.IsNotExist(err) {
+					t.Fatalf("canceled backup admitted archive: %v", err)
+				}
+				if matches, _ := filepath.Glob(filepath.Join(filepath.Dir(archive), ".backup.dump.*")); len(matches) != 0 {
+					t.Fatalf("canceled backup retained temporary files: %q", matches)
+				}
+			}
+		})
+	}
+}
+
 type fakeDockerFixture struct {
 	directory, log, listInput, restoreInput string
 }
@@ -224,6 +287,13 @@ func newFakeDocker(t *testing.T) fakeDockerFixture {
 
 func (fixture fakeDockerFixture) run(t *testing.T, helper string, extra map[string]string, arguments ...string) commandResult {
 	t.Helper()
+	command := fixture.command(t, helper, extra, arguments...)
+	output, err := command.CombinedOutput()
+	return commandResult{output: string(output), err: err}
+}
+
+func (fixture fakeDockerFixture) command(t *testing.T, helper string, extra map[string]string, arguments ...string) *exec.Cmd {
+	t.Helper()
 	command := exec.Command(helperPath(t, helper), arguments...)
 	environment := append(os.Environ(),
 		"PATH="+fixture.directory+string(os.PathListSeparator)+os.Getenv("PATH"),
@@ -236,8 +306,7 @@ func (fixture fakeDockerFixture) run(t *testing.T, helper string, extra map[stri
 		environment = append(environment, key+"="+value)
 	}
 	command.Env = environment
-	output, err := command.CombinedOutput()
-	return commandResult{output: string(output), err: err}
+	return command
 }
 
 func helperPath(t *testing.T, name string) string {
@@ -247,6 +316,18 @@ func helperPath(t *testing.T, name string) string {
 		t.Fatal("resolve helper source path")
 	}
 	return filepath.Join(filepath.Dir(source), name)
+}
+
+func waitForFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", filepath.Base(path))
 }
 
 func cleanArchive(t *testing.T) string {

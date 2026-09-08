@@ -46,31 +46,49 @@ temporary_sidecar=$(mktemp "$parent_real/.$base.sha256.XXXXXX") || {
 	fail 'cannot create temporary sidecar'
 }
 committed=0
+child_pid=
 cleanup() {
 	if [ "$committed" -eq 0 ]; then
 		rm -f -- "$temporary" "$temporary_sidecar"
 	fi
 }
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+cancel() {
+	status=$1
+	if [ -n "$child_pid" ]; then
+		kill -TERM "$child_pid" 2>/dev/null || true
+		wait "$child_pid" 2>/dev/null || true
+		child_pid=
+	fi
+	exit "$status"
+}
+trap 'cancel 130' INT
+trap 'cancel 143' TERM
+trap 'cancel 129' HUP
 trap cleanup EXIT
 
-if ! docker exec --user postgres "$container" sh -ceu '
+docker exec --user postgres "$container" sh -ceu '
   test -n "${POSTGRES_USER:-}" && test -n "${POSTGRES_DB:-}"
   exec pg_dump --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" \
     --format=custom --no-privileges --serializable-deferrable \
     --lock-wait-timeout=5s
-' >"$temporary"; then
+' >"$temporary" &
+child_pid=$!
+if ! wait "$child_pid"; then
+	child_pid=
 	fail 'database dump failed'
 fi
+child_pid=
 [ -s "$temporary" ] || fail 'database dump was empty'
 
-if ! docker exec --interactive --user postgres "$container" sh -ceu '
+docker exec --interactive --user postgres "$container" sh -ceu '
   exec pg_restore --list
-' <"$temporary" >/dev/null; then
+' <"$temporary" >/dev/null &
+child_pid=$!
+if ! wait "$child_pid"; then
+	child_pid=
 	fail 'archive validation failed'
 fi
+child_pid=
 
 sync "$temporary" || fail 'archive sync failed'
 digest=$(sha256sum -- "$temporary" | awk '{print $1}') || fail 'archive digest failed'
