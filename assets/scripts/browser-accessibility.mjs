@@ -31,13 +31,15 @@ export async function auditAccessibility(send, sessionId, evaluate, label, scrip
 export async function auditReflow(send, sessionId, evaluate, label) {
   await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, sessionId);
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
-  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true, `${label} overflows at 320 CSS pixels`);
-  console.log(`REFLOW label=${JSON.stringify(label)} width=320 zoom=100 result=pass`);
+  const narrow = await evaluate(send, sessionId, "({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth })");
+  assert.ok(narrow.scrollWidth <= narrow.clientWidth, `${label} overflows at 320 CSS pixels: scrollWidth=${narrow.scrollWidth} clientWidth=${narrow.clientWidth}`);
+  console.log(`REFLOW label=${JSON.stringify(label)} width=320 zoom=100 scrollWidth=${narrow.scrollWidth} clientWidth=${narrow.clientWidth} result=pass`);
 
   await send("Emulation.setDeviceMetricsOverride", { width: 640, height: 720, deviceScaleFactor: 1, mobile: false }, sessionId);
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 2 }, sessionId);
-  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true, `${label} overflows at 200% zoom`);
-  console.log(`REFLOW label=${JSON.stringify(label)} width=640 zoom=200 result=pass`);
+  const zoomed = await evaluate(send, sessionId, "({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth })");
+  assert.ok(zoomed.scrollWidth <= zoomed.clientWidth, `${label} overflows at 200% zoom: scrollWidth=${zoomed.scrollWidth} clientWidth=${zoomed.clientWidth}`);
+  console.log(`REFLOW label=${JSON.stringify(label)} width=640 zoom=200 scrollWidth=${zoomed.scrollWidth} clientWidth=${zoomed.clientWidth} result=pass`);
 
   await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
   await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);

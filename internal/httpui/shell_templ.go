@@ -4867,14 +4867,14 @@ func discoverySearchContent(view pageView, search discoverySearchPageView) templ
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 423, "\" pattern=\"[a-z0-9]+(-[a-z0-9]+)*\" class=\"rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white\"></label><div class=\"grid grid-cols-2 gap-3\"><label class=\"grid gap-1 font-semibold\">From (UTC)<input type=\"date\" name=\"from\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 423, "\" pattern=\"[a-z0-9]+(-[a-z0-9]+)*\" class=\"rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white\"></label><div class=\"grid gap-3 sm:grid-cols-2\"><label class=\"grid gap-1 font-semibold\">From (UTC)<input type=\"date\" name=\"from\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var266 string
 		templ_7745c5c3_Var266, templ_7745c5c3_Err = templ.ResolveAttributeValue(search.From)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 787, Col: 140}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 787, Col: 143}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var266)
 		if templ_7745c5c3_Err != nil {
@@ -4887,7 +4887,7 @@ func discoverySearchContent(view pageView, search discoverySearchPageView) templ
 		var templ_7745c5c3_Var267 string
 		templ_7745c5c3_Var267, templ_7745c5c3_Err = templ.ResolveAttributeValue(search.To)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 787, Col: 320}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/shell.templ`, Line: 787, Col: 323}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var267)
 		if templ_7745c5c3_Err != nil {

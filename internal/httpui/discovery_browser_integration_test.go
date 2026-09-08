@@ -52,6 +52,10 @@ func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 	if err != nil {
 		t.Fatalf("locate Chromium: %v", err)
 	}
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Fatalf("locate Node.js: %v", err)
+	}
 	port := reserveDiscoveryTestPort(t)
 	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
 	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
@@ -80,6 +84,8 @@ func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 	}
 	application := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
+		case "/static/" + appStylesheetFilename:
+			staticAssetHandler("text/css; charset=utf-8", appStylesheet).ServeHTTP(response, request)
 		case "/static/htmx-2.0.10.min.js":
 			staticAssetHandler("text/javascript; charset=utf-8", htmxScript).ServeHTTP(response, request)
 		case "/static/" + discoveryResponseFilename:
@@ -139,6 +145,11 @@ func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 	}
 	if basePath != "" && (strings.Contains(document, `href="/search`) || strings.Contains(document, `href="/activity`)) || strings.Contains(document, `<script>alert`) {
 		t.Fatalf("browser DOM escaped base path or exposed unsafe markup")
+	}
+	reflow := exec.Command(node, "--test", filepath.Join("..", "..", "assets", "scripts", "discovery-reflow.chromium.test.mjs"))
+	reflow.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_DISCOVERY_REFLOW_URL="+target)
+	if output, err := reflow.CombinedOutput(); err != nil {
+		t.Fatalf("Chromium discovery reflow failed: %v; output: %s", err, output)
 	}
 	errorProbe := exec.Command(chromium,
 		"--headless=new", "--disable-background-networking", "--disable-gpu", "--no-first-run", "--no-proxy-server",

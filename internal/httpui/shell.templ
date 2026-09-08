@@ -784,7 +784,7 @@ templ discoverySearchContent(view pageView, search discoverySearchPageView) {
 				<label class="grid gap-1 font-semibold">Search text<input name="q" value={ search.Query } maxlength="256" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
 				<label class="grid gap-1 font-semibold">Author ID<input name="author" value={ search.Author } inputmode="numeric" pattern="[1-9][0-9]*" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
 				<label class="grid gap-1 font-semibold">Area slug<input name="area" value={ search.Area } pattern="[a-z0-9]+(-[a-z0-9]+)*" class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label>
-				<div class="grid grid-cols-2 gap-3"><label class="grid gap-1 font-semibold">From (UTC)<input type="date" name="from" value={ search.From } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label><label class="grid gap-1 font-semibold">To (UTC)<input type="date" name="to" value={ search.To } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label></div>
+				<div class="grid gap-3 sm:grid-cols-2"><label class="grid gap-1 font-semibold">From (UTC)<input type="date" name="from" value={ search.From } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label><label class="grid gap-1 font-semibold">To (UTC)<input type="date" name="to" value={ search.To } class="rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white"/></label></div>
 				<button type="submit" class="w-fit rounded bg-blue-600 px-4 py-2 font-bold text-white hover:bg-blue-500">Search</button>
 			</form>
 		</section>
