@@ -581,11 +581,16 @@ func planUsesCurrentPostRelation(node explainPlanNode) bool {
 func populateAdministrationCheckpoint(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID, targetID, firstGroupID int64) {
 	t.Helper()
 	started := time.Now()
-	if _, err := connection.Exec(ctx, `INSERT INTO public.users (display_name, role, suspended_at, suspended_until)
+	if _, err := connection.Exec(ctx, `INSERT INTO public.users
+    (display_name, role, suspended_at, suspended_until, suspension_reason, created_at, updated_at, last_login_at)
 SELECT 'Admission Account ' || value,
        CASE value % 100 WHEN 0 THEN 'moderator' WHEN 1 THEN 'administrator' ELSE 'member' END,
        CASE WHEN value % 127 = 0 THEN '2026-01-01T00:00:00Z'::timestamptz END,
-       CASE WHEN value % 127 = 0 THEN '2027-01-01T00:00:00Z'::timestamptz END
+       CASE WHEN value % 127 = 0 THEN '2027-01-01T00:00:00Z'::timestamptz END,
+       CASE WHEN value % 127 = 0 THEN 'admission suspension' END,
+       '2025-01-01T00:00:00Z'::timestamptz,
+       '2025-01-01T00:00:00Z'::timestamptz,
+       '2025-01-01T00:00:00Z'::timestamptz
 FROM generate_series(1, 24997) AS value`); err != nil {
 		t.Fatal(err)
 	}
