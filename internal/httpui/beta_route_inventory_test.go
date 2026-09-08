@@ -91,6 +91,11 @@ func readBetaRouteInventory(t *testing.T, path string) map[string]struct{} {
 		if pattern == "Pattern" || !strings.HasPrefix(pattern, "/") {
 			continue
 		}
+		for index, field := range fields[3:8] {
+			if strings.TrimSpace(field) == "" {
+				t.Fatalf("Beta route %s has an empty metadata column %d", pattern, index+3)
+			}
+		}
 		for _, method := range strings.Split(methods, ",") {
 			method = strings.TrimSpace(method)
 			switch method {
@@ -144,25 +149,24 @@ func extractProductionRoutes(t *testing.T, directory string) map[string]struct{}
 			if !ok {
 				return true
 			}
-			receiver, ok := selector.X.(*ast.Ident)
-			if !ok || (receiver.Name != "router" && receiver.Name != "publicRouter" && receiver.Name != "privateRouter") {
-				return true
-			}
 			method := strings.ToUpper(selector.Sel.Name)
 			switch method {
 			case "GET", "POST":
-				if len(call.Args) == 0 {
-					t.Fatalf("%s route registration has no pattern", method)
-				}
-				literal, ok := call.Args[0].(*ast.BasicLit)
-				if !ok || literal.Kind != token.STRING {
-					t.Fatalf("%s production route pattern is not a string literal in %s", method, name)
-				}
-				pattern, err := strconv.Unquote(literal.Value)
-				if err != nil || !strings.HasPrefix(pattern, "/") {
-					t.Fatalf("invalid %s production route pattern in %s", method, name)
+				pattern, route := betaRouteLiteral(call)
+				if !route {
+					return true
 				}
 				addBetaRoute(t, routes, method+" "+pattern, name)
+				return true
+			}
+			receiver, knownRouter := selector.X.(*ast.Ident)
+			if !knownRouter || (receiver.Name != "router" && receiver.Name != "publicRouter" && receiver.Name != "privateRouter") {
+				if _, potentialRoute := betaRouteLiteral(call); potentialRoute {
+					t.Fatalf("unaccounted path operation %s in %s", selector.Sel.Name, name)
+				}
+				return true
+			}
+			switch method {
 			case "METHOD":
 				methodRegistrations++
 			case "USE", "NOTFOUND":
@@ -180,6 +184,18 @@ func extractProductionRoutes(t *testing.T, directory string) map[string]struct{}
 		t.Fatalf("production route source framing = files %d, dynamic Method registrations %d", filesParsed, methodRegistrations)
 	}
 	return routes
+}
+
+func betaRouteLiteral(call *ast.CallExpr) (string, bool) {
+	if len(call.Args) == 0 {
+		return "", false
+	}
+	literal, ok := call.Args[0].(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return "", false
+	}
+	pattern, err := strconv.Unquote(literal.Value)
+	return pattern, err == nil && strings.HasPrefix(pattern, "/")
 }
 
 func addBetaRoute(t *testing.T, routes map[string]struct{}, route, source string) {

@@ -64,6 +64,11 @@ func TestSanitizeHTMLRejectsMalformedTaskInputsWithoutEatingFollowingText(t *tes
 		`<input type="checkbox" disabled="`,
 		`<inp`,
 		`<input type="checkbox" disabled="" disabled="">`,
+		`<input type="checkbox" type="checkbox" disabled="">`,
+		`<input checked="" checked="" disabled="" type="checkbox">`,
+		`<input type="checkbox" disabled>`,
+		`<input type="checkbox" disabled=""/>`,
+		`<input  type="checkbox" disabled="">`,
 		`<INPUT TYPE="checkbox" DISABLED="">`,
 	} {
 		if got := SanitizeHTML(raw).html; strings.Contains(got, "<input") {
