@@ -1,0 +1,200 @@
+AN-05-03 blocked destinations and progressive rejection UI evidence
+===================================================================
+
+Tested executable/methodology commit:
+  9ed8a139858a1fa31fe437f0ac5c8df9681ea113
+Tested tree:
+  7973a2b3f9bc7ad96bc87fdcbde83a842add687e
+Admitted base:
+  d1934b55d44154d3b082b514a3d9ef902c25ad5f
+
+Environment
+-----------
+
+- Canonical local checkout: Linux/amd64, Node.js 26.7.0, npm 12.0.2.
+- Designated evidence host `development`: Linux/amd64, Go
+  `go1.26.5-X:nodwarf5`.
+- PostgreSQL 17.10 in the task-owned container
+  `gotth-bb-an05-03-pg`, listening only on 127.0.0.1:32804.
+- Browser gate: Caddy 2.11.4, Chromium 151.0.7922.71, Node.js
+  26.5.1.
+
+Exact gates
+-----------
+
+1. Pinned deterministic generation and repository custody on the exact local
+   checkout:
+
+     test "$(node --version)" = v26.7.0
+     test "$(npm --version)" = 12.0.2
+     npm ci --ignore-scripts
+     GOMAXPROCS=2 make generate
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     git diff --check
+     test -z "$(git status --short)"
+     test "$(git rev-parse HEAD^{commit})" = 9ed8a139858a1fa31fe437f0ac5c8df9681ea113
+     test "$(git rev-parse HEAD^{tree})" = 7973a2b3f9bc7ad96bc87fdcbde83a842add687e
+
+2. Exact detached remote custody and static gate:
+
+     scripts/test-alpha3-evidence-custody.sh
+     go vet -mod=readonly ./...
+
+3. Repository-wide unit race and coverage:
+
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+   The command completed successfully. Because the execution relay returned a
+   bounded output chunk before the last cached package lines, the final five
+   packages were also invoked explicitly on the same tree:
+
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover \
+       ./internal/searchprojection ./internal/site ./internal/store \
+       ./internal/store/db ./migrations
+
+4. PostgreSQL 17.10 serial integration and coverage. The complete package set
+   was split into two deterministic invocations to stay inside the execution
+   relay's output window:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=1 -cover \
+       ./cmd/forum ./cmd/migrate ./cmd/operator ./cmd/package ./deploy/container \
+       ./internal/abuse ./internal/administration ./internal/app ./internal/auth \
+       ./internal/buildinfo ./internal/config ./internal/discovery ./internal/forum \
+       ./internal/governance ./internal/httpui
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=1 -cover \
+       ./internal/migration ./internal/moderation ./internal/observability \
+       ./internal/policy ./internal/readiness ./internal/releaseartifact \
+       ./internal/render ./internal/rerender ./internal/searchprojection \
+       ./internal/site ./internal/store ./internal/store/db ./migrations
+
+5. PostgreSQL 17.10 integration race and atomic coverage, using the same
+   complete package split:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+       -race -covermode=atomic ./cmd/forum ./cmd/migrate ./cmd/operator \
+       ./cmd/package ./deploy/container ./internal/abuse ./internal/administration \
+       ./internal/app ./internal/auth ./internal/buildinfo ./internal/config \
+       ./internal/discovery ./internal/forum ./internal/governance
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+       -race -covermode=atomic ./internal/forum ./internal/governance \
+       ./internal/httpui
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+       -race -covermode=atomic ./internal/migration ./internal/moderation \
+       ./internal/observability ./internal/policy ./internal/readiness \
+       ./internal/releaseartifact ./internal/render ./internal/rerender \
+       ./internal/searchprojection ./internal/site ./internal/store \
+       ./internal/store/db ./migrations
+
+6. Focused deterministic repetitions:
+
+     GOMAXPROCS=4 go test -mod=readonly -count=50 -run DestinationPolicy \
+       ./internal/abuse
+     GOMAXPROCS=4 go test -mod=readonly -count=50 \
+       -run RenderMarkdownForPublication ./internal/render
+     GOMAXPROCS=4 go test -mod=readonly -count=50 -run BlockedDestination \
+       ./internal/forum ./internal/httpui ./internal/site
+
+7. Browser-through-Caddy gate, including five cleanup-stability repetitions
+   and one final exact invocation:
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 go test -mod=readonly \
+       -tags=integration -count=5 -run '^TestAbuseRejectionNoScriptThroughCaddy$' \
+       -v ./internal/httpui
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 go test -mod=readonly \
+       -tags=integration -count=1 -run '^TestAbuseRejectionNoScriptThroughCaddy$' \
+       -v ./internal/httpui
+
+Results
+-------
+
+- Every final exact-tree gate passed. Repository-wide unit race/coverage and
+  the complete PostgreSQL serial/race package set passed.
+- Unit statement coverage on the changed core packages was 92.6% for
+  `internal/abuse`, 95.9% for `internal/render`, 88.6% for `internal/forum`,
+  and 72.5% for the broad HTTP package. PostgreSQL integration coverage was
+  93.7% for `internal/forum`, 97.1% for `internal/store`, and 100% for
+  migrations and readiness.
+- The policy matcher covers empty, one-entry, and 256-entry domain and exact
+  URL sets. It proves IDNA, exact/subdomain/sibling matching, one trailing DNS
+  root dot, discarded userinfo, IPv4/IPv6, default/nondefault and normalized
+  ports, empty/dot/escaped paths, percent case and unreserved decoding,
+  reserved bytes, query order/encoding, ignored fragments, and exact URL
+  distinction.
+- Browser-ambiguous protocol-relative and slash/backslash forms plus malformed
+  HTTP(S)-looking destinations fail with the same content-free typed error.
+  Relative references, anchors, mailto, code spans, fences, escaped text, and
+  inert raw HTML remain under the existing renderer/sanitizer policy.
+- Inline, reference, collapsed-reference, image, and GFM URL-autolink cases are
+  checked by walking the one Goldmark AST that is subsequently rendered.
+  Repeated destinations and the exact 65,536-byte source boundary pass. The
+  mechanism contains no resolver, HTTP client, network call, retry, cache, or
+  background work.
+- Topic/reply/edit preview and mutation plus nonempty community-rules settings
+  all receive one explicit validated destination policy. Topic/reply/edit
+  mutation rejects before transaction begin; settings rejects before its
+  audited transaction. Preview/edit/settings do not touch publication state.
+  Existing stored post and rules reads continue through the ordinary renderer
+  and are not rescanned or rewritten.
+- Full-page and HTMX blocked responses are fixed 422 with `private, no-store`;
+  topic/reply rate responses are fixed 429 with positive integer
+  `Retry-After`, `private, no-store`, and the escaped submitted draft. Topic,
+  reply, edit, and settings tests prove the one fixed observer event and exact
+  route class. Member, moderator, and administrator publication attempts all
+  receive the same blocked result before transaction begin.
+- A combined real access-log and abuse-observer test supplies unique client
+  address/header, account/session, raw-query, Markdown, destination/rule,
+  configured-count, map-occupancy, cookie, and secret sentinels. It proves one
+  fixed rejection event, bounded completion records, and zero sentinel bytes
+  in the logs.
+- JavaScript-disabled Chromium through Caddy preserves blocked topic, rate
+  topic, blocked edit, and blocked community-rules submissions, including the
+  current settings revision, and observes exactly four fixed terminal events.
+
+Rejected candidates and repairs
+-------------------------------
+
+- The first AN-05-03 implementation lacked browser-through-Caddy evidence.
+  The candidate added a real JavaScript-disabled Chromium gate for blocked and
+  rate-limited forms before admission.
+- The initial exact rerun exposed an expired AN-04 integration fixture: it
+  inserted accounts at database wall time but compared them with a fixed
+  September 8 15:00 UTC observation. Once wall time passed that instant, its
+  mute violated `users_muted_after_creation`. The repair pins fixture creation
+  one hour before the fixed observation; production code is unchanged and the
+  case passed three consecutive PostgreSQL runs.
+- Chromium's main process could exit while a profile subprocess still created
+  files, making recursive cleanup intermittently fail with `ENOTEMPTY`. The
+  test now uses Node's bounded `fs.rm` retries and passed five consecutive
+  browser-through-Caddy runs.
+- Cold pass 1 on `ac39ccc` rejected missing executable log-sentinel search and
+  role-bypass evidence. `9ed8a13` adds the smallest two tests. Review note:
+  `/tmp/gotth-bb-an05-03-judge-1.md`.
+
+Non-gate invocation mistakes
+----------------------------
+
+- A focused remote `go test -run` attempt passed an unquoted shell expression
+  containing parentheses and `|`; the remote shell rejected it before Go ran.
+  It was not treated as a gate. Three literal-pattern invocations replaced it
+  and each passed 50 times.
+- One early serial PostgreSQL sweep failed only at the expired AN-04 fixture
+  described above. No passing claim was made until the deterministic fixture
+  repair and complete exact-tree reruns passed.
+
+Rollback
+--------
+
+AN-05-03 adds no schema migration and rewrites no stored content. Code rollback
+is a normal application rollback to the preceding AN-05-02 artifact while its
+database remains at migration 000011. Existing blocked content remains stored
+and readable by design. The final AN-05 delivery gate remains AN-05-04.
