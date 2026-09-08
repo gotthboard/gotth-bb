@@ -329,7 +329,8 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 			return err
 		}
 		resultingGroupCount, resultingGroupDigest := previousGroupCount, previousGroupDigest
-		groupsChanged := false
+		addInitialGroupAfterUpdate := false
+		deleteGroupsBeforeUpdate := false
 		if input.Visibility == policy.VisibilityGroups && current.Visibility != string(policy.VisibilityGroups) {
 			group, err := queries.LockAdministrationGroup(mutationContext, input.InitialGroupID)
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -343,32 +344,30 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 			}
 			resultingGroupCount = 1
 			resultingGroupDigest = digestIDs([]int64{input.InitialGroupID})
-			groupsChanged = true
+			addInitialGroupAfterUpdate = true
 		} else if input.Visibility != policy.VisibilityGroups {
 			resultingGroupCount = 0
 			resultingGroupDigest = digestIDs(nil)
-			groupsChanged = previousGroupCount != 0
+			deleteGroupsBeforeUpdate = previousGroupCount != 0
 		}
 		previous := boundedAreaAuditState{Slug: current.Slug, Name: current.Name, DescriptionSHA256: digestBytes([]byte(current.Description)), DisplayOrder: current.DisplayOrder, Visibility: policy.Visibility(current.Visibility), PostingMode: policy.PostingMode(current.PostingMode), AdministrationRevision: current.AdministrationRevision, GroupCount: previousGroupCount, GroupIDsSHA256: previousGroupDigest}
 		resulting := boundedAreaAuditState{Slug: current.Slug, Name: input.Name, DescriptionSHA256: digestBytes([]byte(input.Description)), DisplayOrder: input.DisplayOrder, Visibility: input.Visibility, PostingMode: input.PostingMode, AdministrationRevision: input.Revision + 1, GroupCount: resultingGroupCount, GroupIDsSHA256: resultingGroupDigest}
 		if equalBoundedAreaStatesIgnoringRevision(previous, resulting) {
 			return fmt.Errorf("%w: unchanged area core", ErrAdministrationConflict)
 		}
-		if groupsChanged {
+		if deleteGroupsBeforeUpdate {
 			if err := queries.DeleteAreaGroupsForAdministration(mutationContext, areaID); err != nil {
 				return fmt.Errorf("replace area groups: %w", err)
-			}
-			groups := []int64(nil)
-			if resultingGroupCount == 1 {
-				groups = []int64{input.InitialGroupID}
-			}
-			if err := replaceAreaGroups(mutationContext, queries, areaID, actor.UserID, groups, administrationTime(observedAt)); err != nil {
-				return err
 			}
 		}
 		previousJSON, resultingJSON, err := boundedAreaAuditStates(previous, resulting)
 		if err != nil {
 			return err
+		}
+		if addInitialGroupAfterUpdate {
+			if err := replaceAreaGroups(mutationContext, queries, areaID, actor.UserID, []int64{input.InitialGroupID}, administrationTime(observedAt)); err != nil {
+				return err
+			}
 		}
 		changed, err := queries.UpdateAdministrationAreaAndAudit(mutationContext, db.UpdateAdministrationAreaAndAuditParams{Name: input.Name, Description: input.Description, DisplayOrder: input.DisplayOrder, Visibility: string(input.Visibility), PostingMode: string(input.PostingMode), ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AreaID: areaID, ExpectedRevision: input.Revision, Reason: administrationReason(input.Reason), PreviousState: previousJSON, ResultingState: resultingJSON, RequestID: requestID})
 		if errors.Is(err, pgx.ErrNoRows) {
