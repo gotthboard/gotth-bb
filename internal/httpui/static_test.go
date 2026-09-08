@@ -17,7 +17,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
 	const previousStylesheetSHA256 = "3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251"
-		if want := "app-" + previousStylesheetSHA256 + ".css"; previousAppStylesheetFilename != want {
+	if want := "app-" + previousStylesheetSHA256 + ".css"; previousAppStylesheetFilename != want {
 		t.Fatalf("previous stylesheet filename = %q, want content-addressed %q", previousAppStylesheetFilename, want)
 	}
 	const legacyStylesheetSHA256 = "3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa"
