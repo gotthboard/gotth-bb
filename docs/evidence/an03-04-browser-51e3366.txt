@@ -1,0 +1,17 @@
+=== RUN   TestDiscoveryBrowserThroughCaddy
+    discovery_browser_integration_test.go:141: browser-through-Caddy admitted: caddy=v2.11.4 chromium=Chromium 151.0.7922.71 Arch Linux bytes=6884
+--- PASS: TestDiscoveryBrowserThroughCaddy (1.56s)
+=== RUN   TestUnreadControlsKeyboardAndNoScriptThroughCaddy
+    discovery_browser_integration_test.go:258: unread browser-through-Caddy admitted: caddy=v2.11.4 chromium=Chromium 151.0.7922.71 Arch Linux node=v26.7.0
+        ✔ unread controls remain keyboard operable without JavaScript (974.248864ms)
+        ℹ tests 1
+        ℹ suites 0
+        ℹ pass 1
+        ℹ fail 0
+        ℹ cancelled 0
+        ℹ skipped 0
+        ℹ todo 0
+        ℹ duration_ms 1082.51078
+--- PASS: TestUnreadControlsKeyboardAndNoScriptThroughCaddy (1.37s)
+PASS
+ok  	github.com/gotthboard/gotth-bb/internal/httpui	2.942s

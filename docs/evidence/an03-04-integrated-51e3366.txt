@@ -1,0 +1,138 @@
+AN-03-04 integrated admission summary
+=====================================
+
+Tested executable and methodology commit:
+  51e336601ff81a2a9e92e80012db4b65b82ad817
+Tested tree:
+  5549fcca5b663ce501e5c79f0e451b73bfb417ec
+Base AN-03-03 evidence commit:
+  e3f689d8d6b4f8d0cb7d8e2bbd5a1d48ad3ac8f5
+Offline bundle:
+  /tmp/gotth-bb-an03-04-51e3366.bundle
+  SHA-256 8b1ff9abaffdfaea04c5073adfd02c96d3ad63750e84b1fcde5c7a13510fa304
+
+Environment
+-----------
+
+- PostgreSQL 17.10 on x86_64-pc-linux-musl
+- Go 1.26.6 linux/amd64
+- Node.js 26.7.0
+- npm 12.0.2
+- Caddy 2.11.4
+- Chromium 151.0.7922.71
+
+Exact gates
+-----------
+
+The following commands ran from a clean detached checkout of the tested commit.
+TEST_DATABASE_URL named the disposable PostgreSQL 17.10 database.
+
+1. Million-row population, migration, plan, resource, cancellation, and
+   coexistence gate:
+
+     GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOTTH_BB_RUN_AN03_ADMISSION_EVIDENCE=1 go test -mod=readonly -tags=integration -run '^TestDiscoveryPlansOnPostgreSQL17$' -count=1 -v ./internal/store/db
+
+2. Deterministic generation and repository-wide static/unit/race/coverage gate:
+
+     test "$(node --version)" = "v26.7.0"
+     test "$(npm --version)" = "12.0.2"
+     test "$(go version)" = "go version go1.26.6 linux/amd64"
+     npm ci --ignore-scripts
+     make generate
+     git diff --exit-code
+     make verify-alpha3-evidence
+     test -z "$(gofmt -l .)"
+     go vet ./...
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+3. Full PostgreSQL integration/race/coverage gate:
+
+     GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 -race -covermode=atomic ./...
+
+4. Browser-through-Caddy and keyboard/no-script accessibility gate:
+
+     GOTTH_BB_BROWSER_CADDY=1 go test -mod=readonly -tags=integration -run '^(TestDiscoveryBrowserThroughCaddy|TestUnreadControlsKeyboardAndNoScriptThroughCaddy)$' -count=1 -v ./internal/httpui
+
+5. Reproducible Linux/amd64 release package gate:
+
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 --commit 51e336601ff81a2a9e92e80012db4b65b82ad817 --goos linux --goarch amd64 --output /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 --commit 51e336601ff81a2a9e92e80012db4b65b82ad817 --goos linux --goarch amd64 --output /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b
+     cmp /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+     cmp /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/SHA256SUMS /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/SHA256SUMS
+
+6. Repository custody:
+
+     git diff --check
+     git fsck --no-dangling
+     test -z "$(git status --short)"
+
+Results
+-------
+
+- All gates passed on the exact tested commit and tree.
+- The admission corpus contained 100,000 ordinary topics, 1,000,000 ordinary
+  posts, and one additional 250,001-node depth-32 topic.
+- Visibility distribution was public/authenticated/groups =
+  33,333/33,334/33,333. The corpus also contained 990 hidden topics, 99
+  deleted topics, 1,978 deleted posts, 991 redacted posts, 100 rare topics,
+  1,003 rare posts, and 10,000 distinct activity timestamps.
+- Actor exclusion was explicit: topic 3 contained only ten posts by the reader;
+  topic 6 contained one newest post by the reader and nine older posts by other
+  users.
+- Migration 000009 completed in 727.168454ms. The expected ShareLock wait was
+  observed. Existing topic-read markers remained exactly 50,000; no marker was
+  fabricated by migration or read-only paths.
+- Custom and generic plan modes passed structural checks for search, recent
+  activity, board/area unread models, mark-read, and first-unread. The
+  first-unread checks prove the authorized-topic and topic-state stages, the
+  actor-excluding visible-post target lookup, the 250,001-node bound, the
+  group-authorization SubPlan, and the required unread/thread-order indexes.
+- Coexistence ran search, activity, ordinary read, publication, first-unread,
+  and mark-read on independent connections. All completed, cancellation passed,
+  and the connection count returned from one to one.
+- Completed resource snapshot: database 794,572,467 bytes; topics 49,192,960
+  bytes; posts 730,071,040 bytes; PostgreSQL temp bytes 3,193,085,787; Go heap
+  3,269,536 bytes; Go total allocation 22,469,840 bytes; Go sys 26,638,600
+  bytes; process RSS 24,052 KiB.
+- Exact board aggregates can spill to temporary storage, and EXPLAIN ANALYZE
+  for the group/custom case exceeded five seconds. This is an explicit
+  population-dependent cost, not a universal latency promise. Application
+  contexts retain bounded cancellation.
+- Repository-wide unit/race/coverage and full PostgreSQL integration/race
+  passed. Relevant integration coverage included internal/forum 95.0%,
+  internal/store 97.1%, and migration/readiness paths 100.0%.
+- Both browser tests passed through Caddy. Unread controls remained keyboard
+  operable without JavaScript.
+- Two Linux/amd64 archives were byte-identical:
+  SHA-256 1f5da65de4516ff3b6e1951e35c280913a4467c29ad067bb0fd376a8eb125250
+  The two SHA256SUMS files were byte-identical:
+  SHA-256 4b43f744287870ca3e02b20931b0f10a0b480dd5d89d94b3af9d6d3e5a9a4e75
+
+Retained transcripts
+--------------------
+
+- an03-04-admission-51e3366.txt
+  SHA-256 76c6416b064b85c0677c855765b8215b5af771d9b1861c7b3a07f76b05f8e3fc
+- an03-04-verify-51e3366.txt
+  SHA-256 24242ac9facf418635bb82fa9e91949256ff203e3d217ca7ed6048ce82f429f1
+- an03-04-integration-race-51e3366.txt
+  SHA-256 a72b7c722eef9faa8313a38c2b8db958c7a68f293d63fe1c6d36313be3c36151
+- an03-04-browser-51e3366.txt
+  SHA-256 e5cb74832a593c07a7dafb5906fd2a33b00b20ad2f01e895da36978e38331f4d
+- an03-04-release-51e3366.txt
+  SHA-256 a16947c07eb5fe7007c03f2e9b5df39583198b27959c42424731c7be1d7c7283
+
+Review history and boundary
+---------------------------
+
+The first methodology candidate was rejected because it lacked explicit
+own-post corpus cases, used a wide-but-shallow thread, and did not exercise all
+required operations concurrently. Those defects were repaired before the full
+gate. The first full run then rejected a test assertion that required
+first-unread to return a target even when the preceding plan exercise and the
+concurrent mark-read had coherently advanced the marker. The assertion was
+narrowed to accept only the two valid atomic outcomes: a coherent target or a
+coherent no-target sentinel. The entire exact-candidate gate was rerun.
+
+This evidence admits AN-03-04 only. It does not authorize or record AN-04
+implementation, a tag, a release, or a deployment.

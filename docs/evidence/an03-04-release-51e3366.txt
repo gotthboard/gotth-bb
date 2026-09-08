@@ -1,0 +1,6 @@
+release artifact=/tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz sha256=1f5da65de4516ff3b6e1951e35c280913a4467c29ad067bb0fd376a8eb125250 checksums=/tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/SHA256SUMS
+release artifact=/tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz sha256=1f5da65de4516ff3b6e1951e35c280913a4467c29ad067bb0fd376a8eb125250 checksums=/tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/SHA256SUMS
+1f5da65de4516ff3b6e1951e35c280913a4467c29ad067bb0fd376a8eb125250  /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+1f5da65de4516ff3b6e1951e35c280913a4467c29ad067bb0fd376a8eb125250  /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+4b43f744287870ca3e02b20931b0f10a0b480dd5d89d94b3af9d6d3e5a9a4e75  /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-a/SHA256SUMS
+4b43f744287870ca3e02b20931b0f10a0b480dd5d89d94b3af9d6d3e5a9a4e75  /tmp/gotth-bb-an03-03-a458ea6.T9OKEB/release-51e3366-b/SHA256SUMS
