@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Admit bounded AN-05 basic-abuse-control contract
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- immutable rate and blocked-destination configuration boundary
+- bounded process-local client request windows and trusted Caddy identity
+- migration 000011 constant-size transactional publication counters
+- shared GFM destination policy, progressive rejection UI, observability, and
+  serial AN-05-01 through AN-05-04 plan/evidence gates
+
+Explanation:
+
+Close MOD-005/MOD-006 with mechanisms that match the version 1.0 topology.
+Request admission is explicitly process-local and bounded; publication limits
+are durable account-row state committed atomically with the post; domain and
+exact-URL policy visits resolved destinations in the same GFM tree that is
+rendered. The contract records fixed-window burst/restart limitations instead
+of pretending one process is a distributed limiter.
+
+Verification:
+
+- cold judge loop with two fresh CLEAN reviews required on one exact contract
+  commit/tree
+- implementation units require strict proxy/header/config/file tests,
+  PostgreSQL 17 migration/concurrency evidence, preview/mutation parity,
+  Caddy/Chromium accessibility, resource bounds, and log-redaction proof
+- integrated admission requires deterministic generation, repository
+  integrity, and reproducible artifacts before guarded PR delivery
+
+Risks / non-goals:
+
+- request windows reset on process restart and are not shared across replicas
+- fixed publication windows may admit twice the configured count across an
+  adjacent-window boundary
+- no CAPTCHA, reputation/DNS service, redirect fetch, worker, distributed
+  limiter, tag, release, or deployment is introduced at contract admission
+
 ### 2026-09-08 — Add AN-04 site presentation and settings boundary
 
 Commit: current commit; hash assigned by Git after commit

@@ -573,7 +573,66 @@ identity provider or a general analytics system:
    impersonation, bulk administration, external analytics, new service,
    background worker, deployment authority, or retention policy.
 
-## 13. Stable 1.0 acceptance boundary
+## 13. AN-05 acceptance boundary
+
+AN-05 adds basic abuse controls without inventing a distributed policy service
+for the version 1.0 single-process deployment:
+
+1. Every non-health, non-static HTTP request is charged before authentication,
+   body parsing, or PostgreSQL work to one bounded process-local client window.
+   The admitted production profile permits 300 requests per 60 seconds and
+   retains at most 4,096 client windows. Caddy overwrites, rather than appends,
+   the one client-address header delivered over the loopback-only upstream;
+   malformed or ambiguous identity fails closed. Client addresses never enter
+   application logs, PostgreSQL, retained evidence, or response bodies.
+2. The request limiter is deliberately one-instance state. Restarting the Go
+   process clears its windows, and multiple application processes would each
+   enforce an independent budget. That limitation is admissible only while the
+   version 1.0 deployment remains one Caddy route to one Go process. Health and
+   content-addressed static assets remain available during limiter saturation.
+3. Successful topic and reply creation share one durable per-account,
+   account-anchored fixed window. The admitted profile permits 10 publications
+   per 10 minutes; accounts younger than 24 hours permit 3 per 10 minutes.
+   Every actor, including staff, is subject to the limit. Edits and previews do
+   not spend publication capacity because they create no post, but blocked-link
+   policy still applies to both.
+4. Publication accounting is constant-size state on the local account row and
+   commits in the same PostgreSQL transaction as the topic or reply. Concurrent
+   requests serialize on that account, and validation, authorization, database,
+   cancellation, or commit failure cannot consume capacity without the matching
+   publication. A restart does not reset this durable window. The fixed-window
+   edge can admit up to twice the configured count across two adjacent windows;
+   version 1.0 does not pretend this is a rolling-window or token-bucket limit.
+5. Operators provide one bounded, read-only startup rules file containing
+   canonical blocked domains and canonical exact HTTP(S) URLs. A domain rule
+   matches that IDNA-normalized host and its subdomains. An exact URL rule uses
+   normalized scheme, host, default port, path, and query while ignoring a
+   fragment. The policy checks resolved Markdown links, images, and automatic
+   links using the admitted GFM parse; code spans/blocks and ordinary text do
+   not become false positives. Relative links remain outside external-link
+   policy.
+6. Topic, reply, edit, and their preview paths use the same immutable link
+   policy and fail before persistence when any destination is blocked. Existing
+   stored content is not retroactively rewritten or hidden. Version 1.0 does
+   not fetch destinations, follow redirects, run reputation services, inspect
+   DNS answers, or claim that exact-URL rules defeat arbitrary URL shorteners.
+7. Rate rejection returns `429` with an integer `Retry-After`; inability to
+   admit a new client window returns bounded `503` with `Retry-After: 1`; a
+   blocked destination returns the existing field-safe `422` presentation.
+   Full-page and HTMX responses preserve the submitted draft where it has
+   already been safely parsed, reveal no key, address, account age, counter, or
+   matched rule, and remain useful with JavaScript absent.
+8. Operators can count fixed rejection classes by bounded structured events and
+   the existing route/status access record. Logs and metric labels contain no
+   client address, user identifier, raw URL, query, Markdown, destination,
+   rule, or quota key. Configuration is validated once at startup; changing a
+   limit or rules file requires an intentional restart.
+
+AN-05 adds no CAPTCHA, reputation network, DNS block service, content scanning
+worker, automatic moderation action, account deletion, global IP identity,
+horizontal rate-limit coordination, release authority, or deployment.
+
+## 14. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -587,7 +646,7 @@ identity provider or a general analytics system:
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 14. Constraints and assumptions
+## 15. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -598,7 +657,7 @@ identity provider or a general analytics system:
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 15. Open owner decisions
+## 16. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:
@@ -608,9 +667,11 @@ implementation begins:
 3. Maximum delay between an Authentik disable and forum access revocation.
 4. Whether public areas are enabled at first deployment or merely supported.
 5. Content retention duration for soft-deleted posts and audit events.
-6. Initial rate-limit values and new-account period.
+The initial rate-limit profile and new-account period are resolved by the AN-05
+acceptance boundary. They remain operator configuration, not hard-coded product
+law.
 
-## 16. Change control
+## 17. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update

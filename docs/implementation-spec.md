@@ -116,6 +116,14 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
 | `ACTIVITY_CURSOR_KEYRING_FILE` | Yes after AN-02 | Absolute path to the read-only cursor-keyring secret |
+| `ABUSE_RULES_FILE` | Yes after AN-05 | Absolute path to the bounded read-only blocked-destination rules |
+| `REQUEST_RATE_LIMIT` | Yes after AN-05 | Positive requests allowed per client window; initial value `300` |
+| `REQUEST_RATE_WINDOW` | Yes after AN-05 | Process-local request window; initial value `60s` |
+| `REQUEST_RATE_CLIENT_CAPACITY` | Yes after AN-05 | Maximum retained client windows; initial value `4096` |
+| `PUBLISH_RATE_LIMIT` | Yes after AN-05 | Successful topics/replies per established-account window; initial value `10` |
+| `NEW_ACCOUNT_PUBLISH_RATE_LIMIT` | Yes after AN-05 | Successful topics/replies per new-account window; initial value `3` |
+| `PUBLISH_RATE_WINDOW` | Yes after AN-05 | Durable account publication window; initial value `10m` |
+| `NEW_ACCOUNT_PERIOD` | Yes after AN-05 | Age receiving the stricter publication limit; initial value `24h` |
 | `BOOTSTRAP_ADMIN_SUBJECT` | Yes | Exact verified OIDC subject allowed to claim first-run administration |
 | `REGISTRATION_URL` | Yes | Exact same-origin Authentik enrollment-flow URL |
 | `REGISTRATION_ENABLED` | Yes | Exact `true`/`false` operational gate for the public registration route and link |
@@ -184,6 +192,17 @@ Rules:
   at most 1,025 bytes to distinguish overflow, requires EOF, parses into owned
   immutable memory, and closes the descriptor. It never validates one pathname
   object and later reopens another.
+- `ABUSE_RULES_FILE` follows the same absolute-clean-path, `O_CLOEXEC|O_NOFOLLOW`,
+  opened-regular-file, bounded-read, EOF, ownership, and close discipline. Its
+  maximum is 65,536 bytes. It is not secret, but its path and contents are not
+  emitted through logs, diagnostics, health, templates, or artifact metadata.
+- Rate counts use canonical unsigned decimal without signs or leading zeroes.
+  Request/publication counts are 1 through 100,000; client capacity is 1
+  through 65,536. Durations use Go syntax: request and publication windows are
+  one second through 24 hours, and the new-account period is one minute through
+  30 days. The new-account publication limit must not exceed the established
+  limit. The release profile records every exact value; none is inferred from
+  an absent environment key.
 - Database and OIDC client secrets use an unexported redacting value type with
   no general-purpose reveal method. PostgreSQL pool parsing and OIDC service
   construction receive them through narrow boundary-specific methods. The
@@ -2487,7 +2506,183 @@ CLEAN reviews. After migration 000010 commits, an artifact requiring head
 or a verified pre-000010 database restore. No application fallback drops audit,
 rules-renderer, or authorization checks to run an older binary.
 
-## 22. Definition of implementation complete
+## 22. AN-05 basic abuse controls
+
+### 22.1 Immutable configuration
+
+`config.Load` requires and validates the seven AN-05 rate settings and
+`ABUSE_RULES_FILE` before opening PostgreSQL or a listener. `AbusePolicy` owns
+plain validated values and an immutable blocked-destination matcher; it exposes
+no raw rules or mutable map. Startup accepts an exact empty rules file as no
+blocked destinations but rejects a missing file.
+
+The rules file is UTF-8 with LF line endings, no BOM, CR, NUL, controls, blank
+lines, or comments. It contains at most 256 nonempty lines and is strictly
+sorted by canonical byte value with no duplicate. Each line is one of:
+
+```text
+domain=example.org
+url=https://example.org/exact/path?key=value
+```
+
+Domain input is converted through the `golang.org/x/net/idna` lookup profile,
+lowercased, stripped of no implicit trailing dot, and then required to satisfy
+DNS label/length rules. IP literals are rejected as domain rules. URLs require
+lowercase `http` or `https`, no userinfo, an IDNA-valid host, and no opaque
+form. Default `:80`/`:443` is removed, empty path becomes `/`, dot segments are
+cleaned without decoding escaped separators, fragment is discarded, and raw
+query is retained. Rules with a nondefault numeric port remain port-specific.
+Any input that does not already equal the emitted canonical rule fails startup;
+the loader does not silently repair operator input.
+
+### 22.2 Client identity and request limiter
+
+Production Caddy uses:
+
+```caddyfile
+reverse_proxy 127.0.0.1:18082 {
+    header_up X-Forwarded-For {remote_host}
+    header_up -Forwarded
+    header_up -X-Real-IP
+}
+```
+
+The service parses `RemoteAddr` with `net.SplitHostPort` and `netip.ParseAddr`,
+rejecting zones and unmapping IPv4-in-IPv6. For a loopback peer, every charged
+production request requires exactly one canonical `X-Forwarded-For` address
+with no comma, whitespace, port, or zone. For a non-loopback peer in test or
+development, the forwarded header must be absent and the peer address is the
+client. Malformed or contradictory identity returns fixed `400` before any
+downstream call. Loopback health checks and exact content-addressed static
+`GET`/`HEAD` routes are exempt and do not require the header.
+
+`RequestLimiter` is constructed with one unpredictable 256-bit process key,
+one mutex, one pre-sized map, the configured capacity, count, window, and
+clock. The map key is a keyed 256-bit digest of the canonical 4- or 16-byte
+address; no raw address or string is retained. A collision conservatively
+shares one window rather than allocating a disambiguation copy of the address;
+tests inject that otherwise infeasible condition. Each entry stores only window
+start and count. On a charged request the limiter removes expired entries only
+when capacity pressure requires it, then either admits and increments the one
+entry, returns rate rejection with the exact remaining whole-second ceiling,
+or returns capacity rejection with one-second retry. It never exceeds the
+configured entry count and starts no goroutine or timer.
+
+The request-ID boundary remains outermost. Access logging and panic recovery
+wrap the limiter, so every rejection has one ordinary completion record and a
+request ID. Before writing an early rejection it sets only the fixed
+`request-admission` pattern, preventing an empty or raw attacker-controlled
+route label. The limiter runs before session middleware and the application
+router. Its exemption classifier is a closed method/path matcher shared with
+the static/health dispatch contract; unknown paths are charged. `429` and `503`
+set `Cache-Control: no-store` and `Retry-After` and write a fixed small body.
+The middleware does not read or close the request body.
+
+### 22.3 Migration 000011 and durable publication windows
+
+Migration 000011 is a stopped ordinary atomic migration. It adds to `users`:
+
+```sql
+publication_window_started_at timestamptz,
+publication_count integer NOT NULL DEFAULT 0
+```
+
+The migration adds and validates a finite `users.created_at` check because age
+now selects security policy. The publication check requires either `(NULL, 0)`
+or a finite non-NULL start no earlier than account creation with a count from 1
+through 100,000. Existing accounts therefore receive the
+constant-default empty tuple without rewrite. Migration validation scans the
+account relation and takes real locks; application and every writer remain
+stopped. Runtime receives column-level UPDATE on only these two new columns,
+not table-wide UPDATE. Readiness attests the columns, defaults, nullability,
+check, and exact grant delta at migration head 000011.
+
+Before its existing area/topic locks, each topic/reply transaction locks the
+current user row and returns only id, role, suspension/mute facts, `created_at`,
+and the publication tuple plus `clock_timestamp()`. The service rejects an
+invalid row, changed/suspended/muted actor, or pre-creation database time before
+revealing target policy. It chooses the strict limit when
+`database_now < created_at + NEW_ACCOUNT_PERIOD`; equality is established.
+The current window remains active while
+`database_now < window_started_at + PUBLISH_RATE_WINDOW`. An elapsed or empty
+window becomes `(database_now, 1)`; an active below-limit window increments;
+an active at-limit window returns the ceiling number of seconds to its end.
+
+Content input and blocked-destination validation happen before transaction
+begin. Inside the transaction, account revalidation precedes area/topic target
+locks; target authorization precedes the counter update; the counter update
+precedes the topic/reply insert. All changes commit or roll back together.
+`ErrPublicationRateLimited` carries only a positive bounded retry duration.
+Commit ambiguity uses the existing unknown-outcome behavior. No retry, event
+row, cleanup task, advisory lock, or process cache exists.
+
+### 22.4 Blocked-destination matcher
+
+The renderer's one internal parse helper first performs existing source
+validation, builds the admitted GFM AST, and visits every resolved link, image,
+and automatic-link destination before rendering that same tree. External
+destinations must parse as absolute HTTP(S) URLs. Their canonical comparison
+key discards userinfo, so an authored credential variant cannot evade a domain
+or exact-URL rule; the existing renderer/sanitizer remains responsible for
+whether that authored destination is presented. The canonical host is compared
+with exact and dot-boundary domain rules; the canonical URL is compared with
+exact URL rules. Relative references, anchors,
+and `mailto` destinations remain governed by the existing renderer/sanitizer
+and do not match external rules. A malformed HTTP(S)-looking destination is a
+normal Markdown validation failure, not a bypass.
+
+`RenderTopicDraft`, `RenderReplyDraft`, `CreateTopic`, `CreateReply`, and
+`EditPost` receive the immutable policy explicitly. Every call site, including
+tests, supplies either the validated runtime policy or a deliberate validated
+empty policy; there is no optional argument, package global, or compatibility
+wrapper that production can accidentally use. Preview and mutation use the
+same service function. A blocked result is typed separately for the fixed
+observer class but unwraps to field-safe Markdown validation; it retains no
+source, destination, or rule.
+
+Publication rate applies only to committed new topic/reply rows. Edit and all
+preview routes enforce the destination policy but do not call the publication
+counter. Delete, moderation, administration, OIDC, and read routes do neither.
+Existing rows are not backfilled or rescanned.
+
+### 22.5 HTTP and observability
+
+Rate-limited topic/reply submission renders the ordinary bounded form with the
+escaped submitted draft and fixed “Please wait before publishing again” text,
+status `429`, `Retry-After`, and `private, no-store`. HTMX receives the same
+main-region presentation and status; neither path redirects. A blocked
+destination uses the existing Markdown field presentation with fixed “This
+draft contains a blocked link” text and `422`. Preview uses the same result.
+No response distinguishes domain from exact-URL match.
+
+One injected `AbuseObserver` emits only the fixed class, the fixed
+`request-admission` label or matched route pattern,
+request ID, and bounded retry seconds. It is called once after terminal
+selection for a limiter, publication-rate, or blocked-destination rejection.
+The existing access logger still records method, route, status, bytes, and
+duration. Neither observer logs client identity, account identity/age, raw
+request target, query, form, Markdown, destination, rule, configured count, or
+map occupancy. Logging failure cannot change the response or database result.
+
+### 22.6 Admission and rollback
+
+AN-05 verification covers strict configuration/file/descriptor handling,
+client-header spoofing and malformed identity, bounded map saturation and
+restart reset, body non-consumption, fixed-window boundaries, concurrent
+publication serialization, new-account transition, rollback/unknown commit,
+blocked link/image/autolink/reference cases, IDNA/subdomain/port/path/query
+normalization, preview/mutation parity, role and authorization matrices,
+redacted logs, full-page/HTMX/no-JavaScript behavior, PostgreSQL 17 migration/
+grant/readiness evidence, resource bounds, Caddy/Chromium behavior,
+deterministic generation, repository integrity, and reproducible artifacts.
+
+The exact final tree retains evidence and receives two fresh independent CLEAN
+reviews. After 000011 commits, an artifact requiring head 000010 fails exact-
+head readiness. Rollback is forward repair/current artifact or a verified pre-
+000011 database restore. Running an older binary is forbidden because it would
+publish without the admitted durable counter and would fail readiness.
+
+## 23. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.N` — AN-04 contract admitted; implementation pending |
+| Current target | `1.0.0-alpha.N` — AN-05 contract admission |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -497,10 +497,40 @@ without explicit authorization.
 
 Requirements: MOD-005, MOD-006.
 
-- Request and publication rate limits.
-- New-account policy.
-- Blocked-link/domain rules.
-- Observable and bounded rejection behavior.
+AN-05 depends on admitted AN-04 commit
+`d92407a6efbd1ea0e3ad98dc22283c4d0a225170`. Its serial implementation units
+are:
+
+1. **AN-05-01 — startup policy and bounded request admission.** Add strict
+   rate/rules configuration; descriptor-safe bounded rules-file loading; the
+   canonical Caddy client-address overwrite contract; and the fixed-capacity,
+   keyed, process-local request window before authentication/body/database
+   work. Prove health/static exemptions, spoof rejection, body non-consumption,
+   capacity/restart behavior, fixed `429`/`503`, and secret/input-free logs.
+2. **AN-05-02 — transactional publication limits.** Add migration 000011's
+   constant-size account window tuple, check/grant/readiness attestation, and
+   authorization-first account lock. Make successful topic/reply creation and
+   its counter one atomic transaction; prove established/new-account windows,
+   every role, concurrency, rollback, cancellation, restart persistence, and
+   unknown commit. Edits and previews spend no publication capacity.
+3. **AN-05-03 — blocked destinations and progressive rejection UI.** Parse the
+   admitted GFM document once; apply canonical bounded domain/exact-URL rules
+   to resolved links, images, and automatic links; and wire identical policy
+   through topic/reply/edit previews and mutations. Add fixed field-safe `422`
+   and draft-preserving `429` full-page/HTMX behavior, no-JavaScript/browser-
+   through-Caddy evidence, and fixed-class observability without addresses,
+   accounts, content, URLs, or rules.
+4. **AN-05-04 — integrated admission and AN delivery.** Reproduce generated
+   state; run focused unit, PostgreSQL 17 integration/race, migration, proxy,
+   authorization, concurrency, population/resource, browser, log-redaction,
+   repository-integrity, and exact-artifact gates; retain evidence; obtain two
+   fresh CLEAN reviews on one exact final tree; then deliver AN-05 through the
+   approved PR/fast-forward/mirror workflow.
+
+The units remain in one isolated feature worktree and move serially through
+DONE/HANDOFF/review. AN-05 adds no event ledger, cleanup worker, CAPTCHA,
+external reputation or DNS service, redirect fetching, automatic moderation,
+distributed limiter, horizontal-replica claim, tag, release, or deployment.
 
 ## 6. Milestone `1.0.0-beta.1`
 

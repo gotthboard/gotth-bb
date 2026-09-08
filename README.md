@@ -19,6 +19,12 @@ Authentik as the identity provider.
 forum presentation and parent-addressed threaded replies while preserving the
 server-rendered and HTMX fallback contracts.
 
+Unreleased development through AN-04 is merged. AN-05 is the remaining
+version 1.0 feature boundary: bounded request/publication limits and basic
+blocked-destination policy. Its admitted design is deliberately single-process
+at the HTTP edge and PostgreSQL-transactional for publication; it does not
+claim distributed rate limiting.
+
 Project documentation lives in [`docs/`](docs/README.md).
 
 ## Development

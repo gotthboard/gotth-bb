@@ -177,7 +177,11 @@ The intended route shape is:
 
 ```caddyfile
 bb.alhstudios.com {
-    reverse_proxy 127.0.0.1:18082
+    reverse_proxy 127.0.0.1:18082 {
+        header_up X-Forwarded-For {remote_host}
+        header_up -Forwarded
+        header_up -X-Real-IP
+    }
 }
 ```
 
@@ -191,6 +195,8 @@ blindly replacing the site block. Before reload:
 5. Capture the prior configuration for rollback.
 6. Reload rather than terminate active traffic.
 7. Verify `/`, assets, health routing policy, and an unknown path.
+8. Inspect the adapted configuration and prove a caller-supplied forwarding
+   header is overwritten, not appended or trusted.
 
 The application uses configured `PUBLIC_BASE_URL` and `BASE_PATH`; it does not
 trust incoming host or prefix headers to generate callbacks or links.
@@ -251,6 +257,11 @@ notes, screenshots, or repository files.
   It preserves the pre-AN-04 baseline, adds no settings insert/delete/key
   update, adds no mapping update, and does not grant deletion of users, groups,
   areas, settings, or audit rows.
+- Migration 000011 adds only the consistent publication-window tuple to
+  `users`. Its constant count default avoids rewriting existing rows, while the
+  check validation still scans and locks the relation. The runtime-grant delta
+  adds UPDATE only on `publication_window_started_at` and `publication_count`;
+  it grants no table-wide account mutation.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -315,8 +326,24 @@ Secret handling requirements:
 - The cursor keyring is a separate read-only Compose secret. Only its non-secret
   absolute mount path is configured as `ACTIVITY_CURSOR_KEYRING_FILE`; key
   bytes are never exported by the entrypoint.
+- AN-05's non-secret abuse-rules file is a separate root-owned, read-only bind
+  mounted at `/run/config/gotth-bb-abuse-rules`; only that container path is
+  configured as `ABUSE_RULES_FILE`. Record its SHA-256 and the seven exact rate
+  values without copying rule contents into deployment logs or evidence.
 
-### 8.1 AN-02 cursor-key rotation
+### 8.1 AN-05 abuse-policy update
+
+Prepare a complete canonical rules file offline, validate it with the exact
+release binary, and atomically replace the host file without changing its
+owner or mode. Update rate values only in the root-owned environment file.
+Force-recreate the one application container so both immutable settings and
+the new file inode take effect together; do not restart PostgreSQL. Verify the
+effective fixed profile through disposable requests and record file digest,
+values, application identity, and result. A malformed file or setting must
+leave the replacement process unable to start while the prior container and
+file remain the rollback pair. Do not edit a mounted inode in place.
+
+### 8.2 AN-02 cursor-key rotation
 
 The cursor keyring uses the strict schema and file validation in the
 implementation specification. Secret bytes never enter repository files,
@@ -435,6 +462,12 @@ required sequence is:
    explicit forbidden operations. A failed transaction leaves the ledger at
    000009; after an unknown outcome, inspect the ledger, singleton, revisions,
    constraints, and grants before any retry.
+   AN-05 migration 000011 is another stopped ordinary migration. Record the
+   user-relation lock and validation scan for the constant-size publication
+   tuple, then attest its exact defaults/check and the narrow column-UPDATE
+   grant. Existing rows must remain `(NULL, 0)`. A failed transaction leaves
+   the ledger at 000010; after an unknown outcome, inspect ledger, columns,
+   constraint, tuples, and grants before retrying.
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
@@ -444,7 +477,8 @@ required sequence is:
    `GRANT` artifact is idempotent. After 000008 it also supplies the exact
    read-only `search_projection_state` grant. After 000010 it supplies the
    exact AN-04 settings/group/membership table-column and group-sequence delta
-   without replacing the pre-AN-04 runtime baseline. Do not transfer table
+   without replacing the pre-AN-04 runtime baseline. After 000011 it supplies
+   UPDATE only on the two publication-window columns. Do not transfer table
    ownership or substitute table-wide mutation privileges.
 11. Build the application image from the verified archive and verify labels and
    database-free binary identities.
@@ -488,6 +522,12 @@ Every deployed prerelease verifies:
   area, and reconcile dashboard counts. Confirm every mutation audit and target
   session revocation without using production identities or content as test
   fixtures.
+- Once AN-05 is present, verify Caddy overwrites client identity; health/static
+  exemptions; a disposable client's bounded request rejection; established and
+  new-account publication rejection/expiry; allowed and blocked domain/exact-
+  URL drafts through preview and mutation; fixed `Retry-After`; and absence of
+  client/account/content/rule values from application logs. Restore the exact
+  configured rules file and rate profile after the smoke test.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
 
@@ -520,6 +560,10 @@ Decision order after failure:
    and administration revisions. Use the current artifact/forward repair or
    restore the verified pre-000010 database backup; an older artifact must not
    mutate the expanded administration schema.
+   AN-05 migration 000011 changes exact-head readiness and makes publication
+   counters part of every topic/reply commit. Use current artifact/forward
+   repair or restore the verified pre-000011 database backup; an older artifact
+   must not publish without the counter.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the
@@ -576,6 +620,11 @@ A backup file's existence proves nothing until restoration is tested.
   diagnostics may receive bound search values. Access and retention for those
   separate systems must be set accordingly; application redaction does not
   make a broader claim.
+- AN-05 emits only `request_rate`, `request_capacity`, `publication_rate`, and
+  `blocked_destination` rejection classes with route, request ID, status, and
+  bounded retry seconds where applicable. Client address/digest, account
+  identity/age, raw target/query/body, Markdown, destination, matched rule,
+  configured count, and limiter occupancy are forbidden.
 
 ### Metrics
 

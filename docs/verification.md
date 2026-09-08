@@ -1032,3 +1032,116 @@ redaction, repository-integrity, and release-artifact reproducibility gates.
 Evidence records exact commit/tree, commands, environment, versions, checksums,
 results, and explicit gaps. Two fresh independent cold reviews must both be
 CLEAN on the same exact state before handoff.
+
+## 22. AN-05 basic-abuse-control evidence contract
+
+AN-05 evidence separates process-local request admission, transactional
+publication accounting, and deterministic destination policy. A passing status
+alone proves none of those mechanisms.
+
+### 22.1 Configuration, proxy, and request admission
+
+Table-driven tests cover every required AN-05 key; missing versus explicit
+empty rules; canonical decimal and duration boundaries; cross-field new versus
+established counts; file path length/clean/root/NUL cases; symlink, directory,
+device, replacement-race, short-read, overflow, invalid UTF-8/line ending/
+control, unsorted, duplicate, and 0/1/256/257-rule files. Rules cover DNS label,
+IDNA, IPv4/IPv6-literal rejection, URL scheme/userinfo/port/path/query/fragment,
+and already-canonical requirements. Failure messages and whole-config
+formatting must contain no rules, paths, URLs, secrets, or unrelated values.
+
+Client tests cover IPv4, IPv6, mapped IPv4, zones, malformed/missing/multiple
+ports, loopback versus non-loopback peers, absent/single/duplicate/comma/
+whitespace/port-bearing forwarded values, and spoof attempts. Production
+loopback requires exactly one overwritten address for charged requests;
+development/test direct requests reject forwarded identity. Caddy evidence
+inspects the adapted configuration and proves an attacker-supplied forwarding
+header is overwritten before the application sees it.
+
+With a deterministic clock and digest source, limiter tests cover counts
+0/1/N/N+1, exact expiry equality, negative clock movement, concurrent calls,
+4,095/4,096/4,097 clients, lazy expired-entry reclamation, full-live capacity,
+restart reset, digest collision handling, and allocation/map cardinality. Every
+charged rejection occurs before session, body read/close, router, or database
+work. Exact health and content-addressed static GET/HEAD requests remain exempt;
+near-miss paths, unsafe static methods, and unknown paths are charged. Race and
+high-cardinality tests prove no goroutine/timer leak and no growth beyond the
+configured capacity.
+
+### 22.2 Publication transaction matrix
+
+Fresh and upgrade PostgreSQL 17 tests cover migration head 000011, unchanged
+existing account tuples, both tuple shapes, nonfinite start, negative/zero/
+overflow count, exact columns/defaults/check, lock/scan behavior, transaction
+rollback, unknown migration outcome, readiness, idempotent rerun, and exact
+restricted-role grant delta. Runtime can select and update only the two
+publication columns; table-wide account update, created-at change, insert,
+delete, and unrelated columns remain denied.
+
+Service tests cover member/moderator/administrator accounts, age immediately
+below/equal/above the new-account boundary, empty/active/expired window,
+counts below/equal/above configured limit, database clock before account
+creation, malformed stored tuples, suspension/mute/role drift, missing actor,
+read-only/archived/restricted/locked/missing targets, validation failure,
+renderer/policy failure, insert/update/audit-independent failure,
+cancellation, lock timeout, and begin/commit failure. Before/after inspection
+proves denied or failed publication has neither post/topic/counter effects;
+success has exactly one counter increment and one publication in one commit.
+
+At least `2N+2` simultaneous requests for one account at empty and near-limit
+state prove exactly the configured successes and monotonic count under both
+topic and reply mixes. Separate accounts do not serialize on a global lock.
+Process restart retains PostgreSQL state. Commit-unknown evidence permits only
+the two atomic outcomes and performs no automatic retry. A configuration
+change on restart applies the new limit to the existing active count without
+rewriting history. Edge evidence explicitly demonstrates the admitted possible
+two-window burst rather than claiming a rolling limit.
+
+### 22.3 Destination and HTTP matrix
+
+Destination tests cover inline/reference/collapsed-reference links, images,
+GFM automatic URLs, repeated destinations, relative links, anchors, mailto,
+code spans, fenced code, escaped text, raw HTML, Unicode/IDNA host forms, exact
+host, subdomain, sibling suffix, trailing dot, default/nondefault ports, empty/
+dot/escaped paths, query order/encoding, fragments, userinfo-bearing authored
+links, malformed HTTP(S)-looking input, and 65,536-byte Markdown. Both domain
+and exact-URL rules are exercised at 0/1/256 entries. Assertions prove the same
+AST is scanned and rendered, the first rejection retains no destination/rule,
+and no network or DNS call occurs.
+
+Topic/reply/edit preview and mutation tests prove identical allowed/blocked
+results and one explicit policy at every call site. Preview/edit never touch
+publication counters. Topic/reply validation or blocked policy happens before
+transaction begin; current account and target authorization happen before
+counter mutation. Existing stored blocked content remains readable and is not
+rewritten. No actor role bypasses policy.
+
+HTTP tests cover ordinary and HTMX `429` with positive integer `Retry-After`,
+draft preservation after safe parsing, fixed `422` blocked-draft presentation,
+fixed capacity `503`, `private, no-store`, session/revalidation/CSRF/path/query/
+body ordering, and ordinary HTML with JavaScript disabled. Logs are searched
+for the client address/digest, account identifiers and age, request target,
+query, submitted unique sentinels, URL/domain/rule, configured counts, map
+occupancy, cookies, and secrets; none may occur. Exact fixed observer class,
+fixed `request-admission` or matched route, request ID, status, and retry are
+present once.
+
+### 22.4 Integrated admission
+
+The representative gate retains existing 25,000-account, 100,000-topic, and
+1,000,000-post evidence and adds 4,096 concurrent/distinct request clients and
+publication contention across at least 1,000 accounts. Record elapsed time,
+allocations, heap/RSS, map cardinality, database locks/connections, cancellation,
+statement/lock bounds, and coexistence with authentication, reads, discovery,
+unread, moderation, and administration. Browser-through-Caddy evidence covers
+overwritten client identity plus keyboard/no-JavaScript blocked and rate-limit
+errors at empty and nonempty base paths.
+
+The exact final candidate passes deterministic SQL/Templ/static generation,
+gofmt, vet, repository-wide unit race/coverage, PostgreSQL 17 integration/race,
+migration/grant/readiness, proxy/header, concurrency, population/resource,
+HTTP/cache/log-redaction, Caddy/Chromium, repository-integrity, and two byte-
+identical release-package gates. Evidence records exact commit/tree, commands,
+tool/database/browser/proxy versions, checksums, results, and gaps. Two fresh
+independent cold reviews must both be CLEAN on that exact state before PR and
+guarded fast-forward delivery.

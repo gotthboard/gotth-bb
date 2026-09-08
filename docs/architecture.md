@@ -56,7 +56,8 @@ Caddy shall:
 
 - Match the dedicated `bb.alhstudios.com` site.
 - Proxy the request path unchanged to the application on loopback.
-- Set normal reverse-proxy forwarding headers.
+- Overwrite `X-Forwarded-For` with the immediate canonical client address and
+  remove alternative `Forwarded`/`X-Real-IP` identities before proxying.
 - Expose only intended application routes.
 - Apply sensible request-body and timeout limits at the edge.
 
@@ -342,8 +343,8 @@ identity access, or content history.
 - `report_notes`: append-only staff notes attached to one report.
 - `user_warnings`: append-only warnings attached to one local account.
 - `moderation_actions`: append-only audit record.
-- `rate_limit_events` or equivalent bounded counters when in-process limiting
-  is insufficient.
+- constant-size publication-window state on `users`; version 1.0 stores no
+  rate-limit event ledger.
 
 ### 8.2 Identity constraints
 
@@ -696,6 +697,76 @@ does not remove a control. The ordinary shell exposes one base-path-built public
 community-rules link; administrators additionally receive one administration
 entry rather than a row of unrelated privileged links.
 
+### 10.4 Basic abuse controls
+
+AN-05 uses two different mechanisms because request admission and durable
+publication are different problems. A bounded process-local fixed-window map
+rejects abusive HTTP clients before authentication, body parsing, or database
+checkout. PostgreSQL account-row state serializes successful topic/reply
+creation. Combining both behind a generic limiter interface would hide their
+different durability, identity, and failure contracts.
+
+The production application accepts client identity only across its existing
+loopback Caddy boundary. Caddy explicitly overwrites `X-Forwarded-For` with the
+canonical immediate client address. The application requires exactly one
+canonical address from a loopback peer, rejects forwarded identity from a
+non-loopback peer, and never falls back from a malformed trusted header to the
+proxy address. Health and content-addressed static requests are exempt; every
+other method and route, including an unknown route, spends one request unit.
+The limiter retains no raw address: an unpredictable per-process keyed digest
+indexes at most 4,096 windows. Expired entries are removed lazily; if capacity
+is full and no expired entry exists, an unseen client receives bounded `503`
+instead of causing allocation growth or evicting a currently enforced window.
+
+Request windows intentionally disappear on process restart and are not shared
+between processes. This is an explicit single-instance version 1.0 tradeoff,
+not accidental durability. The application configuration and release checks
+therefore reject any claim that multiple app replicas provide one global
+request budget. A later multi-instance design requires a new contract rather
+than silently weakening this one.
+
+Migration 000011 adds only two constant-size publication-window columns to
+`users`: a nullable finite start and a nonnegative count with an exact
+null/zero consistency check; it also makes account creation time finite because
+account age is now security policy. A topic or reply transaction locks and revalidates
+the current account before area/topic authorization, reads database time,
+selects the configured established or new-account limit from immutable startup
+policy, and either rejects or updates the counter in the same commit as the
+post. One account can therefore block only its own concurrent publication.
+Edits and previews do not consume capacity. Every role is limited, and a role
+change does not manufacture a bypass.
+
+The fixed window is anchored to the account's first committed publication in
+that window. An elapsed window resets on the next successful publication. The
+counter update occurs only after all authorization and content checks pass and
+before the content insert; transaction rollback removes it. Commit ambiguity
+leaves both publication and counter unknown and is never retried automatically.
+The mechanism stores no event history and needs no cleanup job.
+
+Blocked-link policy is one immutable startup value loaded from a bounded,
+descriptor-validated regular file. Lines are sorted, unique canonical
+`domain=` or `url=` rules. Domain rules use IDNA ASCII and match an exact host
+or dot-delimited subdomain. Exact URL rules admit only HTTP(S), prohibit
+credentials in rules, canonicalize host and default port, treat an empty path as `/`,
+retain escaped path/query, and ignore fragments. The configured set is limited
+to 256 rules and 64 KiB; empty policy is explicit rather than missing.
+
+The GFM renderer parses valid Markdown once, visits resolved link, image, and
+automatic-link destinations, applies the immutable policy, and renders the
+same admitted AST only if it passes. This avoids a parser disagreement between
+preview and persistence. Code and non-link text are not searched for URL-like
+substrings. Topic, reply, edit, and preview all cross that same function.
+Policy rejection returns no matched destination or rule, and existing stored
+content is not rescanned during reads or migration.
+
+Rejections are observable through existing bounded route/status access events
+plus one fixed abuse class: `request_rate`, `request_capacity`,
+`publication_rate`, or `blocked_destination`. Early request admission uses the
+fixed route label `request-admission`; routed rejections use the matched route
+pattern. The event contains request ID and retry seconds where applicable, but no address, digest,
+account, age, counter, content, URL, or rule. There is no attacker-controlled
+metric label and no unbounded in-process rejection history.
+
 ## 11. Rendering and client behavior
 
 Templ renders semantic HTML. HTMX swaps documented fragments and sends the same
@@ -796,7 +867,9 @@ and its descendants explicitly and may not orphan a tree.
 Version 1.0 runs as:
 
 - One Caddy instance serving `bb.alhstudios.com` and proxying it on loopback.
-- One or more identical immutable Go service containers; alpha uses one.
+- One immutable Go service container for version 1.0. AN-05 request limiting
+  is process-local, so adding replicas requires a newly admitted coordination
+  contract rather than a topology-only change.
 - One PostgreSQL container with its durable data on an external host bind
   mount. Application replacement never replaces or copies the database data.
 - A migration command using the same release artifact as the service.
