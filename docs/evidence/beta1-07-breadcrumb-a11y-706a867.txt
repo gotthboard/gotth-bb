@@ -1,0 +1,126 @@
+Beta.1 B1-07 breadcrumb link-distinction evidence
+=================================================
+
+Candidate
+---------
+
+- executable and test-methodology commit:
+  706a867e93b920c06fe9e0b87b06a0705baf4eb2
+- tree: 34681e0ffd8a1b36bb743448d51c861ccc95c9c8
+- branch: feature/beta-1-breadcrumb-a11y-repair
+- parent/superseded deployed candidate:
+  e66324e9e5c5d656807da5e9039c1ff4b55626fa (1.0.0-beta.1.1)
+- final browser-regression blob:
+  dbf54eb7ae6eec9d7421ef3d4924a8517b2c90a8
+- current stylesheet SHA-256/content address:
+  d8e495881d927546f70f69915c1807efc8fb02c2bc22c9d2a98e87736a04e210
+- retained Beta.1.1 stylesheet SHA-256/content address:
+  3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251
+- retained Beta.1 stylesheet SHA-256/content address:
+  3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa
+
+Defect and correction
+---------------------
+
+The live Beta.1.1 accessibility gate found Axe rule `link-in-text-block` with
+serious impact on the populated Activity breadcrumb. Its Board index link was
+distinguished from adjacent breadcrumb text only by color. This violates the
+admitted Beta accessibility matrix; it is not recorded as an acceptable Axe
+incomplete.
+
+The correction makes breadcrumb links persistently underlined. It does not
+change their targets, HTMX behavior, authorization, data, or navigation
+semantics. The generated Tailwind stylesheet therefore receives a new full
+SHA-256 content address. Both previously published stylesheet byte streams are
+still embedded, registered for GET and HEAD, exempt from request admission,
+and served with the existing one-year immutable cache contract. New HTML emits
+only the current stylesheet.
+
+Negative control
+----------------
+
+The final browser-regression blob was run against the exact live Beta.1.1
+deployment at e66324e9e5c5d656807da5e9039c1ff4b55626fa. The gate failed as
+required on populated Activity with:
+
+  rule=link-in-text-block
+  impact=serious
+  help="Links must be distinguishable without relying on color"
+  target=.text-blue-300[hx-get="/"][href="/"]
+
+The negative-control log SHA-256 is
+9f4cf80f4d528c9edd2d83cda8fcadff6a781e478ec498fea56b2b903cdbccba.
+
+Positive browser control
+------------------------
+
+On the candidate, the exact discovery browser gate ran through Caddy 2.11.4
+and Chromium 151.0.7922.71 at both the empty and `/bb` base paths. Populated
+Search and Activity each reported zero Axe WCAG 2/2.1 A/AA violations. Search
+date rows stacked at 320 CSS pixels. Search and Activity both passed 320-pixel
+and 200%-zoom reflow.
+
+The complete affected browser matrix also passed at both base paths:
+
+- TestAbuseRejectionNoScriptThroughCaddy
+- TestAdministrationKeyboardAndNoScriptThroughCaddy
+- TestDiscoveryBrowserThroughCaddy
+- TestUnreadControlsKeyboardAndNoScriptThroughCaddy
+
+All Axe checks reported zero violations. The already-admitted gradient
+background color-contrast inference remains explicitly incomplete; the
+existing manual endpoint-ratio evidence owns that automation limitation. It is
+not described as an automated pass. Browser matrix log SHA-256:
+00d6266195db67ed9a7f7967083222fb79b90398f3de5f297fdab97f93047143.
+
+Deterministic generation and repository verification
+----------------------------------------------------
+
+The evidence host used Go 1.26.6, Node.js 26.7.0, npm 12.0.2, Caddy 2.11.4,
+and Chromium 151.0.7922.71. Exact Templ, sqlc, and Tailwind regeneration left
+the tracked tree unchanged and reproduced the current stylesheet digest.
+
+Commands:
+
+  go vet -mod=readonly ./...
+  GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+Result: PASS. Relevant non-integration coverage included internal/httpui 72.5%;
+all packages passed the race detector. Log SHA-256:
+779314441129ea5172b33122be941b125c6aa00c97c323ff24d3281156e1bf51.
+
+PostgreSQL integration/race verification
+----------------------------------------
+
+Against the existing task-owned PostgreSQL 17.10 container, with its credential
+held only in protected process environment:
+
+  GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+    -race -covermode=atomic ./...
+
+Result: PASS. Representative coverage included internal/forum 93.7%,
+internal/httpui 72.5%, internal/migration 100.0%, internal/moderation 83.6%,
+internal/readiness 100.0%, internal/render 96.0%, internal/store 97.1%, and
+migrations 100.0%. Log SHA-256:
+51aca25761a6690ccec1998c166b9e59a8108ee8ce55a5dadac11bac991bcaa5.
+
+Security checks
+---------------
+
+- gitleaks history: CLEAN; log SHA-256
+  ab16cce947cf410de44e984cc5bbb3efb118035b7ec31b8b2d2c2c1f2c05845b
+- gitleaks candidate directory: CLEAN; log SHA-256
+  0df30074c2e638cc01a6039c679b7f6bf2040ccda7783c29535a352306fc51b5
+- govulncheck: No vulnerabilities found; log SHA-256
+  3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5
+
+Admission limits
+----------------
+
+- 1.0.0-beta.1 and 1.0.0-beta.1.1 remain immutable failed candidates.
+- No schema, data, grant, enrollment, Caddy, Authentik, secret, capability, or
+  permission change is part of this correction.
+- No RC.1, stable, license-selection, or production claim is admitted.
+- 1.0.0-beta.1.2 remains withheld until two fresh CLEAN reviews, guarded
+  delivery, reproducible tagged artifacts, application-only deployment, exact
+  live acceptance, and affirmative owner confirmation all pass.
