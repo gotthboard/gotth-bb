@@ -2533,9 +2533,11 @@ Domain input rejects a trailing dot and IP literal, is converted through the
 DNS label/length rules. URLs require lowercase `http` or `https`, no userinfo,
 no opaque form, and either a canonical `netip` IPv4/IPv6 literal or an IDNA DNS
 host without a trailing dot. IPv6 retains brackets. Default `:80`/`:443` is
-removed, empty path becomes `/`, dot segments are
-cleaned without decoding escaped separators, fragment is discarded, and raw
-query is retained. Rules with a nondefault numeric port remain port-specific.
+removed and empty path becomes `/`. Path and raw query uppercase every retained
+percent escape and decode only RFC 3986 unreserved bytes. The path then removes
+literal `.`/`..` segments without decoding escaped separators; query ordering
+and reserved delimiters remain significant. Fragment is discarded. Rules with
+a nondefault numeric port remain port-specific.
 Any input that does not already equal the emitted canonical rule fails startup;
 the loader does not silently repair operator input.
 
@@ -2566,10 +2568,14 @@ clock. The map key is a keyed 256-bit digest of the canonical 4- or 16-byte
 address; no raw address or string is retained. A collision conservatively
 shares one window rather than allocating a disambiguation copy of the address;
 tests inject that otherwise infeasible condition. Each entry stores only window
-start and count. On a charged request the limiter removes expired entries only
-when capacity pressure requires it, then either admits and increments the one
-entry, returns rate rejection with the exact remaining whole-second ceiling,
-or returns capacity rejection with one-second retry. It never exceeds the
+start and count. The limiter also maintains a conservative earliest-expiry
+timestamp. On capacity pressure while `now` is earlier than that timestamp, an
+unseen digest receives capacity rejection in O(1). At or after that timestamp,
+one O(capacity) pass removes every expired entry and recomputes the minimum
+live expiry; it cannot repeat before that new boundary unless an injected clock
+moves backward, which still returns O(1) rejection. A charged known client is
+admitted/incremented or receives rate rejection with the remaining whole-
+second ceiling clamped to `[1, windowSeconds]`. The limiter never exceeds the
 configured entry count and starts no goroutine or timer.
 
 The request-ID boundary remains outermost. Access logging and panic recovery
@@ -2603,7 +2609,9 @@ stopped. Runtime receives column-level UPDATE on only these two new columns,
 not table-wide UPDATE. Readiness attests the columns, defaults, nullability,
 check, and exact grant delta at migration head 000011.
 
-Before its existing area/topic locks, each topic/reply transaction locks the
+Each topic/reply transaction uses read committed isolation and installs
+`statement_timeout = '2s'` and `lock_timeout = '250ms'` with transaction-local
+scope before its first application lock. It then locks the
 current user row and returns only id, role, suspension/mute facts, `created_at`,
 and the publication tuple. It rejects an invalid, changed, suspended, or muted
 actor, then reloads the current local group IDs while holding the user lock.
@@ -2634,7 +2642,10 @@ and automatic-link destination before rendering that same tree. External
 destinations must parse as absolute HTTP(S) URLs. Their canonical comparison
 key discards userinfo, so an authored credential variant cannot evade a domain
 or exact-URL rule; the existing renderer/sanitizer remains responsible for
-whether that authored destination is presented. The canonical host is compared
+whether that authored destination is presented. One trailing DNS root dot is
+discarded for comparison; rule input itself must omit it. Path/query percent
+normalization and path dot-segment removal use the exact rule canonicalizer.
+The canonical host is compared
 with exact and dot-boundary domain rules; the canonical URL is compared with
 exact URL rules. Relative references, anchors,
 and `mailto` destinations remain governed by the existing renderer/sanitizer

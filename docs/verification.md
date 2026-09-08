@@ -1064,7 +1064,9 @@ prove no account/session lookup is added to this pre-authentication boundary.
 With a deterministic clock and digest source, limiter tests cover counts
 0/1/N/N+1, exact expiry equality, negative clock movement, concurrent calls,
 4,095/4,096/4,097 clients, lazy expired-entry reclamation, full-live capacity,
-restart reset, digest collision handling, and allocation/map cardinality. Every
+cached earliest-expiry O(1) rejection before the boundary, exactly one bounded
+scan at the boundary, restart reset, digest collision handling, and allocation/
+map cardinality. Every
 charged rejection occurs before session, body read/close, router, or database
 work. Exact health and content-addressed static GET/HEAD requests remain exempt;
 near-miss paths, unsafe static methods, and unknown paths are charged. Race and
@@ -1091,6 +1093,8 @@ renderer/policy failure, insert/update/audit-independent failure,
 cancellation, lock timeout, and begin/commit failure. Before/after inspection
 proves denied or failed publication has neither post/topic/counter effects;
 success has exactly one counter increment and one publication in one commit.
+Every lock-timeout case proves the two-second statement and 250-millisecond
+transaction-local lock settings were installed before the account lock.
 
 At least `2N+2` simultaneous requests for one account at empty and near-limit
 state prove exactly the configured successes and monotonic count under both
@@ -1107,7 +1111,8 @@ Destination tests cover inline/reference/collapsed-reference links, images,
 GFM automatic URLs, repeated destinations, relative links, anchors, mailto,
 code spans, fenced code, escaped text, raw HTML, Unicode/IDNA host forms, exact
 host, subdomain, sibling suffix, trailing dot, default/nondefault ports, empty/
-dot/escaped paths, query order/encoding, fragments, userinfo-bearing authored
+dot/escaped paths, uppercase/lowercase percent escapes, encoded unreserved and
+reserved bytes, query order/encoding, fragments, userinfo-bearing authored
 links, malformed HTTP(S)-looking input, and 65,536-byte Markdown. Both domain
 and exact-URL rules are exercised at 0/1/256 entries. Assertions prove the same
 AST is scanned and rendered, the first rejection retains no destination/rule,

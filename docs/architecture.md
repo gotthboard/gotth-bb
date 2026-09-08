@@ -715,7 +715,8 @@ proxy address. Health and content-addressed static requests are exempt; every
 other method and route, including an unknown route, spends one request unit.
 The limiter retains no raw address: an unpredictable per-process keyed digest
 indexes at most 4,096 windows. Expired entries are removed lazily; if capacity
-is full and no expired entry exists, an unseen client receives bounded `503`
+is full, a cached earliest-expiry boundary avoids a full scan until an entry
+can actually expire. If no expired entry then exists, an unseen client receives bounded `503`
 instead of causing allocation growth or evicting a currently enforced window.
 
 Request windows intentionally disappear on process restart and are not shared
@@ -741,7 +742,8 @@ concurrent publication.
 Edits and previews do not consume capacity. Every role is limited, and a role
 change does not manufacture a bypass.
 
-The fixed window is anchored to the account's first committed publication in
+Before its first account lock the transaction installs the existing two-second
+statement and 250-millisecond lock bounds. The fixed window is anchored to the account's first committed publication in
 that window. An elapsed window resets on the next successful publication. The
 counter update occurs only after all authorization and content checks pass and
 before the content insert; transaction rollback removes it. Commit ambiguity
@@ -754,7 +756,10 @@ descriptor-validated regular file. Lines are sorted, unique canonical
 trailing dots, and match an exact host or dot-delimited subdomain. Exact URL
 rules admit only HTTP(S), prohibit credentials in rules, support canonical IP
 literals or IDNA DNS hosts without trailing dots, canonicalize default ports,
-treat an empty path as `/`, retain escaped path/query, and ignore fragments.
+treat an empty path as `/`, normalize percent-encoded unreserved bytes and dot
+segments without decoding escaped separators, retain query order, and ignore
+fragments. Authored DNS destinations collapse one trailing root dot only for
+comparison so it cannot evade the canonical rule.
 The configured set is limited
 to 256 rules and 64 KiB; empty policy is explicit rather than missing.
 

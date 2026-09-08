@@ -510,7 +510,7 @@ are:
 2. **AN-05-02 — transactional publication limits.** Add migration 000011's
    constant-size account window tuple, check/grant/readiness attestation, and
    authorization-first account lock. Make successful topic/reply creation and
-   its counter one atomic transaction; prove established/new-account windows,
+   its counter one timeout-bounded atomic transaction; prove established/new-account windows,
    every role, concurrency, rollback, cancellation, restart persistence, and
    unknown commit. Edits and previews spend no publication capacity.
 3. **AN-05-03 — blocked destinations and progressive rejection UI.** Parse the
