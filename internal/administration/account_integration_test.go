@@ -120,7 +120,7 @@ RETURNING id`).Scan(&actorID); err != nil {
 		t.Fatalf("revoke ChangeGroupMembership() = (%+v, %v)", revoked, err)
 	}
 
-	if _, err := connections[0].Exec(ctx, `INSERT INTO public.sessions (session_id_hash, user_id, issued_at, expires_at, idle_expires_at, oidc_validated_at) VALUES (decode(repeat('11', 32), 'hex'), $1, $2, $3, $3, $2)`, memberID, observedAt, observedAt.Add(time.Hour)); err != nil {
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at) VALUES (decode(repeat('11', 32), 'hex'), $1, $2, $2, $2, $3)`, memberID, observedAt, observedAt.Add(time.Hour)); err != nil {
 		t.Fatalf("insert member session: %v", err)
 	}
 	changedRole, err := ChangeAccountRole(ctx, connections[0], func() time.Time { return observedAt.Add(4 * time.Second) }, actor, memberID, policy.RoleModerator, policy.RoleMember, "Promote the local member", revoked.Revision, testAdministrationRequestID(8))
