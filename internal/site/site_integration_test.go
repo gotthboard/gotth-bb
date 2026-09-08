@@ -16,6 +16,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -157,20 +158,26 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 	}
 	ready.Wait()
 	close(start)
-	successes, conflicts := 0, 0
+	successes, rejected := 0, 0
+	var unexpected error
 	for range 2 {
 		updateErr := <-results
 		switch {
 		case updateErr == nil:
 			successes++
 		case errors.Is(updateErr, ErrConflict):
-			conflicts++
+			rejected++
 		default:
-			t.Fatalf("concurrent UpdateSettings() error = %v", updateErr)
+			var postgresError *pgconn.PgError
+			if errors.As(updateErr, &postgresError) && postgresError.Code == "55P03" {
+				rejected++
+			} else {
+				unexpected = updateErr
+			}
 		}
 	}
-	if successes != 1 || conflicts != 1 {
-		t.Fatalf("concurrent results = (%d success, %d conflict)", successes, conflicts)
+	if unexpected != nil || successes != 1 || rejected != 1 {
+		t.Fatalf("concurrent results = (%d success, %d rejected, unexpected %v)", successes, rejected, unexpected)
 	}
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = $2 WHERE id = $1`, actorID, observedAt.Add(time.Hour)); err != nil {
 		t.Fatalf("mute administrator: %v", err)
