@@ -270,6 +270,30 @@ VALUES ('Concurrent suspension account', clock_timestamp() - interval '2 days', 
 		t.Fatal(err)
 	}
 
+	var unknownCommitID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
+VALUES ('Unknown commit account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&unknownCommitID); err != nil {
+		t.Fatal(err)
+	}
+	unknownCommitActor := policy.AccessContext{Authenticated: true, UserID: unknownCommitID, Role: policy.RoleMember}
+	lostAcknowledgement := errors.New("simulated lost publication commit acknowledgement")
+	if result, err := CreateTopic(ctx, publicationUnknownCommitBeginner{connection: connections[0], commitErr: lostAcknowledgement}, limits, unknownCommitActor, "normal", "Unknown commit publication", "body"); result != (PublishResult{}) || !errors.Is(err, lostAcknowledgement) || !strings.Contains(err.Error(), "outcome unknown") {
+		t.Fatalf("unknown commit publication = (%+v, %v)", result, err)
+	}
+	var unknownTopics, unknownPosts int64
+	if err := connections[0].QueryRow(ctx, `SELECT
+    count(DISTINCT topic.id),
+    count(post.id)
+FROM public.topics AS topic
+JOIN public.posts AS post ON post.topic_id=topic.id
+WHERE topic.author_id=$1 AND topic.title='Unknown commit publication'`, unknownCommitID).Scan(&unknownTopics, &unknownPosts); err != nil {
+		t.Fatal(err)
+	}
+	if unknownTopics != 1 || unknownPosts != 1 {
+		t.Fatalf("unknown commit atomic rows = topics %d posts %d", unknownTopics, unknownPosts)
+	}
+	assertPublicationTuple(t, ctx, connections[0], unknownCommitID, 1)
+
 	if _, err := connections[0].Exec(ctx, `CREATE FUNCTION public.reject_publication_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject publication'; END $$;
 CREATE TRIGGER reject_publication_test BEFORE INSERT ON public.posts FOR EACH ROW EXECUTE FUNCTION public.reject_publication_test()`); err != nil {
 		t.Fatal(err)
@@ -421,6 +445,31 @@ func waitForPublicationLock(t *testing.T, ctx context.Context, observer *pgx.Con
 		case <-ticker.C:
 		}
 	}
+}
+
+type publicationUnknownCommitBeginner struct {
+	connection *pgx.Conn
+	commitErr  error
+}
+
+func (beginner publicationUnknownCommitBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
+	tx, err := beginner.connection.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &publicationUnknownCommitTx{Tx: tx, commitErr: beginner.commitErr}, nil
+}
+
+type publicationUnknownCommitTx struct {
+	pgx.Tx
+	commitErr error
+}
+
+func (tx *publicationUnknownCommitTx) Commit(ctx context.Context) error {
+	if err := tx.Tx.Commit(ctx); err != nil {
+		return err
+	}
+	return tx.commitErr
 }
 
 func migrationPrefix(t *testing.T, maximum int) fs.FS {
