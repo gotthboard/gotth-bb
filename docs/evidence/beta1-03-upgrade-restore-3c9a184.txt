@@ -4,8 +4,10 @@ Beta.1 B1-03 Alpha.2 upgrade and logical recovery evidence
 Candidate
 ---------
 
-Commit: ddd792f6ed7f414c372d8c0bc1798061ffdb6151
-Tree: 5b451fd06f71c1b66df6da02a664902fd5075a43
+Helper/methodology commit: 3c9a184f0ed0db789c205763964d0bd10d152d2b
+Helper/methodology tree: 0909e98fb59d5969357754e61a26ffa9b067769b
+Executed migration/application commit: ddd792f6ed7f414c372d8c0bc1798061ffdb6151
+Executed migration/application tree: 5b451fd06f71c1b66df6da02a664902fd5075a43
 Version: 1.0.0-beta.1
 Go: go1.26.6 linux/amd64
 PostgreSQL image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
@@ -123,6 +125,13 @@ Verification
   tests cover invalid arguments, unsafe paths, no-clobber, archive/list/digest,
   wrong-major, nonclean target, failure, cancellation, bounded output,
   redaction, and command/stdin ordering.
+- After cold review required explicit child termination and real-signal tests,
+  helper commit `3c9a184` was rerun against PostgreSQL 17. It created a 191311
+  byte archive in 1.228 seconds with SHA-256
+  `59364c758424de013f66a31d5bb3f02c7a44c368223516d80f642c0372793d0e`,
+  restored it into a fifth clean task instance in 0.861 seconds, reconciled
+  ledger 1..11/count 11 and users/topics/posts 1/3/21, reapplied the complete
+  ACL, and reached readiness 200.
 - Live Alpha.2 remained head 000005 with unchanged critical counts and 200
   public/readiness responses after the rehearsal.
 
