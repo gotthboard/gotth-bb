@@ -76,6 +76,8 @@ func TestCanonicalURLCoversHostsEscapesQueriesAndPaths(t *testing.T) {
 		"http://192.0.2.1:8080/a//b/?x=%2F+y":      "http://192.0.2.1:8080/a//b/?x=%2F+y",
 		"https://[2001:db8::1]/path?":              "https://[2001:db8::1]/path?",
 		"https://example.com/a/%2E%2E/b":           "https://example.com/b",
+		"https://example.com/a/..":                 "https://example.com/",
+		"https://example.com/.":                    "https://example.com/",
 		"https://example.com/%7Euser?q=%41%2f#old": "https://example.com/~user?q=A%2F",
 	}
 	for raw, want := range tests {

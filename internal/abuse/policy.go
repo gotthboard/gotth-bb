@@ -320,7 +320,7 @@ func removeDotSegments(raw string) string {
 	if result == "" || result[0] != '/' {
 		result = "/" + result
 	}
-	if strings.HasSuffix(raw, "/.") || strings.HasSuffix(raw, "/..") {
+	if (strings.HasSuffix(raw, "/.") || strings.HasSuffix(raw, "/..")) && !strings.HasSuffix(result, "/") {
 		result += "/"
 	}
 	return result
