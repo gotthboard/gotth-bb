@@ -11,17 +11,18 @@ import (
 )
 
 type Area struct {
-	ID           int64
-	Slug         string
-	Name         string
-	Description  string
-	DisplayOrder int32
-	Visibility   string
-	PostingMode  string
-	CreatedBy    int64
-	UpdatedBy    int64
-	CreatedAt    pgtype.Timestamptz
-	UpdatedAt    pgtype.Timestamptz
+	ID                     int64
+	Slug                   string
+	Name                   string
+	Description            string
+	DisplayOrder           int32
+	Visibility             string
+	PostingMode            string
+	CreatedBy              int64
+	UpdatedBy              int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
 }
 
 type AreaGroup struct {
@@ -48,11 +49,12 @@ type ExternalIdentity struct {
 }
 
 type ForumGroup struct {
-	ID        int64
-	Name      string
-	CreatedBy int64
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
+	ID                     int64
+	Name                   string
+	CreatedBy              int64
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
 }
 
 type ForumGroupMember struct {
@@ -85,6 +87,7 @@ type ModerationAction struct {
 	ResultingState     []byte
 	RequestID          pgtype.UUID
 	CreatedAt          pgtype.Timestamptz
+	TargetSite         pgtype.Bool
 }
 
 type OidcLoginAttempt struct {
@@ -170,6 +173,18 @@ type Session struct {
 	IpPrefix      *netip.Addr
 }
 
+type SiteSetting struct {
+	Singleton              bool
+	SiteName               string
+	SiteDescription        string
+	BrandTheme             string
+	RulesMarkdown          string
+	RulesHtml              string
+	RulesRendererVersion   string
+	AdministrationRevision int64
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type Topic struct {
 	ID                      int64
 	AreaID                  int64
@@ -198,19 +213,20 @@ type TopicRead struct {
 }
 
 type User struct {
-	ID               int64
-	DisplayName      string
-	Email            pgtype.Text
-	AvatarUrl        pgtype.Text
-	Bio              string
-	Role             string
-	SuspendedAt      pgtype.Timestamptz
-	SuspendedUntil   pgtype.Timestamptz
-	SuspensionReason pgtype.Text
-	MutedUntil       pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	LastLoginAt      pgtype.Timestamptz
+	ID                     int64
+	DisplayName            string
+	Email                  pgtype.Text
+	AvatarUrl              pgtype.Text
+	Bio                    string
+	Role                   string
+	SuspendedAt            pgtype.Timestamptz
+	SuspendedUntil         pgtype.Timestamptz
+	SuspensionReason       pgtype.Text
+	MutedUntil             pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	LastLoginAt            pgtype.Timestamptz
+	AdministrationRevision int64
 }
 
 type UserWarning struct {

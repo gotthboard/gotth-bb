@@ -25,6 +25,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	moderationservice "github.com/gotthboard/gotth-bb/internal/moderation"
 	"github.com/gotthboard/gotth-bb/internal/readiness"
+	siteservice "github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -205,7 +206,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct administrator claim service: %w", err)
 	}
-	applicationHandler, err := httpui.NewAuthenticatedUnreadForumHandler(
+	applicationHandler, err := httpui.NewAuthenticatedSiteForumHandler(
 		urlBuilder,
 		authenticationService,
 		func(areaContext context.Context, access auth.AccessContext) ([]store.VisibleAreaSummary, error) {
@@ -290,6 +291,20 @@ func run(
 			},
 			MarkRead: func(readContext context.Context, access auth.AccessContext, topicID int64) error {
 				return forumservice.MarkTopicRead(readContext, pool, access, topicID)
+			},
+		},
+		httpui.SiteHTTPServices{
+			Shell: func(siteContext context.Context) (siteservice.ShellPresentation, error) {
+				return siteservice.LoadShell(siteContext, queries)
+			},
+			Rules: func(siteContext context.Context) (siteservice.PublicRules, error) {
+				return siteservice.LoadRules(siteContext, queries)
+			},
+			Editable: func(siteContext context.Context, access auth.AccessContext) (siteservice.EditableSettings, error) {
+				return siteservice.LoadEditable(siteContext, queries, access, time.Now())
+			},
+			Update: func(siteContext context.Context, access auth.AccessContext, input siteservice.SettingsInput, requestID pgtype.UUID) (siteservice.MutationResult, error) {
+				return siteservice.UpdateSettings(siteContext, pool, time.Now, access, input, requestID)
 			},
 		},
 		configured.RegistrationURL,

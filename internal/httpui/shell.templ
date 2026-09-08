@@ -8,13 +8,14 @@ import (
 )
 
 templ document(view pageView, content templ.Component) {
+	{{ shell := siteShellFromContext(ctx, view) }}
 	<!doctype html>
-	<html lang="en" class="h-full bg-slate-950">
+	<html lang="en" class="h-full bg-slate-950" data-brand-theme={ shell.Theme }>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="htmx-config" content={ htmxConfiguration }/>
-			<title>{ view.Title } · { view.SiteName }</title>
+			<title>{ view.Title } · { shell.Name }</title>
 			if view.CanonicalURL != "" {
 				<link rel="canonical" href={ view.CanonicalURL }/>
 			}
@@ -26,13 +27,14 @@ templ document(view pageView, content templ.Component) {
 				<div class="mx-auto max-w-6xl px-4 py-4 sm:px-6 lg:px-8">
 					<div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
 						<div>
-							<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-2xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">{ view.SiteName }</a>
-							<p class="mt-1 text-sm text-blue-100">Community discussions, plainly organized.</p>
+							<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="w-fit rounded-sm text-2xl font-bold tracking-tight text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">{ shell.Name }</a>
+							<p class="mt-1 text-sm text-blue-100">{ shell.Description }</p>
 						</div>
 						<nav aria-label="Primary" class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
 						<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Board index</a>
 						<a href={ view.SearchURL } hx-get={ view.SearchURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Search</a>
 						<a href={ view.ActivityURL } hx-get={ view.ActivityURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Recent activity</a>
+						<a href={ view.RulesURL } hx-get={ view.RulesURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Rules</a>
 						if sessionAuthenticationFromContext(ctx).Access.Role == auth.RoleAdministrator {
 							<a href={ view.AdminURL } hx-get={ view.AdminURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-white hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white">Manage areas</a>
 						}
@@ -194,7 +196,7 @@ templ administratorSetupContent(view pageView, setup administratorSetupView) {
 templ footer(view pageView, loadTimes footerLoadTimesView) {
 	<footer class="border-t border-slate-800" aria-label="Software information">
 		<div class="mx-auto flex max-w-6xl flex-wrap gap-x-3 gap-y-1 px-4 py-6 text-sm text-slate-400 sm:px-6 lg:px-8">
-			<span>Powered by <a href={ view.HomeURL } class="rounded-sm font-medium text-cyan-300 hover:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">{ view.SiteName }</a></span>
+			<span>Powered by <a href={ view.HomeURL } class="rounded-sm font-medium text-cyan-300 hover:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">{ siteShellFromContext(ctx, view).Name }</a></span>
 			if loadTimes.Version != "" {
 				<span>Version: <strong class="font-medium text-slate-200">{ loadTimes.Version }</strong></span>
 				<span>Page: <strong class="font-medium text-slate-200">{ loadTimes.PageTime }</strong></span>

@@ -112,7 +112,7 @@ VALUES (
     $7, $7,
     $8, $8
 )
-RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at
+RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at, administration_revision
 `
 
 type CreateAreaForAdministrationParams struct {
@@ -150,6 +150,7 @@ func (q *Queries) CreateAreaForAdministration(ctx context.Context, arg CreateAre
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 	)
 	return i, err
 }
@@ -176,7 +177,8 @@ SELECT
     a.created_by,
     a.updated_by,
     a.created_at,
-    a.updated_at
+    a.updated_at,
+    a.administration_revision
 FROM public.areas AS a
 WHERE a.slug = $1
   AND (
@@ -227,6 +229,7 @@ func (q *Queries) GetVisibleAreaBySlug(ctx context.Context, arg GetVisibleAreaBy
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 	)
 	return i, err
 }
@@ -781,7 +784,8 @@ SELECT
     a.created_by,
     a.updated_by,
     a.created_at,
-    a.updated_at
+    a.updated_at,
+    a.administration_revision
 FROM public.areas AS a
 WHERE
     $1::boolean
@@ -831,6 +835,7 @@ func (q *Queries) ListVisibleAreas(ctx context.Context, arg ListVisibleAreasPara
 			&i.UpdatedBy,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AdministrationRevision,
 		); err != nil {
 			return nil, err
 		}
@@ -914,7 +919,7 @@ SET name = $1,
     updated_by = $6,
     updated_at = GREATEST($7::timestamptz, updated_at)
 WHERE id = $8
-RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at
+RETURNING id, slug, name, description, display_order, visibility, posting_mode, created_by, updated_by, created_at, updated_at, administration_revision
 `
 
 type UpdateAreaForAdministrationParams struct {
@@ -952,6 +957,7 @@ func (q *Queries) UpdateAreaForAdministration(ctx context.Context, arg UpdateAre
 		&i.UpdatedBy,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 	)
 	return i, err
 }

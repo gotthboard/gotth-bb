@@ -23,6 +23,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000007_gfm_renderer.sql",
 		"000008_search_projection.sql",
 		"000009_unread_state.sql",
+		"000010_administration_completion.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -34,6 +35,48 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestAdministrationCompletionSchemaStepIsBoundedAndAuditable(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000010_administration_completion.sql")
+	if err != nil {
+		t.Fatalf("read administration-completion migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"UPDATE public.users",
+		"UPDATE public.forum_groups",
+		"UPDATE public.areas",
+		"CREATE INDEX CONCURRENTLY",
+		"DROP TABLE",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("administration-completion migration contains forbidden work %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"CREATE TABLE public.site_settings",
+		"site_settings_singleton_true",
+		"site_settings_rules_tuple_current",
+		"goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2",
+		"users_administration_revision_positive",
+		"forum_groups_administration_revision_positive",
+		"areas_administration_revision_positive",
+		"ADD COLUMN target_site boolean",
+		"moderation_actions_target_site_true",
+		"'create_group', 'rename_group'",
+		"'grant_area_group', 'revoke_area_group'",
+		"'update_site_settings'",
+		"octet_length(reason) BETWEEN 1 AND 2000",
+		"reason !~ '[[:cntrl:]]'",
+		"reason = pg_catalog.btrim(reason, ' ')",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("administration-completion migration lacks required contract %q", required)
 		}
 	}
 }

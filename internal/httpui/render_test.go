@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/a-h/templ"
+	"github.com/gotthboard/gotth-bb/internal/site"
 )
 
 func TestRenderResponseChoosesCompletePageOrFragment(t *testing.T) {
@@ -106,6 +107,56 @@ func TestRenderResponseReturnsRenderAndWriteFailures(t *testing.T) {
 	err = renderResponse(writer, httptest.NewRequest(http.MethodGet, "/", nil), http.StatusOK, templ.Raw("body"), templ.Raw("body"))
 	if !errors.Is(err, writeCause) || writer.status != http.StatusOK {
 		t.Fatalf("write failure = %v, status = %d", err, writer.status)
+	}
+}
+
+func TestRenderResponseLoadsSiteShellOnlyForCompleteDocuments(t *testing.T) {
+	t.Parallel()
+	loads := 0
+	loader := siteShellLoader(func(context.Context) (site.ShellPresentation, error) {
+		loads++
+		return site.ShellPresentation{Name: "Configured", Description: "Configured description", Theme: "cyan"}, nil
+	})
+	component := templ.ComponentFunc(func(ctx context.Context, writer io.Writer) error {
+		shell, _ := ctx.Value(siteShellContextKey{}).(site.ShellPresentation)
+		_, err := io.WriteString(writer, shell.Name)
+		return err
+	})
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(context.WithValue(request.Context(), siteShellLoaderContextKey{}, loader))
+	response := httptest.NewRecorder()
+	if err := renderResponse(response, request, http.StatusOK, component, templ.Raw("fragment")); err != nil || response.Body.String() != "Configured" || loads != 1 {
+		t.Fatalf("complete shell response = (body %q, loads %d, error %v)", response.Body.String(), loads, err)
+	}
+
+	hxRequest := request.Clone(request.Context())
+	hxRequest.Header.Set("HX-Request", "true")
+	hxResponse := httptest.NewRecorder()
+	if err := renderResponse(hxResponse, hxRequest, http.StatusOK, component, templ.Raw("fragment")); err != nil || hxResponse.Body.String() != "fragment" || loads != 1 {
+		t.Fatalf("fragment shell response = (body %q, loads %d, error %v)", hxResponse.Body.String(), loads, err)
+	}
+}
+
+func TestRenderResponseFailsClosedWhenSiteShellIsUnavailable(t *testing.T) {
+	t.Parallel()
+	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(context.WithValue(request.Context(), siteShellLoaderContextKey{}, siteShellLoader(func(context.Context) (site.ShellPresentation, error) {
+		return site.ShellPresentation{}, errors.New("secret database detail")
+	})))
+	for _, test := range []struct {
+		status int
+		want   int
+	}{
+		{status: http.StatusOK, want: http.StatusServiceUnavailable},
+		{status: http.StatusNotFound, want: http.StatusNotFound},
+	} {
+		response := httptest.NewRecorder()
+		if err := renderResponse(response, request, test.status, templ.Raw("branded secret"), templ.Raw("fragment")); err != nil {
+			t.Fatalf("renderResponse() returned error: %v", err)
+		}
+		if response.Code != test.want || strings.Contains(response.Body.String(), "branded") || strings.Contains(response.Body.String(), "database") || !strings.Contains(response.Body.String(), "Service unavailable") {
+			t.Fatalf("unbranded failure = (status %d, body %q)", response.Code, response.Body.String())
+		}
 	}
 }
 

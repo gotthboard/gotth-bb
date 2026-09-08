@@ -65,7 +65,7 @@ func TestAuthenticatedUnreadDispatchKeepsPreflightOutsideSessionLookup(t *testin
 	handler, err := newAuthenticatedHandler(
 		callbackTestURLBuilder(t), service, emptyAreaIndexLister, panicAreaTopicPageLoader, 10_000,
 		panicTopicPostPageLoader, 10_000, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		nil, nil, nil, &unread, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
+		nil, nil, nil, &unread, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)
 	if err != nil {
 		t.Fatalf("newAuthenticatedHandler() returned error: %v", err)

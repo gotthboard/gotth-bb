@@ -10,6 +10,8 @@ const htmxConfiguration = `{"allowEval":false,"allowScriptTags":false,"historyCa
 
 type pageView struct {
 	SiteName             string
+	SiteDescription      string
+	BrandTheme           string
 	Title                string
 	CanonicalURL         string
 	HomeURL              string
@@ -20,6 +22,7 @@ type pageView struct {
 	ReportsURL           string
 	SearchURL            string
 	ActivityURL          string
+	RulesURL             string
 	StylesheetURL        string
 	HTMXURL              string
 	DiscoveryResponseURL string
@@ -29,6 +32,22 @@ type pageView struct {
 type administratorSetupView struct {
 	ActionURL string
 	CSRFToken string
+}
+
+type publicRulesPageView struct {
+	HTML  contentrender.TrustedHTML
+	Empty bool
+}
+
+type siteSettingsPageView struct {
+	ActionURL       string
+	CSRFToken       string
+	SiteName        string
+	SiteDescription string
+	BrandTheme      string
+	RulesMarkdown   string
+	Revision        string
+	FormError       string
 }
 
 type areaAdministrationPageView struct {
@@ -328,12 +347,18 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 	if err != nil {
 		return pageView{}, fmt.Errorf("build activity URL: %w", err)
 	}
+	rulesURL, err := builder.Path("rules")
+	if err != nil {
+		return pageView{}, fmt.Errorf("build rules URL: %w", err)
+	}
 	canonicalURL, err := builder.Absolute(canonicalSegments...)
 	if err != nil {
 		return pageView{}, fmt.Errorf("build canonical URL: %w", err)
 	}
 	return pageView{
 		SiteName:             "GOTTH Board",
+		SiteDescription:      "Community discussions, plainly organized.",
+		BrandTheme:           "blue",
 		Title:                title,
 		CanonicalURL:         canonicalURL,
 		HomeURL:              homeURL,
@@ -344,6 +369,7 @@ func newPageView(builder URLBuilder, title string, canonicalSegments ...string) 
 		ReportsURL:           reportsURL,
 		SearchURL:            searchURL,
 		ActivityURL:          activityURL,
+		RulesURL:             rulesURL,
 		StylesheetURL:        stylesheetURL,
 		HTMXURL:              htmxURL,
 		DiscoveryResponseURL: discoveryResponseURL,

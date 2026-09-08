@@ -12,7 +12,7 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "fb385216433a735335cc5fdf23df27f8091321519e68c163ad550cf66bb4f2f7"
+	const stylesheetSHA256 = "3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
@@ -99,6 +99,22 @@ func TestEmbeddedStylesheetContainsDarkForumTheme(t *testing.T) {
 	} {
 		if !strings.Contains(stylesheet, selector) {
 			t.Fatalf("stylesheet does not contain dark-theme selector %q", selector)
+		}
+	}
+}
+
+func TestEmbeddedStylesheetContainsEveryClosedBrandTheme(t *testing.T) {
+	t.Parallel()
+
+	stylesheet := string(appStylesheet)
+	for _, selector := range []string{
+		"html[data-brand-theme=cyan]{--color-blue-100:",
+		"html[data-brand-theme=emerald]{--color-blue-100:",
+		"html[data-brand-theme=amber]{--color-blue-100:",
+		"html[data-brand-theme=rose]{--color-blue-100:",
+	} {
+		if !strings.Contains(stylesheet, selector) {
+			t.Fatalf("stylesheet does not contain closed brand-theme selector %q", selector)
 		}
 	}
 }

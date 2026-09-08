@@ -20,6 +20,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/discovery"
 	"github.com/gotthboard/gotth-bb/internal/governance"
 	"github.com/gotthboard/gotth-bb/internal/httpui"
+	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
@@ -244,6 +245,12 @@ func (*fakeTopicPostRows) Err() error { return nil }
 
 func (*fakeDatabasePool) QueryRow(_ context.Context, query string, _ ...any) pgx.Row {
 	switch {
+	case strings.Contains(query, "LoadSiteShellPresentation"):
+		return fakeSiteShellRow{}
+	case strings.Contains(query, "AND (SELECT count(*) FROM public.site_settings) = 1"):
+		return fakeSiteReadinessRow{}
+	case strings.Contains(query, "WITH expected_constraints AS"):
+		return fakeBooleanRow(true)
 	case strings.Contains(query, "pg_catalog.pg_class"):
 		return fakeBooleanRow(true)
 	case strings.Contains(query, "FROM public.governance_state"):
@@ -253,6 +260,29 @@ func (*fakeDatabasePool) QueryRow(_ context.Context, query string, _ ...any) pgx
 	default:
 		panic("unexpected database row query")
 	}
+}
+
+type fakeSiteShellRow struct{}
+
+func (fakeSiteShellRow) Scan(destinations ...any) error {
+	*(destinations[0].(*string)) = "GOTTH Board"
+	*(destinations[1].(*string)) = "Community discussions, plainly organized."
+	*(destinations[2].(*string)) = "blue"
+	return nil
+}
+
+type fakeSiteReadinessRow struct{}
+
+func (fakeSiteReadinessRow) Scan(destinations ...any) error {
+	*(destinations[0].(*string)) = "GOTTH Board"
+	*(destinations[1].(*string)) = "Community discussions, plainly organized."
+	*(destinations[2].(*string)) = "blue"
+	*(destinations[3].(*string)) = ""
+	*(destinations[4].(*string)) = ""
+	*(destinations[5].(*string)) = contentrender.RendererVersion
+	*(destinations[6].(*int64)) = 1
+	*(destinations[7].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	return nil
 }
 
 func (*fakeDatabasePool) Begin(context.Context) (pgx.Tx, error) {

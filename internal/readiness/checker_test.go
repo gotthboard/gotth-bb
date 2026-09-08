@@ -9,20 +9,40 @@ import (
 
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type readinessRow struct {
 	valid bool
 	err   error
+	query string
 }
 
 func (row readinessRow) Scan(destinations ...any) error {
 	if row.err != nil {
 		return row.err
 	}
+	if row.query == siteStateQuery {
+		*(destinations[0].(*string)) = "GOTTH Board"
+		*(destinations[1].(*string)) = "Community discussions, plainly organized."
+		*(destinations[2].(*string)) = "blue"
+		*(destinations[3].(*string)) = ""
+		*(destinations[4].(*string)) = ""
+		*(destinations[5].(*string)) = contentrender.RendererVersion
+		*(destinations[6].(*int64)) = 1
+		*(destinations[7].(*pgtype.Timestamptz)) = pgtype.Timestamptz{Time: time.Now(), Valid: true}
+		return nil
+	}
 	*(destinations[0].(*bool)) = row.valid
 	return nil
 }
+
+const siteStateQuery = `SELECT site_name, site_description, brand_theme,
+       rules_markdown, rules_html, rules_renderer_version,
+       administration_revision, updated_at
+FROM public.site_settings
+WHERE singleton
+  AND (SELECT count(*) FROM public.site_settings) = 1`
 
 type readinessDatabase struct {
 	row          pgx.Row
@@ -39,6 +59,10 @@ func (database *readinessDatabase) QueryRow(_ context.Context, query string, arg
 	database.arguments = arguments
 	database.queries = append(database.queries, query)
 	database.allArguments = append(database.allArguments, append([]any(nil), arguments...))
+	if row, ok := database.row.(readinessRow); ok {
+		row.query = query
+		return row
+	}
 	return database.row
 }
 
@@ -61,7 +85,7 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 	if err := checker.Check(context.Background()); err != nil {
 		t.Fatalf("Check() returned error: %v", err)
 	}
-	if migrationCalls != 1 || !database.called || len(database.queries) != 3 || database.queries[0] != governanceInvariantSQL {
+	if migrationCalls != 1 || !database.called || len(database.queries) != 6 || database.queries[0] != governanceInvariantSQL {
 		t.Fatalf("calls = (migrations %d, database %t, queries %d)", migrationCalls, database.called, len(database.queries))
 	}
 	arguments := database.allArguments[0]

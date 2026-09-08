@@ -10,7 +10,8 @@ SELECT
     a.created_by,
     a.updated_by,
     a.created_at,
-    a.updated_at
+    a.updated_at,
+    a.administration_revision
 FROM public.areas AS a
 WHERE a.slug = sqlc.arg(slug)
   AND (
@@ -45,7 +46,8 @@ SELECT
     a.created_by,
     a.updated_by,
     a.created_at,
-    a.updated_at
+    a.updated_at,
+    a.administration_revision
 FROM public.areas AS a
 WHERE
     sqlc.arg(is_staff)::boolean

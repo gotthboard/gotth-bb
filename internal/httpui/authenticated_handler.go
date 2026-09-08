@@ -54,6 +54,7 @@ func NewAuthenticatedHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -85,6 +86,7 @@ func NewAuthenticatedPublishingHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -117,6 +119,7 @@ func NewAuthenticatedForumHandler(
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
 	)
 }
@@ -163,6 +166,7 @@ func NewAuthenticatedModeratedForumHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil, nil, nil, nil,
+		nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -206,6 +210,7 @@ func NewAuthenticatedReportedForumHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, nil, nil, nil,
+		nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -255,6 +260,7 @@ func NewAuthenticatedDiscoveredForumHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, nil,
+		nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
@@ -307,7 +313,65 @@ func NewAuthenticatedUnreadForumHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, &unread,
+		nil,
 		registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
+		sessionCookieName, secure, checkReadiness,
+	)
+}
+
+// NewAuthenticatedSiteForumHandler adds AN-04 public presentation, rules,
+// and administrator-owned site settings while preserving every older
+// constructor's fixed-shell behavior.
+func NewAuthenticatedSiteForumHandler(
+	builder URLBuilder,
+	service AuthenticationService,
+	listAreas AreaIndexLister,
+	loadAreaTopics AreaTopicPageLoader,
+	maximumTopicPage int32,
+	loadTopicPosts TopicPostPageLoader,
+	maximumPostPage int32,
+	createTopic TopicPublisher,
+	createReply ReplyPublisher,
+	loadEditablePost EditablePostLoader,
+	editPost PostEditor,
+	deletePost PostDeleter,
+	changeTopicLock TopicLockChanger,
+	changeTopicVisibility TopicVisibilityChanger,
+	loadModerationUser ModerationUserStatusLoader,
+	changeUserSuspension UserSuspensionChanger,
+	loadAreaAdministration AreaAdministrationLoader,
+	createArea AreaCreator,
+	updateArea AreaUpdater,
+	reports ReportHTTPServices,
+	discovery DiscoveryHTTPServices,
+	verifyActivityCursor ActivityCursorVerifier,
+	unread UnreadHTTPServices,
+	sites SiteHTTPServices,
+	registrationURL url.URL,
+	registrationEnabled bool,
+	loadAdministratorSetup InitialAdministratorSetupLoader,
+	claimInitialAdministrator InitialAdministratorClaimer,
+	sessionCookieName string,
+	secure bool,
+	checkReadiness ReadinessChecker,
+) (http.Handler, error) {
+	if sites.Shell == nil || sites.Rules == nil || sites.Editable == nil || sites.Update == nil {
+		return nil, fmt.Errorf("browser site settings services are required")
+	}
+	if unread.FirstUnread == nil || unread.MarkRead == nil {
+		return nil, fmt.Errorf("browser unread services are required")
+	}
+	if verifyActivityCursor == nil {
+		return nil, fmt.Errorf("browser discovery cursor verifier is required")
+	}
+	if reports.Create == nil || reports.List == nil || reports.Load == nil || reports.Process == nil || reports.Extended == nil {
+		return nil, fmt.Errorf("browser report services are required")
+	}
+	return newAuthenticatedHandler(
+		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
+		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, &unread,
+		&sites, registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
 		sessionCookieName, secure, checkReadiness,
 	)
 }
@@ -344,6 +408,7 @@ func newAuthenticatedHandler(
 	discovery *DiscoveryHTTPServices,
 	verifyActivityCursor activityCursorVerifier,
 	unread *UnreadHTTPServices,
+	siteServices *SiteHTTPServices,
 	registrationURL url.URL,
 	registrationEnabled bool,
 	loadAdministratorSetup InitialAdministratorSetupLoader,
@@ -595,6 +660,22 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct unread preflight boundary: %w", unreadErr)
 		}
 	}
+	var publicSiteHandler http.Handler
+	var authenticatedSiteHandler http.Handler
+	if siteServices != nil {
+		publicSiteHandler, authenticatedSiteHandler, err = newSiteSettingsHandler(builder, *siteServices)
+		if err != nil {
+			return nil, fmt.Errorf("construct site settings routes: %w", err)
+		}
+		authenticatedSiteHandler, err = newSessionAuthenticationHandler(
+			authenticatedSiteHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("construct site settings session boundary: %w", err)
+		}
+		publicSiteHandler = withExactSiteRoutePreflight(publicSiteHandler, "/rules", http.MethodGet)
+		authenticatedSiteHandler = withExactSiteRoutePreflight(authenticatedSiteHandler, "/admin/settings", http.MethodGet, http.MethodPost)
+	}
 	dispatch := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/login":
@@ -632,6 +713,18 @@ func newAuthenticatedHandler(
 		case "/admin/areas":
 			if authenticatedAreaAdministrationHandler != nil {
 				authenticatedAreaAdministrationHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
+		case "/admin/settings":
+			if authenticatedSiteHandler != nil {
+				authenticatedSiteHandler.ServeHTTP(response, request)
+				return
+			}
+			publicHandler.ServeHTTP(response, request)
+		case "/rules":
+			if publicSiteHandler != nil {
+				publicSiteHandler.ServeHTTP(response, request)
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
@@ -787,10 +880,14 @@ func newAuthenticatedHandler(
 			publicHandler.ServeHTTP(response, request)
 		}
 	})
-	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+	outer := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		ctx := context.WithValue(request.Context(), registrationEnabledContextKey{}, registrationEnabled)
 		contextualRequest := request.WithContext(ctx)
 		defer func() { request.Pattern = contextualRequest.Pattern }()
 		dispatch.ServeHTTP(response, contextualRequest)
-	}), nil
+	})
+	if siteServices != nil {
+		return withSiteShellLoader(outer, siteServices.Shell), nil
+	}
+	return outer, nil
 }

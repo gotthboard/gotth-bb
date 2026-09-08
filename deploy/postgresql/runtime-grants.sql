@@ -21,3 +21,33 @@ TO :"runtime_role";
 GRANT SELECT
 ON TABLE public.search_projection_state
 TO :"runtime_role";
+
+-- AN-04 presentation state is one migration-owned singleton. Runtime may read
+-- it and update only the bounded presentation tuple; it may not create,
+-- delete, or change the singleton key.
+GRANT SELECT,
+      UPDATE (site_name, site_description, brand_theme, rules_markdown,
+              rules_html, rules_renderer_version, administration_revision,
+              updated_at)
+ON TABLE public.site_settings
+TO :"runtime_role";
+
+-- Local group governance creates and renames groups without granting table-
+-- wide UPDATE or DELETE.
+GRANT SELECT,
+      INSERT (name, created_by, created_at, updated_at),
+      UPDATE (name, updated_at, administration_revision)
+ON TABLE public.forum_groups
+TO :"runtime_role";
+
+GRANT USAGE, SELECT
+ON SEQUENCE public.forum_groups_id_seq
+TO :"runtime_role";
+
+-- Membership changes are one mapping per audited request. There is no mapping
+-- UPDATE authority.
+GRANT SELECT,
+      INSERT (group_id, user_id, granted_by, created_at),
+      DELETE
+ON TABLE public.forum_group_members
+TO :"runtime_role";

@@ -5,6 +5,46 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Add AN-04 site presentation and settings boundary
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- migration 000010 site singleton, administration revisions, audit target and
+  actions, runtime grants, and exact readiness attestation
+- separate shell, public-rules, and administrator-edit projections
+- audited site-settings transaction, public rules route, dynamic full-document
+  presentation, and closed compiled brand themes
+
+Explanation:
+
+Add the first AN-04 implementation unit without introducing a settings cache,
+arbitrary branding code, or rules bodies in ordinary page reads. Full documents
+load one small current presentation tuple after exact route and protected
+authorization preflight; HTMX fragments, redirects, static assets, health, and
+readiness remain independent. Rules and settings pages use one purpose-built
+singleton read. Settings changes validate and render before one bounded
+read-committed transaction, lock the current administrator and singleton,
+increment the exact revision, and append a digest-only audit atomically.
+
+Verification:
+
+- deterministic Templ/sqlc generation and pinned Node 26.7.0/npm 12.0.2 CSS
+  generation with a content-addressed stylesheet
+- focused unit and PostgreSQL 17 integration/race tests for projections,
+  readiness, grants, audit, revision conflicts, suspension, and HTTP preflight
+- repository-wide and cold-review admission gates retained for the exact
+  candidate before handoff
+
+Risks / non-goals:
+
+- one small PostgreSQL shell query is intentionally spent per full document;
+  no cache or cross-process invalidation claim is introduced
+- account/group governance, administrator dashboard/counts, complete AN-04
+  browser admission, PR, merge, push, tag, release, and deployment remain later
+  boundaries
+
 ### 2026-09-08 — Admit bounded AN-04 administration-completion contract
 
 Commit: current commit; hash assigned by Git after commit

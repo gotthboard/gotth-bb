@@ -1,0 +1,79 @@
+package httpui
+
+templ publicRulesPage(view pageView, rules publicRulesPageView) {
+	@document(view, publicRulesContent(view, rules))
+}
+
+templ publicRulesContent(view pageView, rules publicRulesPageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-4xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-500">/</span>
+			<span aria-current="page" class="text-slate-400">Rules</span>
+		</nav>
+		<section aria-labelledby="rules-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Community</p>
+			<h1 id="rules-title" class="text-3xl font-bold tracking-tight text-white">Rules</h1>
+			if rules.Empty {
+				<p class="mt-6 text-slate-300">No community rules have been published yet.</p>
+			} else {
+				<div class="prose prose-invert mt-6 max-w-none">
+					@rules.HTML.Component()
+				</div>
+			}
+		</section>
+	</main>
+}
+
+templ siteSettingsPage(view pageView, settings siteSettingsPageView) {
+	@document(view, siteSettingsContent(view, settings))
+}
+
+templ siteSettingsContent(view pageView, settings siteSettingsPageView) {
+	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-4xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
+		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<span aria-hidden="true" class="px-2 text-slate-500">/</span>
+			<span aria-current="page" class="text-slate-400">Site settings</span>
+		</nav>
+		<section aria-labelledby="site-settings-title" class="rounded-xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-black/20 sm:p-8">
+			<p class="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-300">Administration</p>
+			<h1 id="site-settings-title" class="text-3xl font-bold tracking-tight text-white">Site settings</h1>
+			<p class="mt-4 text-slate-300">Change the public name, description, color theme, and community rules.</p>
+			if settings.FormError != "" {
+				<p role="alert" class="mt-6 rounded-md border border-rose-900/70 bg-rose-950/40 p-3 text-rose-200">{ settings.FormError }</p>
+			}
+			<form method="post" action={ settings.ActionURL } hx-post={ settings.ActionURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-8 grid gap-6">
+				<input type="hidden" name="_csrf" value={ settings.CSRFToken }/>
+				<input type="hidden" name="revision" value={ settings.Revision }/>
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Site name
+					<input name="site_name" value={ settings.SiteName } required maxlength="80" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+				</label>
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Short description
+					<input name="site_description" value={ settings.SiteDescription } maxlength="280" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+				</label>
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Color theme
+					<select name="brand_theme" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white">
+						<option value="blue" selected?={ settings.BrandTheme == "blue" }>Blue</option>
+						<option value="cyan" selected?={ settings.BrandTheme == "cyan" }>Cyan</option>
+						<option value="emerald" selected?={ settings.BrandTheme == "emerald" }>Emerald</option>
+						<option value="amber" selected?={ settings.BrandTheme == "amber" }>Amber</option>
+						<option value="rose" selected?={ settings.BrandTheme == "rose" }>Rose</option>
+					</select>
+				</label>
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Community rules (Markdown)
+					<textarea name="rules_markdown" maxlength="65536" rows="14" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 font-mono text-sm text-white">{ settings.RulesMarkdown }</textarea>
+				</label>
+				<label class="grid gap-2 font-semibold text-slate-200">
+					Audit reason
+					<input name="reason" required maxlength="2000" autocomplete="off" class="rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white"/>
+				</label>
+				<button type="submit" class="w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200">Save site settings</button>
+			</form>
+		</section>
+	</main>
+}

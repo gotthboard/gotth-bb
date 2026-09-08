@@ -127,8 +127,8 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	if liveCursorConstraintDefinition != rendererCursorConstraintDefinition {
 		t.Fatalf("renderer cursor constraint definition = %q, want %q", liveCursorConstraintDefinition, rendererCursorConstraintDefinition)
 	}
-	if err := checker.Check(ctx); err != nil {
-		t.Fatalf("Check() rejected exact release and governance state: %v", err)
+	if err := checker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted the migration-owner role as a runtime role")
 	}
 
 	roleIdentifier := pgx.Identifier{readinessRestrictedRole}.Sanitize()
@@ -161,8 +161,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 3 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 3", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 7 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 7", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -215,7 +215,7 @@ WHERE namespace.nspname = 'public' AND search_state.relname = 'search_projection
 CREATE INDEX posts_activity_current_idx ON public.posts (id)`); err != nil {
 		t.Fatalf("replace search activity index with same-name impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err == nil {
+	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted a same-name search activity index impostor")
 	}
 	if _, err := connection.Exec(ctx, `DROP INDEX public.posts_activity_current_idx;
@@ -225,7 +225,7 @@ WHERE deleted_at IS NULL
   AND search_projection_version = 'search-v1-pg17-simple-u15-p2'`); err != nil {
 		t.Fatalf("restore exact search activity index: %v", err)
 	}
-	if err := checker.Check(ctx); err != nil {
+	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected restored exact search activity index: %v", err)
 	}
 
@@ -233,7 +233,7 @@ WHERE deleted_at IS NULL
 ADD CONSTRAINT content_renderer_state_cursor_progress CHECK (true)`); err != nil {
 		t.Fatalf("replace renderer cursor constraint with same-name impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err == nil {
+	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted a same-name validated CHECK (true) renderer cursor constraint")
 	}
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state DROP CONSTRAINT content_renderer_state_cursor_progress,
@@ -243,19 +243,19 @@ ADD CONSTRAINT content_renderer_state_cursor_progress CHECK (
 )`); err != nil {
 		t.Fatalf("restore exact renderer cursor constraint: %v", err)
 	}
-	if err := checker.Check(ctx); err != nil {
+	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected restored exact renderer cursor constraint: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state ALTER COLUMN last_processed_post_id SET DEFAULT 0`); err != nil {
 		t.Fatalf("install renderer cursor default impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err == nil {
+	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted renderer cursor column with an unauthorized default")
 	}
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.content_renderer_state ALTER COLUMN last_processed_post_id DROP DEFAULT`); err != nil {
 		t.Fatalf("remove renderer cursor default impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err != nil {
+	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected restored exact renderer cursor column: %v", err)
 	}
 
@@ -263,7 +263,7 @@ ADD CONSTRAINT content_renderer_state_cursor_progress CHECK (
 ADD CONSTRAINT posts_renderer_version_current CHECK (true)`); err != nil {
 		t.Fatalf("replace renderer constraint with same-name impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err == nil {
+	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted a same-name validated CHECK (true) renderer constraint")
 	}
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_renderer_version_current,
@@ -274,14 +274,14 @@ ADD CONSTRAINT posts_renderer_version_current CHECK (
 )`); err != nil {
 		t.Fatalf("restore exact renderer constraint: %v", err)
 	}
-	if err := checker.Check(ctx); err != nil {
+	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("Check() rejected restored exact renderer constraint: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `ALTER TABLE public.posts DROP CONSTRAINT posts_rendered_size,
 ADD CONSTRAINT posts_rendered_size CHECK (true)`); err != nil {
 		t.Fatalf("replace rendered-size constraint with same-name impostor: %v", err)
 	}
-	if err := checker.Check(ctx); err == nil {
+	if err := restrictedChecker.Check(ctx); err == nil {
 		t.Fatal("Check() accepted a same-name validated CHECK (true) rendered-size constraint")
 	}
 }

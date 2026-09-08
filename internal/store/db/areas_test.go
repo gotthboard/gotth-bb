@@ -312,6 +312,7 @@ func (rows *areaListRows) Scan(destinations ...any) error {
 	*(destinations[8].(*int64)) = area.UpdatedBy
 	*(destinations[9].(*pgtype.Timestamptz)) = area.CreatedAt
 	*(destinations[10].(*pgtype.Timestamptz)) = area.UpdatedAt
+	*(destinations[11].(*int64)) = area.AdministrationRevision
 	return nil
 }
 

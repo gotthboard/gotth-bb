@@ -90,7 +90,7 @@ func TestAuthenticatedRouterDispatchesOnlyCanonicalAreaAdministrationPaths(t *te
 			creates++
 			return administration.AreaMutationResult{AreaID: 1, Slug: input.Slug, AuditID: 2}, nil
 		},
-		panicAreaUpdater, nil, nil, nil, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
+		panicAreaUpdater, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)
 	if err != nil {
 		t.Fatalf("newAuthenticatedHandler() returned error: %v", err)
