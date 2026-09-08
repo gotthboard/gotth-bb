@@ -17,7 +17,8 @@ CREATE TABLE public.site_settings (
     updated_at timestamp with time zone NOT NULL DEFAULT clock_timestamp(),
     CONSTRAINT site_settings_singleton_true CHECK (singleton),
     CONSTRAINT site_settings_name_shape CHECK (
-        char_length(site_name) BETWEEN 1 AND 80
+        char_length(site_name) >= 1
+        AND char_length(site_name) <= 80
         AND site_name !~ '[[:cntrl:]]'
     ),
     CONSTRAINT site_settings_description_shape CHECK (
@@ -131,11 +132,10 @@ ALTER TABLE public.moderation_actions
     DROP CONSTRAINT moderation_actions_reason_length,
     ADD CONSTRAINT moderation_actions_reason_length CHECK (
         reason IS NULL
-        OR (
-            octet_length(reason) BETWEEN 1 AND 2000
-            AND reason !~ '[[:cntrl:]]'
-            AND reason = pg_catalog.btrim(reason, ' ')
-        )
+        OR octet_length(reason) >= 1
+        AND octet_length(reason) <= 2000
+        AND reason !~ '[[:cntrl:]]'
+        AND reason = pg_catalog.btrim(reason, ' ')
     ),
     DROP CONSTRAINT moderation_actions_reason_required,
     ADD CONSTRAINT moderation_actions_reason_required CHECK (

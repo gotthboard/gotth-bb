@@ -106,7 +106,8 @@ func TestAdministrationCompletionSchemaStepIsBoundedAndAuditable(t *testing.T) {
 		"'create_group', 'rename_group'",
 		"'grant_area_group', 'revoke_area_group'",
 		"'update_site_settings'",
-		"octet_length(reason) BETWEEN 1 AND 2000",
+		"octet_length(reason) >= 1",
+		"octet_length(reason) <= 2000",
 		"reason !~ '[[:cntrl:]]'",
 		"reason = pg_catalog.btrim(reason, ' ')",
 	} {
