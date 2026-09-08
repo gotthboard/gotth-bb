@@ -72,6 +72,10 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 	}
 	actor := policy.AccessContext{Authenticated: true, UserID: actorID, Role: policy.RoleAdministrator}
 	observedAt := time.Date(2026, time.September, 8, 14, 0, 0, 123456000, time.UTC)
+	editable, err := LoadEditable(ctx, db.New(connections[0]), actor, observedAt)
+	if err != nil || editable.Revision != 1 || editable.Shell.Name == "" {
+		t.Fatalf("initial LoadEditable() = (%+v, %v)", editable, err)
+	}
 	requestID := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
 	input := SettingsInput{
 		Name: "Community Board", Description: "A plainly organized community.", Theme: "cyan",

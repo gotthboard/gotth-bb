@@ -32,7 +32,7 @@ SELECT (settings.singleton IS TRUE)::boolean AS settings_present,
        COALESCE(settings.administration_revision, 0)::bigint AS administration_revision
 FROM actor
 LEFT JOIN LATERAL (
-    SELECT site_name, site_description, brand_theme,
+    SELECT singleton, site_name, site_description, brand_theme,
            rules_markdown, rules_html, rules_renderer_version,
            administration_revision
     FROM public.site_settings

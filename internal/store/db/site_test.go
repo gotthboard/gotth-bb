@@ -25,7 +25,7 @@ func TestSiteProjectionQueriesBindAndScanExactRows(t *testing.T) {
 		t.Fatalf("LoadEditableSiteSettings() = (%+v, %v, args %#v)", got, err, database.args)
 	}
 	for _, required := range []string{
-		"actor AS MATERIALIZED", "forum_user.role = 'administrator'", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "LEFT JOIN LATERAL",
+		"actor AS MATERIALIZED", "forum_user.role = 'administrator'", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "LEFT JOIN LATERAL", "SELECT singleton, site_name",
 		"(settings.singleton IS TRUE)::boolean AS settings_present", "COALESCE(settings.administration_revision, 0)::bigint",
 	} {
 		if !strings.Contains(database.query, required) {
