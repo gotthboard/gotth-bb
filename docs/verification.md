@@ -50,7 +50,7 @@ exists.
 | FORUM-005–FORUM-006 | moderation state and stable URLs | UT, DB, HTTP, E2E | Alpha.1 |
 | CONTENT-001–CONTENT-007 | composer, renderer, post services | UT, DB, HTTP, SEC | Alpha.1 |
 | READ-001 | index/list/threaded-topic handlers | HTTP, E2E, A11Y | Alpha.1 baseline; Alpha.2 threaded |
-| READ-002 | read markers and unread views | UT, DB, HTTP | Beta.1 |
+| READ-002 | read markers and unread views | UT, DB, HTTP, E2E, SEC, PERF | Alpha.N (AN-03) |
 | READ-003–READ-004 | PostgreSQL search/activity queries | DB, HTTP, SEC, E2E, PERF | Alpha.N (AN-02) |
 | READ-005 | URL builder and templates | UT, HTTP, E2E | Alpha.1 |
 | READ-006 | tree-order paging and reply-to context | UT, DB, HTTP, E2E, A11Y | Alpha.2 |
@@ -783,3 +783,110 @@ Retained transcripts:
 The evidence contains no universal performance guarantee. The generated
 corpus and release artifacts were disposable verification state; the
 transcripts and exact source identities are the retained record.
+
+## 20. AN-03 unread-state evidence contract
+
+AN-03 evidence distinguishes read-state correctness from topic access. A
+marker is private preference state and never evidence that an actor may read a
+topic.
+
+### 20.1 Functional and authorization matrix
+
+Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
+
+- the closed `new`/`unread`/`read` state table for no eligible posts,
+  own-post-only topics, absent marker, marker below/equal/above eligible head,
+  malformed persisted rows, and the exact combined board-index count;
+- visitor output proving no marker join, state field, count, action, form, or
+  private cache variation; member, matching/nonmatching group, moderator, and
+  administrator output over public/authenticated/group/hidden topics;
+- authorization before topic identity, marker existence, readable-head test,
+  count, state, first-unread target, tree ordinal, redirect, and terminality,
+  including a distribution where restricted topics cannot change an authorized
+  area's count;
+- per-topic area-page indicators, exact board-index counts, zero/dense/sparse
+  markers, more than one matching group without row multiplication, empty
+  areas, and the fixed 25-topic page boundary;
+- canonical path and no-query grammars before session/body/database work,
+  login/revalidation behavior, exactly one body-free `X-CSRF-Token` header or
+  exactly one `_csrf` URL-encoded field and no other body field, fixed
+  `400`/`404`/`503`, base-path URLs, and ordinary/HTMX response equivalence
+  without echoing IDs or state;
+- first unread at the root, equal-time/number boundaries, deleted/redacted
+  gaps, tombstone ancestors, staff tree shape, page 1, page 10,000, the 250,001
+  direct-post fallback, no-unread root redirect, and concurrent access
+  revocation between requests; and
+- authenticated full-page/HTMX `private, no-store`, retained visitor cache
+  behavior, no marker-derived shared-cache entry, no-JavaScript controls,
+  visible focus, semantic state text, keyboard activation, and screen-reader
+  names.
+
+Tests inspect `topic_reads` before and after every successful and failed GET to
+prove that board, area, topic, post, search, activity, and first-unread reads
+never write. Cross-site-safe semantics are not inferred from SameSite cookies;
+only the CSRF-protected mark-read POST may advance state.
+
+### 20.2 Mutation, deletion, and concurrency matrix
+
+PostgreSQL integration and race tests shall cover first insert, equal/lower/
+higher retry, two devices in both commit orders, a new post before and after
+the mark snapshot, cancellation, statement failure, unknown commit inspection,
+and exact `read_at` no-change/change behavior. No client field may select a
+watermark or another user.
+
+Topic and reply publication tests prove zero marker writes for an author with
+no marker, a marker behind or ahead of the new post, concurrent reply
+allocation, rendering failure, authorization failure, and the existing
+no-retry unknown-outcome boundary. State and first-unread tests prove the
+current actor's own posts are excluded. Edit, preview, delete, restore, redact,
+moderation, move, direct-post, search, and activity tests also prove zero marker
+writes.
+
+Deletion tests cover unread-only post deletion/redaction, tombstone ancestors,
+restore above and below the marker, hard post purge without marker decrement,
+topic hide/restore, area/group access removal/restoration, topic soft deletion,
+and user/topic cascade deletion. Suspension tests prove immediate session
+failure, visitor-only public reads, no personalized state/control, and retained
+dormant storage; mute tests preserve state/control while publishing remains
+denied. Dormant marker state must not leak or grant access.
+
+### 20.3 Migration, plans, and resources
+
+Fresh and upgrade migration tests cover exact head 000009, finite `read_at`,
+regular partial-index construction, transaction rollback, unknown migration
+outcome, idempotent rerun, readiness, and the absence of backfill or fabricated
+marker rows. Legacy `infinity`/`-infinity` must abort the whole transaction,
+leave the ledger at 000008, and require inspected forward repair before retry.
+Retain relation size, elapsed time, lock mode/wait, buffers, and I/O for the
+`posts` index scan and
+`topic_reads` constraint validation.
+
+The representative checkpoint contains at least 25,000 topics and 250,000
+posts; integrated admission reuses at least 100,000 topics and 1,000,000 posts
+across public, authenticated, group, hidden, deleted, redacted, shallow/deep
+trees, sparse/dense markers, and 0/1/25/26/250,000/250,001 boundaries. Corpus
+sizes are evidence points, never publication quotas.
+
+Retain `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` under custom and forced-
+generic plans for authenticated board counts, bounded area states,
+first-unread selection/tree placement, and mark-read boundary selection.
+Structural assertions prove area/topic authorization below every identity or
+aggregate boundary, group membership as a semi-join, unique topic contribution,
+and `posts_topic_unread_visible_idx`, including its `author_id` payload, on the
+targeted visible-post shapes.
+Planner observations do not become hints or universal latency guarantees.
+
+Measure allocations, RSS, temporary I/O, database connections, cancellation,
+and coexistence with topic/reply publication. First-unread must cap tree
+placement at 250,001 identities; area results at 25 topics; mark-read at one
+marker row. The exact board count is openly population-dependent.
+
+### 20.4 Admission gates
+
+The exact final candidate must pass SQL/Templ/static generation, gofmt, vet,
+focused unit/HTTP, PostgreSQL integration/race, migration, population/plan/
+resource, authorization-leakage, browser-through-Caddy, CSRF/cache/log-
+redaction, repository-integrity, and release-artifact reproducibility gates.
+Evidence records exact commit/tree, commands, environment, versions, checksums,
+result, and explicit gaps. Two fresh independent cold reviews must both be
+CLEAN on the same exact state before handoff.

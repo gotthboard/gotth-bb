@@ -497,8 +497,19 @@ automatic retry after an unknown commit outcome.
 - `user_id`, `topic_id`, `last_read_post_number`, `read_at`
 - primary key `(user_id, topic_id)`
 
-Updates use `GREATEST` so an out-of-order request does not mark a topic less
-read.
+Migration 000009 retains the existing positive-number check, adds the validated
+`topic_reads_read_at_finite` check over the PostgreSQL microsecond domain, and
+adds `posts_topic_unread_visible_idx` on
+`(topic_id, post_number) INCLUDE (author_id)` with the exact predicate
+`deleted_at IS NULL AND redacted_at IS NULL`. It does not backfill or infer
+reads. A legacy nonfinite `read_at` aborts the whole migration transaction and
+leaves the migration ledger at 000008 for inspected forward repair.
+
+Only server-owned statements write markers. Updates use `GREATEST`; `read_at`
+uses finite database `clock_timestamp()` and changes only when the stored number
+advances. Read projections reject a marker above `topics.next_post_number - 1`,
+a non-finite time, or any malformed nullable tuple with fixed service failure.
+Missing rows are meaningful and are never pre-created in bulk.
 
 ### 6.11 Reports and audit
 
@@ -849,6 +860,8 @@ Internal routes are shown relative to the configured external base URL.
 | `GET` | `/search` | Access-filtered search | Visitor |
 | `GET` | `/activity` | Access-filtered recent posts | Visitor |
 | `GET` | `/posts/{id}` | Bounded direct post target | Post viewer |
+| `GET` | `/topics/{id}/unread` | First eligible unread post redirect | Member |
+| `POST` | `/topics/{id}/read` | Mark eligible other-authored head read | Member |
 | `GET` | `/health/live` | Liveness | Edge/operator |
 | `GET` | `/health/ready` | Readiness | Edge/operator |
 
@@ -952,7 +965,9 @@ consume identity: `/`; one-segment `GET /areas/{slug}`; canonical
 positive-decimal one-segment `GET /topics/{id}`; the exact publishing,
 preview, edit, delete, topic-moderation, account-status, suspend, and reinstate
 routes listed above; exact `GET /search` and `GET /activity`; canonical
-positive-decimal one-segment `GET /posts/{id}`; setup; revalidation; and logout. Every numeric identifier must
+positive-decimal one-segment `GET /posts/{id}`; canonical positive-decimal
+`GET /topics/{id}/unread` and `POST /topics/{id}/read`; setup; revalidation;
+and logout. Every numeric identifier must
 pass the canonical parser before session lookup. Noncanonical escaped paths,
 malformed or nested paths, wrong methods, health, static, and unknown paths go
 directly to the public router and cannot become unavailable merely because the
@@ -1846,7 +1861,186 @@ PostgreSQL statement/parameter diagnostics may see bound values. Those are
 separate operator-controlled trust boundaries and are never hidden by an
 application-log redaction claim.
 
-## 20. Definition of implementation complete
+## 20. AN-03 unread state
+
+AN-03 is one PostgreSQL-backed signed-in preference feature. It adds no cookie,
+cursor, external service, scheduled cleanup, background job, notification, or
+anonymous tracking state.
+
+### 20.1 State and visible semantics
+
+For one authorized signed-in actor and topic, `read_head` is the greatest
+`post_number` whose row has `deleted_at IS NULL`, `redacted_at IS NULL`, and
+`author_id <> actor.user_id`. If no such eligible row exists, the topic has no
+readable other-authored head and its state is `read` regardless of marker
+absence. A member's own posts never create that member's unread state.
+
+The three closed UI states are:
+
+- `new`: an eligible head exists and no `(user_id, topic_id)` marker exists;
+- `unread`: a structurally valid marker exists and is less than `read_head`;
+- `read`: the marker is at least `read_head`, or no eligible head exists.
+
+`new` and `unread` both contribute one to the board index's exact
+`unread_topic_count`; a topic contributes at most once. Visitors receive no
+state enum, marker, read time, count, first-unread link, or mark-read form.
+`read_at` is private implementation state and is not rendered, logged, or
+returned by any public read model.
+
+Marker numbers remain chronological high-water acknowledgments, not proof that
+the user viewed every tree-ordered node. Topic/post/search/activity GETs and
+the first-unread GET never mutate state. There is no decrement, mark-unread,
+per-page bitmap, global unread feed, or unread-post total in version 1.0.
+
+### 20.2 Authorization-first read models
+
+The authenticated board-index statement extends its existing
+`visible_areas -> visible_topics` relations before joining the current user's
+marker or testing readable posts. It returns exact nonnegative
+`unread_topic_count` per area. The visitor statement remains non-personalized
+and does not touch `topic_reads`.
+
+The existing 25-topic area page returns one closed read state per authorized
+topic. Its authorization relation precedes the marker join and the readable-
+post existence test. Both statements use only the server-loaded positive user
+ID, role, and complete sorted group set; request fields never carry authority.
+Group areas retain the `EXISTS` semi-join and cannot multiply a topic or count.
+Authenticated board-index, area-topic, and topic-page success and failure
+responses set `Cache-Control: private, no-store`. Visitor statements and pages
+retain the existing non-personalized cache contract. No shared anonymous cache
+stores marker-derived output.
+
+The store validates positive IDs and marker numbers, finite `read_at`, marker
+at most `next_post_number - 1`, the closed state enum, nonnegative counts, and
+state/head/marker consistency. Any partial, duplicate, contradictory, or
+malformed result fails the buffered response with fixed `503`. Unauthorized
+topics contribute no identity, marker existence, count, state, target, page,
+or terminality.
+
+### 20.3 Mark-read writes
+
+`POST /topics/{topicID}/read` accepts one canonical positive decimal int64 path
+segment and no raw query. A noncanonical path remains the generic fixed `404`;
+any query is fixed `400`. Both reject before session lookup, body read, CSRF
+validation, or database work. The route then preserves the
+existing CSRF grammar: exactly one `X-CSRF-Token` header is validated without
+reading a body, or a bounded `application/x-www-form-urlencoded` body contains
+exactly one `_csrf` field. With header authority the body must be empty; with
+form authority no other field is accepted. The wire bound is 4,096 bytes. The
+route requires a current local authenticated member/staff session and Authentik
+revalidation; it never accepts a watermark, user ID, role, group, return URL,
+or topic field.
+
+One transaction applies the complete direct-topic authorization predicate,
+selects the greatest currently readable post number through
+`posts_topic_unread_visible_idx`, excluding `author_id = actor.user_id`, and
+upserts the current actor's row. A topic with no eligible other-authored post is
+a successful no-op. Conflict update sets
+`last_read_post_number = GREATEST(old, selected)` and changes `read_at` to the
+same finite database sample only under `WHERE selected > old`; an equal or
+lower boundary performs no row update. A retry is idempotent.
+Missing, deleted, hidden, or inaccessible topics are fixed `404`; stale
+authentication follows the existing revalidation redirect; CSRF or strict-form
+failure performs no database work; database/cancellation failure is fixed
+`503` with no partial response.
+
+Ordinary success is an empty `303` to the builder-owned canonical topic root.
+HTMX success is `204` with the equivalent same-origin `HX-Location` main-region
+reload. The form is shown only for a `new` or `unread` topic, but the
+transaction remains authoritative. This preference write appends no moderation
+audit row. Topic/reply publication, edit, preview, delete, restore, redact,
+moderation, and move paths do not write read state.
+
+### 20.4 First-unread navigation
+
+`GET /topics/{topicID}/unread` accepts the same canonical ID grammar and no raw
+query. A noncanonical path remains the generic fixed `404`; any query is fixed
+`400`. Both reject before session, body, or database work. A missing current
+member session redirects through the existing login return
+path without probing the topic. Stale authentication follows the existing
+revalidation path.
+
+One read-only statement first produces the authorized undeleted topic, joins
+the current actor marker, computes the eligible other-authored `read_head`, then
+chooses the lowest undeleted/unredacted other-authored `post_number` greater
+than `COALESCE(marker, 0)`. It always returns one authorized-topic sentinel with
+the complete marker/read-head tuple, even when no target exists, so malformed
+persisted state cannot collapse into a no-unread redirect. After choosing a
+target, it materializes at most the first 250,001 renderable identities in the
+exact actor-visible tombstone rules and `thread_path` order of
+`GetVisibleTopicPostPage` to locate that target. No unread target yields empty
+`303` to the canonical topic root. An
+ordinal from 1 through 250,000 yields the canonical 25-node topic page and
+`#post-<id>` fragment, omitting `page=1`. A target not found inside that bound
+uses the canonical `/posts/<id>` direct-post route. Absence from the bounded
+identity set selects that fallback; the statement does not scan an unbounded
+tree to prove absence and does not widen topic pagination.
+
+The statement returns no body/source and validates topic/post identity,
+positive target number, ordinal bounds, and deterministic target selection.
+Missing, deleted, hidden, or inaccessible topics are fixed `404`; SQL,
+cancellation, malformed rows, or URL construction failure is fixed `503`.
+Every outcome is `private, no-store`. Redirects are equivalent for ordinary and
+HTMX requests and use `HX-Redirect` only where the existing session-boundary
+contract requires it.
+
+### 20.5 Deletion, revocation, and concurrency
+
+Soft-deleted, redacted, or current-actor-authored posts do not create unread
+state. If such a position was the only unread one, the indicator may disappear
+without advancing the
+marker. Restoration of another author's post above the marker becomes unread;
+restoration at or below it remains read. Hard post purge does not lower a
+marker. Topic soft deletion,
+hiding, area-policy change, group removal, or suspension makes the marker
+non-authoritative and invisible but does not delete it. Suspension retains the
+existing immediate active-session failure, so subsequent public reads use
+visitor semantics and no mark-read authority. Mute does not hide state or the
+mark-read control while the session retains direct read authorization.
+Topic/user hard delete uses the existing cascading foreign keys.
+
+A post committed after a read-model snapshot may appear on the next request.
+A mark-read transaction selects its own server boundary; a later eligible post
+remains unread. Concurrent mark-read requests serialize only on the one marker
+key and converge through `GREATEST`; publication never locks or writes that
+marker. Marker state never grants topic access and cannot make a stale session
+more authoritative.
+
+### 20.6 Migration, resources, logging, and rollback
+
+Migration 000009 performs exactly two schema changes: add
+`topic_reads_read_at_finite` as `NOT VALID` then validate it, and create
+`posts_topic_unread_visible_idx` as a regular partial B-tree on
+`(topic_id, post_number) INCLUDE (author_id)` for
+`deleted_at IS NULL AND redacted_at IS NULL`.
+It has no data rewrite, backfill, readiness singleton, or custom runner. Index
+creation scans `posts` and may block concurrent writers; constraint validation
+scans `topic_reads` under PostgreSQL's validation lock. Release evidence records
+their elapsed time, relation size, locks, and I/O on the representative corpus.
+A legacy `infinity` or `-infinity` `read_at` makes validation fail and aborts the
+whole transaction, leaving the ledger at 000008. The operator inspects and uses
+a reviewed forward repair before retry; migration never silently rewrites,
+deletes, or fabricates a marker.
+
+Area pages remain fixed at 25 topics. First-unread ordinal work materializes at
+most 250,001 renderable identities and returns one target. Mark-read returns no
+content. The board index exact count remains population-dependent like its
+existing exact topic/post counts; no constant-time or universal latency claim
+is made. New SQL has bounded application contexts and statement timeouts, is
+cancellation-safe, and runs without an in-request retry.
+
+Application logs retain route pattern, fixed outcome, status, duration, and
+bounded row/count metrics only. They exclude user/topic IDs, marker existence,
+marker number, read time, target post, and redirect location. PostgreSQL
+diagnostic logging remains a separate operator-controlled boundary.
+
+Readiness requires exact migration head 000009 through the existing migration
+ledger check; there is no additional health state. Before 000009, use the prior
+artifact. After it commits, exact-head readiness prevents the prior artifact
+from starting; recovery is forward repair/current artifact or the existing
+verified pre-000009 restore. No down-migration or inferred rollback is claimed.
+
+## 21. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

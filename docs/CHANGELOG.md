@@ -5,6 +5,45 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-07 — Admit bounded AN-03 unread-state contract
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- PRD/architecture contract for private monotonic topic acknowledgments
+- implementation contract for migration 000009, authorization-first read
+  models, explicit mark-read writes, author-excluded eligibility, and
+  first-unread navigation
+- serial AN-03-01 through AN-03-04 decomposition and exact evidence gates
+
+Explanation:
+
+Define unread state without smuggling writes into safe GETs or pretending a
+tree-ordered page maps cleanly to a chronological high-water. Members receive
+closed `new`/`unread`/`read` state, one exact authorized area count, a read-only
+first-unread action, and an explicit CSRF-protected whole-topic acknowledgment.
+The database chooses every watermark; retries and concurrent devices converge
+through `GREATEST`; a user's own posts never create unread state, and every
+publication path leaves markers unchanged.
+
+Verification:
+
+- cross-document requirement, route, migration, authorization, deletion,
+  concurrency, resource, rollback, and evidence consistency audit
+- `git diff --check`
+- two fresh independent CLEAN contract reviews on one exact commit/tree before
+  handoff
+
+Risks / non-goals:
+
+- this checkpoint changes no executable code, database, route, deployment, or
+  remote ref
+- no automatic GET mutation, anonymous tracking, global unread feed,
+  notification delivery, cursor/keyring, publication quota, or new service
+- AN-03 implementation, PR, push, merge, tag, release, and deployment require
+  later explicit authorization
+
 ### 2026-09-07 — Complete AN-02 integrated admission
 
 Commit: current commit; hash assigned by Git after commit

@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.N` — AN-02 contract admitted; implementation pending |
+| Current target | `1.0.0-alpha.N` — AN-03 contract admitted; implementation pending |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -418,11 +418,40 @@ without later explicit authorization.
 
 ### AN-03: unread state
 
-Requirements: READ-002, READ-004.
+Requirements: READ-002, READ-005, ACL-004 through ACL-006, SEC-001, SEC-005.
 
-- Monotonic per-topic read markers.
-- New/unread indicators and first-unread navigation.
-- Access and deletion behavior defined.
+AN-03 depends on admitted AN-02 commit
+`dc96d51386e0b81b0f826a4889d7594ca5dbbac9`. Its serial implementation units
+are:
+
+1. **AN-03-01 — schema and authorization-first read models.** Add migration
+   000009's finite read-time check and partial visible-post index; extend the
+   authenticated board summary with exact unread-topic counts and the bounded
+   area page with closed `new`/`unread`/`read` state; preserve the visitor
+   shape; and retain visitor/member/group/staff PostgreSQL 17 plan evidence.
+2. **AN-03-02 — monotonic mark-read writes.** Add the strict mark-read
+   transaction/service, `GREATEST` concurrency behavior, and private-row
+   validation. Exclude the actor's own posts from unread eligibility and prove
+   that every topic/reply publication path writes zero markers. Prove retries,
+   stale forms, concurrent devices, post races, access revocation,
+   deletion/redaction/restoration, session invalidation, and unknown mark-read
+   outcomes.
+3. **AN-03-03 — first-unread route and progressive UI.** Add the exact
+   read-only first-unread route, strict CSRF-protected mark-read route,
+   builder-owned redirects, topic/list/index controls, full-page/HTMX parity,
+   base-path handling, private caching, fixed failures, and browser-through-
+   Caddy keyboard/accessibility evidence.
+4. **AN-03-04 — integrated admission.** Reproduce generated state; run focused
+   unit, PostgreSQL 17 integration/race, migration, representative population/
+   plan/resource, authorization-leakage, browser, repository-integrity, and
+   exact-artifact gates; retain evidence; then obtain two fresh clean reviews
+   on one exact final tree.
+
+The units stay in one isolated feature worktree and move one at a time through
+DONE/HANDOFF/orchestrator review. No unit adds automatic GET mutation, a global
+unread feed, notification delivery, anonymous tracking, or a new service.
+Workers do not create PRs, merge, push, release, or deploy without later
+explicit authorization.
 
 ### AN-04: administration completion
 

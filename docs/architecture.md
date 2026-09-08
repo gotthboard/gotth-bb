@@ -502,13 +502,58 @@ predicates are initially empty. Rollback remains forward repair or the existing
 verified pre-migration restore; AN-02 adds no down-migration fiction or backup
 engine.
 
-Unread state records the last post position read for a user and topic. Counts
-may be approximate only if the UI labels them as such; access filtering is never
-approximate.
+Unread state reuses `topic_reads` as one monotonic acknowledgment per user and
+topic. `post_number` remains its chronological coordinate even though topic
+pages render immutable tree order. This mismatch is not hidden: opening a page
+does not imply that an arbitrary tree prefix was read and therefore performs no
+write. A signed-in reader explicitly marks the currently readable
+other-authored topic head through a CSRF-protected POST. The actor's own posts
+are excluded from unread eligibility, and every publication path leaves markers
+unchanged.
 
-Thread presentation does not redefine unread chronology. `post_number` remains
-the monotonic topic position used by unread state and latest activity even
-though the topic page orders visible conversation nodes by immutable tree path.
+The database, not the browser, chooses every watermark. The mark-read statement
+first produces an authorized topic, then selects the greatest undeleted,
+unredacted `post_number` by another author, and upserts with `GREATEST`. It
+changes `read_at` only when the marker advances. Concurrent devices, stale
+forms, and retries cannot move the marker backward. An eligible post committed
+after the statement snapshot remains unread. Marker state grants no access and
+is ignored when the topic is no longer authorized.
+
+For signed-in area lists, an absent marker plus a readable other-authored post is
+`new`; a marker below any such post is `unread`; every other visible topic is
+`read`. The board index aggregates one exact `new OR unread` topic count per
+already-authorized area. Visitors execute the existing non-personalized shape
+and receive neither nullable marker data nor fabricated anonymous state.
+Authorization precedes the topic identity, marker join, existence test, count,
+and rendered label. Authenticated board, area, and topic responses are
+`private, no-store`; visitor pages retain their existing cache behavior, and no
+shared cache may hold marker-derived output.
+
+First-unread navigation is a read-only exact route. One authorization-first
+statement selects the lowest readable other-authored number above the marker
+and computes its position in the same actor-visible tree used by the topic page.
+Only the first 250,001 renderable nodes are considered for page placement.
+Targets within the existing 10,000-page boundary use the canonical topic-page
+fragment; a later target uses the already-bounded direct-post route rather than
+expanding topic pagination. No unread target redirects to the canonical topic
+root.
+
+Soft deletion, redaction, and current-actor authorship exclude a post from
+unread eligibility without rewriting markers. Restoration of another author's
+post above the high-water becomes unread; restoration at or below it remains
+acknowledged. Topic soft deletion or access revocation leaves the private
+marker dormant so restoration preserves continuity. Hard topic deletion and
+user deletion retain the existing cascading cleanup.
+
+Migration 000009 adds only the finite `read_at` check and one partial
+`(topic_id, post_number) INCLUDE (author_id)` index for undeleted, unredacted
+posts. It performs no backfill, renumbering, cursor population, or read
+inference. The regular index build and constraint validation scan existing
+relations and are treated as real maintenance work, not described as free
+because the logical change is small. A legacy nonfinite `read_at` aborts the
+whole transaction and leaves the
+migration ledger at 000008 for operator inspection and forward repair; the
+migration neither deletes nor invents marker state.
 
 ## 11. Rendering and client behavior
 

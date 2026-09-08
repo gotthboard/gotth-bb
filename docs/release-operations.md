@@ -234,6 +234,14 @@ notes, screenshots, or repository files.
 - After 000008, the same packaged grant artifact adds only `SELECT` on the
   migration-owned `search_projection_state` singleton for runtime readiness;
   runtime never owns or mutates that table.
+- Migration 000009 adds no singleton, secret, or custom runner. Its regular
+  partial index, including `author_id`, scans `posts` and can block writers; its
+  finite-time constraint validation scans `topic_reads`. Both are measured
+  maintenance work even though no row backfill or rewrite occurs. A legacy
+  nonfinite `read_at` aborts
+  the entire migration and leaves the ledger at 000008; inspect and apply a
+  reviewed forward repair before retrying rather than deleting or inventing
+  marker state.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -401,6 +409,17 @@ required sequence is:
    maintenance-window evidence.
    A PostgreSQL minor update additionally performs the full-corpus byte
    comparison before service. Do not replace this with fixture sampling.
+   AN-03 migration 000009 then adds and validates the finite `read_at` check
+   and builds the regular partial visible-post index with included `author_id`.
+   It performs no read-state backfill, cursor phase, or custom completion step.
+   Keep the application
+   stopped while the ordinary migration transaction scans the relations and
+   holds its schema/index locks; record elapsed time, locks, buffers, relation
+   sizes, and I/O. A failed transaction leaves neither change in the migration
+   ledger. A legacy `infinity` or `-infinity` value therefore fails closed at
+   000008 and requires inspected forward repair; the migration does not silently
+   rewrite it. Inspect the ledger and catalogs after an unknown commit outcome
+   before retrying.
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
@@ -441,6 +460,10 @@ Every deployed prerelease verifies:
 - Once AN-02 is present, public/member/group/staff search, recent activity,
   continuation, direct-post, expiry, and restricted-occupancy checks pass
   through Caddy without exposing query/cursor values in application logs.
+- Once AN-03 is present, a member sees exact authorized new/unread state,
+  first-unread navigation, and a CSRF-protected mark-read action; a visitor
+  receives no personalized state; restricted topics do not alter counts; and
+  ordinary GETs leave markers unchanged.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
 
@@ -465,6 +488,10 @@ Decision order after failure:
    AN-02 migration 000008 likewise makes the prior artifact fail its exact-head
    readiness contract. Use the current artifact/forward repair or restore the
    verified pre-000008 database backup; there is no down-migration claim.
+   AN-03 migration 000009 is additive but exact-head readiness still prevents
+   the prior artifact from starting. Use the current artifact/forward repair or
+   restore the verified pre-000009 database backup; do not invent a down
+   migration or delete private marker state by hand.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the

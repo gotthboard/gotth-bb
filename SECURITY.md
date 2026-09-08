@@ -32,6 +32,23 @@ and snippets. The edge still receives the raw query-bearing URL, and explicitly
 enabled PostgreSQL statement/parameter diagnostics may see bound values. Those
 separate operator-controlled systems require appropriate access and retention.
 
+## Unread-state boundaries
+
+AN-03 read markers are private monotonic acknowledgments, never authorization.
+Area/topic access is applied before marker existence, state, count, target,
+page placement, or terminality contributes to a response. Visitors receive no
+personalized unread field or anonymous tracking row, and marker state dormant
+behind revoked access cannot restore that access.
+
+Safe reads and every publication path write no markers. A current signed-in
+user's CSRF-protected mark-read POST is the only mutation; the server selects a
+watermark from currently eligible posts by other authors and uses `GREATEST`.
+Suspension preserves the existing fail-closed session invalidation boundary;
+the stored marker becomes unavailable and public reads use visitor semantics.
+Mute does not hide read state while the session retains direct read access.
+Application logs exclude marker existence, value, time, target, and redirect.
+Authenticated read-state pages and redirects are private and not cached.
+
 ## Reporting a vulnerability
 
 Do not disclose exploit details in a public GitHub issue, pull request,

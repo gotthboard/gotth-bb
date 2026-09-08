@@ -479,7 +479,49 @@ AN-02 admits search and recent activity under these visible constraints:
    replace the service supervisor, add an external search service, or invent a
    new backup/deployment authority.
 
-## 11. Stable 1.0 acceptance boundary
+## 11. AN-03 acceptance boundary
+
+AN-03 admits signed-in unread state without turning safe reads into hidden
+mutations:
+
+1. Every visible topic is in exactly one member-only state: `new` when no read
+   marker exists and at least one currently readable post by another author
+   exists, `unread` when a marker exists below such a post, or `read` otherwise.
+   Visitors receive no read-state field, count, or control.
+2. A read marker is a monotonic per-user/per-topic acknowledgment through an
+   immutable `post_number`. Ordinary topic, post, search, and activity `GET`s
+   never change it. `POST /topics/{topicID}/read`, protected by the existing
+   session, revalidation, and CSRF boundary, marks through the highest currently
+   readable post by another author selected by the server. It accepts no
+   client-owned watermark. This POST is the only marker mutation.
+3. A member's own posts never create that member's `new` or `unread` state.
+   Topic/reply publication, edits, moderation, direct-post reads, search,
+   activity, and first-unread navigation do not change markers.
+4. The board index shows one exact authorized unread-topic count per visible
+   area, combining `new` and `unread`. The bounded area topic page shows the
+   distinct per-topic state and a first-unread action. No global unread feed,
+   notification system, or approximate count is introduced.
+5. `GET /topics/{topicID}/unread` is read-only. It selects the lowest currently
+   readable other-authored `post_number` above the marker and redirects to that
+   post on its canonical bounded tree page. If the tree ordinal exceeds the
+   existing 10,000-page topic limit, it falls back to the bounded direct-post
+   URL. With no unread post it redirects to the canonical topic root.
+6. The same area/topic predicate used by direct reads runs before any topic
+   identity, state, count, target, page ordinal, or terminal decision can
+   contribute. Missing, deleted, hidden, and inaccessible topics remain
+   indistinguishable at the route boundary.
+7. Deleted, redacted, or current-actor-authored posts never create unread state.
+   A later restore of another author's post may become unread only when its
+   immutable number is above the stored marker; restoring an older acknowledged
+   position does not move the marker backward.
+   Topic hard deletion cascades markers; access revocation merely hides them.
+8. Authenticated full-page and HTMX behavior remain base-path-safe,
+   `private, no-store`, bounded, and usable without JavaScript; visitor pages
+   retain their existing non-personalized cache behavior. AN-03 adds no tracking
+   timestamp visible to other users, external service, background worker,
+   cursor key, publication quota, or deployment authority.
+
+## 12. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -493,7 +535,7 @@ AN-02 admits search and recent activity under these visible constraints:
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 12. Constraints and assumptions
+## 13. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -504,7 +546,7 @@ AN-02 admits search and recent activity under these visible constraints:
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 13. Open owner decisions
+## 14. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:
@@ -516,7 +558,7 @@ implementation begins:
 5. Content retention duration for soft-deleted posts and audit events.
 6. Initial rate-limit values and new-account period.
 
-## 14. Change control
+## 15. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update
