@@ -109,6 +109,39 @@ func TestApplyReleaseSearchPreflightFailsBeforeMigration000008OnPostgreSQL17(t *
 	}
 }
 
+func TestApplyReleaseUpgradesPopulatedAlpha2OnPostgreSQL17(t *testing.T) {
+	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	configured, connection := migrationTestDatabase(t, ctx, databaseURL, "gotth_bb_beta1_alpha2_upgrade")
+	if err := migration.Apply(ctx, configured, preModerationMigrations(t)); err != nil {
+		t.Fatalf("apply Alpha.2 migrations: %v", err)
+	}
+	denseSource := strings.Repeat("- [x]\n", contentrender.MaximumMarkdownBytes/len("- [x]\n"))
+	insertMigrationPreflightPost(t, ctx, connection, 9_000_004, denseSource, migrationLegacyHTML(t, denseSource), contentrender.LegacyRendererVersion)
+
+	if err := applyRelease(ctx, configured, migrations.Files()); err != nil {
+		t.Fatalf("upgrade populated Alpha.2 database: %v", err)
+	}
+	var migrationCount, postCount int
+	var rendererComplete, projectionComplete bool
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT count(*) FROM public.gotth_schema_migrations),
+    (SELECT count(*) FROM public.posts WHERE id = 9000004),
+    (SELECT completed_at IS NOT NULL FROM public.content_renderer_state WHERE singleton),
+    (SELECT phase = 'complete' AND completed_at IS NOT NULL FROM public.search_projection_state WHERE singleton)`).Scan(
+		&migrationCount, &postCount, &rendererComplete, &projectionComplete,
+	); err != nil {
+		t.Fatalf("inspect upgraded Alpha.2 database: %v", err)
+	}
+	if migrationCount != 11 || postCount != 1 || !rendererComplete || !projectionComplete {
+		t.Fatalf("upgraded Alpha.2 state = (migrations %d, posts %d, renderer %t, projection %t), want 11/1/true/true", migrationCount, postCount, rendererComplete, projectionComplete)
+	}
+}
+
 func TestApplyReleasePreflightRechecksCurrentOutputOnIdempotentRunOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -251,6 +284,23 @@ func preAlpha3Migrations(t *testing.T) fs.FS {
 		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
 		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
 		"000005_threaded_posts.sql", "000006_reports_moderation_completion.sql",
+	} {
+		body, err := fs.ReadFile(migrations.Files(), name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		legacy[name] = &fstest.MapFile{Data: body}
+	}
+	return legacy
+}
+
+func preModerationMigrations(t *testing.T) fs.FS {
+	t.Helper()
+	legacy := fstest.MapFS{}
+	for _, name := range []string{
+		"000001_identity_and_sessions.sql", "000002_groups_and_areas.sql",
+		"000003_topics_posts_and_reads.sql", "000004_reports_and_audit.sql",
+		"000005_threaded_posts.sql",
 	} {
 		body, err := fs.ReadFile(migrations.Files(), name)
 		if err != nil {

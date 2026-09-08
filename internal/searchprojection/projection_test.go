@@ -83,6 +83,18 @@ func TestBatchQueriesUseDirectPositiveKeysets(t *testing.T) {
 	}
 }
 
+func TestPostPreflightQueryToleratesThePreModerationSchema(t *testing.T) {
+	t.Parallel()
+
+	if strings.Contains(selectInitialPostsSQL, "to_jsonb") {
+		t.Fatal("population query unexpectedly hides a required current-schema column")
+	}
+	const compatible = "COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)"
+	if !strings.Contains(selectPreflightPostsSQL, compatible) || strings.Contains(selectPreflightPostsSQL, ", post.redacted_at IS NOT NULL") {
+		t.Fatalf("post preflight query is not compatible with the Alpha.2 schema: %s", selectPreflightPostsSQL)
+	}
+}
+
 func TestFiniteTimestampMatchesPostgreSQLFiniteBoundary(t *testing.T) {
 	t.Parallel()
 

@@ -47,6 +47,12 @@ ORDER BY post.id
 LIMIT $2
 FOR UPDATE`
 
+const selectPreflightPostsSQL = `SELECT post.id, post.rendered_html, post.created_at,
+       pg_catalog.to_jsonb(post)->>'search_vector',
+       pg_catalog.to_jsonb(post)->>'search_projection_version',
+       COALESCE((pg_catalog.to_jsonb(post)->>'redacted_at') IS NOT NULL, false)
+FROM public.posts AS post`
+
 const vectorizeSQL = `SELECT candidate.id,
        pg_catalog.to_tsvector('pg_catalog.simple'::pg_catalog.regconfig, candidate.input)::text
 FROM ROWS FROM (
@@ -337,10 +343,7 @@ func loadPreflightCandidates(ctx context.Context, tx pgx.Tx, batchSize int, kind
        pg_catalog.to_jsonb(topic)->>'search_projection_version', false
 FROM public.topics AS topic`
 	} else {
-		query = `SELECT post.id, post.rendered_html, post.created_at,
-       pg_catalog.to_jsonb(post)->>'search_vector',
-       pg_catalog.to_jsonb(post)->>'search_projection_version', post.redacted_at IS NOT NULL
-FROM public.posts AS post`
+		query = selectPreflightPostsSQL
 	}
 	arguments := []any{int32(batchSize)}
 	if afterID == nil {
