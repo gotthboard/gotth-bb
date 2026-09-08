@@ -184,6 +184,10 @@ Rejected attempts and repairs
   the configured Caddy trust boundary survived adaptation. The final browser
   gate parses the exact Caddy binary's adapted JSON and structurally attests
   the set/delete request-header operations before starting the proxy.
+- A later cold review found the feature plan still named AN-05 contract
+  admission as the current target after all four implementation units were
+  complete. Delivery advances only that control field to the unstarted Beta.1
+  admission boundary; no Beta.1 work is included.
 
 Gaps and boundary
 -----------------

@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.N` — AN-05 contract admission |
+| Current target | `1.0.0-beta.1` — Beta.1 admission |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
