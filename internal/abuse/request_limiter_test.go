@@ -2,8 +2,12 @@ package abuse
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/netip"
+	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -188,6 +192,77 @@ func TestRequestLimiterConcurrentAdmissionIsExact(t *testing.T) {
 	if allowed != 25 || limited != 75 {
 		t.Fatalf("decisions = allowed %d, limited %d", allowed, limited)
 	}
+}
+
+func TestRequestLimiterAdmissionPopulationEvidence(t *testing.T) {
+	if os.Getenv("GOTTH_BB_RUN_AN05_ADMISSION_EVIDENCE") != "1" {
+		t.Skip("set GOTTH_BB_RUN_AN05_ADMISSION_EVIDENCE=1 on the designated evidence host")
+	}
+	const capacity = 4096
+	now := time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC)
+	limiter, err := NewRequestLimiter(bytes.NewReader(bytes.Repeat([]byte{0x55}, 32)), capacity, 1, time.Minute, func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("NewRequestLimiter() returned error: %v", err)
+	}
+	clients := make([]netip.Addr, capacity)
+	for index := range clients {
+		clients[index] = netip.MustParseAddr(fmt.Sprintf("2001:db8::%x", index+1))
+	}
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	beforeRSS := requestLimiterRSSKiB()
+	started := time.Now()
+	start := make(chan struct{})
+	decisions := make(chan RequestDecision, capacity)
+	var group sync.WaitGroup
+	for _, client := range clients {
+		client := client
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			<-start
+			decision, retry := limiter.Admit(client)
+			if retry != 0 {
+				decisions <- RequestCapacityLimited
+				return
+			}
+			decisions <- decision
+		}()
+	}
+	close(start)
+	group.Wait()
+	close(decisions)
+	allowed := 0
+	for decision := range decisions {
+		if decision != RequestAllowed {
+			t.Fatalf("population admission decision = %d", decision)
+		}
+		allowed++
+	}
+	if decision, retry := limiter.Admit(netip.MustParseAddr("2001:db8::ffff")); decision != RequestCapacityLimited || retry != time.Second {
+		t.Fatalf("capacity+1 admission = (%d, %s)", decision, retry)
+	}
+	if allowed != capacity || len(limiter.entries) != capacity {
+		t.Fatalf("population result = allowed %d entries %d", allowed, len(limiter.entries))
+	}
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	t.Logf("AN05_REQUEST_POPULATION clients=%d elapsed=%s map_cardinality=%d heap_alloc_delta=%d total_alloc_delta=%d sys_delta=%d rss_kib_before=%s rss_kib_after=%s capacity_plus_one=service-unavailable",
+		allowed, time.Since(started), len(limiter.entries), int64(after.HeapAlloc)-int64(before.HeapAlloc), after.TotalAlloc-before.TotalAlloc,
+		int64(after.Sys)-int64(before.Sys), beforeRSS, requestLimiterRSSKiB())
+}
+
+func requestLimiterRSSKiB() string {
+	contents, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		return "unavailable"
+	}
+	for _, line := range strings.Split(string(contents), "\n") {
+		if strings.HasPrefix(line, "VmRSS:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "VmRSS:"))
+		}
+	}
+	return "unavailable"
 }
 
 func TestNewRequestLimiterRejectsInvalidInputsWithoutRetainingPartialState(t *testing.T) {

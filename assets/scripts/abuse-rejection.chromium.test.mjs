@@ -98,6 +98,12 @@ test("abuse rejections preserve ordinary forms without JavaScript", async (t) =>
   const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
   await send("Page.enable", {}, sessionId);
   await send("Runtime.enable", {}, sessionId);
+  await send("Network.enable", {}, sessionId);
+  await send("Network.setExtraHTTPHeaders", { headers: {
+    "X-Forwarded-For": "203.0.113.250",
+    "Forwarded": "for=203.0.113.251",
+    "X-Real-IP": "203.0.113.252",
+  } }, sessionId);
   await send("Emulation.setScriptExecutionDisabled", { value: true }, sessionId);
 
   const blocked = "private <sentinel> [link](https://blocked.example/path)";

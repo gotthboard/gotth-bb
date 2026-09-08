@@ -26,6 +26,21 @@ import (
 )
 
 func TestAbuseRejectionNoScriptThroughCaddy(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		basePath string
+	}{
+		{name: "empty base path"},
+		{name: "nonempty base path", basePath: "/bb"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			runAbuseRejectionNoScriptThroughCaddy(t, test.basePath)
+		})
+	}
+}
+
+func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 	if os.Getenv("GOTTH_BB_BROWSER_CADDY") != "1" {
 		t.Skip("set GOTTH_BB_BROWSER_CADDY=1 on the designated evidence host")
 	}
@@ -42,10 +57,13 @@ func TestAbuseRejectionNoScriptThroughCaddy(t *testing.T) {
 		t.Fatalf("locate Node: %v", err)
 	}
 	port := reserveDiscoveryTestPort(t)
-	publicBase := fmt.Sprintf("http://127.0.0.1:%d/bb", port)
-	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
+	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
+	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
 	destinationPolicy := blockedHTTPDestinationPolicy(t)
 	observer := &browserAbuseObserver{}
+	var identityMutex sync.Mutex
+	identityRequests := 0
+	identityFailures := []string{}
 
 	createTopic := func(_ context.Context, _ auth.AccessContext, area, title, markdown string) (forum.PublishResult, error) {
 		if title == "Rate" {
@@ -93,6 +111,12 @@ func TestAbuseRejectionNoScriptThroughCaddy(t *testing.T) {
 	}
 	token := validCSRFTokenForTest(0x51)
 	application := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		identityMutex.Lock()
+		identityRequests++
+		if forwarded := request.Header.Values("X-Forwarded-For"); len(forwarded) != 1 || forwarded[0] != "127.0.0.1" || len(request.Header.Values("Forwarded")) != 0 || len(request.Header.Values("X-Real-IP")) != 0 {
+			identityFailures = append(identityFailures, fmt.Sprintf("forwarded=%q Forwarded=%q X-Real-IP=%q", forwarded, request.Header.Values("Forwarded"), request.Header.Values("X-Real-IP")))
+		}
+		identityMutex.Unlock()
 		ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{
 			SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator},
 		})
@@ -110,11 +134,23 @@ func TestAbuseRejectionNoScriptThroughCaddy(t *testing.T) {
 		}
 	})
 	applicationWithID := withModerationTestRequestID(t, application)
-	upstream := httptest.NewServer(applicationWithID)
+	limiter, err := abuse.NewRequestLimiter(bytes.NewReader(bytes.Repeat([]byte{0x61}, 32)), 4096, 100000, time.Minute, time.Now)
+	if err != nil {
+		t.Fatalf("construct browser request limiter: %v", err)
+	}
+	admittedApplication, err := NewRequestAdmissionHandler(applicationWithID, limiter, observer, true)
+	if err != nil {
+		t.Fatalf("construct browser request admission: %v", err)
+	}
+	upstream := httptest.NewServer(admittedApplication)
 	defer upstream.Close()
 
 	directory := t.TempDir()
-	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n handle_path /bb/* {\n  reverse_proxy %s\n }\n}\n", port, upstream.URL)
+	proxy := fmt.Sprintf("reverse_proxy %s {\n   header_up X-Forwarded-For {remote_host}\n   header_up -Forwarded\n   header_up -X-Real-IP\n  }", upstream.URL)
+	if basePath != "" {
+		proxy = fmt.Sprintf("handle_path %s/* {\n  %s\n }", basePath, proxy)
+	}
+	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n %s\n}\n", port, proxy)
 	configurationPath := filepath.Join(directory, "Caddyfile")
 	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
 		t.Fatalf("write Caddyfile: %v", err)
@@ -146,7 +182,13 @@ func TestAbuseRejectionNoScriptThroughCaddy(t *testing.T) {
 			t.Fatalf("observer event %d = %+v", index, event)
 		}
 	}
-	t.Logf("abuse browser-through-Caddy admitted: caddy=%s chromium=%s node=%s\n%s", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
+	identityMutex.Lock()
+	requests, failures := identityRequests, append([]string(nil), identityFailures...)
+	identityMutex.Unlock()
+	if requests == 0 || len(failures) != 0 {
+		t.Fatalf("Caddy identity overwrite = requests %d failures %q", requests, failures)
+	}
+	t.Logf("abuse browser-through-Caddy admitted: base_path=%q identity_requests=%d caddy=%s chromium=%s node=%s\n%s", basePath, requests, commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
 }
 
 type browserAbuseObserver struct {
