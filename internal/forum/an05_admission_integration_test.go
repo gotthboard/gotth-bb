@@ -137,7 +137,7 @@ RETURNING id`, accounts)
 	runtime.ReadMemStats(&before)
 	beforeRSS := an05AdmissionRSSKiB()
 	var peakConnections, peakLocks, peakWaiting atomic.Int64
-	monitorContext, stopMonitor := context.WithCancel(ctx)
+	stopMonitor := make(chan struct{})
 	monitorDone := make(chan struct{})
 	go func() {
 		defer close(monitorDone)
@@ -145,7 +145,7 @@ RETURNING id`, accounts)
 		defer ticker.Stop()
 		for {
 			var connections, locks, waiting int64
-			err := observer.QueryRow(monitorContext, `SELECT
+			err := observer.QueryRow(ctx, `SELECT
     (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database()),
     (SELECT count(*) FROM pg_catalog.pg_locks WHERE database=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database())),
     (SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock')`).Scan(&connections, &locks, &waiting)
@@ -155,7 +155,9 @@ RETURNING id`, accounts)
 				retainAN05Peak(&peakWaiting, waiting)
 			}
 			select {
-			case <-monitorContext.Done():
+			case <-stopMonitor:
+				return
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
@@ -176,7 +178,7 @@ RETURNING id`, accounts)
 		return err
 	})
 	replyElapsed := time.Since(replyStarted)
-	stopMonitor()
+	close(stopMonitor)
 	<-monitorDone
 
 	var beforeCanceled int32
