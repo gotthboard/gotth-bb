@@ -280,7 +280,7 @@ func validateGroupsExist(ctx context.Context, queries *db.Queries, groupIDs []in
 func replaceAreaGroups(ctx context.Context, queries *db.Queries, areaID, actorID int64, groupIDs []int64, at pgtype.Timestamptz) error {
 	for _, groupID := range groupIDs {
 		if err := queries.AddAreaGroupForAdministration(ctx, db.AddAreaGroupForAdministrationParams{AreaID: areaID, GroupID: groupID, ActorUserID: actorID, AtTime: at}); err != nil {
-			return mapAreaWriteError("add area group", err)
+			return fmt.Errorf("%w: %v", mapAreaWriteError("add area group", err), err)
 		}
 	}
 	return nil
