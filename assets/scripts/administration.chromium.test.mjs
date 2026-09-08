@@ -200,15 +200,15 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   const areaSelector = `form[action$="/admin/areas/3"]`;
   const areaValues = { name: "General", description: "Browser area", display_order: "3", visibility: "groups", initial_group_id: "4", reason: "Change browser area" };
   await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "archived" });
-  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'archived'");
+  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'archived' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '3'");
   await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "normal" });
-  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'normal'");
+  await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'normal' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '4'");
 
   const areaGroupSelector = `form[action$="/admin/areas/3/groups/4"]`;
   await submitForm(send, sessionId, areaGroupSelector, { reason: "Revoke browser area access" });
-  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Grant'");
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Grant' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '5'");
   await submitForm(send, sessionId, areaGroupSelector, { reason: "Grant browser area access" });
-  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Revoke'");
+  await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Revoke' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '6'");
 
   await navigate(send, sessionId, `${target}/settings`, "document.body.textContent.includes('Site settings')");
   await submitForm(send, sessionId, `form[action$="/admin/settings"]`, {
