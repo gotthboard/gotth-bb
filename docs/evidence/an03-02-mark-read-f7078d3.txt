@@ -2,13 +2,13 @@ AN-03-02 exact-candidate evidence
 ================================
 
 Executable/methodology commit:
-  2f1abfb9ca9cbb4e6421ce0d09bfbca973f0e43b
+  f7078d350d4605bc97771a37f54781482d877e11
 Tree:
-  7f3f37e9b83e6b93b713ac1259a188ab57f55ecb
+  87af77678ebbfd953d63df0beab7d26ce5bf3bba
 Base:
   6c7540e41f2d27b736eda38ef65e984766e2bb97
 Bundle SHA-256:
-  a57d08c215601153c74c66e20f1cdab2accab514a1a9c86bc306bba80612adc5
+  583b3f86719713ff5fb8df37e42134ba0da07068d2bcaef37932a34a12de1f9a
 
 Generation
 ----------
@@ -39,7 +39,7 @@ for internal/store, and 100.0% for migrations.
 
 Transcript SHA-256 values:
   go vet: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-  race/coverage: 9ecf7408b14f45fdd77d5447fd05dbd17ddf4a06bebce24e78ff5aeee2da9b1f
+  race/coverage: 3d6e25a68c5472b69073610edb3faed7ecaf3e768c6a2a9150f56148aa7e522d
 
 PostgreSQL 17 integration/race gates
 ------------------------------------
@@ -69,8 +69,8 @@ inspection proves the mark statement is the sole topic_reads mutation and
 that topic/reply publishing statements do not reference private markers.
 
 Transcript SHA-256 values:
-  full integration/race: 3fe5789a3f197ef121458dd622bfbbfa8caca368ef961bbc77d9370d7c43ae79
-  focused five-run race: 0ceadf7193c8b78c5bd78a8dd1a905b38cae5e8886a40ac83b082156b88b3467
+  full integration/race: bc6dc6b86295ce9c780ee6f5f2cef8098de8118f6cc5f6beac19a80ac68c646f
+  focused five-run race: b101b1f3113651130a09840fca13d5b13557ea568f68418f559605ca4b877eec
 
 Representative population and plan gate
 ---------------------------------------
@@ -91,26 +91,27 @@ Population:
   deleted posts: 493
   redacted posts: 247
   retained markers: 12,500 before the mark-read plan
-  population duration: 8.418115431s
+  population duration: 8.38241386s
 
 Migration 000009 checkpoint:
-  elapsed: 224.77204ms
+  elapsed: 231.90276ms
   posts relation bytes: 137,871,360
   topic_reads relation bytes: 1,597,440
   expected ShareLock wait observed: yes
-  blocks read delta: 903
-  blocks hit delta: 9,558
-  temp bytes delta: 9,011,200
+  blocks read delta: 937
+  blocks hit delta: 9,502
+  temp bytes delta: 9,003,008
 
 Both force_custom_plan and force_generic_plan passed for the exact generated
-mark-read statement. Structural JSON assertions proved the materialized
-authorized-topic fence contains area visibility plus topic deletion/hidden
-filters before the boundary; the boundary uses
-posts_topic_unread_visible_idx and applies the actor exclusion below it. The
-existing visitor/member/group/staff read-model assertions also remained green.
+mark-read statement against a matching-group topic. Structural JSON assertions
+proved the materialized authorized-topic fence contains area visibility plus
+topic deletion/hidden filters and a nonmultiplying area_groups SubPlan before
+the boundary; the boundary uses posts_topic_unread_visible_idx and applies the
+actor exclusion below it. The existing visitor/member/group/staff read-model
+assertions also remained green.
 
 Plan transcript SHA-256:
-  ff2a6d7ebc1bd21d28638d46a5693d8ff224ef5da09e87fff84f847dae1a74c3
+  aea354ef2deb557314079abf20541822cf5e0c2ef61fe073b3c1a9f7563705e9
 
 Scope statement
 ---------------
