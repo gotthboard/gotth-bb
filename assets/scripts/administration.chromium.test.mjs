@@ -185,7 +185,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   })()`), true);
 
   await navigate(send, sessionId, `${root}/__test/populated`, "location.pathname.endsWith('/admin') && document.body.textContent.includes('52')");
-  await auditAccessibility(send, sessionId, evaluate, "populated administration dashboard");
+  await auditAccessibility(send, sessionId, evaluate, "populated administration dashboard", false);
   await auditReflow(send, sessionId, evaluate, "populated administration dashboard");
 
   await navigate(send, sessionId, `${target}/accounts`, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next accounts')");

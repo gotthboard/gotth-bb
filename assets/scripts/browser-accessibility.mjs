@@ -3,9 +3,11 @@ import { readFile } from "node:fs/promises";
 
 const axeSource = await readFile(new URL("../../node_modules/axe-core/axe.min.js", import.meta.url), "utf8");
 
-export async function auditAccessibility(send, sessionId, evaluate, label) {
-  await evaluate(send, sessionId, axeSource);
-  const result = await evaluate(send, sessionId, `axe.run(document, {
+export async function auditAccessibility(send, sessionId, evaluate, label, scriptDisabled = true) {
+  if (scriptDisabled) await send("Emulation.setScriptExecutionDisabled", { value: false }, sessionId);
+  try {
+    await evaluate(send, sessionId, axeSource);
+    const result = await evaluate(send, sessionId, `axe.run(document, {
     runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
     resultTypes: ["violations", "incomplete"]
   }).then(({ violations, incomplete }) => ({
@@ -15,8 +17,11 @@ export async function auditAccessibility(send, sessionId, evaluate, label) {
     })),
     incomplete: incomplete.map(({ id, impact, nodes }) => ({ id, impact, nodes: nodes.length }))
   }))`);
-  assert.deepEqual(result.violations, [], `${label} accessibility violations: ${JSON.stringify(result.violations)}`);
-  return result;
+    assert.deepEqual(result.violations, [], `${label} accessibility violations: ${JSON.stringify(result.violations)}`);
+    return result;
+  } finally {
+    if (scriptDisabled) await send("Emulation.setScriptExecutionDisabled", { value: true }, sessionId);
+  }
 }
 
 export async function auditReflow(send, sessionId, evaluate, label) {
