@@ -962,7 +962,8 @@ never replaced as an application rollback shortcut.
 
 The initial Beta rehearsal may retain backup bytes on the same host because it
 is a restricted test deployment, but that failure domain is an explicit
-limitation. Scheduling, off-host storage, retention, encryption policy,
+limitation and every tester is told the data is non-production and may be lost
+with the host. Scheduling, off-host storage, retention, encryption policy,
 alerting, and production recovery budgets remain later operational admission,
 not hidden properties of a successful one-time restore.
 

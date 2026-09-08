@@ -682,9 +682,10 @@ hold on one exact candidate:
    and the actual failure domain are recorded.
 9. Known limitations and residual risks are published. Same-host-only backup,
    absent scheduling/retention/alerting, or restricted test-user access may be
-   declared Beta limitations; restricted-content disclosure, authentication or
-   authorization bypass, unrecoverable migration, and known application-caused
-   data loss may not.
+   declared Beta limitations only while every designated tester is told that
+   Beta data is non-production and may be lost with the host. Restricted-content
+   disclosure, authentication or authorization bypass, unrecoverable migration,
+   and known application-caused data loss may not be admitted.
 10. The admitted commit produces two byte-identical immutable packages and one
     tagged release artifact. Deployment uses that artifact, preserves an exact
     pre-upgrade backup and rollback record, and passes the Beta smoke matrix

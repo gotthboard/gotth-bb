@@ -2785,8 +2785,9 @@ It runs the pinned PostgreSQL 17 container's own `pg_dump` as the container's
 password becomes a host process argument. The exact dump is custom format,
 `--no-privileges`, `--serializable-deferrable`, and a five-second lock-wait
 timeout. Output streams once through Docker into the temporary host file. After
-successful close, the helper asks the same pinned container's `pg_restore
---list` to validate the archive, syncs the file, computes SHA-256, atomically
+successful close, the helper streams the temporary archive on standard input to
+the same pinned container's `pg_restore --list`, syncs the file, computes
+SHA-256, atomically
 renames the archive, then atomically installs a fixed-format sidecar. A final
 archive without a valid matching sidecar is incomplete and cannot be restored
 or released. Failure removes only helper-owned temporary files; it never
