@@ -1,0 +1,177 @@
+Beta.1 B1-01 requirement, leakage, and security evidence
+========================================================
+
+Tested implementation/methodology commit:
+  f91a6fbc4a0786dc1aa850db8aeb4fb269b5fddc
+Tested tree:
+  1759e433729c4706f003514cc1de6450fce5cfbe
+Admitted B1-00 contract commit:
+  28143d74f284d59f13bcc9dbe613c84f207b0423
+
+Environment and tools
+---------------------
+
+- Designated evidence host `development`: Linux/amd64; selected clean
+  toolchain Go 1.26.6; host bootstrap Go 1.26.5-X:nodwarf5.
+- PostgreSQL 17.10 in task-owned container `gotth-bb-beta1-b101-pg`, pinned
+  image `a426e44bac0b`, bound only to loopback for the gate.
+- Caddy 2.11.4, Chromium 151.0.7922.71 Arch Linux, Node.js 26.5.1, npm 12.0.2.
+- Govulncheck 1.7.0, binary SHA-256
+  `fed57ba7b1570f31e0d86b124fefc2d13ccf631d853fcab5db9cb165b214add5`;
+  Go vulnerability database updated 2026-09-02 19:12:04 UTC.
+- Gitleaks 8.30.1 built from its pinned module, binary SHA-256
+  `daba859a1425d7a7e03b5ec848553334ec8bc2ac87aa11087b6b90b2c785bd9a`.
+
+Candidate changes
+-----------------
+
+- Added an exact bidirectional comparison between all 68 PRD requirement IDs
+  and all 68 traceability rows. Duplicate, omitted, invented, empty, malformed,
+  non-regular, oversized, NUL-containing, or unterminated inputs fail.
+- Added syntax-tree extraction of production GET/POST routes, explicit
+  accounting for manual OIDC/setup dispatch and four GET/HEAD static assets,
+  rejection of unknown router operations, emitted URL-shape checks, and exact
+  comparison with the 61-row reviewed route table (65 method/path pairs).
+- Every route metadata field is nonempty; every POST row records CSRF `yes` and
+  every GET/HEAD row records `no`.
+- Upgraded `golang.org/x/net` to 0.56.0 and `golang.org/x/text` to 0.39.0,
+  including their required module graph. This closes reachable GO-2026-5970
+  and GO-2026-5026 and imports fixed HTML parser handling for GO-2026-5025
+  through GO-2026-5030 and GO-2026-5942/4918.
+- The newer parser deliberately deduplicates malformed attributes. The
+  persisted-content boundary therefore compares raw task-list input tags with
+  three exact renderer-admitted spellings before tokenizer normalization.
+  Duplicate, boolean, self-closing, uppercase, extra-space, truncated, and
+  extra-attribute spellings are rejected.
+- The Caddy browser gate now requires all eight fixed application browser
+  security headers to survive the proxy at both empty and `/bb` base paths.
+- The existing deployed 30-minute revalidation value has an explicit config
+  acceptance test. Database-current role, group, suspension, mute, session
+  revocation, and stale revalidation paths remain covered by the exact unit and
+  PostgreSQL integration suites.
+
+Exact gates
+-----------
+
+1. Repository and generated-launcher custody:
+
+     scripts/test-alpha3-evidence-custody.sh
+     go mod tidy -diff
+     git diff --check
+     test -z "$(git status --short)"
+
+   The committed static launcher was rebuilt from the committed archive with
+   the clean Go 1.26.6 environment after the dependency graph changed. The
+   custody script rebuilt it again byte-for-byte and passed.
+
+2. Static analysis, vulnerability, and source/history secret gates:
+
+     go vet -mod=readonly ./...
+     govulncheck ./...
+     gitleaks dir --config .gitleaks.toml --redact .
+     gitleaks git --config .gitleaks.toml --redact --log-opts=--all
+
+   Govulncheck reported no vulnerabilities. Gitleaks scanned about 6.48 MB of
+   candidate text and all 406 commits with no findings. The only repository
+   allowlist is an AND-bound exact path, rule, and phrase match for harmless
+   historical prose in `docs/CHANGELOG.md`; it cannot suppress another rule,
+   file, or credential phrase.
+
+3. Exact repository-wide race/coverage:
+
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+4. Complete PostgreSQL 17.10 serial integration/coverage and race/atomic
+   integration/coverage against the loopback task database:
+
+     GOTTH_BB_TEST_DATABASE_URL='<redacted loopback disposable URL>' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 \
+       -p=1 -cover ./...
+
+     GOTTH_BB_TEST_DATABASE_URL='<redacted loopback disposable URL>' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 \
+       -p=2 -race -covermode=atomic ./...
+
+5. Browser/proxy gate:
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 \
+       go test -mod=readonly -tags=integration -count=1 -v \
+       ./internal/httpui \
+       -run '^Test(AbuseRejectionNoScriptThroughCaddy|AdministrationKeyboardAndNoScriptThroughCaddy|DiscoveryBrowserThroughCaddy|UnreadControlsKeyboardAndNoScriptThroughCaddy)$'
+
+   Both base paths passed the forged-forwarding-header overwrite, fixed
+   browser-header, cache, blocked-destination 422, rate-limit 429, draft
+   preservation, and JavaScript-disabled native Enter checks. Administration,
+   discovery, and unread keyboard/accessibility-tree journeys also passed.
+
+6. Candidate package, image, resolved configuration, and binary strings:
+
+   - Candidate package SHA-256:
+     `2a4e4262ce40880bddcaae9dc1376b4aa6334a8d67d175fa1393cde63eacf619`.
+   - Candidate image ID:
+     `sha256:34d1556bdd805bb5b03d0caf8393dbddc78a1fbed203a4dbfb4d2f7539aa3153`.
+   - Saved image tar SHA-256:
+     `3cab6bded247be5323737d47dd2f0171fe373ecf62f1a955c70f1b1518118d06`.
+   - Package text/archive, extracted image context, readable image tar,
+     image-inspect JSON, created-container inspect JSON, and resolved Compose
+     output passed redacted Gitleaks scans. Resolved Compose retained host
+     networking, read-only root, all-capability drop, and no-new-privileges.
+   - `strings -a` over all three ELF binaries produced six identical raw
+     findings. A private exact comparison proved every one was solely the
+     public `golang.org/x/oauth2 v0.36.0` checksum embedded by Go build info and
+     present byte-for-byte in committed `go.sum`; the private report was then
+     removed. Removing only that exact public module-info line produced a clean
+     6.26 MB strings scan. No generic baseline or secret-shaped allowlist was
+     added.
+
+Results and coverage
+--------------------
+
+- Every exact gate above passed on commit `f91a6fb` / tree `1759e43`.
+- Serial/race integration coverage included 97.2% `internal/auth`, 93.7%
+  `internal/forum`, 83.6% `internal/moderation`, 97.1% `internal/store`, and
+  100% migrations and readiness. HTTP unit race coverage was 72.5%; its
+  branch-heavy unavailable/denied/full-page/HTMX behavior is supplemented by
+  the named focused and browser tests rather than hidden by an aggregate.
+- Caddy structurally adapted the canonical request-header overwrite and live
+  requests saw one `127.0.0.1` X-Forwarded-For value with Forwarded and
+  X-Real-IP deleted. Fixed CSP, frame, MIME, referrer, opener/resource,
+  permissions, and origin-agent headers survived the proxy.
+- No schema or production data was changed. The task PostgreSQL container,
+  package, image, scan container, reports, and remote exact checkout remain
+  task-owned scratch until the wider Beta gate no longer needs them.
+
+Rejected attempts and repairs
+-----------------------------
+
+- The first vulnerability scan failed on two reachable advisories; the gate
+  did not proceed until fixed versions passed.
+- The dependency update changed HTML duplicate-attribute behavior and broke a
+  sanitizer regression test. Accepting normalized malformed input was rejected;
+  the boundary was narrowed to raw exact renderer spellings.
+- The first exact custody run found that the checked launcher still encoded
+  the old dependency graph. It was reproducibly rebuilt and the final custody
+  run passed byte-for-byte.
+- `go mod tidy -diff` then found stale sums and misclassified direct `x/sys`.
+  The graph was normalized and every exact gate restarted on `f91a6fb`.
+- The first image-tar scan warned that Docker's root-owned output was unreadable
+  while returning success. That result was rejected; the exact task-owned file
+  was made owner-readable and rescanned successfully.
+- Binary-string scanning reported six identical public Go module checksums as
+  generic keys. They were not waved away: exact rule/count/match and committed
+  `go.sum` equality were proved privately, then all remaining strings scanned
+  clean.
+
+Remaining boundary
+------------------
+
+- B1-01 proves the local and configured 30-minute Authentik revalidation
+  mechanism. Disabling an isolated designated identity in the live provider
+  and proving failure at the next protected request at/after that interval is
+  intentionally deferred to B1-05, where provider administration and deployed
+  state are in scope. No immediate-disable claim is made.
+- B1-02 still owns the complete Beta accessibility/reflow/zoom and
+  representative-plan matrix. B1-03 owns Alpha.2 upgrade/restore rehearsal.
+- This is a pre-release candidate package/image only. It is not the final
+  reproducibility artifact, tag, merged release, deployment, or known-good
+  record.
