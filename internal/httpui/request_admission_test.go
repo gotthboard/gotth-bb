@@ -187,17 +187,23 @@ func TestRequestAdmissionDevelopmentRejectsForwarding(t *testing.T) {
 	for _, test := range []struct {
 		peer      string
 		forwarded string
+		alternate string
 		want      int
 	}{
 		{peer: "192.0.2.1:80", want: http.StatusNoContent},
 		{peer: "[::ffff:192.0.2.1]:80", want: http.StatusNoContent},
 		{peer: "192.0.2.1:80", forwarded: "192.0.2.2", want: http.StatusBadRequest},
+		{peer: "192.0.2.1:80", alternate: "Forwarded", want: http.StatusBadRequest},
+		{peer: "192.0.2.1:80", alternate: "X-Real-IP", want: http.StatusBadRequest},
 		{peer: "192.0.2.1", want: http.StatusBadRequest},
 	} {
 		request := httptest.NewRequest(http.MethodGet, "http://board.example/", nil)
 		request.RemoteAddr = test.peer
 		if test.forwarded != "" {
 			request.Header.Set("X-Forwarded-For", test.forwarded)
+		}
+		if test.alternate != "" {
+			request.Header.Set(test.alternate, "192.0.2.2")
 		}
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)

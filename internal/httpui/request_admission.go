@@ -64,6 +64,9 @@ func admittedClientAddress(request *http.Request, production bool) (netip.Addr, 
 	}
 	peer = peer.Unmap()
 	forwarded := request.Header.Values("X-Forwarded-For")
+	if len(request.Header.Values("Forwarded")) != 0 || len(request.Header.Values("X-Real-IP")) != 0 {
+		return netip.Addr{}, fmt.Errorf("alternative forwarded identity is forbidden")
+	}
 	if !production {
 		if len(forwarded) != 0 {
 			return netip.Addr{}, fmt.Errorf("forwarded identity is forbidden")
