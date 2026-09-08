@@ -1061,7 +1061,8 @@ header is overwritten before the application sees it.
 Authenticated accounts of every age receive the same request budget; tests
 prove no account/session lookup is added to this pre-authentication boundary.
 
-With a deterministic clock and digest source, limiter tests cover counts
+With a deterministic clock and digest source, limiter tests prove the exact
+domain-separated HMAC-SHA-256 input and cover counts
 0/1/N/N+1, exact expiry equality, negative clock movement, concurrent calls,
 4,095/4,096/4,097 clients, lazy expired-entry reclamation, full-live capacity,
 cached earliest-expiry O(1) rejection before the boundary, exactly one bounded
@@ -1114,7 +1115,8 @@ two-window burst rather than claiming a rolling limit.
 ### 22.3 Destination and HTTP matrix
 
 Destination tests cover inline/reference/collapsed-reference links, images,
-GFM automatic URLs, repeated destinations, relative links, anchors, mailto,
+GFM automatic URLs, repeated destinations, local relative links, rejected
+protocol-relative network paths, anchors, mailto,
 code spans, fenced code, escaped text, raw HTML, Unicode/IDNA host forms, exact
 host, subdomain, sibling suffix, trailing dot, default/nondefault ports, empty/
 dot/escaped paths, uppercase/lowercase percent escapes, encoded unreserved and

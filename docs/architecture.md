@@ -713,8 +713,9 @@ canonical address from a loopback peer, rejects forwarded identity from a
 non-loopback peer, and never falls back from a malformed trusted header to the
 proxy address. Health and content-addressed static requests are exempt; every
 other method and route, including an unknown route, spends one request unit.
-The limiter retains no raw address: an unpredictable per-process keyed digest
-indexes at most 4,096 windows. Expired entries are removed lazily; if capacity
+The limiter retains no raw address: HMAC-SHA-256 under an unpredictable per-
+process key and fixed domain indexes at most 4,096 windows. Expired entries are
+removed lazily; if capacity
 is full, a cached earliest-expiry boundary avoids a full scan until an entry
 can actually expire. If no expired entry then exists, an unseen client receives bounded `503`
 instead of causing allocation growth or evicting a currently enforced window.
@@ -764,8 +765,9 @@ The configured set is limited
 to 256 rules and 64 KiB; empty policy is explicit rather than missing.
 
 The GFM renderer parses valid Markdown once, visits resolved link, image, and
-automatic-link destinations, applies the immutable policy, and renders the
-same admitted AST only if it passes. This avoids a parser disagreement between
+automatic-link destinations, rejects external network-path references such as
+`//example.org/path`, applies the immutable policy, and renders the same
+admitted AST only if it passes. This avoids a parser disagreement between
 preview and persistence. Code and non-link text are not searched for URL-like
 substrings. Topic, reply, edit, their previews, and the public community-rules
 settings writer all cross that same function.

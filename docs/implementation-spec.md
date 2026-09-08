@@ -2564,7 +2564,8 @@ downstream call. Loopback health checks and exact content-addressed static
 
 `RequestLimiter` is constructed with one unpredictable 256-bit process key,
 one mutex, one pre-sized map, the configured capacity, count, window, and
-clock. The map key is a keyed 256-bit digest of the canonical 4- or 16-byte
+clock. The map key is HMAC-SHA-256 under that key over the fixed ASCII domain
+`gotth-bb/request-client/v1`, a zero byte, and the canonical 4- or 16-byte
 address; no raw address or string is retained. A collision conservatively
 shares one window rather than allocating a disambiguation copy of the address;
 tests inject that otherwise infeasible condition. Each entry stores only window
@@ -2652,10 +2653,12 @@ discarded for comparison; rule input itself must omit it. Path/query percent
 normalization and path dot-segment removal use the exact rule canonicalizer.
 The canonical host is compared
 with exact and dot-boundary domain rules; the canonical URL is compared with
-exact URL rules. Relative references, anchors,
-and `mailto` destinations remain governed by the existing renderer/sanitizer
-and do not match external rules. A malformed HTTP(S)-looking destination is a
-normal Markdown validation failure, not a bypass.
+exact URL rules. Local relative references, anchors, and `mailto` destinations
+remain governed by the existing renderer/sanitizer and do not match external
+rules. A network-path reference beginning `//` is rejected as a normal field-
+safe Markdown validation failure because the browser would resolve it to an
+external HTTP(S) destination. A malformed HTTP(S)-looking destination is
+likewise a normal Markdown validation failure, not a bypass.
 
 `RenderTopicDraft`, `RenderReplyDraft`, `CreateTopic`, `CreateReply`,
 `EditPost`, and the nonempty community-rules rendering path receive the

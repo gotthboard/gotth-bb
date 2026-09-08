@@ -611,8 +611,9 @@ for the version 1.0 single-process deployment:
    normalized scheme, host, default port, path, and query while ignoring a
    fragment. The policy checks resolved Markdown links, images, and automatic
    links using the admitted GFM parse; code spans/blocks and ordinary text do
-   not become false positives. Relative links remain outside external-link
-   policy.
+   not become false positives. Local relative links remain outside external-
+   link policy, while protocol-relative network-path destinations are rejected
+   so they cannot become an external-domain bypass in the browser.
 6. Topic, reply, edit, their preview paths, and administrator community-rules
    updates use the same immutable link policy and fail before persistence when
    any destination is blocked. Existing
