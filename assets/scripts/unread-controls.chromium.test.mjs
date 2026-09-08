@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { auditAccessibility, auditReflow } from "./browser-accessibility.mjs";
+
 const chromium = process.env.CHROMIUM || "/usr/bin/chromium";
 const target = process.env.GOTTH_BB_UNREAD_BROWSER_URL;
 assert(target, "GOTTH_BB_UNREAD_BROWSER_URL is required");
@@ -102,6 +104,8 @@ test("unread controls remain keyboard operable without JavaScript", async (t) =>
   assert(namedRoles.includes("link:Jump to first unread post"));
   assert(namedRoles.includes("button:Mark topic read"));
   assert.equal(await evaluate(send, sessionId, "document.querySelector('script') !== null"), true);
+  await auditAccessibility(send, sessionId, evaluate, "topic unread controls without JavaScript");
+  await auditReflow(send, sessionId, evaluate, "topic unread controls without JavaScript");
 
   await tabTo(send, sessionId, "Jump to first unread post");
   await pressEnter(send, sessionId);

@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { auditAccessibility, auditReflow } from "./browser-accessibility.mjs";
+
 const chromium = process.env.CHROMIUM || "/usr/bin/chromium";
 const target = process.env.GOTTH_BB_ADMINISTRATION_BROWSER_URL;
 assert(target, "GOTTH_BB_ADMINISTRATION_BROWSER_URL is required");
@@ -145,6 +147,8 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
     assert(namedRoles.includes(expected), `accessibility tree lacks ${expected}`);
   }
   assert.equal(await evaluate(send, sessionId, "document.querySelector('script') !== null"), true);
+  await auditAccessibility(send, sessionId, evaluate, "administration dashboard without JavaScript");
+  await auditReflow(send, sessionId, evaluate, "administration dashboard");
 
   await tabTo(send, sessionId, "document.activeElement?.textContent?.trim() === 'Accounts' && document.activeElement?.closest('nav')?.getAttribute('aria-label') === 'Administration'", "administration Accounts link");
   await assertVisibleFocus(send, sessionId);
@@ -161,6 +165,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   for (const expected of ["heading:Local Member", "combobox:Role", "textbox:Audit reason", "button:Change role", "button:Revoke"]) {
     assert(namedRoles.includes(expected), `account accessibility tree lacks ${expected}`);
   }
+  await auditAccessibility(send, sessionId, evaluate, "administration account detail without JavaScript");
 
   await tabTo(send, sessionId, "document.activeElement?.matches('form[action$=\"/role\"] input[name=\"reason\"]')", "role audit reason");
   await assertVisibleFocus(send, sessionId);
@@ -180,10 +185,8 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   })()`), true);
 
   await navigate(send, sessionId, `${root}/__test/populated`, "location.pathname.endsWith('/admin') && document.body.textContent.includes('52')");
-  await send("Emulation.setDeviceMetricsOverride", { width: 375, height: 667, deviceScaleFactor: 1, mobile: true }, sessionId);
-  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true);
-  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
-  assert.equal(await evaluate(send, sessionId, "document.documentElement.scrollWidth <= innerWidth"), true);
+  await auditAccessibility(send, sessionId, evaluate, "populated administration dashboard");
+  await auditReflow(send, sessionId, evaluate, "populated administration dashboard");
 
   await navigate(send, sessionId, `${target}/accounts`, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next accounts')");
   assert.equal(await evaluate(send, sessionId, "[...document.querySelectorAll('main a')].some((link) => link.textContent.trim() === 'Local Member')"), true);

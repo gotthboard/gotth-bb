@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { auditAccessibility, auditReflow } from "./browser-accessibility.mjs";
+
 const chromium = process.env.CHROMIUM || "/usr/bin/chromium";
 const root = process.env.GOTTH_BB_ABUSE_BROWSER_URL;
 assert(root, "GOTTH_BB_ABUSE_BROWSER_URL is required");
@@ -130,22 +132,29 @@ test("abuse rejections preserve ordinary forms without JavaScript", async (t) =>
   const blocked = "private <sentinel> [link](https://blocked.example/path)";
   await navigate(send, sessionId, `${root}/topics/new?area=news`, `!!document.querySelector('form[action$="/topics"]')`);
   assert.equal(await evaluate(send, sessionId, "typeof htmx"), "undefined");
+  await auditAccessibility(send, sessionId, evaluate, "topic creation without JavaScript");
+  await auditReflow(send, sessionId, evaluate, "topic creation without JavaScript");
   await focusSubmit(send, sessionId, `form[action$="/topics"]`, { title: "Blocked", markdown: blocked });
   await pressEnter(send, sessionId);
   await waitFor(send, sessionId, `document.body.textContent.includes("This draft contains a blocked link")`);
   assert.equal(await evaluate(send, sessionId, `document.querySelector('textarea[name="markdown"]').value`), blocked);
+  await auditAccessibility(send, sessionId, evaluate, "blocked-destination error");
 
   await focusSubmit(send, sessionId, `form[action$="/topics"]`, { title: "Rate", markdown: "retained rate draft" });
   await pressEnter(send, sessionId);
   await waitFor(send, sessionId, `document.body.textContent.includes("Please wait before publishing again")`);
   assert.equal(await evaluate(send, sessionId, `document.querySelector('textarea[name="markdown"]').value`), "retained rate draft");
+  await auditAccessibility(send, sessionId, evaluate, "publication-rate error");
 
   await navigate(send, sessionId, `${root}/posts/91/edit`, `!!document.querySelector('form[action$="/posts/91/edit"]')`);
+  await auditAccessibility(send, sessionId, evaluate, "post editing without JavaScript");
   await submit(send, sessionId, `form[action$="/posts/91/edit"]`, { markdown: blocked });
   await waitFor(send, sessionId, `document.body.textContent.includes("This draft contains a blocked link")`);
   assert.equal(await evaluate(send, sessionId, `document.querySelector('textarea[name="markdown"]').value`), blocked);
 
   await navigate(send, sessionId, `${root}/admin/settings`, `!!document.querySelector('form[action$="/admin/settings"]')`);
+  await auditAccessibility(send, sessionId, evaluate, "site settings without JavaScript");
+  await auditReflow(send, sessionId, evaluate, "site settings without JavaScript");
   await submit(send, sessionId, `form[action$="/admin/settings"]`, {
     site_name: "Submitted browser board", site_description: "Submitted browser description", brand_theme: "rose",
     rules_markdown: blocked, reason: "Retained browser reason",

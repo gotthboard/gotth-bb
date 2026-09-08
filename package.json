@@ -12,6 +12,7 @@
   },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
+    "axe-core": "4.13.0",
     "htmx.org": "2.0.10",
     "tailwindcss": "4.3.3"
   }
