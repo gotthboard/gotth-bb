@@ -107,6 +107,11 @@ RETURNING id`, accounts)
 	if len(userIDs) != accounts {
 		t.Fatalf("inserted accounts = %d", len(userIDs))
 	}
+	var baselineConnections int64
+	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_stat_activity
+WHERE datname=current_database()`).Scan(&baselineConnections); err != nil {
+		t.Fatal(err)
+	}
 
 	poolConfig, err := pgxpool.ParseConfig(testConfig.ConnString())
 	if err != nil {
@@ -217,6 +222,15 @@ WHERE id=ANY($1::bigint[]) AND next_post_number=4 AND reply_count=2`, topicIDs).
 	if admittedUsers != accounts || admittedTopics != accounts || admittedPosts != accounts*(repliesPerUser+1) {
 		t.Fatalf("admitted state = users %d topics %d posts %d", admittedUsers, admittedTopics, admittedPosts)
 	}
+	pool.Close()
+	var finalConnections int64
+	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_stat_activity
+WHERE datname=current_database()`).Scan(&finalConnections); err != nil {
+		t.Fatal(err)
+	}
+	if finalConnections != baselineConnections {
+		t.Fatalf("database connections after pool close = %d, want baseline %d", finalConnections, baselineConnections)
+	}
 	var databaseBytes, userBytes, topicBytes, postBytes, tempFiles, tempBytes int64
 	if err := observer.QueryRow(ctx, `SELECT
     pg_database_size(current_database()),
@@ -230,9 +244,9 @@ FROM pg_stat_database WHERE datname=current_database()`).Scan(&databaseBytes, &u
 	}
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	t.Logf("AN05_PUBLICATION_POPULATION accounts=%d publications=%d topic_elapsed=%s reply_elapsed=%s max_pool_connections=%d peak_database_connections=%d peak_database_locks=%d peak_lock_waiters=%d cancellation=pass statement_timeout=2s lock_timeout=250ms database_bytes=%d users_bytes=%d topics_bytes=%d posts_bytes=%d temp_files=%d temp_bytes=%d heap_alloc_delta=%d total_alloc_delta=%d sys_delta=%d rss_kib_before=%s rss_kib_after=%s",
+	t.Logf("AN05_PUBLICATION_POPULATION accounts=%d publications=%d topic_elapsed=%s reply_elapsed=%s max_pool_connections=%d baseline_database_connections=%d peak_database_connections=%d final_database_connections=%d peak_database_locks=%d peak_lock_waiters=%d cancellation=pass statement_timeout=2s lock_timeout=250ms database_bytes=%d users_bytes=%d topics_bytes=%d posts_bytes=%d temp_files=%d temp_bytes=%d heap_alloc_delta=%d total_alloc_delta=%d sys_delta=%d rss_kib_before=%s rss_kib_after=%s",
 		accounts, accounts*(repliesPerUser+1), topicElapsed, replyElapsed, maximumConns,
-		peakConnections.Load(), peakLocks.Load(), peakWaiting.Load(), databaseBytes, userBytes, topicBytes, postBytes,
+		baselineConnections, peakConnections.Load(), finalConnections, peakLocks.Load(), peakWaiting.Load(), databaseBytes, userBytes, topicBytes, postBytes,
 		tempFiles, tempBytes, int64(after.HeapAlloc)-int64(before.HeapAlloc), after.TotalAlloc-before.TotalAlloc,
 		int64(after.Sys)-int64(before.Sys), beforeRSS, an05AdmissionRSSKiB())
 }
