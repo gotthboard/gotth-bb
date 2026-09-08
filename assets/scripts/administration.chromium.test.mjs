@@ -34,11 +34,18 @@ async function evaluate(send, sessionId, expression) {
 }
 
 async function waitFor(send, sessionId, expression) {
+  let lastError;
   for (let attempt = 0; attempt < 100; attempt++) {
-    if (await evaluate(send, sessionId, expression)) return;
+    try {
+      if (await evaluate(send, sessionId, expression)) return;
+      lastError = undefined;
+    } catch (error) {
+      lastError = error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  throw new Error(`browser condition timed out: ${expression}`);
+  const detail = lastError ? `; last evaluation failed: ${lastError.message}` : "";
+  throw new Error(`browser condition timed out: ${expression}${detail}`);
 }
 
 async function tabTo(send, sessionId, expression, label) {
