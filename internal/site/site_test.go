@@ -154,6 +154,9 @@ type settingsTx struct {
 	pgx.Tx
 	queries    []string
 	updateArgs []any
+	actorID    int64
+	actorErr   error
+	commitErr  error
 	committed  bool
 	rolledBack bool
 }
@@ -164,7 +167,14 @@ func (tx *settingsTx) QueryRow(_ context.Context, query string, arguments ...any
 	case strings.Contains(query, "ConfigureAdministrationTransaction"):
 		return settingsRow{values: []any{"2s", "250ms"}}
 	case strings.Contains(query, "LockSiteSettingsAdministrator"):
-		return settingsRow{values: []any{int64(7)}}
+		if tx.actorErr != nil {
+			return settingsRow{err: tx.actorErr}
+		}
+		actorID := tx.actorID
+		if actorID == 0 {
+			actorID = 7
+		}
+		return settingsRow{values: []any{actorID}}
 	case strings.Contains(query, "LockSiteSettings"):
 		return settingsRow{values: []any{
 			"GOTTH Board", "Community discussions, plainly organized.", "blue", "", "", contentrender.RendererVersion,
@@ -180,7 +190,7 @@ func (tx *settingsTx) QueryRow(_ context.Context, query string, arguments ...any
 
 func (tx *settingsTx) Commit(context.Context) error {
 	tx.committed = true
-	return nil
+	return tx.commitErr
 }
 
 func (tx *settingsTx) Rollback(context.Context) error {
@@ -233,4 +243,35 @@ func TestUpdateSettingsCommitsExactRevisionAndDigestAudit(t *testing.T) {
 			t.Fatalf("audit digest argument %d = %#v", index, tx.updateArgs[index])
 		}
 	}
+}
+
+func TestUpdateSettingsRejectsMismatchedAdministratorLock(t *testing.T) {
+	t.Parallel()
+	tx := &settingsTx{actorID: 8}
+	result, err := updateSettingsForTest(tx)
+	if result != (MutationResult{}) || err == nil || !strings.Contains(err.Error(), "administrator lock returned invalid state") || tx.committed || !tx.rolledBack {
+		t.Fatalf("UpdateSettings() = (%+v, %v, committed %t, rolled back %t)", result, err, tx.committed, tx.rolledBack)
+	}
+}
+
+func TestUpdateSettingsPreservesUnknownCommitOutcome(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("connection lost during commit")
+	tx := &settingsTx{commitErr: cause}
+	result, err := updateSettingsForTest(tx)
+	if result != (MutationResult{}) || !errors.Is(err, cause) || !strings.Contains(err.Error(), "outcome unknown; inspect state before retry") || !tx.committed || !tx.rolledBack {
+		t.Fatalf("UpdateSettings() = (%+v, %v, committed %t, rolled back %t)", result, err, tx.committed, tx.rolledBack)
+	}
+	if len(tx.queries) != 4 {
+		t.Fatalf("query count after unknown commit = %d, want one transaction with four statements", len(tx.queries))
+	}
+}
+
+func updateSettingsForTest(tx *settingsTx) (MutationResult, error) {
+	return UpdateSettings(
+		context.Background(), settingsBeginner{tx: tx}, func() time.Time { return testObservedAt },
+		policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator},
+		SettingsInput{Name: "Community", Description: "A careful forum.", Theme: "emerald", RulesMarkdown: "# Rules", Reason: "Publish initial rules", Revision: 1},
+		pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
+	)
 }

@@ -200,8 +200,11 @@ func UpdateSettings(ctx context.Context, beginner transactionBeginner, clock fun
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrDenied
 		}
-		if err != nil || lockedActor != actor.UserID {
+		if err != nil {
 			return fmt.Errorf("lock site settings administrator: %w", err)
+		}
+		if lockedActor != actor.UserID {
+			return fmt.Errorf("site settings administrator lock returned invalid state")
 		}
 		current, err := queries.LockSiteSettings(mutationContext)
 		if err != nil {
