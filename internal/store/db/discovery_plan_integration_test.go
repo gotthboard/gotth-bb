@@ -289,7 +289,7 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 				requireUnreadAuthorizationPlan(t, mode, shape.name+"-area", "visible_area", topicPlan, true, shape.isStaff, shape.requireGroupSubplan)
 				t.Logf("PLAN mode=%s actor=%s query=area\n%s", mode, shape.name, topicPlan)
 			}
-			markArguments := fmt.Sprintf("3,false,ARRAY[]::bigint[],%d", readerID)
+			markArguments := fmt.Sprintf("2,false,ARRAY[%d]::bigint[],%d", groupID, readerID)
 			markPlan := explainPrepared(t, ctx, connection, "an03_mark_read", "bigint,boolean,bigint[],bigint", markTopicReadBoundary, markArguments, mode)
 			requireMarkReadAuthorizationPlan(t, mode, markPlan)
 			t.Logf("PLAN mode=%s actor=member query=mark-read\n%s", mode, markPlan)
@@ -319,6 +319,12 @@ func requireMarkReadAuthorizationPlan(t *testing.T, mode, encoded string) {
 		!planUsesConditionedRelation(*authorized, "topics", "deleted_at") ||
 		!planUsesConditionedRelation(*authorized, "topics", "state") {
 		t.Fatalf("%s mark-read plan lost materialized authorization fence: %s", mode, encoded)
+	}
+	groupMembership := findPlanNode(authorized, func(node *explainPlanNode) bool {
+		return node.RelationName == "area_groups" && strings.Contains(node.Filter+node.RecheckCond+node.IndexCond, "group_id")
+	})
+	if groupMembership == nil || groupMembership.Parent != "SubPlan" {
+		t.Fatalf("%s mark-read plan lost non-multiplying group-membership subplan: %s", mode, encoded)
 	}
 	if !planUsesConditionedRelation(*boundary, "posts", "author_id") ||
 		!planUsesIndex(*boundary, "posts_topic_unread_visible_idx") {
