@@ -17,20 +17,24 @@ endpoints.
 
 ## Maturity and compatibility
 
-Current status: 1.0.0-alpha.2 application; existing tags predate the GitHub
-module identity.
+Current status: the restricted-test `1.0.0-beta.1` tag is an immutable failed
+candidate, not a known-good release. Its live acceptance pass found the
+narrow-screen search defect recorded by B1-06. The corrective
+`1.0.0-beta.1.1` identity remains withheld until its guarded release gate and
+owner confirmation complete.
 
 ## Current source use
 
-No post-migration version has been tagged. Until one is admitted, clone the
-moving `main` branch explicitly:
+Post-migration prerelease tags and the moving `main` branch are distributed at
+both endpoints. Clone the repository explicitly:
 
 ```sh
 git clone https://github.com/gotthboard/gotth-bb.git
 ```
 
-Review the exact checked-out commit. Do not mistake `main` for a compatibility
-promise or use the old alpha tags as proof of the new module identity.
+Review the exact checked-out commit or peeled annotated tag. Do not mistake
+`main`, a failed candidate, or any prerelease tag for a stable compatibility
+promise or a grant of license rights.
 
 The repository pins Go 1.26.6 where a Go module exists. Supported protocol,
 runtime, database, and tool versions remain the ones stated in the README and
@@ -39,8 +43,11 @@ contracts.
 
 ## Licensing gate
 
-No license file is present. No license has been inferred or selected. New
-release publication remains blocked until the maintainer makes that decision.
+No license file is present. No license has been inferred or selected, and
+source or prerelease-tag visibility grants no permission to copy, modify, or
+redistribute the project. License selection and any release that promises such
+downstream rights remain blocked until the maintainer makes that decision; the
+restricted-test Beta correction does not make it for them.
 
 ## Migration traceability
 
