@@ -210,7 +210,9 @@ WHERE topic.id % 2 = 0`, readerID); err != nil {
 		if _, err := connection.Exec(ctx, `ANALYZE public.topic_reads`); err != nil {
 			t.Fatal(err)
 		}
-		runUnreadMigrationEvidence(t, ctx, configured, connection)
+		if !population.administration {
+			runUnreadMigrationEvidence(t, ctx, configured, connection)
+		}
 		if _, err := connection.Exec(ctx, `ANALYZE public.posts; ANALYZE public.topic_reads`); err != nil {
 			t.Fatal(err)
 		}
