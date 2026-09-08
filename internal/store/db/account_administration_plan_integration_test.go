@@ -81,7 +81,7 @@ func TestAccountAdministrationPlansOnPostgreSQL17(t *testing.T) {
 	for _, mode := range []string{"force_custom_plan", "force_generic_plan"} {
 		accountPlan := explainPrepared(t, ctx, connection, "an04_accounts", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
 			fmt.Sprintf("'%s',%d,0,51", observedAt, actorID), mode)
-		requireAdministrationPlan(t, mode, "accounts", accountPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Plan Rows":51`})
+		requireAdministrationPlan(t, mode, "accounts", accountPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Actual Rows":51`})
 
 		detailPlan := explainPrepared(t, ctx, connection, "an04_account_detail", "timestamptz,bigint,bigint", loadAccountForAdministration,
 			fmt.Sprintf("'%s',%d,%d", observedAt, actorID, targetID), mode)
@@ -89,11 +89,11 @@ func TestAccountAdministrationPlansOnPostgreSQL17(t *testing.T) {
 
 		groupsPlan := explainPrepared(t, ctx, connection, "an04_groups", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
 			fmt.Sprintf("%d,'%s',0,51", actorID, observedAt), mode)
-		requireAdministrationPlan(t, mode, "groups", groupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Plan Rows":51`})
+		requireAdministrationPlan(t, mode, "groups", groupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Actual Rows":51`})
 
 		membershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
 			fmt.Sprintf("%d,'%s',%d,0,51", actorID, observedAt, targetID), mode)
-		requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `user_id =`, `group_id =`, `"Actual Loops":51`, `"Plan Rows":51`})
+		requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `user_id =`, `group_id =`, `"Actual Loops":51`, `"Actual Rows":51`})
 
 		continuityPlan := explainPrepared(t, ctx, connection, "an04_active_administrators", "timestamptz", countActiveAdministrators,
 			fmt.Sprintf("'%s'", observedAt), mode)
