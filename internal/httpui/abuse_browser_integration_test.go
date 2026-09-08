@@ -308,7 +308,7 @@ func waitForAbuseCaddy(t *testing.T, target, basePath string, log *bytes.Buffer)
 func hasBetaSessionCookie(response *http.Response, basePath string) bool {
 	wantPath := "/"
 	if basePath != "" {
-		wantPath = basePath
+		wantPath = basePath + "/"
 	}
 	for _, cookie := range response.Cookies() {
 		if cookie.Name == "gotth_bb_session" {
