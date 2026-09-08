@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -512,6 +513,11 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 func parseAdministrationForm(response http.ResponseWriter, request *http.Request, view pageView, limit int64, fields []string) (url.Values, bool) {
 	if err := validateCSRFRequest(request, limit); err != nil {
 		renderAdministrationError(response, request, view, http.StatusForbidden, "Request verification failed", "Reload the administration page and try again.")
+		return nil, false
+	}
+	mediaType, parameters, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/x-www-form-urlencoded" || len(parameters) != 0 {
+		renderAdministrationError(response, request, view, http.StatusBadRequest, "Invalid form", "The form content type is invalid.")
 		return nil, false
 	}
 	if request.ContentLength > limit {

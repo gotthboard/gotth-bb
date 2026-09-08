@@ -305,6 +305,7 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 		path           string
 		authentication auth.SessionAuthentication
 		header         string
+		contentType    string
 		contentLength  int64
 		wantStatus     int
 	}{
@@ -312,6 +313,7 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 		{name: "stale session", path: "/admin/accounts/2/role", authentication: stale, wantStatus: http.StatusSeeOther},
 		{name: "member", path: "/admin/accounts/2/role", authentication: member, wantStatus: http.StatusForbidden},
 		{name: "invalid header csrf", path: "/admin/accounts/2/role", authentication: admin, header: validCSRFTokenForTest(0x52), wantStatus: http.StatusForbidden},
+		{name: "parameterized content type", path: "/admin/accounts/2/role", authentication: admin, header: token, contentType: "application/x-www-form-urlencoded; charset=utf-8", wantStatus: http.StatusBadRequest},
 		{name: "small form declared oversized", path: "/admin/accounts/2/role", authentication: admin, header: token, contentLength: maximumAdministrationSmallFormBytes + 1, wantStatus: http.StatusBadRequest},
 		{name: "area form declared oversized", path: "/admin/areas", authentication: admin, header: token, contentLength: maximumAdministrationAreaFormBytes + 1, wantStatus: http.StatusBadRequest},
 	} {
@@ -319,7 +321,11 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 		t.Run(test.name, func(t *testing.T) {
 			body := &countingAdministrationBody{Reader: strings.NewReader("secret=body")}
 			request := httptest.NewRequest(http.MethodPost, test.path, body)
-			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			contentType := test.contentType
+			if contentType == "" {
+				contentType = "application/x-www-form-urlencoded"
+			}
+			request.Header.Set("Content-Type", contentType)
 			if test.header != "" {
 				request.Header.Set(csrfHeaderName, test.header)
 			}
