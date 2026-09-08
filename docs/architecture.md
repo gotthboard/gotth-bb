@@ -602,13 +602,20 @@ query preflight and any protected session/role decision; it may render either a
 successful page or a branded domain error without preceding protected
 authority. HTMX fragments, redirects, static assets, health, and readiness do
 not perform it. The public rules read alone
-returns the bounded trusted rules HTML. The administrator edit read alone
-returns source, renderer metadata, and numeric revision. The service keeps no
+returns the shell fields plus bounded trusted rules HTML. The administrator
+edit read alone returns the shell fields plus source, renderer metadata, and
+numeric revision. Those two routes therefore perform one singleton round trip,
+not a route query followed by a duplicate shell query. The service keeps no
 process-local settings cache, invalidation bus, or polling loop: a committed
 update is visible to the next database read on every instance. This spends one
 small bounded query per full document instead of copying up to 262 KiB of rules
 HTML through every shell or hiding cross-process staleness behind a clever
 cache.
+
+A failed shell read makes an otherwise-successful document unavailable. It does
+not overwrite an already-established authorization/domain status: that response
+keeps its status and uses bounded unbranded text, preserving fixed terminal
+behavior without pretending stale settings are current.
 
 The built-in theme is a closed value mapped to static, compiled CSS selectors.
 Administrators cannot supply CSS, script, HTML, a URL, or a remote logo. Rules

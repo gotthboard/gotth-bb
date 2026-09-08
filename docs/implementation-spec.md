@@ -2117,7 +2117,10 @@ ordinary migration transaction:
 - add `create_group`, `rename_group`, `grant_area_group`,
   `revoke_area_group`, and `update_site_settings` to the closed audit actions.
   Existing `change_role`, `grant_group_membership`,
-  `revoke_group_membership`, and area actions remain unchanged.
+  `revoke_group_membership`, and area actions remain unchanged; and
+- extend the audit reason-required check to `change_role`, both membership
+  actions, `create_area`, `update_area`, both area-group actions, both group
+  lifecycle actions, and `update_site_settings`.
 
 The migration adds no content/account backfill. Dropping and replacing audit
 checks and validating the settings row take the documented PostgreSQL table
@@ -2144,6 +2147,11 @@ application does not invent an in-memory fallback.
 
 ### 21.2 Site presentation, settings mutation, and public rules
 
+Every AN-04 mutation reason uses the existing strict nonblank, control-free,
+single-line 1–2,000-byte boundary. The application rejects it before a
+transaction and the database requires a non-NULL reason for every AN-04 audit
+action.
+
 `SiteShellPresentation` contains only name, description, and closed theme. One
 primary-key query loads it after exact route/query preflight and, for protected
 routes, after the session/role decision establishes that a full document will
@@ -2153,11 +2161,19 @@ This preserves branded validation/domain errors without moving private queries
 ahead of authority. Static assets, health, readiness, and fixed plain settings-
 unavailable responses do not perform this query.
 
-`PublicRules` is a separate primary-key projection containing only trusted
-rules HTML. `EditableSiteSettings` is a third administrator-only projection
-containing source fields, renderer metadata, and the positive numeric revision.
-No shell query selects rules source or HTML. There is no process-local cache,
-notification channel, or propagation claim.
+If shell loading fails for an otherwise-successful full document, the handler
+returns fixed bounded unbranded `503`. If authorization or domain work already
+established a non-2xx status, shell failure preserves that status and replaces
+only the body with fixed bounded unbranded text. It never turns fixed `403` or
+`404` terminal behavior into a settings-availability oracle.
+
+`PublicRules` is a separate primary-key projection containing the three shell
+fields plus trusted rules HTML. `EditableSiteSettings` is a third
+administrator-only projection containing those shell fields plus source,
+renderer metadata, and the positive numeric revision. Each route uses that one
+row for both its document shell and main content; it does not issue a duplicate
+shell query. Ordinary shell queries never select rules source or HTML. There is
+no process-local cache, notification channel, or propagation claim.
 
 The public `GET /rules` accepts the exact canonical path and no query, is
 read-only, renders the current sanitized rules, and returns a fixed unavailable
@@ -2311,10 +2327,10 @@ preserves its mappings; leaving group visibility removes them in the same core
 transaction. A separate area/group mutation accepts exactly `_csrf`, closed
 `action` (`grant` or `revoke`), `reason`, and the area's numeric revision. It
 locks governance, actor, area, and group in that order; rejects stale/no-op/
-overflow state and revoking the last mapping of a group-visible area; changes
-one mapping; increments the area revision; and appends exactly one
-`grant_area_group` or `revoke_area_group` audit targeted to the area with the
-one group ID and previous/resulting assignment boolean in bounded state.
+overflow state, an area not currently group-visible, and revoking the last
+mapping; changes one mapping; increments the area revision; and appends exactly
+one `grant_area_group` or `revoke_area_group` audit targeted to the area with
+the one group ID and previous/resulting assignment boolean in bounded state.
 
 Area core audit objects contain only slug, name, lowercase hexadecimal SHA-256
 of the exact description UTF-8 bytes, display order, visibility, posting mode,

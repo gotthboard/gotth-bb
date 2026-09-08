@@ -926,7 +926,8 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
   rollback on any audit failure, and immediate next-
   request area-access changes;
 - default and updated site presentation, separate shell/rules/edit projections,
-  proof that ordinary shells do not select/copy rules bodies, every closed
+  one singleton round trip for rules/settings pages, proof that ordinary shells
+  do not select/copy rules bodies, every closed
   theme, rejected arbitrary theme/CSS/HTML/URL/control input, GFM and sanitizer
   fixtures, source/HTML size
   boundaries, exact empty source/HTML sentinel, rejection of every other blank
@@ -943,14 +944,17 @@ Tests inspect `moderation_actions`, target rows, group mappings, settings, and
 sessions before and after successful and failed requests. A committed mutation
 must have its exact audit state; a failed mutation must have neither state nor
 audit/session side effects. Unknown commit tests report uncertainty and inspect
-before any explicit retry.
+before any explicit retry. Every AN-04 action is tested with missing, blank,
+multiline, control-bearing, boundary, and oversized reasons at both application
+and database constraints.
 
 ### 21.2 HTTP, privacy, and accessibility matrix
 
 Route tests cover exact canonical path/query grammar before session/body/
 database work, login and revalidation redirects, fixed administrator `403`,
 fixed missing `404`, validation `400`/`422`, conflict `409`, unavailable `503`,
-and body-nonconsumption for header-CSRF/session/path failures. Each form proves
+shell failure preserving established `403`/`404` while successful pages become
+fixed `503`, and body-nonconsumption for header-CSRF/session/path failures. Each form proves
 its exact field grammar, size limit, duplicate/unknown rejection, one service
 call, and no retry.
 
