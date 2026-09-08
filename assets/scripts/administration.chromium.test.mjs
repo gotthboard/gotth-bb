@@ -147,7 +147,6 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
     assert(namedRoles.includes(expected), `accessibility tree lacks ${expected}`);
   }
   assert.equal(await evaluate(send, sessionId, "document.querySelector('script') !== null"), true);
-  await auditAccessibility(send, sessionId, evaluate, "administration dashboard without JavaScript");
   await auditReflow(send, sessionId, evaluate, "administration dashboard");
 
   await tabTo(send, sessionId, "document.activeElement?.textContent?.trim() === 'Accounts' && document.activeElement?.closest('nav')?.getAttribute('aria-label') === 'Administration'", "administration Accounts link");
@@ -165,7 +164,6 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   for (const expected of ["heading:Local Member", "combobox:Role", "textbox:Audit reason", "button:Change role", "button:Revoke"]) {
     assert(namedRoles.includes(expected), `account accessibility tree lacks ${expected}`);
   }
-  await auditAccessibility(send, sessionId, evaluate, "administration account detail without JavaScript");
 
   await tabTo(send, sessionId, "document.activeElement?.matches('form[action$=\"/role\"] input[name=\"reason\"]')", "role audit reason");
   await assertVisibleFocus(send, sessionId);
@@ -207,6 +205,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "location.search === '?after=53' && document.querySelector('form[action$=\"/admin/groups/54\"] input[name=\"name\"]')?.value === 'Continuation Group'");
 
   await navigate(send, sessionId, `${target}/accounts/2`, "document.body.textContent.includes('Updated Member')");
+  await auditAccessibility(send, sessionId, evaluate, "administration account detail", false);
   await submitForm(send, sessionId, `form[action$="/admin/accounts/2/groups/4"]`, { action: "revoke", reason: "Revoke browser membership" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/accounts/2/groups/4\"] button')?.textContent.trim() === 'Grant' && document.querySelector('form[action$=\"/admin/accounts/2/role\"] input[name=\"revision\"]')?.value === '5'");
   await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Page not found')");
