@@ -32,7 +32,7 @@ func TestAccountAdministrationProjectionQueriesFenceAuthorityAndBindLimits(t *te
 				_, err := queries.ListAccountGroupsForAdministration(context.Background(), ListAccountGroupsForAdministrationParams{ActorUserID: 7, ObservedAt: observedAt, TargetUserID: 41, AfterGroupID: 50, PageLimit: 51})
 				return err
 			},
-			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "target AS MATERIALIZED", "FROM target", "JOIN LATERAL", "LIMIT $5", "membership.user_id = target.id"},
+			required: []string{"actor AS MATERIALIZED", "forum_user.muted_until IS NULL OR forum_user.muted_until <= $2", "target AS MATERIALIZED", "FROM target", "JOIN LATERAL", "LIMIT $5", "EXISTS", "membership.user_id = target.id", "membership.group_id = forum_group.id"},
 		},
 		{
 			name: "account detail", wantArgs: []any{observedAt, int64(7), int64(41)},

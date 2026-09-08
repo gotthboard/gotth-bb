@@ -260,7 +260,12 @@ WITH actor AS MATERIALIZED (
     JOIN public.users AS forum_user ON forum_user.id = $3
 ), candidate AS MATERIALIZED (
     SELECT forum_group.id, forum_group.name,
-           (membership.user_id IS NOT NULL)::boolean AS member
+           EXISTS (
+               SELECT 1
+               FROM public.forum_group_members AS membership
+               WHERE membership.user_id = target.id
+                 AND membership.group_id = forum_group.id
+           )::boolean AS member
     FROM target
     JOIN LATERAL (
         SELECT group_row.id, group_row.name
@@ -269,9 +274,6 @@ WITH actor AS MATERIALIZED (
         ORDER BY group_row.id
         LIMIT $5
     ) AS forum_group ON true
-    LEFT JOIN public.forum_group_members AS membership
-      ON membership.group_id = forum_group.id
-     AND membership.user_id = target.id
 )
 SELECT (target.id IS NOT NULL)::boolean AS account_present,
        (candidate.id IS NOT NULL)::boolean AS group_present,
