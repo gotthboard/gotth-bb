@@ -426,6 +426,7 @@ type explainPlanNode struct {
 	SubplanName  string            `json:"Subplan Name"`
 	PlanRows     int64             `json:"Plan Rows"`
 	ActualRows   int64             `json:"Actual Rows"`
+	ActualLoops  int64             `json:"Actual Loops"`
 	RelationName string            `json:"Relation Name"`
 	IndexName    string            `json:"Index Name"`
 	Filter       string            `json:"Filter"`
@@ -702,26 +703,49 @@ func runAdministrationPlanEvidence(t *testing.T, ctx context.Context, connection
 	accountPlan := explainPrepared(t, ctx, connection, "an04_accounts", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
 		fmt.Sprintf("'%s',%d,0,51", observedAt, ownerID), mode)
 	requireAdministrationPlan(t, mode, "accounts", accountPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Actual Rows":51`})
+	deniedAccountPlan := explainPrepared(t, ctx, connection, "an04_accounts_denied", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
+		fmt.Sprintf("'%s',%d,0,51", observedAt, targetID), mode)
+	requireDeniedAdministrationPlan(t, mode, "accounts", deniedAccountPlan, "users")
 	detailPlan := explainPrepared(t, ctx, connection, "an04_account_detail", "timestamptz,bigint,bigint", loadAccountForAdministration,
 		fmt.Sprintf("'%s',%d,%d", observedAt, ownerID, targetID), mode)
 	requireAdministrationPlan(t, mode, "account-detail", detailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`})
+	deniedDetailPlan := explainPrepared(t, ctx, connection, "an04_account_detail_denied", "timestamptz,bigint,bigint", loadAccountForAdministration,
+		fmt.Sprintf("'%s',%d,%d", observedAt, targetID, ownerID), mode)
+	requireDeniedAdministrationPlan(t, mode, "account-detail", deniedDetailPlan, "users")
 	groupsPlan := explainPrepared(t, ctx, connection, "an04_groups", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
 		fmt.Sprintf("%d,'%s',0,51", ownerID, observedAt), mode)
 	requireAdministrationPlan(t, mode, "groups", groupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Actual Rows":51`})
+	deniedGroupsPlan := explainPrepared(t, ctx, connection, "an04_groups_denied", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
+		fmt.Sprintf("%d,'%s',0,51", targetID, observedAt), mode)
+	requireDeniedAdministrationPlan(t, mode, "groups", deniedGroupsPlan, "forum_groups")
 	membershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
 		fmt.Sprintf("%d,'%s',%d,0,51", ownerID, observedAt, targetID), mode)
 	requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `"Actual Loops":51`, `"Actual Rows":51`})
+	deniedMembershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups_denied", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
+		fmt.Sprintf("%d,'%s',%d,0,51", targetID, observedAt, ownerID), mode)
+	requireDeniedAdministrationPlan(t, mode, "account-groups", deniedMembershipPlan, "users", "forum_groups", "forum_group_members")
 	areaPlan := explainPrepared(t, ctx, connection, "an04_areas", "bigint,timestamptz,integer,bigint,integer", listAreasForAdministrationPage,
 		fmt.Sprintf("%d,'%s',0,0,51", ownerID, observedAt), mode)
 	requireAdministrationPlan(t, mode, "areas", areaPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Index Name":"areas_display_idx"`, `"Actual Rows":51`})
+	deniedAreaPlan := explainPrepared(t, ctx, connection, "an04_areas_denied", "bigint,timestamptz,integer,bigint,integer", listAreasForAdministrationPage,
+		fmt.Sprintf("%d,'%s',0,0,51", targetID, observedAt), mode)
+	requireDeniedAdministrationPlan(t, mode, "areas", deniedAreaPlan, "areas")
 	areaDetailPlan := explainPrepared(t, ctx, connection, "an04_area_detail", "bigint,timestamptz,bigint", loadAreaForAdministrationPage,
 		fmt.Sprintf("%d,'%s',%d", ownerID, observedAt, areaID), mode)
 	requireAdministrationPlan(t, mode, "area-detail", areaDetailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Index Name":"areas_pkey"`})
+	deniedAreaDetailPlan := explainPrepared(t, ctx, connection, "an04_area_detail_denied", "bigint,timestamptz,bigint", loadAreaForAdministrationPage,
+		fmt.Sprintf("%d,'%s',%d", targetID, observedAt, areaID), mode)
+	requireDeniedAdministrationPlan(t, mode, "area-detail", deniedAreaDetailPlan, "areas")
 	areaGroupsPlan := explainPrepared(t, ctx, connection, "an04_area_groups", "bigint,timestamptz,bigint,bigint,integer", listAreaGroupsForAdministrationPage,
 		fmt.Sprintf("%d,'%s',%d,0,51", ownerID, observedAt, areaID), mode)
 	requireAdministrationPlan(t, mode, "area-groups", areaGroupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"area_groups_pkey"`, `area_id =`, `"Actual Rows":51`})
+	deniedAreaGroupsPlan := explainPrepared(t, ctx, connection, "an04_area_groups_denied", "bigint,timestamptz,bigint,bigint,integer", listAreaGroupsForAdministrationPage,
+		fmt.Sprintf("%d,'%s',%d,0,51", targetID, observedAt, areaID), mode)
+	requireDeniedAdministrationPlan(t, mode, "area-groups", deniedAreaGroupsPlan, "areas", "forum_groups", "area_groups")
 	dashboardPlan := explainPrepared(t, ctx, connection, "an04_dashboard", "bigint", loadAdministrationDashboard, fmt.Sprintf("%d", ownerID), mode)
 	requireAdministrationPlan(t, mode, "dashboard", dashboardPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Relation Name":"topics"`, `"Relation Name":"posts"`, `"Relation Name":"reports"`})
+	deniedDashboardPlan := explainPrepared(t, ctx, connection, "an04_dashboard_denied", "bigint", loadAdministrationDashboard, fmt.Sprintf("%d", targetID), mode)
+	requireDeniedAdministrationPlan(t, mode, "dashboard", deniedDashboardPlan, "users", "topics", "posts", "reports")
 }
 
 func logAdministrationResourceSnapshot(t *testing.T, ctx context.Context, connection *pgx.Conn, label string) {

@@ -4,6 +4,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -82,23 +83,74 @@ func TestAccountAdministrationPlansOnPostgreSQL17(t *testing.T) {
 		accountPlan := explainPrepared(t, ctx, connection, "an04_accounts", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
 			fmt.Sprintf("'%s',%d,0,51", observedAt, actorID), mode)
 		requireAdministrationPlan(t, mode, "accounts", accountPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`, `"Actual Rows":51`})
+		deniedAccountPlan := explainPrepared(t, ctx, connection, "an04_accounts_denied", "timestamptz,bigint,bigint,integer", listAccountsForAdministration,
+			fmt.Sprintf("'%s',%d,0,51", observedAt, targetID), mode)
+		requireDeniedAdministrationPlan(t, mode, "accounts", deniedAccountPlan, "users")
 
 		detailPlan := explainPrepared(t, ctx, connection, "an04_account_detail", "timestamptz,bigint,bigint", loadAccountForAdministration,
 			fmt.Sprintf("'%s',%d,%d", observedAt, actorID, targetID), mode)
 		requireAdministrationPlan(t, mode, "account-detail", detailPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"users_pkey"`})
+		deniedDetailPlan := explainPrepared(t, ctx, connection, "an04_account_detail_denied", "timestamptz,bigint,bigint", loadAccountForAdministration,
+			fmt.Sprintf("'%s',%d,%d", observedAt, targetID, actorID), mode)
+		requireDeniedAdministrationPlan(t, mode, "account-detail", deniedDetailPlan, "users")
 
 		groupsPlan := explainPrepared(t, ctx, connection, "an04_groups", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
 			fmt.Sprintf("%d,'%s',0,51", actorID, observedAt), mode)
 		requireAdministrationPlan(t, mode, "groups", groupsPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Actual Rows":51`})
+		deniedGroupsPlan := explainPrepared(t, ctx, connection, "an04_groups_denied", "bigint,timestamptz,bigint,integer", listGroupsForAdministration,
+			fmt.Sprintf("%d,'%s',0,51", targetID, observedAt), mode)
+		requireDeniedAdministrationPlan(t, mode, "groups", deniedGroupsPlan, "forum_groups")
 
 		membershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
 			fmt.Sprintf("%d,'%s',%d,0,51", actorID, observedAt, targetID), mode)
 		requireAdministrationPlan(t, mode, "account-groups", membershipPlan, []string{`"Subplan Name":"CTE actor"`, `"Index Name":"forum_groups_pkey"`, `"Index Name":"forum_group_members_user_group_idx"`, `user_id =`, `group_id =`, `"Actual Loops":51`, `"Actual Rows":51`})
+		deniedMembershipPlan := explainPrepared(t, ctx, connection, "an04_account_groups_denied", "bigint,timestamptz,bigint,bigint,integer", listAccountGroupsForAdministration,
+			fmt.Sprintf("%d,'%s',%d,0,51", targetID, observedAt, actorID), mode)
+		requireDeniedAdministrationPlan(t, mode, "account-groups", deniedMembershipPlan, "users", "forum_groups", "forum_group_members")
 
 		continuityPlan := explainPrepared(t, ctx, connection, "an04_active_administrators", "timestamptz", countActiveAdministrators,
 			fmt.Sprintf("'%s'", observedAt), mode)
 		requireAdministrationPlan(t, mode, "active-administrator-count", continuityPlan, []string{`"Relation Name":"users"`, `role = 'administrator'`})
 	}
+}
+
+func requireDeniedAdministrationPlan(t *testing.T, mode, name, encoded string, privateRelations ...string) {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
+		t.Fatalf("%s %s decode denied plan: documents=%d error=%v", mode, name, len(document), err)
+	}
+	root := &document[0].Plan
+	actor := findPlanNode(root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE actor" })
+	if actor == nil || actor.ActualRows != 0 || actor.ActualLoops != 1 {
+		t.Fatalf("%s %s denied actor fence rows/loops must be 0/1: %s", mode, name, encoded)
+	}
+	required := make(map[string]bool, len(privateRelations))
+	for _, relation := range privateRelations {
+		required[relation] = false
+	}
+	var inspect func(*explainPlanNode)
+	inspect = func(node *explainPlanNode) {
+		if node == actor {
+			return
+		}
+		if _, tracked := required[node.RelationName]; tracked {
+			required[node.RelationName] = true
+			if node.ActualLoops != 0 {
+				t.Fatalf("%s %s denied private relation %s executed %d loops: %s", mode, name, node.RelationName, node.ActualLoops, encoded)
+			}
+		}
+		for index := range node.Plans {
+			inspect(&node.Plans[index])
+		}
+	}
+	inspect(root)
+	for relation, seen := range required {
+		if !seen {
+			t.Fatalf("%s %s denied plan lacks private relation %s outside actor fence: %s", mode, name, relation, encoded)
+		}
+	}
+	t.Logf("PLAN mode=%s query=%s-denied actor_rows=0 private_loops=0\n%s", mode, name, encoded)
 }
 
 func requireAdministrationPlan(t *testing.T, mode, name, plan string, required []string) {
