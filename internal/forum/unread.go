@@ -34,7 +34,7 @@ func LoadVisibleTopicPostPage(ctx context.Context, beginner interface {
 	if beginner == nil {
 		return store.VisibleTopicPostPage{}, fmt.Errorf("topic page transaction beginner is required")
 	}
-	if !actor.Valid() {
+	if !actor.Valid() || actor.Suspended {
 		return store.VisibleTopicPostPage{}, fmt.Errorf("topic page actor is invalid")
 	}
 	if !actor.Authenticated {

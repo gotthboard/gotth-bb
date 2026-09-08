@@ -14,6 +14,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestLoadVisibleTopicPostPageRejectsSuspendedActorBeforeDatabaseWork(t *testing.T) {
+	t.Parallel()
+
+	actor := validMarkReadActor()
+	actor.Suspended = true
+	if got, err := LoadVisibleTopicPostPage(context.Background(), panicTopicPageBeginner{}, actor, 41, 1); err == nil || got.ReadState != nil || len(got.Rows) != 0 {
+		t.Fatalf("LoadVisibleTopicPostPage() = (%+v, %v), want zero/error", got, err)
+	}
+}
+
+type panicTopicPageBeginner struct{}
+
+func (panicTopicPageBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	panic("suspended topic-page actor must not begin a transaction")
+}
+
+func (panicTopicPageBeginner) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	panic("suspended topic-page actor must not execute")
+}
+
+func (panicTopicPageBeginner) Query(context.Context, string, ...any) (pgx.Rows, error) {
+	panic("suspended topic-page actor must not query")
+}
+
+func (panicTopicPageBeginner) QueryRow(context.Context, string, ...any) pgx.Row {
+	panic("suspended topic-page actor must not query")
+}
+
 func TestMarkTopicReadCommitsServerSelectedBoundary(t *testing.T) {
 	t.Parallel()
 

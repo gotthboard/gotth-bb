@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
+	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -234,7 +235,7 @@ func firstUnreadLocation(builder URLBuilder, topicID int64, target forum.FirstUn
 		}
 		return builder.Path("posts", strconv.FormatInt(target.PostID, 10))
 	}
-	if target.Page < 1 || target.Page > 10_000 {
+	if target.Page < 1 || target.Page > store.MaximumPostPage {
 		return "", fmt.Errorf("paged first-unread target is malformed")
 	}
 	query := url.Values(nil)

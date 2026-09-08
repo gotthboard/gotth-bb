@@ -111,6 +111,42 @@ func TestFirstUnreadRequiresCurrentSessionWithoutTopicProbe(t *testing.T) {
 	}
 }
 
+func TestMarkReadRequiresCurrentSessionWithoutBodyOrTopicProbe(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	handler := unreadTestHandler(t, UnreadHTTPServices{
+		FirstUnread: func(context.Context, auth.AccessContext, int64) (forum.FirstUnreadTarget, error) {
+			panic("first-unread must not run")
+		},
+		MarkRead: func(context.Context, auth.AccessContext, int64) error {
+			calls++
+			return nil
+		},
+	})
+	for _, test := range []struct {
+		name           string
+		authentication auth.SessionAuthentication
+		wantLocation   string
+	}{
+		{name: "missing", wantLocation: "/bb/login?return=%2Fbb%2Ftopics%2F41"},
+		{name: "stale", authentication: auth.SessionAuthentication{
+			SessionID: 7, Access: unreadTestAccess(), RequiresRevalidation: true,
+		}, wantLocation: "/bb/auth/revalidate?return=%2Fbb%2Ftopics%2F41"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := unreadTestRequest(http.MethodPost, "/topics/41/read", test.authentication, "")
+			request.Body = panicCSRFBody{}
+			request.ContentLength = -1
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != test.wantLocation || calls != 0 {
+				t.Fatalf("session response = (status %d location %q calls %d)", response.Code, response.Header().Get("Location"), calls)
+			}
+		})
+	}
+}
+
 func TestFirstUnreadNavigatesToExactTarget(t *testing.T) {
 	t.Parallel()
 
