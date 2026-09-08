@@ -90,8 +90,34 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 8 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 8, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 9 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 9, 1)", serverVersion, migrationCount, governanceCount)
+	}
+	var finiteConstraintValidated bool
+	var finiteConstraintDefinition string
+	if err := conn.QueryRow(ctx, `SELECT constraint_row.convalidated, pg_get_constraintdef(constraint_row.oid, true)
+FROM pg_catalog.pg_constraint AS constraint_row
+WHERE constraint_row.conrelid = 'public.topic_reads'::regclass
+  AND constraint_row.conname = 'topic_reads_read_at_finite'`).Scan(&finiteConstraintValidated, &finiteConstraintDefinition); err != nil {
+		t.Fatalf("inspect unread finite-time constraint: %v", err)
+	}
+	if !finiteConstraintValidated || finiteConstraintDefinition != "CHECK (isfinite(read_at))" {
+		t.Fatalf("unread finite-time constraint = (%t, %q)", finiteConstraintValidated, finiteConstraintDefinition)
+	}
+	var unreadIndexValid, unreadIndexReady, unreadIndexUnique bool
+	var unreadIndexDefinition, unreadIndexPredicate string
+	if err := conn.QueryRow(ctx, `SELECT index_row.indisvalid, index_row.indisready, index_row.indisunique,
+       pg_get_indexdef(index_row.indexrelid), pg_get_expr(index_row.indpred, index_row.indrelid)
+FROM pg_catalog.pg_index AS index_row
+WHERE index_row.indexrelid = 'public.posts_topic_unread_visible_idx'::regclass`).Scan(
+		&unreadIndexValid, &unreadIndexReady, &unreadIndexUnique, &unreadIndexDefinition, &unreadIndexPredicate,
+	); err != nil {
+		t.Fatalf("inspect unread visible-post index: %v", err)
+	}
+	if !unreadIndexValid || !unreadIndexReady || unreadIndexUnique ||
+		unreadIndexDefinition != "CREATE INDEX posts_topic_unread_visible_idx ON public.posts USING btree (topic_id, post_number) INCLUDE (author_id) WHERE ((deleted_at IS NULL) AND (redacted_at IS NULL))" ||
+		unreadIndexPredicate != "((deleted_at IS NULL) AND (redacted_at IS NULL))" {
+		t.Fatalf("unread visible-post index = (%t, %t, %t, %q, %q)", unreadIndexValid, unreadIndexReady, unreadIndexUnique, unreadIndexDefinition, unreadIndexPredicate)
 	}
 
 	var administratorID int64
@@ -499,6 +525,14 @@ VALUES ($1, $2, 2, 'Duplicate', '<p>Duplicate</p>', $3)`, topicID, memberID, con
 
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.topic_reads
     (user_id, topic_id, last_read_post_number) VALUES ($1, $2, 0)`, memberID, topicID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.topic_reads
+    (user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $2, 1, 'infinity')`, memberID, topicID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.topic_reads
+    (user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $2, 1, '-infinity')`, memberID, topicID)
+	if _, err := conn.Exec(ctx, `INSERT INTO public.topic_reads
+    (user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $2, 1, $3)`, memberID, topicID, time.Now().UTC()); err != nil {
+		t.Fatalf("insert finite topic read: %v", err)
+	}
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.reports
     (reported_by, topic_id, user_id, reason) VALUES ($1, $2, $1, 'two targets')`, memberID, topicID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.reports

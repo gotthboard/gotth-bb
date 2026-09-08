@@ -6,12 +6,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/migration"
@@ -24,6 +27,8 @@ const discoveryPlanTestDatabase = "gotth_bb_an02_02_plan_test"
 
 const discoveryAdmissionTestDatabase = "gotth_bb_an02_04_admission_test"
 
+const unreadPlanTestDatabase = "gotth_bb_an03_01_plan_test"
+
 type discoveryPlanPopulation struct {
 	database      string
 	topics        int64
@@ -32,6 +37,7 @@ type discoveryPlanPopulation struct {
 	postIDOffset  int64
 	timeout       time.Duration
 	admission     bool
+	unread        bool
 }
 
 func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
@@ -65,7 +71,11 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 	})
 	configured := adminConfig.Copy()
 	configured.Database = population.database
-	if err := migration.Apply(ctx, configured, migrations.Files()); err != nil {
+	schemaFiles := fs.FS(migrations.Files())
+	if population.unread {
+		schemaFiles = migrationPrefix(t, 8)
+	}
+	if err := migration.Apply(ctx, configured, schemaFiles); err != nil {
 		t.Fatal(err)
 	}
 	connection, err := pgx.ConnectConfig(ctx, configured)
@@ -79,11 +89,14 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 	}
 	t.Logf("postgres=%s database=%s admission=%t topics=%d posts=%d posts_per_topic=%d", serverVersion, population.database, population.admission, population.topics, population.posts, population.postsPerTopic)
 
-	var ownerID, authorID, groupID, publicAreaID, authenticatedAreaID, groupAreaID int64
+	var ownerID, authorID, readerID, groupID, publicAreaID, authenticatedAreaID, groupAreaID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Author') RETURNING id`).Scan(&authorID); err != nil {
+		t.Fatal(err)
+	}
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Reader') RETURNING id`).Scan(&readerID); err != nil {
 		t.Fatal(err)
 	}
 	if err := connection.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Plan Group', $1) RETURNING id`, ownerID).Scan(&groupID); err != nil {
@@ -166,6 +179,21 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 	if _, err := connection.Exec(ctx, `SET session_replication_role = origin; ANALYZE public.topics; ANALYZE public.posts; ANALYZE public.areas; ANALYZE public.area_groups`); err != nil {
 		t.Fatal(err)
 	}
+	if population.unread {
+		if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads (user_id, topic_id, last_read_post_number, read_at)
+SELECT $1, topic.id, 5, '2026-01-01T00:00:02Z'::timestamptz
+FROM public.topics AS topic
+WHERE topic.id % 2 = 0`, readerID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := connection.Exec(ctx, `ANALYZE public.topic_reads`); err != nil {
+			t.Fatal(err)
+		}
+		runUnreadMigrationEvidence(t, ctx, configured, connection)
+		if _, err := connection.Exec(ctx, `ANALYZE public.posts; ANALYZE public.topic_reads`); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var topicRows, postRows, publicTopics, authenticatedTopics, groupTopics, hiddenTopics, deletedTopics, deletedPosts, redactedPosts, rareTopics, rarePosts, activityTimestamps int64
 	if err := connection.QueryRow(ctx, `SELECT
     (SELECT count(*) FROM public.topics),
@@ -207,7 +235,7 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 		for _, shape := range searchShapes {
 			searchPlan := explainPrepared(t, ctx, connection, "an02_search", "integer,boolean,boolean,bigint[],boolean,text,bigint,text,boolean,timestamptz,boolean,boolean,timestamptz", searchDiscoveryPage, shape.arguments, mode)
 			expectedRows := int64(51)
-			if !population.admission && shape.name == "rare-term" {
+			if !population.admission && !population.unread && shape.name == "rare-term" {
 				expectedRows = population.topics / 997
 			}
 			candidate := requireAuthorizedSearchCandidate(t, mode, shape.name, expectedRows, searchPlan)
@@ -232,6 +260,16 @@ setval(pg_get_serial_sequence('public.posts', 'id'), $2, true)`, population.topi
 		}
 		t.Logf("PLAN mode=%s query=direct-post\n%s", mode, directPlan)
 		t.Logf("%s search/activity/direct plans admitted", mode)
+		if population.unread {
+			areaArguments := fmt.Sprintf("false,ARRAY[%d]::bigint[],%d", groupID, readerID)
+			areaPlan := explainPrepared(t, ctx, connection, "an03_board", "boolean,bigint[],bigint", listAuthenticatedVisibleAreaSummaries, areaArguments, mode)
+			requireUnreadAuthorizationPlan(t, mode, "board", "visible_areas", areaPlan, false)
+			t.Logf("PLAN mode=%s query=authenticated-board\n%s", mode, areaPlan)
+			topicArguments := fmt.Sprintf("%d,'public',false,ARRAY[%d]::bigint[],0,25", readerID, groupID)
+			topicPlan := explainPrepared(t, ctx, connection, "an03_area", "bigint,text,boolean,bigint[],integer,integer", listAuthenticatedVisibleTopicsByAreaSlug, topicArguments, mode)
+			requireUnreadAuthorizationPlan(t, mode, "area", "visible_area", topicPlan, true)
+			t.Logf("PLAN mode=%s query=authenticated-area\n%s", mode, topicPlan)
+		}
 	}
 	if population.admission {
 		runDiscoveryCoexistenceEvidence(t, ctx, configured, connection, publicAreaID, ownerID, groupID, population)
@@ -252,7 +290,37 @@ type explainPlanNode struct {
 	IndexName    string            `json:"Index Name"`
 	Filter       string            `json:"Filter"`
 	RecheckCond  string            `json:"Recheck Cond"`
+	IndexCond    string            `json:"Index Cond"`
+	JoinType     string            `json:"Join Type"`
 	Plans        []explainPlanNode `json:"Plans"`
+}
+
+func requireUnreadAuthorizationPlan(t *testing.T, mode, query, areaCTE string, encoded string, requirePostIndex bool) {
+	t.Helper()
+	var document explainPlanDocument
+	if err := json.Unmarshal([]byte(encoded), &document); err != nil || len(document) != 1 {
+		t.Fatalf("%s %s decode unread plan: documents=%d error=%v", mode, query, len(document), err)
+	}
+	root := document[0].Plan
+	area := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE "+areaCTE })
+	topics := findPlanNode(&root, func(node *explainPlanNode) bool { return node.SubplanName == "CTE visible_topics" })
+	if area == nil || topics == nil || !planUsesConditionedRelation(*area, "areas", "visibility") ||
+		!planUsesConditionedRelation(*area, "area_groups", "group_id") ||
+		!planUsesConditionedRelation(*topics, "topics", "deleted_at") || !planUsesConditionedRelation(*topics, "topics", "state") {
+		t.Fatalf("%s %s plan lost materialized authorization fence: %s", mode, query, encoded)
+	}
+	if !planUsesConditionedRelation(root, "posts", "author_id") || findPlanNode(&root, func(node *explainPlanNode) bool { return node.RelationName == "topic_reads" }) == nil {
+		t.Fatalf("%s %s plan lost eligible-post or marker read: %s", mode, query, encoded)
+	}
+	if requirePostIndex && !planUsesIndex(root, "posts_topic_unread_visible_idx") {
+		t.Fatalf("%s %s plan lost unread visible-post index: %s", mode, query, encoded)
+	}
+}
+
+func planUsesConditionedRelation(node explainPlanNode, relation, condition string) bool {
+	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
+		return candidate.RelationName == relation && strings.Contains(candidate.Filter+candidate.RecheckCond+candidate.IndexCond, condition)
+	}) != nil
 }
 
 func requireAuthorizedSearchCandidate(t *testing.T, mode, shape string, expectedRows int64, encoded string) explainPlanNode {
@@ -349,16 +417,123 @@ func requestedDiscoveryPlanPopulation(t *testing.T) discoveryPlanPopulation {
 	t.Helper()
 	checkpoint := os.Getenv("GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE") == "1"
 	admission := os.Getenv("GOTTH_BB_RUN_AN02_ADMISSION_EVIDENCE") == "1"
-	if checkpoint && admission {
+	unread := os.Getenv("GOTTH_BB_RUN_AN03_READ_PLAN_EVIDENCE") == "1"
+	if boolCount(checkpoint, admission, unread) > 1 {
 		t.Fatal("set only one discovery evidence mode")
 	}
-	if !checkpoint && !admission {
-		t.Skip("set exactly one of GOTTH_BB_RUN_DISCOVERY_PLAN_EVIDENCE=1 or GOTTH_BB_RUN_AN02_ADMISSION_EVIDENCE=1")
+	if !checkpoint && !admission && !unread {
+		t.Skip("set exactly one plan evidence mode")
 	}
 	if admission {
 		return discoveryPlanPopulation{database: discoveryAdmissionTestDatabase, topics: 100_000, posts: 1_000_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 20 * time.Minute, admission: true}
 	}
+	if unread {
+		return discoveryPlanPopulation{database: unreadPlanTestDatabase, topics: 25_000, posts: 250_000, postsPerTopic: 10, postIDOffset: 1_000_000, timeout: 10 * time.Minute, unread: true}
+	}
 	return discoveryPlanPopulation{database: discoveryPlanTestDatabase, topics: 25_000, posts: 25_000, postsPerTopic: 1, postIDOffset: 100_000, timeout: 3 * time.Minute}
+}
+
+func boolCount(values ...bool) int {
+	count := 0
+	for _, value := range values {
+		if value {
+			count++
+		}
+	}
+	return count
+}
+
+func migrationPrefix(t *testing.T, count int) fs.FS {
+	t.Helper()
+	entries, err := fs.ReadDir(migrations.Files(), ".")
+	if err != nil || count < 0 || count > len(entries) {
+		t.Fatalf("read migration prefix: count=%d entries=%d error=%v", count, len(entries), err)
+	}
+	prefix := fstest.MapFS{}
+	for _, entry := range entries[:count] {
+		body, readErr := fs.ReadFile(migrations.Files(), entry.Name())
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		prefix[entry.Name()] = &fstest.MapFile{Data: body}
+	}
+	return prefix
+}
+
+func runUnreadMigrationEvidence(t *testing.T, ctx context.Context, configured *pgx.ConnConfig, observer *pgx.Conn) {
+	t.Helper()
+	blocker, err := pgx.ConnectConfig(ctx, configured.Copy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Close(context.Background()) }()
+	block, err := blocker.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := block.Exec(ctx, `LOCK TABLE public.posts IN ROW EXCLUSIVE MODE`); err != nil {
+		t.Fatal(err)
+	}
+	var postsBytes, markerBytes, blocksReadBefore, blocksHitBefore, tempBytesBefore int64
+	if err := observer.QueryRow(ctx, `SELECT
+    pg_total_relation_size('public.posts'), pg_total_relation_size('public.topic_reads'),
+    blks_read, blks_hit, temp_bytes
+FROM pg_stat_database WHERE datname = current_database()`).Scan(&postsBytes, &markerBytes, &blocksReadBefore, &blocksHitBefore, &tempBytesBefore); err != nil {
+		t.Fatal(err)
+	}
+	migrationConfig := configured.Copy()
+	if migrationConfig.RuntimeParams == nil {
+		migrationConfig.RuntimeParams = make(map[string]string)
+	}
+	migrationConfig.RuntimeParams["application_name"] = "gotth_bb_an03_01_migration_evidence"
+	started := time.Now()
+	result := make(chan error, 1)
+	go func() { result <- migration.Apply(ctx, migrationConfig, migrations.Files()) }()
+	waitObserved := false
+	lockMode := ""
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && !waitObserved; {
+		if err := observer.QueryRow(ctx, `SELECT lock_row.mode
+FROM pg_catalog.pg_locks AS lock_row
+JOIN pg_catalog.pg_stat_activity AS activity ON activity.pid = lock_row.pid
+WHERE activity.application_name = 'gotth_bb_an03_01_migration_evidence'
+  AND lock_row.relation = 'public.posts'::regclass
+  AND NOT lock_row.granted
+LIMIT 1`).Scan(&lockMode); err == nil {
+			waitObserved = true
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			t.Fatal(err)
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if err := block.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if migrationErr := <-result; migrationErr != nil {
+		t.Fatal(migrationErr)
+	}
+	if !waitObserved || lockMode != "ShareLock" {
+		t.Fatalf("unread migration lock wait = observed %t mode %q, want ShareLock wait", waitObserved, lockMode)
+	}
+	var migrationHead, markerCount int64
+	var indexValid, constraintValid bool
+	var blocksReadAfter, blocksHitAfter, tempBytesAfter int64
+	if err := observer.QueryRow(ctx, `SELECT
+    (SELECT max(version) FROM public.gotth_schema_migrations),
+    (SELECT count(*) FROM public.topic_reads),
+    (SELECT indisvalid FROM pg_catalog.pg_index WHERE indexrelid = 'public.posts_topic_unread_visible_idx'::regclass),
+    (SELECT convalidated FROM pg_catalog.pg_constraint WHERE conrelid = 'public.topic_reads'::regclass AND conname = 'topic_reads_read_at_finite'),
+    blks_read, blks_hit, temp_bytes
+FROM pg_stat_database WHERE datname = current_database()`).Scan(
+		&migrationHead, &markerCount, &indexValid, &constraintValid, &blocksReadAfter, &blocksHitAfter, &tempBytesAfter,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if migrationHead != 9 || markerCount == 0 || !indexValid || !constraintValid {
+		t.Fatalf("unread migration result = head=%d markers=%d index=%t constraint=%t", migrationHead, markerCount, indexValid, constraintValid)
+	}
+	t.Logf("MIGRATION unread elapsed=%s posts_bytes=%d topic_reads_bytes=%d lock_mode=%s wait_observed=%t blocks_read_delta=%d blocks_hit_delta=%d temp_bytes_delta=%d markers=%d",
+		time.Since(started), postsBytes, markerBytes, lockMode, waitObserved,
+		blocksReadAfter-blocksReadBefore, blocksHitAfter-blocksHitBefore, tempBytesAfter-tempBytesBefore, markerCount)
 }
 
 func logDiscoveryResourceSnapshot(t *testing.T, ctx context.Context, connection *pgx.Conn, label string) {

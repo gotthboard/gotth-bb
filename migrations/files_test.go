@@ -22,6 +22,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000006_reports_moderation_completion.sql",
 		"000007_gfm_renderer.sql",
 		"000008_search_projection.sql",
+		"000009_unread_state.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -33,6 +34,41 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestUnreadStateSchemaStepIsAdditiveAndDoesNotInventMarkers(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000009_unread_state.sql")
+	if err != nil {
+		t.Fatalf("read unread-state migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"INSERT INTO public.topic_reads",
+		"UPDATE public.topic_reads",
+		"DELETE FROM public.topic_reads",
+		"CREATE INDEX CONCURRENTLY",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("unread-state migration contains forbidden work %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"topic_reads_read_at_finite",
+		"pg_catalog.isfinite(read_at)",
+		"NOT VALID",
+		"VALIDATE CONSTRAINT topic_reads_read_at_finite",
+		"posts_topic_unread_visible_idx",
+		"ON public.posts (topic_id, post_number)",
+		"INCLUDE (author_id)",
+		"deleted_at IS NULL",
+		"redacted_at IS NULL",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("unread-state migration lacks required contract %q", required)
 		}
 	}
 }

@@ -55,12 +55,15 @@ func TestVisibleForumReadsOnPostgreSQL17(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 
-	var ownerID, authorID int64
+	var ownerID, authorID, readerID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert owner: %v", err)
 	}
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Topic Author') RETURNING id`).Scan(&authorID); err != nil {
 		t.Fatalf("insert author: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Reader') RETURNING id`).Scan(&readerID); err != nil {
+		t.Fatalf("insert reader: %v", err)
 	}
 	var matchingGroupID, otherGroupID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Matching', $1) RETURNING id`, ownerID).Scan(&matchingGroupID); err != nil {
@@ -157,6 +160,51 @@ func TestVisibleForumReadsOnPostgreSQL17(t *testing.T) {
 			for index := range topics {
 				if topics[index].TopicID != test.wantIDs[index] {
 					t.Fatalf("topic %d ID = %d, want %d", index, topics[index].TopicID, test.wantIDs[index])
+				}
+			}
+		})
+	}
+
+	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads (user_id, topic_id, last_read_post_number, read_at)
+VALUES ($1, 101, 1, $2), ($1, 103, 2, $2)`, readerID, createdAt.Add(12*time.Hour)); err != nil {
+		t.Fatalf("insert authenticated topic-list markers: %v", err)
+	}
+	authenticatedPage, err := queries.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, ListAuthenticatedVisibleTopicsByAreaSlugParams{
+		ActorUserID: readerID, AreaSlug: "public", PageLimit: 25,
+	})
+	if err != nil || len(authenticatedPage) != 4 {
+		t.Fatalf("authenticated public page = (%+v, %v), want four rows", authenticatedPage, err)
+	}
+	wantStates := map[int64]string{101: "unread", 103: "read", 104: "read", 105: "new"}
+	for _, topic := range authenticatedPage {
+		if topic.ReadState != wantStates[topic.TopicID] || topic.TotalVisibleTopics != 4 {
+			t.Fatalf("authenticated topic = %+v, want state %q and total four", topic, wantStates[topic.TopicID])
+		}
+	}
+	staffAuthenticatedPage, err := queries.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, ListAuthenticatedVisibleTopicsByAreaSlugParams{
+		ActorUserID: authorID, AreaSlug: "public", IsStaff: true, PageLimit: 25,
+	})
+	if err != nil || len(staffAuthenticatedPage) != 5 || staffAuthenticatedPage[1].TopicID != 102 || staffAuthenticatedPage[1].ReadState != "read" || staffAuthenticatedPage[1].ReadHead != 0 {
+		t.Fatalf("authenticated staff page = (%+v, %v), want own-post-only hidden topic read", staffAuthenticatedPage, err)
+	}
+	for _, test := range []struct {
+		name       string
+		parameters ListAuthenticatedVisibleTopicsByAreaSlugParams
+		wantIDs    []int64
+	}{
+		{name: "member reads authenticated", parameters: ListAuthenticatedVisibleTopicsByAreaSlugParams{ActorUserID: readerID, AreaSlug: "members", PageLimit: 25}, wantIDs: []int64{201}},
+		{name: "wrong group cannot read", parameters: ListAuthenticatedVisibleTopicsByAreaSlugParams{ActorUserID: readerID, AreaSlug: "matching", GroupIds: []int64{otherGroupID}, PageLimit: 25}},
+		{name: "matching groups do not multiply", parameters: ListAuthenticatedVisibleTopicsByAreaSlugParams{ActorUserID: readerID, AreaSlug: "matching", GroupIds: []int64{matchingGroupID, matchingGroupID}, PageLimit: 25}, wantIDs: []int64{301}},
+		{name: "staff reads group area", parameters: ListAuthenticatedVisibleTopicsByAreaSlugParams{ActorUserID: readerID, AreaSlug: "matching", IsStaff: true, PageLimit: 25}, wantIDs: []int64{301}},
+	} {
+		t.Run("authenticated topic list/"+test.name, func(t *testing.T) {
+			topics, listErr := queries.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, test.parameters)
+			if listErr != nil || len(topics) != len(test.wantIDs) {
+				t.Fatalf("ListAuthenticatedVisibleTopicsByAreaSlug() = (%+v, %v), want IDs %v", topics, listErr, test.wantIDs)
+			}
+			for index := range topics {
+				if topics[index].TopicID != test.wantIDs[index] || topics[index].TotalVisibleTopics != int64(len(test.wantIDs)) {
+					t.Fatalf("authenticated topic %d = %+v", index, topics[index])
 				}
 			}
 		})

@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +42,13 @@ func TestListVisibleAreaSummariesBindsAccessAndScansCompleteRows(t *testing.T) {
 	}
 }
 
+func TestVisitorAreaSummarySQLDoesNotTouchPrivateReadState(t *testing.T) {
+	t.Parallel()
+	if strings.Contains(listVisibleAreaSummaries, "topic_reads") || strings.Contains(listVisibleAreaSummaries, "unread_topic_count") {
+		t.Fatal("visitor area-summary SQL touches private read state")
+	}
+}
+
 func TestListVisibleAreaSummariesPreservesQueryScanAndRowsFailures(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +69,35 @@ func TestListVisibleAreaSummariesPreservesQueryScanAndRowsFailures(t *testing.T)
 				t.Fatalf("ListVisibleAreaSummaries() = (%+v, %v), want empty/cause", got, err)
 			}
 		})
+	}
+}
+
+func TestListAuthenticatedVisibleAreaSummariesBindsActorAndScansUnreadCount(t *testing.T) {
+	t.Parallel()
+
+	want := ListAuthenticatedVisibleAreaSummariesRow{
+		ID: 3, Slug: "public", Name: "Public", DisplayOrder: 1, Visibility: "public", PostingMode: "normal",
+		CreatedBy: 7, UpdatedBy: 7, CreatedAt: pgtype.Timestamptz{Valid: true}, UpdatedAt: pgtype.Timestamptz{Valid: true},
+		TopicCount: 2, PostCount: 3, UnreadTopicCount: 1, ReadStateValid: true,
+	}
+	database := &authenticatedAreaSummaryDBTX{rows: &authenticatedAreaSummaryRows{values: []ListAuthenticatedVisibleAreaSummariesRow{want}}}
+	got, err := New(database).ListAuthenticatedVisibleAreaSummaries(context.Background(), ListAuthenticatedVisibleAreaSummariesParams{
+		IsStaff: true, GroupIds: []int64{11, 13}, ActorUserID: 17,
+	})
+	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+		t.Fatalf("ListAuthenticatedVisibleAreaSummaries() = (%+v, %v), want %+v", got, err, want)
+	}
+	if !reflect.DeepEqual(database.args, []any{true, []int64{11, 13}, int64(17)}) {
+		t.Fatalf("authenticated area-summary args = %#v", database.args)
+	}
+	for _, required := range []string{
+		"visible_areas AS MATERIALIZED", "visible_topics AS MATERIALIZED",
+		"ag.group_id = ANY($2::bigint[])", "post.author_id <> $3::bigint",
+		"marker.user_id = $3::bigint", "unread_topic_count", "read_state_valid",
+	} {
+		if !strings.Contains(database.query, required) {
+			t.Fatalf("authenticated area-summary query lacks %q", required)
+		}
 	}
 }
 
@@ -128,6 +166,56 @@ type areaSummaryDBTX struct {
 	queryErr   error
 	queryCalls int
 	args       []any
+}
+
+type authenticatedAreaSummaryDBTX struct {
+	DBTX
+	query string
+	args  []any
+	rows  *authenticatedAreaSummaryRows
+}
+
+func (database *authenticatedAreaSummaryDBTX) Query(_ context.Context, query string, args ...interface{}) (pgx.Rows, error) {
+	database.query = query
+	database.args = append([]any(nil), args...)
+	return database.rows, nil
+}
+
+type authenticatedAreaSummaryRows struct {
+	pgx.Rows
+	values []ListAuthenticatedVisibleAreaSummariesRow
+	index  int
+}
+
+func (rows *authenticatedAreaSummaryRows) Close()     {}
+func (rows *authenticatedAreaSummaryRows) Next() bool { return rows.index < len(rows.values) }
+func (rows *authenticatedAreaSummaryRows) Err() error { return nil }
+func (rows *authenticatedAreaSummaryRows) Scan(destinations ...any) error {
+	value := rows.values[rows.index]
+	rows.index++
+	*(destinations[0].(*int64)) = value.ID
+	*(destinations[1].(*string)) = value.Slug
+	*(destinations[2].(*string)) = value.Name
+	*(destinations[3].(*string)) = value.Description
+	*(destinations[4].(*int32)) = value.DisplayOrder
+	*(destinations[5].(*string)) = value.Visibility
+	*(destinations[6].(*string)) = value.PostingMode
+	*(destinations[7].(*int64)) = value.CreatedBy
+	*(destinations[8].(*int64)) = value.UpdatedBy
+	*(destinations[9].(*pgtype.Timestamptz)) = value.CreatedAt
+	*(destinations[10].(*pgtype.Timestamptz)) = value.UpdatedAt
+	*(destinations[11].(*int64)) = value.TopicCount
+	*(destinations[12].(*int64)) = value.PostCount
+	*(destinations[13].(*pgtype.Int8)) = value.LatestTopicID
+	*(destinations[14].(*pgtype.Text)) = value.LatestTopicTitle
+	*(destinations[15].(*pgtype.Int8)) = value.LatestPostID
+	*(destinations[16].(*pgtype.Int4)) = value.LatestPostNumber
+	*(destinations[17].(*pgtype.Int8)) = value.LatestPostOrdinal
+	*(destinations[18].(*pgtype.Text)) = value.LatestPostAuthor
+	*(destinations[19].(*pgtype.Timestamptz)) = value.LatestPostCreatedAt
+	*(destinations[20].(*int64)) = value.UnreadTopicCount
+	*(destinations[21].(*bool)) = value.ReadStateValid
+	return nil
 }
 
 func (database *areaSummaryDBTX) Query(_ context.Context, _ string, args ...interface{}) (pgx.Rows, error) {

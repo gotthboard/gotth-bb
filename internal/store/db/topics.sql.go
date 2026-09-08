@@ -11,6 +11,154 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listAuthenticatedVisibleTopicsByAreaSlug = `-- name: ListAuthenticatedVisibleTopicsByAreaSlug :many
+WITH visible_area AS MATERIALIZED (
+    SELECT area.id
+    FROM public.areas AS area
+    WHERE area.slug = $2
+      AND (
+        $3::boolean
+        OR area.visibility IN ('public', 'authenticated')
+        OR (
+            area.visibility = 'groups'
+            AND COALESCE(cardinality($4::bigint[]), 0) > 0
+            AND EXISTS (
+                SELECT 1
+                FROM public.area_groups AS membership
+                WHERE membership.area_id = area.id
+                  AND membership.group_id = ANY($4::bigint[])
+            )
+        )
+      )
+),
+visible_topics AS MATERIALIZED (
+    SELECT
+        topic.id AS topic_id,
+        topic.title,
+        topic.slug,
+        topic.state,
+        topic.pinned_at,
+        topic.reply_count,
+        topic.next_post_number,
+        author.display_name AS author_display_name,
+        topic.last_activity_at
+    FROM visible_area AS area
+    JOIN public.topics AS topic ON topic.area_id = area.id
+    JOIN public.users AS author ON author.id = topic.author_id
+    WHERE topic.deleted_at IS NULL
+      AND ($3::boolean OR topic.state <> 'hidden')
+),
+paged_topics AS MATERIALIZED (
+    SELECT
+        topic.topic_id, topic.title, topic.slug, topic.state, topic.pinned_at, topic.reply_count, topic.next_post_number, topic.author_display_name, topic.last_activity_at,
+        count(*) OVER ()::bigint AS total_visible_topics
+    FROM visible_topics AS topic
+    ORDER BY topic.pinned_at DESC NULLS LAST, topic.last_activity_at DESC, topic.topic_id DESC
+    LIMIT $6::integer OFFSET $5::integer
+)
+SELECT
+    topic.topic_id,
+    topic.title,
+    topic.slug,
+    topic.state,
+    topic.pinned_at,
+    topic.reply_count,
+    topic.author_display_name,
+    topic.last_activity_at,
+    topic.total_visible_topics,
+    topic.next_post_number,
+    head.read_head,
+    marker.last_read_post_number,
+    marker.read_at,
+    CASE
+        WHEN head.read_head = 0 THEN 'read'
+        WHEN marker.user_id IS NULL THEN 'new'
+        WHEN marker.last_read_post_number < head.read_head THEN 'unread'
+        ELSE 'read'
+    END::text AS read_state
+FROM paged_topics AS topic
+LEFT JOIN LATERAL (
+    SELECT COALESCE(max(post.post_number), 0)::integer AS read_head
+    FROM public.posts AS post
+    WHERE post.topic_id = topic.topic_id
+      AND post.deleted_at IS NULL
+      AND post.redacted_at IS NULL
+      AND post.author_id <> $1::bigint
+) AS head ON true
+LEFT JOIN public.topic_reads AS marker
+  ON marker.topic_id = topic.topic_id
+ AND marker.user_id = $1::bigint
+ORDER BY topic.pinned_at DESC NULLS LAST, topic.last_activity_at DESC, topic.topic_id DESC
+`
+
+type ListAuthenticatedVisibleTopicsByAreaSlugParams struct {
+	ActorUserID int64
+	AreaSlug    string
+	IsStaff     bool
+	GroupIds    []int64
+	PageOffset  int32
+	PageLimit   int32
+}
+
+type ListAuthenticatedVisibleTopicsByAreaSlugRow struct {
+	TopicID            int64
+	Title              string
+	Slug               pgtype.Text
+	State              string
+	PinnedAt           pgtype.Timestamptz
+	ReplyCount         int32
+	AuthorDisplayName  string
+	LastActivityAt     pgtype.Timestamptz
+	TotalVisibleTopics int64
+	NextPostNumber     int32
+	ReadHead           int32
+	LastReadPostNumber pgtype.Int4
+	ReadAt             pgtype.Timestamptz
+	ReadState          string
+}
+
+func (q *Queries) ListAuthenticatedVisibleTopicsByAreaSlug(ctx context.Context, arg ListAuthenticatedVisibleTopicsByAreaSlugParams) ([]ListAuthenticatedVisibleTopicsByAreaSlugRow, error) {
+	rows, err := q.db.Query(ctx, listAuthenticatedVisibleTopicsByAreaSlug,
+		arg.ActorUserID,
+		arg.AreaSlug,
+		arg.IsStaff,
+		arg.GroupIds,
+		arg.PageOffset,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAuthenticatedVisibleTopicsByAreaSlugRow{}
+	for rows.Next() {
+		var i ListAuthenticatedVisibleTopicsByAreaSlugRow
+		if err := rows.Scan(
+			&i.TopicID,
+			&i.Title,
+			&i.Slug,
+			&i.State,
+			&i.PinnedAt,
+			&i.ReplyCount,
+			&i.AuthorDisplayName,
+			&i.LastActivityAt,
+			&i.TotalVisibleTopics,
+			&i.NextPostNumber,
+			&i.ReadHead,
+			&i.LastReadPostNumber,
+			&i.ReadAt,
+			&i.ReadState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listVisibleTopicsByAreaSlug = `-- name: ListVisibleTopicsByAreaSlug :many
 SELECT
     topic.id AS topic_id,

@@ -188,6 +188,163 @@ LEFT JOIN post_counts ON post_counts.area_id = area.id
 LEFT JOIN latest_posts ON latest_posts.area_id = area.id
 ORDER BY area.display_order, area.id;
 
+-- name: ListAuthenticatedVisibleAreaSummaries :many
+WITH visible_areas AS MATERIALIZED (
+    SELECT
+        a.id,
+        a.slug,
+        a.name,
+        a.description,
+        a.display_order,
+        a.visibility,
+        a.posting_mode,
+        a.created_by,
+        a.updated_by,
+        a.created_at,
+        a.updated_at
+    FROM public.areas AS a
+    WHERE
+        sqlc.arg(is_staff)::boolean
+        OR a.visibility IN ('public', 'authenticated')
+        OR (
+            a.visibility = 'groups'
+            AND COALESCE(cardinality(sqlc.arg(group_ids)::bigint[]), 0) > 0
+            AND EXISTS (
+                SELECT 1
+                FROM public.area_groups AS ag
+                WHERE ag.area_id = a.id
+                  AND ag.group_id = ANY(sqlc.arg(group_ids)::bigint[])
+            )
+        )
+),
+visible_topics AS MATERIALIZED (
+    SELECT topic.id, topic.area_id, topic.title, topic.next_post_number
+    FROM public.topics AS topic
+    JOIN visible_areas AS area ON area.id = topic.area_id
+    WHERE topic.deleted_at IS NULL
+      AND (sqlc.arg(is_staff)::boolean OR topic.state <> 'hidden')
+),
+topic_counts AS (
+    SELECT topic.area_id, count(*)::bigint AS topic_count
+    FROM visible_topics AS topic
+    GROUP BY topic.area_id
+),
+visible_posts AS (
+    SELECT post.id, post.topic_id, post.post_number, post.thread_path, post.author_id, post.created_at
+    FROM public.posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    WHERE post.deleted_at IS NULL
+),
+visible_thread_nodes AS (
+    SELECT post.id, post.topic_id, post.thread_path
+    FROM public.posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    WHERE post.deleted_at IS NULL
+       OR EXISTS (
+            SELECT 1
+            FROM public.posts AS descendant
+            WHERE descendant.topic_id = post.topic_id
+              AND descendant.deleted_at IS NULL
+              AND descendant.id <> post.id
+              AND descendant.thread_path[1:cardinality(post.thread_path)] = post.thread_path
+       )
+),
+numbered_thread_nodes AS (
+    SELECT
+        node.id,
+        row_number() OVER (PARTITION BY node.topic_id ORDER BY node.thread_path)::bigint AS node_ordinal
+    FROM visible_thread_nodes AS node
+),
+post_counts AS (
+    SELECT topic.area_id, count(*)::bigint AS post_count
+    FROM visible_posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    GROUP BY topic.area_id
+),
+latest_posts AS (
+    SELECT DISTINCT ON (topic.area_id)
+        topic.area_id,
+        topic.id AS latest_topic_id,
+        topic.title AS latest_topic_title,
+        post.id AS latest_post_id,
+        post.post_number AS latest_post_number,
+        numbered.node_ordinal AS latest_post_ordinal,
+        author.display_name AS latest_post_author,
+        post.created_at AS latest_post_created_at
+    FROM visible_posts AS post
+    JOIN visible_topics AS topic ON topic.id = post.topic_id
+    JOIN numbered_thread_nodes AS numbered ON numbered.id = post.id
+    JOIN public.users AS author ON author.id = post.author_id
+    ORDER BY topic.area_id, post.created_at DESC, post.id DESC
+),
+eligible_read_heads AS (
+    SELECT
+        topic.id AS topic_id,
+        topic.area_id,
+        topic.next_post_number,
+        max(post.post_number)::integer AS read_head
+    FROM visible_topics AS topic
+    LEFT JOIN public.posts AS post
+      ON post.topic_id = topic.id
+     AND post.deleted_at IS NULL
+     AND post.redacted_at IS NULL
+     AND post.author_id <> sqlc.arg(actor_user_id)::bigint
+    GROUP BY topic.id, topic.area_id, topic.next_post_number
+),
+read_state_counts AS (
+    SELECT
+        head.area_id,
+        count(*) FILTER (
+            WHERE head.read_head IS NOT NULL
+              AND (
+                  marker.user_id IS NULL
+                  OR marker.last_read_post_number < head.read_head
+              )
+        )::bigint AS unread_topic_count,
+        bool_and(
+            marker.user_id IS NULL
+            OR (
+                marker.last_read_post_number > 0
+                AND marker.last_read_post_number <= head.next_post_number - 1
+                AND pg_catalog.isfinite(marker.read_at)
+            )
+        ) AS read_state_valid
+    FROM eligible_read_heads AS head
+    LEFT JOIN public.topic_reads AS marker
+      ON marker.topic_id = head.topic_id
+     AND marker.user_id = sqlc.arg(actor_user_id)::bigint
+    GROUP BY head.area_id
+)
+SELECT
+    area.id,
+    area.slug,
+    area.name,
+    area.description,
+    area.display_order,
+    area.visibility,
+    area.posting_mode,
+    area.created_by,
+    area.updated_by,
+    area.created_at,
+    area.updated_at,
+    COALESCE(topic_counts.topic_count, 0)::bigint AS topic_count,
+    COALESCE(post_counts.post_count, 0)::bigint AS post_count,
+    latest_posts.latest_topic_id,
+    latest_posts.latest_topic_title,
+    latest_posts.latest_post_id,
+    latest_posts.latest_post_number,
+    latest_posts.latest_post_ordinal,
+    latest_posts.latest_post_author,
+    latest_posts.latest_post_created_at,
+    COALESCE(read_state_counts.unread_topic_count, 0)::bigint AS unread_topic_count,
+    COALESCE(read_state_counts.read_state_valid, true)::boolean AS read_state_valid
+FROM visible_areas AS area
+LEFT JOIN topic_counts ON topic_counts.area_id = area.id
+LEFT JOIN post_counts ON post_counts.area_id = area.id
+LEFT JOIN latest_posts ON latest_posts.area_id = area.id
+LEFT JOIN read_state_counts ON read_state_counts.area_id = area.id
+ORDER BY area.display_order, area.id;
+
 -- name: ListAreasForAdministration :many
 SELECT
     a.id,

@@ -56,9 +56,12 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 
-	var ownerID int64
+	var ownerID, readerID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Area Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert area owner: %v", err)
+	}
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Area Reader') RETURNING id`).Scan(&readerID); err != nil {
+		t.Fatalf("insert area reader: %v", err)
 	}
 	var matchingGroupID, otherGroupID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Matching', $1) RETURNING id`, ownerID).Scan(&matchingGroupID); err != nil {
@@ -139,6 +142,10 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("commit area-summary fixture: %v", err)
 	}
 	queries := New(connection)
+	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads (user_id, topic_id, last_read_post_number, read_at)
+VALUES ($1, 101, 1, $2)`, readerID, fixtureTime.Add(5*time.Minute)); err != nil {
+		t.Fatalf("insert area-summary marker: %v", err)
+	}
 	for _, test := range []struct {
 		name      string
 		isStaff   bool
@@ -207,6 +214,32 @@ func TestAreaVisibilityQueriesOnPostgreSQL17(t *testing.T) {
 				}
 				if !errors.Is(lookupErr, pgx.ErrNoRows) || area != (Area{}) {
 					t.Fatalf("GetVisibleAreaBySlug(%q) = (%+v, %v), want zero/pgx.ErrNoRows", slug, area, lookupErr)
+				}
+			}
+		})
+	}
+	for _, test := range []struct {
+		name       string
+		isStaff    bool
+		groupIDs   []int64
+		wantSlugs  []string
+		wantUnread map[string]int64
+	}{
+		{name: "member", wantSlugs: []string{"public", "members"}, wantUnread: map[string]int64{"public": 1}},
+		{name: "matching duplicate groups", groupIDs: []int64{matchingGroupID, matchingGroupID}, wantSlugs: []string{"public", "members", "matching"}, wantUnread: map[string]int64{"public": 1}},
+		{name: "other group", groupIDs: []int64{otherGroupID}, wantSlugs: []string{"public", "members", "other"}, wantUnread: map[string]int64{"public": 1}},
+		{name: "staff", isStaff: true, wantSlugs: []string{"public", "members", "matching", "other", "staff-only"}, wantUnread: map[string]int64{"public": 2}},
+	} {
+		t.Run("authenticated summaries/"+test.name, func(t *testing.T) {
+			summaries, err := queries.ListAuthenticatedVisibleAreaSummaries(ctx, ListAuthenticatedVisibleAreaSummariesParams{
+				IsStaff: test.isStaff, GroupIds: test.groupIDs, ActorUserID: readerID,
+			})
+			if err != nil || len(summaries) != len(test.wantSlugs) {
+				t.Fatalf("ListAuthenticatedVisibleAreaSummaries() = (%+v, %v), want %v", summaries, err, test.wantSlugs)
+			}
+			for index, summary := range summaries {
+				if summary.Slug != test.wantSlugs[index] || summary.UnreadTopicCount != test.wantUnread[summary.Slug] || !summary.ReadStateValid {
+					t.Fatalf("authenticated summary %d = %+v, want %q unread %d", index, summary, test.wantSlugs[index], test.wantUnread[summary.Slug])
 				}
 			}
 		})

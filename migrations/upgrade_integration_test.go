@@ -118,8 +118,39 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 			t.Fatalf("insert valid alpha.1 report state: %v", err)
 		}
 	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads
+    (user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $2, 1, 'infinity')`, userID, topicID); err != nil {
+		t.Fatalf("insert legacy non-finite marker: %v", err)
+	}
+	if err := migration.Apply(ctx, testConfig, Files()); err == nil {
+		t.Fatal("upgrade with legacy non-finite marker succeeded")
+	}
+	var failedHead int
+	var failedConstraintCount int
+	var failedIndexName *string
+	var retainedMarkerCount int
+	var retainedMarkerInfinite bool
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT max(version) FROM public.gotth_schema_migrations),
+    (SELECT count(*) FROM pg_catalog.pg_constraint WHERE conrelid = 'public.topic_reads'::regclass AND conname = 'topic_reads_read_at_finite'),
+    to_regclass('public.posts_topic_unread_visible_idx')::text,
+    (SELECT count(*) FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2),
+    (SELECT read_at = 'infinity'::timestamptz FROM public.topic_reads WHERE user_id = $1 AND topic_id = $2)`, userID, topicID).Scan(
+		&failedHead, &failedConstraintCount, &failedIndexName, &retainedMarkerCount, &retainedMarkerInfinite,
+	); err != nil {
+		t.Fatalf("inspect aborted unread migration: %v", err)
+	}
+	if failedHead != 8 || failedConstraintCount != 0 || failedIndexName != nil || retainedMarkerCount != 1 || !retainedMarkerInfinite {
+		t.Fatalf("aborted unread migration = (head %d, constraints %d, index %v, markers %d, infinity %t)", failedHead, failedConstraintCount, failedIndexName, retainedMarkerCount, retainedMarkerInfinite)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.topic_reads SET read_at = clock_timestamp() WHERE user_id = $1 AND topic_id = $2`, userID, topicID); err != nil {
+		t.Fatalf("repair legacy non-finite marker: %v", err)
+	}
 	if err := migration.Apply(ctx, testConfig, Files()); err != nil {
 		t.Fatalf("upgrade populated alpha.1 database: %v", err)
+	}
+	if err := migration.Apply(ctx, testConfig, Files()); err != nil {
+		t.Fatalf("idempotent unread migration rerun: %v", err)
 	}
 	var migrationCount int
 	var assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized bool
@@ -141,7 +172,7 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 FROM public.reports`).Scan(&assignedOpenNormalized, &unassignedReviewNormalized, &terminalAssignmentNormalized); err != nil {
 		t.Fatalf("inspect normalized report states: %v", err)
 	}
-	if migrationCount != 8 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
+	if migrationCount != 9 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
 		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v, reports %t/%t/%t)", migrationCount, rootParent, rootPath, replyParent, replyPath, assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized)
 	}
 }

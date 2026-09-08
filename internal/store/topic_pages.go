@@ -7,6 +7,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const (
@@ -17,13 +18,39 @@ const (
 type visibleAreaTopicPageQuerier interface {
 	visibleAreaBySlugQuerier
 	ListVisibleTopicsByAreaSlug(context.Context, db.ListVisibleTopicsByAreaSlugParams) ([]db.ListVisibleTopicsByAreaSlugRow, error)
+	ListAuthenticatedVisibleTopicsByAreaSlug(context.Context, db.ListAuthenticatedVisibleTopicsByAreaSlugParams) ([]db.ListAuthenticatedVisibleTopicsByAreaSlugRow, error)
+}
+
+// ReadState is the closed signed-in state of one authorized topic.
+type ReadState string
+
+const (
+	ReadStateNew    ReadState = "new"
+	ReadStateUnread ReadState = "unread"
+	ReadStateRead   ReadState = "read"
+)
+
+// VisibleAreaTopic is the public topic-list projection. ReadState is nil for
+// visitors and non-nil for authenticated actors; private marker details never
+// leave the store boundary.
+type VisibleAreaTopic struct {
+	TopicID            int64
+	Title              string
+	Slug               pgtype.Text
+	State              string
+	PinnedAt           pgtype.Timestamptz
+	ReplyCount         int32
+	AuthorDisplayName  string
+	LastActivityAt     pgtype.Timestamptz
+	TotalVisibleTopics int64
+	ReadState          *ReadState
 }
 
 // VisibleAreaTopicPage is one access-filtered conventional topic-list page and
 // the visible area metadata required to render its breadcrumb and heading.
 type VisibleAreaTopicPage struct {
 	Area        db.Area
-	Topics      []db.ListVisibleTopicsByAreaSlugRow
+	Topics      []VisibleAreaTopic
 	Number      int32
 	TotalTopics int64
 	TotalPages  int64
@@ -57,16 +84,40 @@ func GetVisibleAreaTopicPage(ctx context.Context, querier visibleAreaTopicPageQu
 		return VisibleAreaTopicPage{}, fmt.Errorf("get topic page area: %w", err)
 	}
 	offset := (page - 1) * TopicPageSize
-	topics, err := querier.ListVisibleTopicsByAreaSlug(ctx, db.ListVisibleTopicsByAreaSlugParams{
-		AreaSlug:   slug,
-		IsStaff:    actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator,
-		IsMember:   actor.Authenticated,
-		GroupIds:   actor.GroupIDs,
-		PageOffset: offset,
-		PageLimit:  TopicPageSize,
-	})
-	if err != nil {
-		return VisibleAreaTopicPage{}, fmt.Errorf("query visible area topics: %w", err)
+	staff := actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator
+	var topics []VisibleAreaTopic
+	if actor.Authenticated {
+		rows, queryErr := querier.ListAuthenticatedVisibleTopicsByAreaSlug(ctx, db.ListAuthenticatedVisibleTopicsByAreaSlugParams{
+			ActorUserID: actor.UserID, AreaSlug: slug, IsStaff: staff, GroupIds: actor.GroupIDs,
+			PageOffset: offset, PageLimit: TopicPageSize,
+		})
+		if queryErr != nil {
+			return VisibleAreaTopicPage{}, fmt.Errorf("query authenticated visible area topics: %w", queryErr)
+		}
+		topics = make([]VisibleAreaTopic, len(rows))
+		for index, row := range rows {
+			topic, valid := authenticatedVisibleAreaTopicFromRow(row)
+			if !valid {
+				return VisibleAreaTopicPage{}, fmt.Errorf("query authenticated visible area topics: malformed row %d", index)
+			}
+			topics[index] = topic
+		}
+	} else {
+		rows, queryErr := querier.ListVisibleTopicsByAreaSlug(ctx, db.ListVisibleTopicsByAreaSlugParams{
+			AreaSlug: slug, IsStaff: staff, IsMember: false, GroupIds: actor.GroupIDs,
+			PageOffset: offset, PageLimit: TopicPageSize,
+		})
+		if queryErr != nil {
+			return VisibleAreaTopicPage{}, fmt.Errorf("query visible area topics: %w", queryErr)
+		}
+		topics = make([]VisibleAreaTopic, len(rows))
+		for index, row := range rows {
+			topic, valid := visibleAreaTopicFromRow(row)
+			if !valid {
+				return VisibleAreaTopicPage{}, fmt.Errorf("query visible area topics: malformed row %d", index)
+			}
+			topics[index] = topic
+		}
 	}
 	if len(topics) == 0 {
 		if page != 1 {
@@ -99,4 +150,47 @@ func GetVisibleAreaTopicPage(ctx context.Context, querier visibleAreaTopicPageQu
 	return VisibleAreaTopicPage{
 		Area: area, Topics: topics, Number: page, TotalTopics: totalTopics, TotalPages: totalPages,
 	}, nil
+}
+
+func visibleAreaTopicFromRow(row db.ListVisibleTopicsByAreaSlugRow) (VisibleAreaTopic, bool) {
+	if row.TopicID <= 0 || row.Title == "" || row.AuthorDisplayName == "" || !validVisibleTopicState(row.State) ||
+		row.ReplyCount < 0 || !finiteTimestamp(row.LastActivityAt) || row.TotalVisibleTopics <= 0 ||
+		row.PinnedAt.Valid && row.PinnedAt.InfinityModifier != pgtype.Finite || row.Slug.Valid && row.Slug.String == "" {
+		return VisibleAreaTopic{}, false
+	}
+	return VisibleAreaTopic{
+		TopicID: row.TopicID, Title: row.Title, Slug: row.Slug, State: row.State, PinnedAt: row.PinnedAt,
+		ReplyCount: row.ReplyCount, AuthorDisplayName: row.AuthorDisplayName,
+		LastActivityAt: row.LastActivityAt, TotalVisibleTopics: row.TotalVisibleTopics,
+	}, true
+}
+
+func authenticatedVisibleAreaTopicFromRow(row db.ListAuthenticatedVisibleTopicsByAreaSlugRow) (VisibleAreaTopic, bool) {
+	topic, valid := visibleAreaTopicFromRow(db.ListVisibleTopicsByAreaSlugRow{
+		TopicID: row.TopicID, Title: row.Title, Slug: row.Slug, State: row.State, PinnedAt: row.PinnedAt,
+		ReplyCount: row.ReplyCount, AuthorDisplayName: row.AuthorDisplayName,
+		LastActivityAt: row.LastActivityAt, TotalVisibleTopics: row.TotalVisibleTopics,
+	})
+	markerPresent := row.LastReadPostNumber.Valid && row.ReadAt.Valid
+	markerAbsent := !row.LastReadPostNumber.Valid && !row.ReadAt.Valid
+	if !valid || row.NextPostNumber < 2 || row.ReadHead < 0 || row.ReadHead > row.NextPostNumber-1 ||
+		!markerPresent && !markerAbsent || markerPresent && (row.LastReadPostNumber.Int32 <= 0 ||
+		row.LastReadPostNumber.Int32 > row.NextPostNumber-1 || row.ReadAt.InfinityModifier != pgtype.Finite) {
+		return VisibleAreaTopic{}, false
+	}
+	expected := ReadStateRead
+	if row.ReadHead > 0 && markerAbsent {
+		expected = ReadStateNew
+	} else if row.ReadHead > 0 && row.LastReadPostNumber.Int32 < row.ReadHead {
+		expected = ReadStateUnread
+	}
+	if ReadState(row.ReadState) != expected {
+		return VisibleAreaTopic{}, false
+	}
+	topic.ReadState = &expected
+	return topic, true
+}
+
+func finiteTimestamp(value pgtype.Timestamptz) bool {
+	return value.Valid && value.InfinityModifier == pgtype.Finite
 }

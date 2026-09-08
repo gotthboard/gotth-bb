@@ -27,7 +27,7 @@ func TestAreaTopicListHandlerRendersTypedPageAndFragment(t *testing.T) {
 	activity := pgtype.Timestamptz{Time: time.Date(2026, time.September, 2, 1, 30, 0, 0, time.UTC), Valid: true}
 	wantPage := store.VisibleAreaTopicPage{
 		Area: db.Area{ID: 8, Slug: "members", Name: "Members & Friends", Description: "Private <discussion>", Visibility: "groups", PostingMode: "normal"},
-		Topics: []db.ListVisibleTopicsByAreaSlugRow{
+		Topics: []store.VisibleAreaTopic{
 			{TopicID: 41, Title: "Pinned <welcome>", State: "locked", PinnedAt: pgtype.Timestamptz{Valid: true}, ReplyCount: 4, AuthorDisplayName: "Alice & Bob", LastActivityAt: activity, TotalVisibleTopics: 27},
 			{TopicID: 40, Title: "Recent", State: "archived", ReplyCount: 2, AuthorDisplayName: "Carol", LastActivityAt: activity, TotalVisibleTopics: 27},
 		},
@@ -101,7 +101,7 @@ func TestAreaTopicListHandlerRendersOpenHiddenAndSingularReply(t *testing.T) {
 	handler, err := newAreaTopicListHandler(areaTopicTestBuilder(t), 10000, func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
 		return store.VisibleAreaTopicPage{
 			Area: db.Area{ID: 3, Slug: "staff", Name: "Staff"},
-			Topics: []db.ListVisibleTopicsByAreaSlugRow{
+			Topics: []store.VisibleAreaTopic{
 				{TopicID: 1, Title: "Open topic", State: "open", ReplyCount: 1, AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 2},
 				{TopicID: 2, Title: "Hidden topic", State: "hidden", AuthorDisplayName: "Moderator", LastActivityAt: activity, TotalVisibleTopics: 2},
 			},
@@ -128,7 +128,7 @@ func TestAreaTopicListHandlerBuildsLaterPreviousPage(t *testing.T) {
 	handler, err := newAreaTopicListHandler(areaTopicTestBuilder(t), 10000, func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
 		return store.VisibleAreaTopicPage{
 			Area:   db.Area{ID: 3, Slug: "public", Name: "Public"},
-			Topics: []db.ListVisibleTopicsByAreaSlugRow{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 100}},
+			Topics: []store.VisibleAreaTopic{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 100}},
 			Number: 3, TotalTopics: 100, TotalPages: 4,
 		}, nil
 	})
@@ -161,10 +161,10 @@ func TestAreaTopicListHandlerCollapsesMissingAndRedactsFailures(t *testing.T) {
 			return store.VisibleAreaTopicPage{}, pgx.ErrNoRows
 		}, wantStatus: http.StatusNotFound, wantText: "does not exist or is not visible"},
 		{name: "failure", target: "/areas/public", loader: func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
-			return store.VisibleAreaTopicPage{Area: db.Area{Name: secret}, Topics: []db.ListVisibleTopicsByAreaSlugRow{{Title: secret}}}, errors.New(secret)
+			return store.VisibleAreaTopicPage{Area: db.Area{Name: secret}, Topics: []store.VisibleAreaTopic{{Title: secret}}}, errors.New(secret)
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "This discussion area is temporarily unavailable"},
 		{name: "invalid result", target: "/areas/public", loader: func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
-			return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Topics: []db.ListVisibleTopicsByAreaSlugRow{{TopicID: 1, Title: secret, State: "invented", AuthorDisplayName: "Author", LastActivityAt: pgtype.Timestamptz{Valid: true}, TotalVisibleTopics: 1}}, Number: 1, TotalTopics: 1, TotalPages: 1}, nil
+			return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Topics: []store.VisibleAreaTopic{{TopicID: 1, Title: secret, State: "invented", AuthorDisplayName: "Author", LastActivityAt: pgtype.Timestamptz{Valid: true}, TotalVisibleTopics: 1}}, Number: 1, TotalTopics: 1, TotalPages: 1}, nil
 		}, wantStatus: http.StatusServiceUnavailable, wantText: "This discussion area is temporarily unavailable"},
 	} {
 		test := test
@@ -196,7 +196,7 @@ func TestAreaTopicListHandlerRejectsMalformedLoadedRows(t *testing.T) {
 	validPage := func() store.VisibleAreaTopicPage {
 		return store.VisibleAreaTopicPage{
 			Area:   db.Area{ID: 1, Slug: "public", Name: "Public"},
-			Topics: []db.ListVisibleTopicsByAreaSlugRow{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: validActivity, TotalVisibleTopics: 1}},
+			Topics: []store.VisibleAreaTopic{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: validActivity, TotalVisibleTopics: 1}},
 			Number: 1, TotalTopics: 1, TotalPages: 1,
 		}
 	}
@@ -243,7 +243,7 @@ func TestAreaTopicListHandlerPropagatesCommittedWriteFailure(t *testing.T) {
 	activity := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	for _, loader := range []AreaTopicPageLoader{
 		func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
-			return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Topics: []db.ListVisibleTopicsByAreaSlugRow{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 1}}, Number: 1, TotalTopics: 1, TotalPages: 1}, nil
+			return store.VisibleAreaTopicPage{Area: db.Area{ID: 1, Slug: "public", Name: "Public"}, Topics: []store.VisibleAreaTopic{{TopicID: 1, Title: "Topic", State: "open", AuthorDisplayName: "Author", LastActivityAt: activity, TotalVisibleTopics: 1}}, Number: 1, TotalTopics: 1, TotalPages: 1}, nil
 		},
 		func(context.Context, auth.AccessContext, string, int32) (store.VisibleAreaTopicPage, error) {
 			return store.VisibleAreaTopicPage{}, pgx.ErrNoRows

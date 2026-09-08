@@ -17,6 +17,7 @@ type visibleAreaQuerier interface {
 
 type visibleAreaSummaryQuerier interface {
 	ListVisibleAreaSummaries(context.Context, db.ListVisibleAreaSummariesParams) ([]db.ListVisibleAreaSummariesRow, error)
+	ListAuthenticatedVisibleAreaSummaries(context.Context, db.ListAuthenticatedVisibleAreaSummariesParams) ([]db.ListAuthenticatedVisibleAreaSummariesRow, error)
 }
 
 type visibleAreaBySlugQuerier interface {
@@ -38,10 +39,11 @@ type VisibleAreaLatestPost struct {
 // VisibleAreaSummary is one actor-visible area and its exact actor-visible
 // forum statistics.
 type VisibleAreaSummary struct {
-	Area       db.Area
-	TopicCount int64
-	PostCount  int64
-	LatestPost *VisibleAreaLatestPost
+	Area             db.Area
+	TopicCount       int64
+	PostCount        int64
+	LatestPost       *VisibleAreaLatestPost
+	UnreadTopicCount *int64
 }
 
 // ListVisibleAreaSummaries validates one server-owned access snapshot,
@@ -67,10 +69,26 @@ func ListVisibleAreaSummaries(ctx context.Context, querier visibleAreaSummaryQue
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("list visible area summaries: %w", err)
 	}
+	staff := actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator
+	if actor.Authenticated {
+		rows, err := querier.ListAuthenticatedVisibleAreaSummaries(ctx, db.ListAuthenticatedVisibleAreaSummariesParams{
+			IsStaff: staff, GroupIds: actor.GroupIDs, ActorUserID: actor.UserID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("query authenticated visible area summaries: %w", err)
+		}
+		summaries := make([]VisibleAreaSummary, len(rows))
+		for index, row := range rows {
+			summary, valid := authenticatedVisibleAreaSummaryFromRow(row)
+			if !valid {
+				return nil, fmt.Errorf("query authenticated visible area summaries: malformed row %d", index)
+			}
+			summaries[index] = summary
+		}
+		return summaries, nil
+	}
 	rows, err := querier.ListVisibleAreaSummaries(ctx, db.ListVisibleAreaSummariesParams{
-		IsStaff:  actor.Role == policy.RoleModerator || actor.Role == policy.RoleAdministrator,
-		IsMember: actor.Authenticated,
-		GroupIds: actor.GroupIDs,
+		IsStaff: staff, IsMember: false, GroupIds: actor.GroupIDs,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("query visible area summaries: %w", err)
@@ -84,6 +102,23 @@ func ListVisibleAreaSummaries(ctx context.Context, querier visibleAreaSummaryQue
 		summaries[index] = summary
 	}
 	return summaries, nil
+}
+
+func authenticatedVisibleAreaSummaryFromRow(row db.ListAuthenticatedVisibleAreaSummariesRow) (VisibleAreaSummary, bool) {
+	summary, valid := visibleAreaSummaryFromRow(db.ListVisibleAreaSummariesRow{
+		ID: row.ID, Slug: row.Slug, Name: row.Name, Description: row.Description, DisplayOrder: row.DisplayOrder,
+		Visibility: row.Visibility, PostingMode: row.PostingMode, CreatedBy: row.CreatedBy, UpdatedBy: row.UpdatedBy,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, TopicCount: row.TopicCount, PostCount: row.PostCount,
+		LatestTopicID: row.LatestTopicID, LatestTopicTitle: row.LatestTopicTitle, LatestPostID: row.LatestPostID,
+		LatestPostNumber: row.LatestPostNumber, LatestPostOrdinal: row.LatestPostOrdinal,
+		LatestPostAuthor: row.LatestPostAuthor, LatestPostCreatedAt: row.LatestPostCreatedAt,
+	})
+	if !valid || !row.ReadStateValid || row.UnreadTopicCount < 0 || row.UnreadTopicCount > row.TopicCount {
+		return VisibleAreaSummary{}, false
+	}
+	unreadTopicCount := row.UnreadTopicCount
+	summary.UnreadTopicCount = &unreadTopicCount
+	return summary, true
 }
 
 // visibleAreaSummaryFromRow converts only a complete schema-valid aggregate

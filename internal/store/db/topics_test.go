@@ -53,6 +53,13 @@ func TestListVisibleTopicsByAreaSlugBindsAccessAndPaginationAndScansSummaries(t 
 	}
 }
 
+func TestVisitorTopicListSQLDoesNotTouchPrivateReadState(t *testing.T) {
+	t.Parallel()
+	if strings.Contains(listVisibleTopicsByAreaSlug, "topic_reads") || strings.Contains(listVisibleTopicsByAreaSlug, "read_state") {
+		t.Fatal("visitor topic-list SQL touches private read state")
+	}
+}
+
 func TestListVisibleTopicsByAreaSlugPreservesQueryScanAndRowsFailures(t *testing.T) {
 	t.Parallel()
 
@@ -76,7 +83,79 @@ func TestListVisibleTopicsByAreaSlugPreservesQueryScanAndRowsFailures(t *testing
 	}
 }
 
+func TestListAuthenticatedVisibleTopicsByAreaSlugBindsActorAndScansPrivateValidationTuple(t *testing.T) {
+	t.Parallel()
+
+	want := ListAuthenticatedVisibleTopicsByAreaSlugRow{
+		TopicID: 9, Title: "Topic", State: "open", ReplyCount: 2, AuthorDisplayName: "Author",
+		LastActivityAt: pgtype.Timestamptz{Valid: true}, TotalVisibleTopics: 4,
+		NextPostNumber: 5, ReadHead: 4, LastReadPostNumber: pgtype.Int4{Int32: 2, Valid: true},
+		ReadAt: pgtype.Timestamptz{Valid: true}, ReadState: "unread",
+	}
+	database := &authenticatedTopicListDBTX{rows: &authenticatedTopicListRows{topics: []ListAuthenticatedVisibleTopicsByAreaSlugRow{want}}}
+	got, err := New(database).ListAuthenticatedVisibleTopicsByAreaSlug(context.Background(), ListAuthenticatedVisibleTopicsByAreaSlugParams{
+		ActorUserID: 17, AreaSlug: "members", IsStaff: true, GroupIds: []int64{11, 13}, PageOffset: 25, PageLimit: 25,
+	})
+	if err != nil || len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+		t.Fatalf("ListAuthenticatedVisibleTopicsByAreaSlug() = (%+v, %v), want %+v", got, err, want)
+	}
+	if !reflect.DeepEqual(database.args, []any{int64(17), "members", true, []int64{11, 13}, int32(25), int32(25)}) {
+		t.Fatalf("authenticated query args = %#v", database.args)
+	}
+	for _, required := range []string{
+		"visible_area AS MATERIALIZED", "visible_topics AS MATERIALIZED", "paged_topics AS MATERIALIZED",
+		"membership.group_id = ANY($4::bigint[])", "post.author_id <> $1::bigint",
+		"marker.user_id = $1::bigint", "LIMIT $6::integer OFFSET $5::integer",
+	} {
+		if !strings.Contains(database.query, required) {
+			t.Fatalf("authenticated visible-topic query lacks %q", required)
+		}
+	}
+}
+
 type topicListContextKey struct{}
+
+type authenticatedTopicListDBTX struct {
+	DBTX
+	query string
+	args  []any
+	rows  *authenticatedTopicListRows
+}
+
+func (database *authenticatedTopicListDBTX) Query(_ context.Context, query string, args ...interface{}) (pgx.Rows, error) {
+	database.query = query
+	database.args = append([]any(nil), args...)
+	return database.rows, nil
+}
+
+type authenticatedTopicListRows struct {
+	pgx.Rows
+	topics []ListAuthenticatedVisibleTopicsByAreaSlugRow
+	index  int
+}
+
+func (rows *authenticatedTopicListRows) Close()     {}
+func (rows *authenticatedTopicListRows) Next() bool { return rows.index < len(rows.topics) }
+func (rows *authenticatedTopicListRows) Err() error { return nil }
+func (rows *authenticatedTopicListRows) Scan(destinations ...any) error {
+	topic := rows.topics[rows.index]
+	rows.index++
+	*(destinations[0].(*int64)) = topic.TopicID
+	*(destinations[1].(*string)) = topic.Title
+	*(destinations[2].(*pgtype.Text)) = topic.Slug
+	*(destinations[3].(*string)) = topic.State
+	*(destinations[4].(*pgtype.Timestamptz)) = topic.PinnedAt
+	*(destinations[5].(*int32)) = topic.ReplyCount
+	*(destinations[6].(*string)) = topic.AuthorDisplayName
+	*(destinations[7].(*pgtype.Timestamptz)) = topic.LastActivityAt
+	*(destinations[8].(*int64)) = topic.TotalVisibleTopics
+	*(destinations[9].(*int32)) = topic.NextPostNumber
+	*(destinations[10].(*int32)) = topic.ReadHead
+	*(destinations[11].(*pgtype.Int4)) = topic.LastReadPostNumber
+	*(destinations[12].(*pgtype.Timestamptz)) = topic.ReadAt
+	*(destinations[13].(*string)) = topic.ReadState
+	return nil
+}
 
 type topicListDBTX struct {
 	DBTX
