@@ -750,7 +750,8 @@ entry gate for the first test-user build.
 - **Requirements:** Beta responsive/reflow acceptance, immutable release
   identity, guarded delivery, deployment smoke, and owner-confirmation rules.
 - **In scope:** the one responsive-class correction; exact content-addressed
-  stylesheet regeneration and route inventory; a browser-through-Caddy
+  stylesheet regeneration, retention of the previously published immutable
+  stylesheet route, and route inventory; a browser-through-Caddy
   negative control on `1.0.0-beta.1` and positive checks at both supported base
   paths; deterministic generation, vet, repository-wide race/coverage,
   PostgreSQL 17 integration/race, two fresh CLEAN reviews, guarded merge and

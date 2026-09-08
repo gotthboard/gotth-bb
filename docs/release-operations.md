@@ -827,8 +827,10 @@ When the correction has no data or permission change, deployment replaces only
 the application container, preserves PostgreSQL/Caddy/configuration identity,
 retains the failed image and backups, and repeats exact artifact identity,
 hardening, Caddy, smoke, log-redaction, and affected browser/accessibility
-checks. The corrective successor still requires affirmative owner confirmation
-before it becomes known-good. This procedure does not admit RC.1 or stable work.
+checks. Previously published content-addressed assets remain served for their
+promised cache lifetime. The corrective successor still requires affirmative
+owner confirmation before it becomes known-good. This procedure does not admit
+RC.1 or stable work.
 
 ## 19. Operational decisions
 

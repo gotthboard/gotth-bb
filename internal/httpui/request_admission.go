@@ -94,6 +94,7 @@ func requestAdmissionExempt(method, path string) bool {
 	switch path {
 	case "/health/live", "/health/ready",
 		"/static/" + appStylesheetFilename,
+		"/static/" + previousAppStylesheetFilename,
 		"/static/htmx-2.0.10.min.js",
 		"/static/" + discoveryResponseFilename,
 		"/static/" + markdownToolbarFilename:

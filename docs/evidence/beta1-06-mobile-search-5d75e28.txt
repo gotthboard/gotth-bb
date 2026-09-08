@@ -27,7 +27,7 @@ Tree:
 Contract-admission commit:
 838a02169b39d0233d2b9a917351205d90645ffb
 
-The implementation:
+The corrective series:
 
 - changes the date-filter wrapper from unconditional grid-cols-2 to
   sm:grid-cols-2, stacking the controls below the 40rem breakpoint;
@@ -35,6 +35,8 @@ The implementation:
   from app-3faf03fa...css to app-3104ce3e...css;
 - updates the embed, pinned digest, generator target, and canonical route
   inventory to the exact new stylesheet identity;
+- retains and serves the published Beta.1 stylesheet at its original digest so
+  its one-year immutable cache contract is not broken;
 - serves the stylesheet in the discovery browser fixture; and
 - adds a Chromium reflow gate that waits for applied CSS, checks actual client
   width, and directly proves the two date-filter rows stack at 320 CSS pixels.
@@ -143,6 +145,8 @@ Admission limits
 ----------------
 
 - 1.0.0-beta.1 remains immutable and failed; this record does not rewrite it.
+- Its published app-3faf03fa...css route remains byte-exact and available; new
+  HTML refers only to app-3104ce3e...css.
 - No RC.1, stable, enrollment, permission, schema, or data work is admitted.
 - Existing PostgreSQL, Caddy, Authentik, secret-file, nonroot, read-only, and
   capability boundaries remain unchanged.

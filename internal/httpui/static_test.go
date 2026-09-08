@@ -16,6 +16,10 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
+	const previousStylesheetSHA256 = "3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa"
+	if want := "app-" + previousStylesheetSHA256 + ".css"; previousAppStylesheetFilename != want {
+		t.Fatalf("previous stylesheet filename = %q, want content-addressed %q", previousAppStylesheetFilename, want)
+	}
 	const toolbarSHA256 = "9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848"
 	if want := "markdown-toolbar-" + toolbarSHA256 + ".js"; markdownToolbarFilename != want {
 		t.Fatalf("Markdown toolbar filename = %q, want content-addressed %q", markdownToolbarFilename, want)
@@ -32,6 +36,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 		contains   string
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
+		{name: "previous Tailwind CSS", content: previousAppStylesheet, wantSHA256: previousStylesheetSHA256, contains: ".grid-cols-2"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
 		{name: "Discovery response", content: discoveryResponseScript, wantSHA256: discoveryResponseSHA256, contains: discoveryResponseHeader},
 		{name: "Markdown toolbar", content: markdownToolbarScript, wantSHA256: toolbarSHA256, contains: "gotthMarkdownToolbar"},
