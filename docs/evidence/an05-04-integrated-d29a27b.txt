@@ -1,0 +1,189 @@
+AN-05-04 integrated admission and delivery evidence
+===================================================
+
+Tested executable/methodology commit:
+  d29a27bdce8b7f16cf6682d30bb07820bafa39b6
+Tested tree:
+  d3c4fa8ef75d50ce9be445d98bd08184d1c39c84
+Admitted AN-05-03 base:
+  550c17089af467c857b17787cf7e9f687e0ea3a0
+
+Environment
+-----------
+
+- Canonical local checkout: Linux/amd64, Node.js 26.7.0, npm 12.0.2.
+- Designated evidence host `development`: Linux/amd64, Go 1.26.6,
+  Node.js 26.5.1, npm 12.0.2.
+- PostgreSQL 17.10 in task-owned container `gotth-bb-an05-03-pg`,
+  listening only on 127.0.0.1:32804.
+- Browser/proxy gate: Caddy 2.11.4 and Chromium 151.0.7922.71 Arch Linux.
+
+Exact gates
+-----------
+
+1. Pinned deterministic generation and repository custody on the exact local
+   checkout:
+
+     test "$(node --version)" = v26.7.0
+     test "$(npm --version)" = 12.0.2
+     npm ci --ignore-scripts
+     GOMAXPROCS=2 make generate
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     git diff --check
+     test -z "$(git status --short)"
+     git fsck --no-dangling
+     test "$(git rev-parse HEAD^{commit})" = d29a27bdce8b7f16cf6682d30bb07820bafa39b6
+     test "$(git rev-parse HEAD^{tree})" = d3c4fa8ef75d50ce9be445d98bd08184d1c39c84
+
+2. Exact detached remote custody, static analysis, and repository-wide unit
+   race/coverage:
+
+     scripts/test-alpha3-evidence-custody.sh
+     go vet -mod=readonly ./...
+     GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+3. Complete PostgreSQL 17.10 serial integration/coverage and race/atomic
+   coverage:
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=1 \
+       -cover ./...
+
+     GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+       -race -covermode=atomic ./...
+
+4. Fixed-capacity request-admission population under the race detector:
+
+     GOTTH_BB_RUN_AN05_ADMISSION_EVIDENCE=1 GOMAXPROCS=4 \
+       go test -mod=readonly -count=1 -race -v ./internal/abuse \
+       -run '^TestRequestLimiterAdmissionPopulationEvidence$'
+
+5. Durable publication contention across 1,000 accounts under the race
+   detector, repeated five times to prove cleanup stability:
+
+     GOTTH_BB_RUN_AN05_ADMISSION_EVIDENCE=1 \
+       GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=5 -race -v \
+       ./internal/forum -run '^TestAN05PublicationPopulationAdmissionOnPostgreSQL17$'
+
+6. Representative population, structural plans, resources, cancellation,
+   and full subsystem coexistence:
+
+     GOTTH_BB_RUN_AN04_ADMISSION_EVIDENCE=1 \
+       GOTTH_BB_TEST_DATABASE_URL='postgres://postgres:<redacted>@127.0.0.1:32804/postgres?sslmode=disable' \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 \
+       -timeout=35m -v ./internal/store/db \
+       -run '^TestDiscoveryPlansOnPostgreSQL17$'
+
+7. Browser-through-Caddy cleanup/stability gate at both empty and `/bb` base
+   paths. Every repetition disabled page JavaScript and injected forged
+   `X-Forwarded-For`, `Forwarded`, and `X-Real-IP` headers before Caddy:
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 go test -mod=readonly \
+       -tags=integration -count=5 -v ./internal/httpui \
+       -run '^TestAbuseRejectionNoScriptThroughCaddy$'
+
+8. Two byte-identical Linux/amd64 packages:
+
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
+       --commit d29a27bdce8b7f16cf6682d30bb07820bafa39b6 \
+       --goos linux --goarch amd64 \
+       --output /tmp/gotth-bb-an05-04-release-d29a27b-a
+     go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
+       --commit d29a27bdce8b7f16cf6682d30bb07820bafa39b6 \
+       --goos linux --goarch amd64 \
+       --output /tmp/gotth-bb-an05-04-release-d29a27b-b
+     cmp /tmp/gotth-bb-an05-04-release-d29a27b-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
+       /tmp/gotth-bb-an05-04-release-d29a27b-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+     cmp /tmp/gotth-bb-an05-04-release-d29a27b-a/SHA256SUMS \
+       /tmp/gotth-bb-an05-04-release-d29a27b-b/SHA256SUMS
+
+Results
+-------
+
+- Every final exact-tree command passed. Unit race/coverage and complete
+  PostgreSQL serial/race suites passed. PostgreSQL integration coverage was
+  93.7% for `internal/forum`, 97.1% for `internal/store`, and 100% for
+  migrations and readiness.
+- The fixed-capacity request gate launched 4,096 distinct IPv6 clients
+  concurrently. All 4,096 were admitted exactly once, map cardinality was
+  4,096, and client 4,097 received the fixed capacity result. Under the race
+  detector it completed in 123.463262ms with HeapAlloc delta 4,649,512 bytes,
+  TotalAlloc delta 5,347,872 bytes, Go Sys delta 21,848,064 bytes, and observed
+  RSS 33,372 to 139,092 KiB.
+- Each publication-population repetition created one topic and two replies for
+  each of 1,000 established accounts: 3,000 successful publications, exact
+  durable per-account count 3, 1,000 topics, and 3,000 posts. The five race
+  repetitions recorded topic waves of 505.199355ms to 572.490069ms and reply
+  waves of 991.144265ms to 1.090185099s. The pool was fixed at 32 connections;
+  observed database connections peaked at 33 including the observer and
+  returned from baseline 1 to final 1. Peak database locks were 1,619 to 1,703,
+  lock waiters 5 to 6, temp files/bytes zero, and cancellation left the tuple
+  unchanged. The production service's tested transaction-local limits remained
+  statement_timeout=2s and lock_timeout=250ms.
+- The representative database contained 25,000 accounts, 25,000 groups,
+  25,000 areas, 100,000 ordinary topics, 1,000,000 ordinary posts, and one
+  250,001-node depth-32 topic. Custom and forced-generic structural checks
+  passed. Final database size was 815,060,659 bytes; topics occupied 49,192,960
+  bytes and posts 730,710,016 bytes. The evidence process recorded HeapAlloc
+  2,275,904 bytes, TotalAlloc 27,013,152 bytes, Go Sys 17,946,888 bytes, RSS
+  21,456 KiB, 377 temp files, and 3,301,801,554 temp bytes after every plan.
+- One simultaneous start ran ordinary read, authentication, recent activity,
+  moderation, first-unread, mark-read, publication, administration dashboard,
+  and discovery search. All completed without error in 4.899056ms, 6.953338ms,
+  22.463008ms, 24.795405ms, 24.807465ms, 30.375841ms, 32.797629ms,
+  254.051804ms, and 1.741016774s respectively. Connections returned 1 to 1;
+  cancellation passed.
+- Five browser repetitions covered both base paths each. Caddy overwrote every
+  forged identity header with one canonical `127.0.0.1` value and removed the
+  other forwarding headers before the application. With page JavaScript
+  disabled, native keyboard Enter submission produced blocked-link 422 and
+  publication-rate 429 pages with draft preservation; edit and community-rules
+  blocked forms also retained safe fields. Four fixed observer events appeared
+  per base path without addresses, account/content values, destinations, or
+  rules.
+- The two archives were byte-identical:
+  SHA-256 ffd743b8742efecf1eabb88066fb7ba2a81b9f94477daab8d550ea14690c24d6
+  Their checksum files were byte-identical:
+  SHA-256 82cc124d3f9c50df8439273e94729bf9f31ab4e7a8262e5deb9ab957263ab5f5
+
+Rejected attempts and repairs
+-----------------------------
+
+- The first publication-population pool copied a connection string whose
+  database field still named the administration database and zeroed lifetime
+  defaults, so connections expired immediately. The final pool sets the target
+  database explicitly and retains pgx defaults.
+- Canceling the first monitor context while its query was in flight closed the
+  observer connection. The final monitor has an explicit stop channel between
+  samples and leaves the observer usable for postconditions.
+- The initial browser driver populated and submitted every form with
+  `requestSubmit()`. That did not prove keyboard operability. The blocked and
+  rate-limited publication forms now focus the native submit button and send
+  real Chromium Enter key events with page JavaScript disabled.
+- The first integrated candidate recorded peak database connections but did
+  not prove connection cleanup. The final test records a pre-pool baseline,
+  closes the pool, and requires return to that exact baseline.
+- The first full-subsystem coexistence candidate omitted authentication,
+  moderation, and administration. The final simultaneous start includes all
+  three production queries and validates their results.
+- The first administration coexistence oracle compared undeleted dashboard
+  counts with raw generated totals, ignoring deliberate deleted/redacted rows
+  and the deep topic. The final oracle captures the exact pre-wave dashboard
+  counts and admits only its consistent before-commit or after-commit snapshot.
+- One race repetition observed the server connection row briefly after
+  `pgxpool.Close` returned. The final cleanup oracle waits at most two seconds
+  for `pg_stat_activity` to converge to the exact baseline; five race
+  repetitions then passed.
+
+Gaps and boundary
+-----------------
+
+- Resource and elapsed values are observations on the designated evidence
+  host, not universal latency or memory promises.
+- The request limiter remains deliberately process-local and single-instance;
+  no distributed or horizontal-replica budget is claimed.
+- This evidence admits AN-05-04 and AN-05 delivery only. It authorizes no
+  Beta.1 work, tag, release, or deployment.
