@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/observability"
@@ -82,7 +83,7 @@ func TestAuthenticatedRouterDispatchesOnlyCanonicalAreaAdministrationPaths(t *te
 	creates := 0
 	handler, err := newAuthenticatedHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.DestinationPolicy{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		func(context.Context, auth.AccessContext) (administration.AreaManagementPage, error) {
 			return administration.AreaManagementPage{}, nil
 		},

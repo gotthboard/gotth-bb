@@ -3,10 +3,13 @@ package site
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
@@ -15,6 +18,7 @@ import (
 )
 
 var testObservedAt = time.Date(2026, time.September, 8, 12, 0, 0, 123456000, time.UTC)
+var testDestinationPolicy = abuse.NewEmptyDestinationPolicy()
 
 type shellStub struct {
 	row db.LoadSiteShellPresentationRow
@@ -138,11 +142,40 @@ func TestUpdateSettingsRejectsInvalidBoundaryBeforeDatabaseWork(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := UpdateSettings(context.Background(), panicBeginner{}, func() time.Time { return testObservedAt }, test.actor, test.input, test.id)
+			result, err := UpdateSettings(context.Background(), panicBeginner{}, func() time.Time { return testObservedAt }, testDestinationPolicy, test.actor, test.input, test.id)
 			if result != (MutationResult{}) || !errors.Is(err, test.want) {
 				t.Fatalf("UpdateSettings() = (%+v, %v), want %v", result, err, test.want)
 			}
 		})
+	}
+}
+
+func TestUpdateSettingsRejectsBlockedRulesBeforeTransaction(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "rules")
+	if err := os.WriteFile(path, []byte("domain=blocked.example\n"), 0o400); err != nil {
+		t.Fatalf("write destination policy: %v", err)
+	}
+	loaded, err := abuse.LoadPolicy(path, abuse.RateProfile{
+		RequestLimit: 10, RequestWindow: time.Minute, RequestClientCapacity: 10,
+		PublicationLimit: 10, NewAccountLimit: 3, PublicationWindow: time.Minute, NewAccountPeriod: time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("LoadPolicy() returned error: %v", err)
+	}
+	input := SettingsInput{
+		Name: "Board", Description: "Description", Theme: "blue",
+		RulesMarkdown: "private [link](https://blocked.example/path)", Reason: "Publish rules", Revision: 1,
+	}
+	_, err = UpdateSettings(
+		context.Background(), panicBeginner{}, func() time.Time { return testObservedAt }, loaded.DestinationPolicy(),
+		policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator}, input,
+		pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
+	)
+	if !errors.Is(err, ErrInput) || !errors.Is(err, abuse.ErrBlockedDestination) ||
+		strings.Contains(err.Error(), "blocked.example") || strings.Contains(err.Error(), "private") {
+		t.Fatalf("blocked settings error = %v", err)
 	}
 }
 
@@ -231,7 +264,7 @@ func TestUpdateSettingsCommitsExactRevisionAndDigestAudit(t *testing.T) {
 	t.Parallel()
 	tx := &settingsTx{}
 	result, err := UpdateSettings(
-		context.Background(), settingsBeginner{tx: tx}, func() time.Time { return testObservedAt },
+		context.Background(), settingsBeginner{tx: tx}, func() time.Time { return testObservedAt }, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator},
 		SettingsInput{Name: "Community", Description: "A careful forum.", Theme: "emerald", RulesMarkdown: "# Rules", Reason: "Publish initial rules", Revision: 1},
 		pgtype.UUID{Bytes: [16]byte{1}, Valid: true},
@@ -274,7 +307,7 @@ func TestUpdateSettingsPreservesUnknownCommitOutcome(t *testing.T) {
 
 func updateSettingsForTest(tx *settingsTx) (MutationResult, error) {
 	return UpdateSettings(
-		context.Background(), settingsBeginner{tx: tx}, func() time.Time { return testObservedAt },
+		context.Background(), settingsBeginner{tx: tx}, func() time.Time { return testObservedAt }, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator},
 		SettingsInput{Name: "Community", Description: "A careful forum.", Theme: "emerald", RulesMarkdown: "# Rules", Reason: "Publish initial rules", Revision: 1},
 		pgtype.UUID{Bytes: [16]byte{1}, Valid: true},

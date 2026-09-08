@@ -31,6 +31,8 @@ var moderationPublicationPolicy = func() abuse.PublicationPolicy {
 	return policy
 }()
 
+var moderationDestinationPolicy = abuse.NewEmptyDestinationPolicy()
+
 func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -85,15 +87,15 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 	reporter := policy.AccessContext{Authenticated: true, UserID: reporterID, Role: policy.RoleMember}
 	target := policy.AccessContext{Authenticated: true, UserID: targetUserID, Role: policy.RoleMember}
 	staff := policy.AccessContext{Authenticated: true, UserID: moderatorID, Role: policy.RoleModerator}
-	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, reporter, "source", "Reported topic", "root")
+	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, moderationDestinationPolicy, reporter, "source", "Reported topic", "root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reply, err := forum.CreateReply(ctx, connection, moderationPublicationPolicy, target, topic.TopicID, topic.PostID, "reply")
+	reply, err := forum.CreateReply(ctx, connection, moderationPublicationPolicy, moderationDestinationPolicy, target, topic.TopicID, topic.PostID, "reply")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hiddenTopic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, target, "source", "Hidden topic", "hidden root")
+	hiddenTopic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, moderationDestinationPolicy, target, "source", "Hidden topic", "hidden root")
 	if err != nil {
 		t.Fatal(err)
 	}

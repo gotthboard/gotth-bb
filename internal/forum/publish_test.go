@@ -23,6 +23,8 @@ var testPublicationPolicy = func() abuse.PublicationPolicy {
 	return policy
 }()
 
+var testDestinationPolicy = abuse.NewEmptyDestinationPolicy()
+
 func TestInvalidPublishingInputExposesOnlyStableClassAndField(t *testing.T) {
 	t.Parallel()
 
@@ -37,7 +39,7 @@ func TestCreateTopicCommitsAuthorizedRenderedFirstPost(t *testing.T) {
 
 	at := time.Date(2026, time.September, 2, 4, 30, 0, 123456789, time.UTC)
 	tx := &publishTestTx{areaID: 7, visibility: "groups", postingMode: "normal", groupIDs: []int64{4, 9}, topicID: 101, postID: 201, postNumber: 1, databaseNow: at}
-	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy,
+	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{9}},
 		"member-news", "A careful Cafe\u0301", "Hello **world**")
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 201, PostNumber: 1, NodeOrdinal: 1}) {
@@ -63,7 +65,7 @@ func TestCreateReplyCommitsAuthorizedOrderedPost(t *testing.T) {
 
 	at := time.Date(2026, time.September, 2, 4, 31, 0, 999, time.FixedZone("offset", -5*60*60))
 	tx := &publishTestTx{areaID: 7, visibility: "public", postingMode: "read_only", topicID: 101, topicState: "locked", postID: 202, postNumber: 2, actorRole: "moderator", databaseNow: at}
-	result, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy,
+	result, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleModerator}, 101, 201, "A `reply`")
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 202, PostNumber: 2, NodeOrdinal: 2}) {
 		t.Fatalf("CreateReply() = (%+v, %v)", result, err)
@@ -89,7 +91,7 @@ func TestPublicationLimitRollsBackWithoutTargetWrite(t *testing.T) {
 		areaID: 7, visibility: "public", postingMode: "normal", topicID: 101, postID: 201, postNumber: 1,
 		databaseNow: now, publicationStarted: pgtype.Timestamptz{Time: started, Valid: true}, publicationCount: 100_000,
 	}
-	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy,
+	result, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember}, "news", "Limited", "body")
 	var limited PublicationRateLimitError
 	if result != (PublishResult{}) || !errors.Is(err, ErrPublicationRateLimited) || !errors.As(err, &limited) ||
@@ -110,11 +112,11 @@ func TestPublishingDenialRollsBackBeforeInsert(t *testing.T) {
 		run  func(*publishTestTx) error
 	}{
 		{name: "topic read only", run: func(tx *publishTestTx) error {
-			_, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, member, "news", "Title", "body")
+			_, err := CreateTopic(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy, member, "news", "Title", "body")
 			return err
 		}},
 		{name: "reply locked", run: func(tx *publishTestTx) error {
-			_, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, member, 101, 201, "body")
+			_, err := CreateReply(context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy, member, 101, 201, "body")
 			return err
 		}},
 	} {
@@ -139,35 +141,35 @@ func TestPublishingRejectsInvalidInputBeforeTransaction(t *testing.T) {
 		run  func() error
 	}{
 		{name: "nil topic context", run: func() error {
-			_, err := CreateTopic(nil, panicPublishBeginner{}, testPublicationPolicy, actor, "news", "Title", "body")
+			_, err := CreateTopic(nil, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", "body")
 			return err
 		}},
 		{name: "invalid actor", run: func() error {
-			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, policy.AccessContext{}, "news", "Title", "body")
+			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, policy.AccessContext{}, "news", "Title", "body")
 			return err
 		}},
 		{name: "invalid slug", run: func() error {
-			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, "News", "Title", "body")
+			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "News", "Title", "body")
 			return err
 		}},
 		{name: "invalid title", run: func() error {
-			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, "news", " \n", "body")
+			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "news", " \n", "body")
 			return err
 		}},
 		{name: "invalid topic body", run: func() error {
-			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, "news", "Title", "<script>x</script>")
+			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", "<script>x</script>")
 			return err
 		}},
 		{name: "invalid reply ID", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, 0, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, 0, 1, "body")
 			return err
 		}},
 		{name: "invalid reply parent", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, 1, 0, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, 1, 0, "body")
 			return err
 		}},
 		{name: "invalid reply body", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, actor, 1, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, 1, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
 			return err
 		}},
 	} {
@@ -192,35 +194,35 @@ func TestPublishingRejectsInvalidConfigurationCancellationAndClock(t *testing.T)
 		run  func() error
 	}{
 		{name: "nil topic beginner", run: func() error {
-			_, err := CreateTopic(context.Background(), nil, testPublicationPolicy, actor, "news", "Title", "body")
+			_, err := CreateTopic(context.Background(), nil, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", "body")
 			return err
 		}},
 		{name: "invalid topic publication policy", run: func() error {
-			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, abuse.PublicationPolicy{}, actor, "news", "Title", "body")
+			_, err := CreateTopic(context.Background(), panicPublishBeginner{}, abuse.PublicationPolicy{}, testDestinationPolicy, actor, "news", "Title", "body")
 			return err
 		}},
 		{name: "canceled topic", run: func() error {
-			_, err := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, actor, "news", "Title", "body")
+			_, err := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", "body")
 			return err
 		}},
 		{name: "nil reply context", run: func() error {
-			_, err := CreateReply(nil, panicPublishBeginner{}, testPublicationPolicy, actor, 1, 1, "body")
+			_, err := CreateReply(nil, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "nil reply beginner", run: func() error {
-			_, err := CreateReply(context.Background(), nil, testPublicationPolicy, actor, 1, 1, "body")
+			_, err := CreateReply(context.Background(), nil, testPublicationPolicy, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid reply publication policy", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, abuse.PublicationPolicy{}, actor, 1, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, abuse.PublicationPolicy{}, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid reply actor", run: func() error {
-			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, policy.AccessContext{}, 1, 1, "body")
+			_, err := CreateReply(context.Background(), panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, policy.AccessContext{}, 1, 1, "body")
 			return err
 		}},
 		{name: "canceled reply", run: func() error {
-			_, err := CreateReply(canceled, panicPublishBeginner{}, testPublicationPolicy, actor, 1, 1, "body")
+			_, err := CreateReply(canceled, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 	} {
@@ -240,12 +242,12 @@ func TestCreateTopicPreservesFieldAndCancellationOrdering(t *testing.T) {
 	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, fieldErr := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, actor, "bad area", "Title", "body")
+	_, fieldErr := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "bad area", "Title", "body")
 	var invalid InvalidPublishingInput
 	if !errors.As(fieldErr, &invalid) || invalid.Field != "area" {
 		t.Fatalf("invalid field before cancellation = (%v, %+v)", fieldErr, invalid)
 	}
-	_, cancellationErr := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, actor, "news", "Title", " ")
+	_, cancellationErr := CreateTopic(canceled, panicPublishBeginner{}, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", " ")
 	if !errors.Is(cancellationErr, context.Canceled) || errors.As(cancellationErr, &invalid) {
 		t.Fatalf("cancellation before Markdown render = %v", cancellationErr)
 	}
@@ -264,7 +266,7 @@ func TestCreateTopicFailsClosedAtTransactionStages(t *testing.T) {
 			if failure == "begin" {
 				beginner.err = errPublishTest
 			}
-			result, err := CreateTopic(context.Background(), beginner, testPublicationPolicy, actor, "news", "Title", "body")
+			result, err := CreateTopic(context.Background(), beginner, testPublicationPolicy, testDestinationPolicy, actor, "news", "Title", "body")
 			if err == nil || result != (PublishResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
 				t.Fatalf("CreateTopic(%q) = (%+v, %v), transaction %+v", failure, result, err, tx)
 			}
@@ -291,7 +293,7 @@ func TestCreateReplyFailsClosedAtTransactionStages(t *testing.T) {
 			if failure == "begin" {
 				beginner.err = errPublishTest
 			}
-			result, err := CreateReply(context.Background(), beginner, testPublicationPolicy, actor, 101, 201, "body")
+			result, err := CreateReply(context.Background(), beginner, testPublicationPolicy, testDestinationPolicy, actor, 101, 201, "body")
 			if err == nil || result != (PublishResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
 				t.Fatalf("CreateReply(%q) = (%+v, %v), transaction %+v", failure, result, err, tx)
 			}
@@ -307,7 +309,7 @@ func TestCreateReplyRejectsMaximumDepthBeforeInsert(t *testing.T) {
 		topicState: "open", parentDepth: MaximumReplyDepth,
 	}
 	result, err := CreateReply(
-		context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy,
+		context.Background(), publishTestBeginner{tx: tx}, testPublicationPolicy, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember},
 		101, 201, "body",
 	)

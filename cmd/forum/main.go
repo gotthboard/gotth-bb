@@ -179,6 +179,10 @@ func run(
 	if !publicationPolicy.Valid() {
 		return fmt.Errorf("load publication policy failed")
 	}
+	destinationPolicy := abusePolicy.DestinationPolicy()
+	if !destinationPolicy.Valid() {
+		return fmt.Errorf("load destination policy failed")
+	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	abuseObserver, err := abuse.NewObserver(logger)
 	if err != nil {
@@ -251,17 +255,19 @@ func run(
 			return forumservice.LoadVisibleTopicPostPage(postContext, pool, access, topicID, page)
 		},
 		store.MaximumPostPage,
+		destinationPolicy,
+		abuseObserver,
 		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateTopic(publishContext, pool, publicationPolicy, access, areaSlug, title, markdown)
+			return forumservice.CreateTopic(publishContext, pool, publicationPolicy, destinationPolicy, access, areaSlug, title, markdown)
 		},
 		func(publishContext context.Context, access auth.AccessContext, topicID, parentPostID int64, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateReply(publishContext, pool, publicationPolicy, access, topicID, parentPostID, markdown)
+			return forumservice.CreateReply(publishContext, pool, publicationPolicy, destinationPolicy, access, topicID, parentPostID, markdown)
 		},
 		func(editContext context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
 			return store.GetEditablePost(editContext, queries, postID, access)
 		},
 		func(editContext context.Context, access auth.AccessContext, postID int64, revision int32, markdown string) (forumservice.EditResult, error) {
-			return forumservice.EditPost(editContext, pool, time.Now, access, postID, revision, markdown)
+			return forumservice.EditPost(editContext, pool, time.Now, destinationPolicy, access, postID, revision, markdown)
 		},
 		func(deleteContext context.Context, access auth.AccessContext, postID int64, revision int32) (forumservice.DeleteResult, error) {
 			return forumservice.DeletePost(deleteContext, pool, time.Now, access, postID, revision)
@@ -335,7 +341,7 @@ func run(
 				return siteservice.LoadEditable(siteContext, queries, access, time.Now())
 			},
 			Update: func(siteContext context.Context, access auth.AccessContext, input siteservice.SettingsInput, requestID pgtype.UUID) (siteservice.MutationResult, error) {
-				return siteservice.UpdateSettings(siteContext, pool, time.Now, access, input, requestID)
+				return siteservice.UpdateSettings(siteContext, pool, time.Now, destinationPolicy, access, input, requestID)
 			},
 			Administration: &httpui.AdministrationHTTPServices{
 				Dashboard: func(adminContext context.Context, access auth.AccessContext) (administrationservice.Dashboard, error) {

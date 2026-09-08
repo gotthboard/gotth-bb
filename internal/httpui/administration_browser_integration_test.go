@@ -208,7 +208,7 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 			return site.MutationResult{Revision: siteRevision.Load(), AuditID: 16}, nil
 		},
 	}
-	publicSite, privateSite, err := newSiteSettingsHandler(builder, siteServices)
+	publicSite, privateSite, err := newSiteSettingsHandler(builder, &captureAbuseObserver{}, siteServices)
 	if err != nil {
 		t.Fatalf("construct site settings handler: %v", err)
 	}

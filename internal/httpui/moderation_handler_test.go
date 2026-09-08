@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
@@ -249,7 +250,7 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	}
 	if missing, missingErr := NewAuthenticatedModeratedForumHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil,
 		url.URL{}, false, nil, nil,
 		"gotth_bb_session", true, unavailableReadiness,
@@ -259,7 +260,7 @@ func TestModerationRouterAuthenticatesOnlyCanonicalMutationPaths(t *testing.T) {
 	changes := 0
 	handler, err := NewAuthenticatedModeratedForumHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{},
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			panic("publish")
 		},

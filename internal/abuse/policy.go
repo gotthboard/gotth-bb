@@ -25,6 +25,7 @@ const (
 
 // Policy is an immutable canonical blocked-destination set.
 type Policy struct {
+	validated             bool
 	domains               []string
 	urls                  []string
 	requestLimit          uint32
@@ -103,6 +104,7 @@ func validRateProfile(profile RateProfile) bool {
 }
 
 func (policy Policy) withRateProfile(profile RateProfile) Policy {
+	policy.validated = true
 	policy.requestLimit = profile.RequestLimit
 	policy.requestWindow = profile.RequestWindow
 	policy.requestClientCapacity = profile.RequestClientCapacity
@@ -233,6 +235,9 @@ func canonicalURL(raw string) (string, error) {
 	}
 	canonicalHost := ""
 	if address, parseErr := netip.ParseAddr(hostname); parseErr == nil {
+		if address.Zone() != "" {
+			return "", fmt.Errorf("invalid URL host")
+		}
 		address = address.Unmap()
 		canonicalHost = address.String()
 		if address.Is6() {

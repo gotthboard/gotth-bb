@@ -138,28 +138,28 @@ VALUES ('normal', 'Normal', 'normal', $1, $1), ('staff-only', 'Staff only', 'rea
 		t.Fatal(err)
 	}
 	yearOneActor := policy.AccessContext{Authenticated: true, UserID: yearOneID, Role: policy.RoleMember}
-	if _, err := CreateTopic(ctx, connections[0], limits, yearOneActor, "normal", "Finite year one", "body"); err != nil {
+	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, yearOneActor, "normal", "Finite year one", "body"); err != nil {
 		t.Fatalf("finite PostgreSQL year-one publication: %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], yearOneID, 1)
 
 	newActor := policy.AccessContext{Authenticated: true, UserID: newID, Role: policy.RoleMember}
-	first, err := CreateTopic(ctx, connections[0], limits, newActor, "normal", "First new topic", "body")
+	first, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, newActor, "normal", "First new topic", "body")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateReply(ctx, connections[0], limits, newActor, first.TopicID, first.PostID, "second publication"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], limits, testDestinationPolicy, newActor, first.TopicID, first.PostID, "second publication"); err != nil {
 		t.Fatal(err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], newID, 2)
-	if _, err := EditPost(ctx, connections[0], time.Now, newActor, first.PostID, 1, "edited without publication capacity"); err != nil {
+	if _, err := EditPost(ctx, connections[0], time.Now, testDestinationPolicy, newActor, first.PostID, 1, "edited without publication capacity"); err != nil {
 		t.Fatalf("edit without publication capacity: %v", err)
 	}
-	if _, err := RenderTopicDraft("normal", "Preview without publication capacity", "preview"); err != nil {
+	if _, err := RenderTopicDraft(testDestinationPolicy, "normal", "Preview without publication capacity", "preview"); err != nil {
 		t.Fatalf("preview without publication capacity: %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], newID, 2)
-	if result, err := CreateTopic(ctx, connections[0], limits, newActor, "normal", "Limited new topic", "body"); result != (PublishResult{}) || !errors.Is(err, ErrPublicationRateLimited) {
+	if result, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, newActor, "normal", "Limited new topic", "body"); result != (PublishResult{}) || !errors.Is(err, ErrPublicationRateLimited) {
 		t.Fatalf("new-account limit = (%+v, %v)", result, err)
 	} else {
 		var limited PublicationRateLimitError
@@ -172,7 +172,7 @@ VALUES ('normal', 'Normal', 'normal', $1, $1), ('staff-only', 'Staff only', 'rea
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET publication_window_started_at=clock_timestamp()-interval '10 minutes', publication_count=2 WHERE id=$1`, newID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateReply(ctx, connections[0], limits, newActor, first.TopicID, first.PostID, "reset window"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], limits, testDestinationPolicy, newActor, first.TopicID, first.PostID, "reset window"); err != nil {
 		t.Fatalf("window equality reset: %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], newID, 1)
@@ -210,7 +210,7 @@ VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - inter
 			t.Fatalf("test role %q is invalid", role)
 		}
 		roleActor := policy.AccessContext{Authenticated: true, UserID: roleID, Role: roleValue}
-		if _, err := CreateTopic(ctx, connections[0], limits, roleActor, "normal", "Role limit "+role, "body"); !errors.Is(err, ErrPublicationRateLimited) {
+		if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, roleActor, "normal", "Role limit "+role, "body"); !errors.Is(err, ErrPublicationRateLimited) {
 			t.Fatalf("%s publication limit = %v", role, err)
 		}
 		assertPublicationTuple(t, ctx, connections[0], roleID, 3)
@@ -219,13 +219,13 @@ VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - inter
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET publication_window_started_at=NULL, publication_count=0 WHERE id=$1`, establishedID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateTopic(ctx, connections[0], limits, establishedActor, "staff-only", "Denied target", "body"); !errors.Is(err, ErrPublishingDenied) {
+	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, establishedActor, "staff-only", "Denied target", "body"); !errors.Is(err, ErrPublishingDenied) {
 		t.Fatalf("denied target error = %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], establishedID, 0)
 
 	mutedActor := policy.AccessContext{Authenticated: true, UserID: mutedID, Role: policy.RoleMember}
-	if _, err := CreateTopic(ctx, connections[0], limits, mutedActor, "normal", "Cached actor cannot bypass mute", "body"); !errors.Is(err, ErrPublishingDenied) {
+	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, mutedActor, "normal", "Cached actor cannot bypass mute", "body"); !errors.Is(err, ErrPublishingDenied) {
 		t.Fatalf("live mute revalidation error = %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], mutedID, 0)
@@ -237,7 +237,7 @@ VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - inter
 		t.Fatal(err)
 	}
 	suspendedActor := policy.AccessContext{Authenticated: true, UserID: suspendedID, Role: policy.RoleMember}
-	if _, err := CreateTopic(ctx, connections[0], limits, suspendedActor, "normal", "Cached actor cannot bypass suspension", "body"); !errors.Is(err, ErrPublishingDenied) {
+	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, suspendedActor, "normal", "Cached actor cannot bypass suspension", "body"); !errors.Is(err, ErrPublishingDenied) {
 		t.Fatalf("live suspension revalidation error = %v", err)
 	}
 	assertPublicationTuple(t, ctx, connections[0], suspendedID, 0)
@@ -261,7 +261,7 @@ VALUES ('Concurrent suspension account', clock_timestamp() - interval '2 days', 
 	}
 	transitionResult := make(chan error, 1)
 	go func() {
-		_, publishErr := CreateTopic(ctx, connections[3], limits, transitionActor, "normal", "Concurrent suspension", "body")
+		_, publishErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, transitionActor, "normal", "Concurrent suspension", "body")
 		transitionResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], publishingBackendPID)
@@ -285,7 +285,7 @@ VALUES ('Concurrent suspension account', clock_timestamp() - interval '2 days', 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateReply(ctx, restarted, stricter, newActor, first.TopicID, first.PostID, "new policy applies after restart"); !errors.Is(err, ErrPublicationRateLimited) {
+	if _, err := CreateReply(ctx, restarted, stricter, testDestinationPolicy, newActor, first.TopicID, first.PostID, "new policy applies after restart"); !errors.Is(err, ErrPublicationRateLimited) {
 		t.Fatalf("restarted stricter policy error = %v", err)
 	}
 	assertPublicationTuple(t, ctx, restarted, newID, 1)
@@ -300,7 +300,7 @@ VALUES ('Unknown commit account', clock_timestamp() - interval '2 days', clock_t
 	}
 	unknownCommitActor := policy.AccessContext{Authenticated: true, UserID: unknownCommitID, Role: policy.RoleMember}
 	lostAcknowledgement := errors.New("simulated lost publication commit acknowledgement")
-	if result, err := CreateTopic(ctx, publicationUnknownCommitBeginner{connection: connections[0], commitErr: lostAcknowledgement}, limits, unknownCommitActor, "normal", "Unknown commit publication", "body"); result != (PublishResult{}) || !errors.Is(err, lostAcknowledgement) || !strings.Contains(err.Error(), "outcome unknown") {
+	if result, err := CreateTopic(ctx, publicationUnknownCommitBeginner{connection: connections[0], commitErr: lostAcknowledgement}, limits, testDestinationPolicy, unknownCommitActor, "normal", "Unknown commit publication", "body"); result != (PublishResult{}) || !errors.Is(err, lostAcknowledgement) || !strings.Contains(err.Error(), "outcome unknown") {
 		t.Fatalf("unknown commit publication = (%+v, %v)", result, err)
 	}
 	var unknownTopics, unknownPosts int64
@@ -321,7 +321,7 @@ WHERE topic.author_id=$1 AND topic.title='Unknown commit publication'`, unknownC
 CREATE TRIGGER reject_publication_test BEFORE INSERT ON public.posts FOR EACH ROW EXECUTE FUNCTION public.reject_publication_test()`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CreateTopic(ctx, connections[0], limits, establishedActor, "normal", "Rollback publication", "body"); err == nil {
+	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, establishedActor, "normal", "Rollback publication", "body"); err == nil {
 		t.Fatal("trigger-rejected publication returned nil")
 	}
 	assertPublicationTuple(t, ctx, connections[0], establishedID, 0)
@@ -337,7 +337,7 @@ CREATE TRIGGER reject_publication_test BEFORE INSERT ON public.posts FOR EACH RO
 		t.Fatal(err)
 	}
 	started := time.Now()
-	_, lockErr := CreateTopic(ctx, connections[3], limits, establishedActor, "normal", "Lock timeout", "body")
+	_, lockErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, establishedActor, "normal", "Lock timeout", "body")
 	if rollbackErr := locker.Rollback(ctx); rollbackErr != nil {
 		t.Fatal(rollbackErr)
 	}
@@ -361,7 +361,7 @@ VALUES ('Independent account', clock_timestamp() - interval '2 days', clock_time
 		t.Fatal(err)
 	}
 	independentContext, stopIndependent := context.WithTimeout(ctx, time.Second)
-	if _, err := CreateReply(independentContext, connections[3], limits, independentActor, first.TopicID, first.PostID, "separate account does not serialize globally"); err != nil {
+	if _, err := CreateReply(independentContext, connections[3], limits, testDestinationPolicy, independentActor, first.TopicID, first.PostID, "separate account does not serialize globally"); err != nil {
 		stopIndependent()
 		_ = independentLocker.Rollback(ctx)
 		t.Fatalf("independent publication while another account is locked: %v", err)
@@ -392,7 +392,7 @@ VALUES ('FK coexistence account', clock_timestamp() - interval '2 days', clock_t
 	}
 	coexistResult := make(chan error, 1)
 	go func() {
-		_, publishErr := CreateReply(ctx, connections[3], limits, coexistActor, first.TopicID, first.PostID, "FK key-share coexistence")
+		_, publishErr := CreateReply(ctx, connections[3], limits, testDestinationPolicy, coexistActor, first.TopicID, first.PostID, "FK key-share coexistence")
 		coexistResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], coexistBackendPID)
@@ -449,7 +449,7 @@ VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, 
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
 	publicationResult := make(chan error, 1)
 	go func() {
-		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Membership-first grant", "body")
+		_, publishErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, membershipActor, "publication-group", "Membership-first grant", "body")
 		publicationResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
@@ -481,7 +481,7 @@ VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, 
 	}()
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[2].PgConn().PID()))
 	go func() {
-		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Membership-first revoke", "body")
+		_, publishErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, membershipActor, "publication-group", "Membership-first revoke", "body")
 		publicationResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
@@ -508,7 +508,7 @@ VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, 
 		t.Fatal(err)
 	}
 	go func() {
-		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Publication-first grant", "body")
+		_, publishErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, membershipActor, "publication-group", "Publication-first grant", "body")
 		publicationResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
@@ -539,7 +539,7 @@ VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, 
 		t.Fatal(err)
 	}
 	go func() {
-		_, publishErr := CreateTopic(ctx, connections[3], limits, membershipActor, "publication-group", "Publication-first revoke", "body")
+		_, publishErr := CreateTopic(ctx, connections[3], limits, testDestinationPolicy, membershipActor, "publication-group", "Publication-first revoke", "body")
 		publicationResult <- publishErr
 	}()
 	waitForPublicationLock(t, ctx, connections[1], int32(connections[3].PgConn().PID()))
@@ -574,7 +574,7 @@ VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timesta
 	}
 	canceledContext, cancelPublication := context.WithCancel(ctx)
 	cancelTimer := time.AfterFunc(50*time.Millisecond, cancelPublication)
-	_, canceledErr := CreateTopic(canceledContext, connections[3], limits, canceledActor, "normal", "Canceled publication", "body")
+	_, canceledErr := CreateTopic(canceledContext, connections[3], limits, testDestinationPolicy, canceledActor, "normal", "Canceled publication", "body")
 	cancelTimer.Stop()
 	cancelPublication()
 	if err := cancelLocker.Rollback(ctx); err != nil {
@@ -609,9 +609,9 @@ func runConcurrentPublicationBatch(t *testing.T, ctx context.Context, config *pg
 			<-start
 			var publishErr error
 			if index%2 == 0 {
-				_, publishErr = CreateTopic(ctx, connection, limits, actor, "normal", fmt.Sprintf("Concurrent topic %d/%d", actor.UserID, index), "body")
+				_, publishErr = CreateTopic(ctx, connection, limits, testDestinationPolicy, actor, "normal", fmt.Sprintf("Concurrent topic %d/%d", actor.UserID, index), "body")
 			} else {
-				_, publishErr = CreateReply(ctx, connection, limits, actor, target.TopicID, target.PostID, fmt.Sprintf("concurrent reply %d/%d", actor.UserID, index))
+				_, publishErr = CreateReply(ctx, connection, limits, testDestinationPolicy, actor, target.TopicID, target.PostID, fmt.Sprintf("concurrent reply %d/%d", actor.UserID, index))
 			}
 			results <- publishErr
 		}()

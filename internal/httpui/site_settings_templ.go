@@ -355,7 +355,20 @@ func siteSettingsContent(view pageView, settings siteSettingsPageView) templ.Com
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</textarea></label> <label class=\"grid gap-2 font-semibold text-slate-200\">Audit reason <input name=\"reason\" required maxlength=\"2000\" autocomplete=\"off\" class=\"rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white\"></label> <button type=\"submit\" class=\"w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200\">Save site settings</button></form></section></main>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</textarea></label> <label class=\"grid gap-2 font-semibold text-slate-200\">Audit reason <input name=\"reason\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var17 string
+		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(settings.Reason)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/site_settings.templ`, Line: 73, Col: 49}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" required maxlength=\"2000\" autocomplete=\"off\" class=\"rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-white\"></label> <button type=\"submit\" class=\"w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200\">Save site settings</button></form></section></main>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

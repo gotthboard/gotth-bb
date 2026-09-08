@@ -7,8 +7,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/text"
 )
 
 const (
@@ -52,11 +55,56 @@ type RenderedMarkdown struct {
 // Goldmark's AST, the render buffer, and sanitizer output. Work is locally
 // bounded; no I/O, retry, cache mutation, or background work occurs.
 func RenderMarkdown(source string) (RenderedMarkdown, error) {
+	return renderMarkdown(source, nil)
+}
+
+// RenderMarkdownForPublication validates one explicit destination policy,
+// parses the admitted GFM document once, checks every resolved link, image,
+// and automatic-link destination, then renders that same AST.
+//
+// Complexity: for n <= 65,536 source bytes, h rendered bytes, d destination
+// bytes, and the fixed policy maximum r <= 256, time is O(n+h+d*r), Omega(1),
+// and auxiliary/returned space is O(n+h+d), Omega(1). No I/O, DNS, network,
+// retry, cache mutation, or background work occurs.
+func RenderMarkdownForPublication(source string, policy abuse.DestinationPolicy) (RenderedMarkdown, error) {
+	if !policy.Valid() {
+		return RenderedMarkdown{}, fmt.Errorf("Markdown destination policy is invalid")
+	}
+	return renderMarkdown(source, &policy)
+}
+
+func renderMarkdown(source string, destinationPolicy *abuse.DestinationPolicy) (RenderedMarkdown, error) {
 	if err := validateMarkdownSource(source); err != nil {
 		return RenderedMarkdown{}, fmt.Errorf("Markdown source has an invalid size, encoding, or content")
 	}
+	sourceBytes := []byte(source)
+	document := commonMarkRenderer.Parser().Parse(text.NewReader(sourceBytes))
+	if destinationPolicy != nil {
+		if err := ast.Walk(document, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+			if !entering {
+				return ast.WalkContinue, nil
+			}
+			var destination []byte
+			switch typed := node.(type) {
+			case *ast.Link:
+				destination = typed.Destination
+			case *ast.Image:
+				destination = typed.Destination
+			case *ast.AutoLink:
+				if typed.AutoLinkType == ast.AutoLinkURL {
+					destination = typed.URL(sourceBytes)
+				}
+			}
+			if destination == nil {
+				return ast.WalkContinue, nil
+			}
+			return ast.WalkContinue, destinationPolicy.Check(destination)
+		}); err != nil {
+			return RenderedMarkdown{}, err
+		}
+	}
 	var rendered bytes.Buffer
-	if err := commonMarkRenderer.Convert([]byte(source), &rendered); err != nil {
+	if err := commonMarkRenderer.Renderer().Render(&rendered, sourceBytes, document); err != nil {
 		return RenderedMarkdown{}, fmt.Errorf("render Markdown: %w", err)
 	}
 	sanitized := SanitizeHTML(rendered.String())

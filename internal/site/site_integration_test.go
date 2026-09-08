@@ -82,7 +82,7 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 		Name: "Community Board", Description: "A plainly organized community.", Theme: "cyan",
 		RulesMarkdown: "# Rules\n\nBe decent.", Reason: "Publish the initial community rules", Revision: 1,
 	}
-	result, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt }, actor, input, requestID)
+	result, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt }, testDestinationPolicy, actor, input, requestID)
 	if err != nil || result.Revision != 2 || result.AuditID <= 0 {
 		t.Fatalf("UpdateSettings() = (%+v, %v)", result, err)
 	}
@@ -127,7 +127,7 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 		}
 	}
 
-	if _, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt.Add(time.Second) }, actor, func() SettingsInput {
+	if _, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt.Add(time.Second) }, testDestinationPolicy, actor, func() SettingsInput {
 		value := input
 		value.Revision = 2
 		return value
@@ -152,7 +152,7 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 		go func() {
 			ready.Done()
 			<-start
-			_, updateErr := UpdateSettings(ctx, connections[index+1], func() time.Time { return observedAt.Add(2 * time.Second) }, actor, inputs[index], pgtype.UUID{Bytes: [16]byte{byte(index + 3)}, Valid: true})
+			_, updateErr := UpdateSettings(ctx, connections[index+1], func() time.Time { return observedAt.Add(2 * time.Second) }, testDestinationPolicy, actor, inputs[index], pgtype.UUID{Bytes: [16]byte{byte(index + 3)}, Valid: true})
 			results <- updateErr
 		}()
 	}
@@ -192,7 +192,7 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 	deniedInput := inputs[0]
 	deniedInput.Revision = 3
 	deniedInput.Name = "Denied Change"
-	if _, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt.Add(3 * time.Second) }, actor, deniedInput, pgtype.UUID{Bytes: [16]byte{9}, Valid: true}); !errors.Is(err, ErrDenied) {
+	if _, err := UpdateSettings(ctx, connections[0], func() time.Time { return observedAt.Add(3 * time.Second) }, testDestinationPolicy, actor, deniedInput, pgtype.UUID{Bytes: [16]byte{9}, Valid: true}); !errors.Is(err, ErrDenied) {
 		t.Fatalf("suspended administrator UpdateSettings() error = %v, want denied", err)
 	}
 	if err := connections[0].QueryRow(ctx, `SELECT administration_revision FROM public.site_settings WHERE singleton`).Scan(&revision); err != nil || revision != 3 {

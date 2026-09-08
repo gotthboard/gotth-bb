@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -163,9 +164,12 @@ func LoadEditable(ctx context.Context, querier editableQuerier, actor policy.Acc
 
 // UpdateSettings validates and renders before opening one bounded read-
 // committed transaction, then changes the singleton and audit atomically.
-func UpdateSettings(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, input SettingsInput, requestID pgtype.UUID) (MutationResult, error) {
+func UpdateSettings(ctx context.Context, beginner transactionBeginner, clock func() time.Time, destinationPolicy abuse.DestinationPolicy, actor policy.AccessContext, input SettingsInput, requestID pgtype.UUID) (MutationResult, error) {
 	if ctx == nil || beginner == nil || clock == nil {
 		return MutationResult{}, fmt.Errorf("site settings mutation boundary is incomplete")
+	}
+	if !destinationPolicy.Valid() {
+		return MutationResult{}, fmt.Errorf("site settings destination policy is invalid")
 	}
 	if !policy.CanAdminister(actor) {
 		return MutationResult{}, ErrDenied
@@ -176,8 +180,11 @@ func UpdateSettings(ctx context.Context, beginner transactionBeginner, clock fun
 	if err := ctx.Err(); err != nil {
 		return MutationResult{}, fmt.Errorf("update site settings: %w", err)
 	}
-	rulesHTML, rendererVersion, renderErr := renderRules(input.RulesMarkdown)
+	rulesHTML, rendererVersion, renderErr := renderRules(destinationPolicy, input.RulesMarkdown)
 	if renderErr != nil {
+		if errors.Is(renderErr, abuse.ErrBlockedDestination) {
+			return MutationResult{}, fmt.Errorf("%w: rules: %w", ErrInput, abuse.ErrBlockedDestination)
+		}
 		return MutationResult{}, fmt.Errorf("%w: rules", ErrInput)
 	}
 	observedAt := clock()
@@ -289,11 +296,11 @@ func validReason(value string) bool {
 		strings.IndexFunc(value, func(r rune) bool { return unicode.IsControl(r) || r == '\n' || r == '\r' }) < 0
 }
 
-func renderRules(source string) (string, string, error) {
+func renderRules(destinationPolicy abuse.DestinationPolicy, source string) (string, string, error) {
 	if source == "" {
 		return "", contentrender.RendererVersion, nil
 	}
-	rendered, err := contentrender.RenderMarkdown(source)
+	rendered, err := contentrender.RenderMarkdownForPublication(source, destinationPolicy)
 	if err != nil {
 		return "", "", err
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
@@ -42,6 +43,7 @@ func EditPost(
 	ctx context.Context,
 	beginner transactionBeginner,
 	clock func() time.Time,
+	destinationPolicy abuse.DestinationPolicy,
 	actor policy.AccessContext,
 	postID int64,
 	expectedRevision int32,
@@ -56,6 +58,9 @@ func EditPost(
 	if clock == nil {
 		return EditResult{}, fmt.Errorf("edit post clock is required")
 	}
+	if !destinationPolicy.Valid() {
+		return EditResult{}, fmt.Errorf("edit post destination policy is invalid")
+	}
 	if !actor.Valid() || !actor.Authenticated {
 		return EditResult{}, fmt.Errorf("edit post actor is invalid")
 	}
@@ -68,7 +73,7 @@ func EditPost(
 	if err := ctx.Err(); err != nil {
 		return EditResult{}, fmt.Errorf("edit post: %w", err)
 	}
-	rendered, err := renderPublishingDraft(markdownSource)
+	rendered, err := renderPublishingDraft(destinationPolicy, markdownSource)
 	if err != nil {
 		return EditResult{}, err
 	}

@@ -9,8 +9,10 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
+	"github.com/gotthboard/gotth-bb/internal/observability"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/jackc/pgx/v5"
@@ -32,7 +34,13 @@ type ReplyPublisher func(context.Context, auth.AccessContext, int64, int64, stri
 // O(n+r), Omega(1), without a tighter bound because PostgreSQL, rendering, and
 // writer work vary. Each delegated operation runs at most once; no request is
 // retried or detached.
-func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, createReply ReplyPublisher) (http.Handler, error) {
+func newPublishingHandler(builder URLBuilder, destinationPolicy abuse.DestinationPolicy, observer abuse.Observer, createTopic TopicPublisher, createReply ReplyPublisher) (http.Handler, error) {
+	if !destinationPolicy.Valid() {
+		return nil, fmt.Errorf("publishing destination policy is invalid")
+	}
+	if observer == nil {
+		return nil, fmt.Errorf("publishing abuse observer is required")
+	}
 	if createTopic == nil {
 		return nil, fmt.Errorf("topic publisher is required")
 	}
@@ -141,8 +149,15 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		}
 		form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
 		form.CSRFToken = csrfTokenFromContext(request.Context())
-		rendered, previewErr := forum.RenderTopicDraft(form.AreaSlug, form.Title, form.Markdown)
+		rendered, previewErr := forum.RenderTopicDraft(destinationPolicy, form.AreaSlug, form.Title, form.Markdown)
 		if previewErr != nil {
+			if errors.Is(previewErr, abuse.ErrBlockedDestination) {
+				response.Header().Set("Cache-Control", "private, no-store")
+				form.MarkdownError = "This draft contains a blocked link"
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RouteTopicPublication, http.StatusUnprocessableEntity, 0)
+				return
+			}
 			if invalid, validation := publishingValidation(previewErr); validation {
 				applyPublishingValidation(&form, invalid)
 				renderForm(response, request, http.StatusUnprocessableEntity, form)
@@ -181,6 +196,26 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		}
 		result, publishErr := createTopic(request.Context(), access, form.AreaSlug, form.Title, form.Markdown)
 		if publishErr != nil {
+			if errors.Is(publishErr, abuse.ErrBlockedDestination) {
+				response.Header().Set("Cache-Control", "private, no-store")
+				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
+				form.CSRFToken = csrfTokenFromContext(request.Context())
+				form.MarkdownError = "This draft contains a blocked link"
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RouteTopicPublication, http.StatusUnprocessableEntity, 0)
+				return
+			}
+			var limited forum.PublicationRateLimitError
+			if errors.As(publishErr, &limited) && limited.RetryAfterSeconds > 0 {
+				response.Header().Set("Cache-Control", "private, no-store")
+				response.Header().Set("Retry-After", strconv.FormatInt(limited.RetryAfterSeconds, 10))
+				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
+				form.CSRFToken = csrfTokenFromContext(request.Context())
+				form.FormError = "Please wait before publishing again"
+				renderForm(response, request, http.StatusTooManyRequests, form)
+				observeRoutedAbuse(request, observer, abuse.RejectionPublicationRate, abuse.RouteTopicPublication, http.StatusTooManyRequests, limited.RetryAfterSeconds)
+				return
+			}
 			if invalid, validation := publishingValidation(publishErr); validation {
 				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL = "New topic", topicAction, topicPreviewAction, cancelURL
 				form.CSRFToken = csrfTokenFromContext(request.Context())
@@ -241,8 +276,15 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		}
 		form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL, form.Reply = "Reply", actionURL, previewURL, topicURL, true
 		form.CSRFToken = csrfTokenFromContext(request.Context())
-		rendered, previewErr := forum.RenderReplyDraft(form.Markdown)
+		rendered, previewErr := forum.RenderReplyDraft(destinationPolicy, form.Markdown)
 		if previewErr != nil {
+			if errors.Is(previewErr, abuse.ErrBlockedDestination) {
+				response.Header().Set("Cache-Control", "private, no-store")
+				form.MarkdownError = "This draft contains a blocked link"
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RouteReplyPublication, http.StatusUnprocessableEntity, 0)
+				return
+			}
 			if invalid, validation := publishingValidation(previewErr); validation {
 				applyPublishingValidation(&form, invalid)
 				renderForm(response, request, http.StatusUnprocessableEntity, form)
@@ -288,6 +330,35 @@ func newPublishingHandler(builder URLBuilder, createTopic TopicPublisher, create
 		}
 		result, publishErr := createReply(request.Context(), access, topicID, parentPostID, form.Markdown)
 		if publishErr != nil {
+			blocked := errors.Is(publishErr, abuse.ErrBlockedDestination)
+			var limited forum.PublicationRateLimitError
+			rateLimited := errors.As(publishErr, &limited) && limited.RetryAfterSeconds > 0
+			if blocked || rateLimited {
+				actionURL, actionErr := builder.Path("topics", topicIdentifier, "replies")
+				if actionErr != nil {
+					serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
+					return
+				}
+				previewURL, previewErr := builder.Path("topics", topicIdentifier, "replies", "preview")
+				if previewErr != nil {
+					serveFailure(response, http.StatusServiceUnavailable, "publishing unavailable")
+					return
+				}
+				response.Header().Set("Cache-Control", "private, no-store")
+				form.Heading, form.ActionURL, form.PreviewURL, form.CancelURL, form.Reply = "Reply", actionURL, previewURL, topicURL, true
+				form.CSRFToken = csrfTokenFromContext(request.Context())
+				if blocked {
+					form.MarkdownError = "This draft contains a blocked link"
+					renderForm(response, request, http.StatusUnprocessableEntity, form)
+					observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RouteReplyPublication, http.StatusUnprocessableEntity, 0)
+				} else {
+					response.Header().Set("Retry-After", strconv.FormatInt(limited.RetryAfterSeconds, 10))
+					form.FormError = "Please wait before publishing again"
+					renderForm(response, request, http.StatusTooManyRequests, form)
+					observeRoutedAbuse(request, observer, abuse.RejectionPublicationRate, abuse.RouteReplyPublication, http.StatusTooManyRequests, limited.RetryAfterSeconds)
+				}
+				return
+			}
 			if invalid, validation := publishingValidation(publishErr); validation {
 				actionURL, actionErr := builder.Path("topics", topicIdentifier, "replies")
 				if actionErr != nil {
@@ -416,4 +487,11 @@ func servePublishingError(response http.ResponseWriter, err error) {
 		status, message = http.StatusNotFound, "page not found"
 	}
 	http.Error(response, message, status)
+}
+
+func observeRoutedAbuse(request *http.Request, observer abuse.Observer, class abuse.RejectionClass, route abuse.RejectionRoute, status int, retrySeconds int64) {
+	requestID, _ := observability.RequestID(request.Context())
+	observer.Observe(request.Context(), abuse.Event{
+		Class: class, Route: route, RequestID: requestID, Status: status, RetrySeconds: retrySeconds,
+	})
 }

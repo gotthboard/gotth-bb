@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -36,7 +37,7 @@ func TestAuthenticatedForumRouterLoadsSessionOnlyForCanonicalEditRoutes(t *testi
 		func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
 			panic("topic posts not expected")
 		},
-		store.MaximumPostPage,
+		store.MaximumPostPage, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{},
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			panic("topic creation not expected")
 		},
@@ -465,6 +466,12 @@ func TestNewEditingHandlerRejectsMissingDependencies(t *testing.T) {
 	validDeleter := PostDeleter(func(context.Context, auth.AccessContext, int64, int32) (forum.DeleteResult, error) {
 		return forum.DeleteResult{}, nil
 	})
+	if handler, err := newEditingHandler(callbackTestURLBuilder(t), abuse.DestinationPolicy{}, &captureAbuseObserver{}, validLoader, validEditor, validDeleter); err == nil || handler != nil {
+		t.Fatalf("newEditingHandler(invalid policy) = (%v, %v)", handler, err)
+	}
+	if handler, err := newEditingHandler(callbackTestURLBuilder(t), abuse.NewEmptyDestinationPolicy(), nil, validLoader, validEditor, validDeleter); err == nil || handler != nil {
+		t.Fatalf("newEditingHandler(missing observer) = (%v, %v)", handler, err)
+	}
 	for _, test := range []struct {
 		builder URLBuilder
 		loader  EditablePostLoader
@@ -476,7 +483,7 @@ func TestNewEditingHandlerRejectsMissingDependencies(t *testing.T) {
 		{builder: callbackTestURLBuilder(t), loader: validLoader, editor: validEditor},
 		{loader: validLoader, editor: validEditor, deleter: validDeleter},
 	} {
-		if handler, err := newEditingHandler(test.builder, test.loader, test.editor, test.deleter); err == nil || handler != nil {
+		if handler, err := newEditingHandler(test.builder, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, test.loader, test.editor, test.deleter); err == nil || handler != nil {
 			t.Fatalf("newEditingHandler(missing) = (%v, %v)", handler, err)
 		}
 	}
@@ -500,7 +507,7 @@ func newEditingTestHandler(t *testing.T, load EditablePostLoader, edit PostEdito
 	if len(deleters) == 1 && deleters[0] != nil {
 		deletePost = deleters[0]
 	}
-	handler, err := newEditingHandler(callbackTestURLBuilder(t), load, edit, deletePost)
+	handler, err := newEditingHandler(callbackTestURLBuilder(t), abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, load, edit, deletePost)
 	if err != nil {
 		t.Fatalf("newEditingHandler() returned error: %v", err)
 	}

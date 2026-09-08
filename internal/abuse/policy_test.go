@@ -57,6 +57,7 @@ func TestDecodePolicyRejectsNoncanonicalOrAmbiguousRules(t *testing.T) {
 		"url=https://example.com/%7euser\n",
 		"url=https://example.com/a/../b\n",
 		"url=https://example.com/#fragment\n",
+		"url=https://[fe80::1%25eth0]/\n",
 		"unknown=example.com\n",
 		"domain=example.com\x00\n",
 	}

@@ -18,7 +18,7 @@ func TestEditPostCommitsAuthorizedExpectedRevision(t *testing.T) {
 
 	at := time.Date(2026, time.September, 2, 6, 0, 0, 123456789, time.UTC)
 	tx := &editTestTx{postID: 91, authorID: 11, revision: 3, topicID: 41, postNumber: 2, areaID: 7, visibility: "groups", postingMode: "normal", groupIDs: []int64{4, 9}}
-	result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, func() time.Time { return at },
+	result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, func() time.Time { return at }, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember, GroupIDs: []int64{9}}, 91, 3, "Edited **body**")
 	if err != nil || result != (EditResult{TopicID: 41, PostID: 91, PostNumber: 2, NodeOrdinal: 2, Revision: 4}) {
 		t.Fatalf("EditPost() = (%+v, %v)", result, err)
@@ -50,7 +50,7 @@ func TestEditPostDeniesBeforeConflictDisclosureOrUpdate(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			tx := &editTestTx{postID: 91, authorID: 11, revision: 3, topicID: 41, postNumber: 2, areaID: 7, visibility: test.visibility, postingMode: "normal", topicState: test.topicState, groupIDs: test.groupIDs}
-			result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, time.Now, test.actor, 91, 1, "body")
+			result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, time.Now, testDestinationPolicy, test.actor, 91, 1, "body")
 			if result != (EditResult{}) || !errors.Is(err, ErrPostEditDenied) || errors.Is(err, ErrPostEditConflict) || tx.updateCalls != 0 || tx.committed || !tx.rolledBack {
 				t.Fatalf("denied edit = (%+v, %v, tx %+v)", result, err, tx)
 			}
@@ -62,7 +62,7 @@ func TestEditPostReportsAuthorizedRevisionConflictWithoutUpdate(t *testing.T) {
 	t.Parallel()
 
 	tx := &editTestTx{postID: 91, authorID: 11, revision: 4, topicID: 41, postNumber: 2, areaID: 7, visibility: "public", postingMode: "normal"}
-	result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, time.Now,
+	result, err := EditPost(context.Background(), editTestBeginner{tx: tx}, time.Now, testDestinationPolicy,
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember}, 91, 3, "body")
 	if result != (EditResult{}) || !errors.Is(err, ErrPostEditConflict) || tx.updateCalls != 0 || tx.committed || !tx.rolledBack {
 		t.Fatalf("conflicting edit = (%+v, %v, tx %+v)", result, err, tx)
@@ -80,40 +80,43 @@ func TestEditPostRejectsInvalidBoundaryBeforeTransaction(t *testing.T) {
 		run  func() error
 	}{
 		{name: "nil context", run: func() error {
-			_, err := EditPost(nil, panicPublishBeginner{}, time.Now, actor, 1, 1, "body")
+			_, err := EditPost(nil, panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
-		{name: "nil beginner", run: func() error { _, err := EditPost(context.Background(), nil, time.Now, actor, 1, 1, "body"); return err }},
+		{name: "nil beginner", run: func() error {
+			_, err := EditPost(context.Background(), nil, time.Now, testDestinationPolicy, actor, 1, 1, "body")
+			return err
+		}},
 		{name: "nil clock", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, nil, actor, 1, 1, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, nil, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid actor", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, policy.AccessContext{}, 1, 1, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, testDestinationPolicy, policy.AccessContext{}, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid post", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, actor, 0, 1, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 0, 1, "body")
 			return err
 		}},
 		{name: "invalid revision", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, 0, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 1, 0, "body")
 			return err
 		}},
 		{name: "exhausted revision", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, maximumPostRevision, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 1, maximumPostRevision, "body")
 			return err
 		}},
 		{name: "canceled", run: func() error {
-			_, err := EditPost(canceled, panicPublishBeginner{}, time.Now, actor, 1, 1, "body")
+			_, err := EditPost(canceled, panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 		{name: "invalid body", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, actor, 1, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, time.Now, testDestinationPolicy, actor, 1, 1, strings.Repeat("x", render.MaximumMarkdownBytes+1))
 			return err
 		}},
 		{name: "zero clock", run: func() error {
-			_, err := EditPost(context.Background(), panicPublishBeginner{}, func() time.Time { return time.Time{} }, actor, 1, 1, "body")
+			_, err := EditPost(context.Background(), panicPublishBeginner{}, func() time.Time { return time.Time{} }, testDestinationPolicy, actor, 1, 1, "body")
 			return err
 		}},
 	} {
@@ -140,7 +143,7 @@ func TestEditPostFailsClosedAtTransactionStages(t *testing.T) {
 			if failure == "begin" {
 				beginner.err = errPublishTest
 			}
-			result, err := EditPost(context.Background(), beginner, time.Now, actor, 91, 3, "body")
+			result, err := EditPost(context.Background(), beginner, time.Now, testDestinationPolicy, actor, 91, 3, "body")
 			if err == nil || result != (EditResult{}) || tx.committed || failure != "begin" && !tx.rolledBack {
 				t.Fatalf("EditPost(%q) = (%+v, %v), transaction %+v", failure, result, err, tx)
 			}

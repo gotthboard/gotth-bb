@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -41,7 +42,7 @@ func TestAuthenticatedPublishingRouterLoadsSessionOnlyForCanonicalRoutes(t *test
 		}, store.MaximumTopicPage,
 		func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
 			panic("topic posts not expected")
-		}, store.MaximumPostPage,
+		}, store.MaximumPostPage, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{},
 		func(context.Context, auth.AccessContext, string, string, string) (forum.PublishResult, error) {
 			topicCalls++
 			return forum.PublishResult{TopicID: 41, PostID: 91, PostNumber: 1, NodeOrdinal: 1}, nil
@@ -125,7 +126,7 @@ func TestNewAuthenticatedPublishingHandlerRejectsMissingPublishers(t *testing.T)
 		topic TopicPublisher
 		reply ReplyPublisher
 	}{{reply: validReply}, {topic: validTopic}} {
-		if handler, err := NewAuthenticatedPublishingHandler(builder, service, list, topics, store.MaximumTopicPage, posts, store.MaximumPostPage, publishers.topic, publishers.reply, "gotth_bb_session", true); err == nil || handler != nil {
+		if handler, err := NewAuthenticatedPublishingHandler(builder, service, list, topics, store.MaximumTopicPage, posts, store.MaximumPostPage, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, publishers.topic, publishers.reply, "gotth_bb_session", true); err == nil || handler != nil {
 			t.Fatalf("missing publishers returned (%v, %v)", handler, err)
 		}
 	}
@@ -141,6 +142,12 @@ func TestNewPublishingHandlerRejectsMissingDependencies(t *testing.T) {
 	validReply := ReplyPublisher(func(context.Context, auth.AccessContext, int64, int64, string) (forum.PublishResult, error) {
 		return forum.PublishResult{}, nil
 	})
+	if handler, err := newPublishingHandler(builder, abuse.DestinationPolicy{}, &captureAbuseObserver{}, validTopic, validReply); err == nil || handler != nil {
+		t.Fatalf("newPublishingHandler(invalid policy) = (%v, %v)", handler, err)
+	}
+	if handler, err := newPublishingHandler(builder, abuse.NewEmptyDestinationPolicy(), nil, validTopic, validReply); err == nil || handler != nil {
+		t.Fatalf("newPublishingHandler(missing observer) = (%v, %v)", handler, err)
+	}
 	for _, test := range []struct {
 		builder URLBuilder
 		topic   TopicPublisher
@@ -150,7 +157,7 @@ func TestNewPublishingHandlerRejectsMissingDependencies(t *testing.T) {
 		{builder: builder, topic: validTopic},
 		{topic: validTopic, reply: validReply},
 	} {
-		if handler, err := newPublishingHandler(test.builder, test.topic, test.reply); err == nil || handler != nil {
+		if handler, err := newPublishingHandler(test.builder, abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, test.topic, test.reply); err == nil || handler != nil {
 			t.Fatalf("newPublishingHandler(missing) = (%v, %v)", handler, err)
 		}
 	}
@@ -609,7 +616,7 @@ func newPublishingTestHandler(t *testing.T, createTopic TopicPublisher, createRe
 			panic("reply creation is not expected")
 		}
 	}
-	handler, err := newPublishingHandler(callbackTestURLBuilder(t), createTopic, createReply)
+	handler, err := newPublishingHandler(callbackTestURLBuilder(t), abuse.NewEmptyDestinationPolicy(), &captureAbuseObserver{}, createTopic, createReply)
 	if err != nil {
 		t.Fatalf("newPublishingHandler() returned error: %v", err)
 	}

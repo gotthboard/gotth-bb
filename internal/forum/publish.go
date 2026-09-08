@@ -71,6 +71,17 @@ type PublicationRateLimitError struct {
 func (limited PublicationRateLimitError) Error() string { return ErrPublicationRateLimited.Error() }
 func (limited PublicationRateLimitError) Unwrap() error { return ErrPublicationRateLimited }
 
+// BlockedDestinationError is a content-free policy rejection. It identifies
+// the fixed observer class while unwrapping to the existing field-safe
+// Markdown validation result.
+type BlockedDestinationError struct{}
+
+func (BlockedDestinationError) Error() string { return abuse.ErrBlockedDestination.Error() }
+func (BlockedDestinationError) Unwrap() error { return InvalidPublishingInput{Field: "markdown"} }
+func (BlockedDestinationError) Is(target error) bool {
+	return target == abuse.ErrBlockedDestination
+}
+
 // RenderTopicDraft applies the exact bounded field validation and sanitized
 // Markdown renderer used before topic publication. The opaque result may be
 // presented as a preview or persisted only through its guarded methods.
@@ -79,11 +90,11 @@ func (limited PublicationRateLimitError) Unwrap() error { return ErrPublicationR
 // O(n+m+R(m)), Omega(1), and auxiliary/returned space is O(m+R(m)), Omega(1),
 // where R is the renderer's documented work. There is no I/O or retained
 // mutable state.
-func RenderTopicDraft(areaSlug, title, markdownSource string) (render.RenderedMarkdown, error) {
+func RenderTopicDraft(destinationPolicy abuse.DestinationPolicy, areaSlug, title, markdownSource string) (render.RenderedMarkdown, error) {
 	if err := validateTopicDraftFields(areaSlug, title); err != nil {
 		return render.RenderedMarkdown{}, err
 	}
-	return renderPublishingDraft(markdownSource)
+	return renderPublishingDraft(destinationPolicy, markdownSource)
 }
 
 // validateTopicDraftFields applies the non-body topic validation shared by
@@ -108,8 +119,8 @@ func validateTopicDraftFields(areaSlug, title string) error {
 // Complexity: for bounded Markdown bytes m, time is O(m+R(m)), Omega(1), and
 // auxiliary/returned space is O(m+R(m)), Omega(1), where R is the renderer's
 // documented work. There is no I/O or retained mutable state.
-func RenderReplyDraft(markdownSource string) (render.RenderedMarkdown, error) {
-	return renderPublishingDraft(markdownSource)
+func RenderReplyDraft(destinationPolicy abuse.DestinationPolicy, markdownSource string) (render.RenderedMarkdown, error) {
+	return renderPublishingDraft(destinationPolicy, markdownSource)
 }
 
 // renderPublishingDraft owns the one shared renderer-to-validation-error
@@ -118,9 +129,12 @@ func RenderReplyDraft(markdownSource string) (render.RenderedMarkdown, error) {
 // Complexity: for bounded Markdown bytes m, time is O(m+R(m)), Omega(1), and
 // auxiliary/returned space is O(m+R(m)), Omega(1), where R is the renderer's
 // documented work.
-func renderPublishingDraft(markdownSource string) (render.RenderedMarkdown, error) {
-	rendered, err := render.RenderMarkdown(markdownSource)
+func renderPublishingDraft(destinationPolicy abuse.DestinationPolicy, markdownSource string) (render.RenderedMarkdown, error) {
+	rendered, err := render.RenderMarkdownForPublication(markdownSource, destinationPolicy)
 	if err != nil {
+		if errors.Is(err, abuse.ErrBlockedDestination) {
+			return render.RenderedMarkdown{}, BlockedDestinationError{}
+		}
 		return render.RenderedMarkdown{}, InvalidPublishingInput{Field: "markdown"}
 	}
 	return rendered, nil
@@ -142,6 +156,7 @@ func CreateTopic(
 	ctx context.Context,
 	beginner publicationTransactionBeginner,
 	publicationPolicy abuse.PublicationPolicy,
+	destinationPolicy abuse.DestinationPolicy,
 	actor policy.AccessContext,
 	areaSlug string,
 	title string,
@@ -156,6 +171,9 @@ func CreateTopic(
 	if !publicationPolicy.Valid() {
 		return PublishResult{}, fmt.Errorf("create topic publication policy is invalid")
 	}
+	if !destinationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create topic destination policy is invalid")
+	}
 	if !actor.Valid() || !actor.Authenticated {
 		return PublishResult{}, fmt.Errorf("create topic actor is invalid")
 	}
@@ -165,7 +183,7 @@ func CreateTopic(
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create topic: %w", err)
 	}
-	rendered, err := renderPublishingDraft(markdownSource)
+	rendered, err := renderPublishingDraft(destinationPolicy, markdownSource)
 	if err != nil {
 		return PublishResult{}, err
 	}
@@ -241,6 +259,7 @@ func CreateReply(
 	ctx context.Context,
 	beginner publicationTransactionBeginner,
 	publicationPolicy abuse.PublicationPolicy,
+	destinationPolicy abuse.DestinationPolicy,
 	actor policy.AccessContext,
 	topicID int64,
 	parentPostID int64,
@@ -255,6 +274,9 @@ func CreateReply(
 	if !publicationPolicy.Valid() {
 		return PublishResult{}, fmt.Errorf("create reply publication policy is invalid")
 	}
+	if !destinationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create reply destination policy is invalid")
+	}
 	if !actor.Valid() || !actor.Authenticated {
 		return PublishResult{}, fmt.Errorf("create reply actor is invalid")
 	}
@@ -267,7 +289,7 @@ func CreateReply(
 	if err := ctx.Err(); err != nil {
 		return PublishResult{}, fmt.Errorf("create reply: %w", err)
 	}
-	rendered, err := renderPublishingDraft(markdownSource)
+	rendered, err := renderPublishingDraft(destinationPolicy, markdownSource)
 	if err != nil {
 		return PublishResult{}, err
 	}

@@ -30,6 +30,8 @@ var discoveryPublicationPolicy = func() abuse.PublicationPolicy {
 	return policy
 }()
 
+var discoveryDestinationPolicy = abuse.NewEmptyDestinationPolicy()
+
 func TestDiscoveryAuthorizationCursorAndDirectPostOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -238,7 +240,7 @@ func insertDiscoveryArea(t *testing.T, ctx context.Context, connection *pgx.Conn
 
 func createDiscoveryTopic(t *testing.T, ctx context.Context, connection *pgx.Conn, actor policy.AccessContext, area string, createdAt time.Time, title, body string) forumservice.PublishResult {
 	t.Helper()
-	result, err := forumservice.CreateTopic(ctx, connection, discoveryPublicationPolicy, actor, area, title, body)
+	result, err := forumservice.CreateTopic(ctx, connection, discoveryPublicationPolicy, discoveryDestinationPolicy, actor, area, title, body)
 	if err != nil {
 		t.Fatalf("CreateTopic(%q): %v", title, err)
 	}

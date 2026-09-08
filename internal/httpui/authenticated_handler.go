@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 )
 
@@ -53,6 +54,7 @@ func NewAuthenticatedHandler(
 ) (http.Handler, error) {
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		abuse.DestinationPolicy{}, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
@@ -75,6 +77,8 @@ func NewAuthenticatedPublishingHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	sessionCookieName string,
@@ -85,6 +89,7 @@ func NewAuthenticatedPublishingHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
@@ -105,6 +110,8 @@ func NewAuthenticatedForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -118,6 +125,7 @@ func NewAuthenticatedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil,
 		url.URL{}, false, nil, nil, sessionCookieName, secure, unavailableReadiness,
@@ -139,6 +147,8 @@ func NewAuthenticatedModeratedForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -164,6 +174,7 @@ func NewAuthenticatedModeratedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, nil, nil, nil, nil,
 		nil,
@@ -182,6 +193,8 @@ func NewAuthenticatedReportedForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -208,6 +221,7 @@ func NewAuthenticatedReportedForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, nil, nil, nil,
 		nil,
@@ -227,6 +241,8 @@ func NewAuthenticatedDiscoveredForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -258,6 +274,7 @@ func NewAuthenticatedDiscoveredForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, nil,
 		nil,
@@ -276,6 +293,8 @@ func NewAuthenticatedUnreadForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -311,6 +330,7 @@ func NewAuthenticatedUnreadForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, &unread,
 		nil,
@@ -330,6 +350,8 @@ func NewAuthenticatedSiteForumHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -372,6 +394,7 @@ func NewAuthenticatedSiteForumHandler(
 	}
 	return newAuthenticatedHandler(
 		builder, service, listAreas, loadAreaTopics, maximumTopicPage, loadTopicPosts, maximumPostPage,
+		destinationPolicy, abuseObserver,
 		createTopic, createReply, loadEditablePost, editPost, deletePost, changeTopicLock, changeTopicVisibility,
 		loadModerationUser, changeUserSuspension, loadAreaAdministration, createArea, updateArea, &reports, &discovery, verifyActivityCursor, &unread,
 		&sites, registrationURL, registrationEnabled, loadAdministratorSetup, claimInitialAdministrator,
@@ -395,6 +418,8 @@ func newAuthenticatedHandler(
 	maximumTopicPage int32,
 	loadTopicPosts TopicPostPageLoader,
 	maximumPostPage int32,
+	destinationPolicy abuse.DestinationPolicy,
+	abuseObserver abuse.Observer,
 	createTopic TopicPublisher,
 	createReply ReplyPublisher,
 	loadEditablePost EditablePostLoader,
@@ -542,7 +567,7 @@ func newAuthenticatedHandler(
 		if createTopic == nil || createReply == nil {
 			return nil, fmt.Errorf("browser publishing services are incomplete")
 		}
-		publishingHandler, publishingErr := newPublishingHandler(builder, createTopic, createReply)
+		publishingHandler, publishingErr := newPublishingHandler(builder, destinationPolicy, abuseObserver, createTopic, createReply)
 		if publishingErr != nil {
 			return nil, fmt.Errorf("construct publishing routes: %w", publishingErr)
 		}
@@ -558,7 +583,7 @@ func newAuthenticatedHandler(
 		if loadEditablePost == nil || editPost == nil || deletePost == nil {
 			return nil, fmt.Errorf("browser editing services are incomplete")
 		}
-		editingHandler, editingErr := newEditingHandler(builder, loadEditablePost, editPost, deletePost)
+		editingHandler, editingErr := newEditingHandler(builder, destinationPolicy, abuseObserver, loadEditablePost, editPost, deletePost)
 		if editingErr != nil {
 			return nil, fmt.Errorf("construct editing routes: %w", editingErr)
 		}
@@ -667,7 +692,7 @@ func newAuthenticatedHandler(
 	var authenticatedSiteHandler http.Handler
 	var administrationHandler http.Handler
 	if siteServices != nil {
-		publicSiteHandler, authenticatedSiteHandler, err = newSiteSettingsHandler(builder, *siteServices)
+		publicSiteHandler, authenticatedSiteHandler, err = newSiteSettingsHandler(builder, abuseObserver, *siteServices)
 		if err != nil {
 			return nil, fmt.Errorf("construct site settings routes: %w", err)
 		}

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/moderation"
 	"github.com/gotthboard/gotth-bb/internal/policy"
@@ -372,7 +373,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 	}{{load: validLoad}, {change: validChange}} {
 		missing, missingErr := newAuthenticatedHandler(
 			builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-			panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
+			panicTopicPostPageLoader, store.MaximumPostPage, abuse.DestinationPolicy{}, nil, nil, nil, nil, nil, nil, nil, nil,
 			services.load, services.change, nil, nil, nil, nil, nil, nil, nil, nil, url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 		)
 		if missingErr == nil || missing != nil {
@@ -382,7 +383,7 @@ func TestUserModerationRouterAuthenticatesOnlyCanonicalPaths(t *testing.T) {
 	loads, changes := 0, 0
 	handler, err := newAuthenticatedHandler(
 		builder, service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage, nil, nil, nil, nil, nil, nil, nil,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.DestinationPolicy{}, nil, nil, nil, nil, nil, nil, nil, nil,
 		func(context.Context, auth.AccessContext, int64) (store.ModerationUserStatus, error) {
 			loads++
 			return moderationUserTestStatus(), nil

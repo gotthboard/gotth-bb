@@ -70,7 +70,7 @@ func TestTopicTransitionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("insert area: %v", err)
 	}
 	moderator := policy.AccessContext{Authenticated: true, UserID: moderatorID, Role: policy.RoleModerator}
-	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, moderator, "moderation", "Audited topic", "body")
+	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, moderationDestinationPolicy, moderator, "moderation", "Audited topic", "body")
 	if err != nil {
 		t.Fatalf("forum.CreateTopic() returned error: %v", err)
 	}

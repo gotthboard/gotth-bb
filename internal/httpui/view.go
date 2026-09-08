@@ -46,6 +46,7 @@ type siteSettingsPageView struct {
 	SiteDescription string
 	BrandTheme      string
 	RulesMarkdown   string
+	Reason          string
 	Revision        string
 	FormError       string
 }

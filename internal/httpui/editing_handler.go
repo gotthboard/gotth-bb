@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -31,7 +32,13 @@ const maximumDeleteFormRevision = int64(1 << 31)
 // O(n+D+r), Omega(1), and auxiliary space is O(n+r), Omega(1), without a tight
 // bound because PostgreSQL, rendering, and writer work vary. Each delegate is
 // called at most once on success paths and no work is retried or detached.
-func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEditor, deletePost PostDeleter) (http.Handler, error) {
+func newEditingHandler(builder URLBuilder, destinationPolicy abuse.DestinationPolicy, observer abuse.Observer, load EditablePostLoader, edit PostEditor, deletePost PostDeleter) (http.Handler, error) {
+	if !destinationPolicy.Valid() {
+		return nil, fmt.Errorf("editing destination policy is invalid")
+	}
+	if observer == nil {
+		return nil, fmt.Errorf("editing abuse observer is required")
+	}
 	if load == nil {
 		return nil, fmt.Errorf("editable post loader is required")
 	}
@@ -172,8 +179,15 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 			serveError(response, formErr)
 			return
 		}
-		rendered, previewErr := forum.RenderReplyDraft(markdown)
+		rendered, previewErr := forum.RenderReplyDraft(destinationPolicy, markdown)
 		if previewErr != nil {
+			if errors.Is(previewErr, abuse.ErrBlockedDestination) {
+				response.Header().Set("Cache-Control", "private, no-store")
+				form.MarkdownError = "This draft contains a blocked link"
+				renderForm(response, request, http.StatusUnprocessableEntity, form)
+				observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RoutePostEdit, http.StatusUnprocessableEntity, 0)
+				return
+			}
 			if invalid, validation := publishingValidation(previewErr); validation {
 				applyPublishingValidation(&form, invalid)
 				renderForm(response, request, http.StatusUnprocessableEntity, form)
@@ -209,14 +223,19 @@ func newEditingHandler(builder URLBuilder, load EditablePostLoader, edit PostEdi
 		result, editErr := edit(request.Context(), access, postID, revision, markdown)
 		if editErr != nil {
 			invalid, validation := publishingValidation(editErr)
-			if validation || errors.Is(editErr, forum.ErrPostEditConflict) {
+			blocked := errors.Is(editErr, abuse.ErrBlockedDestination)
+			if blocked || validation || errors.Is(editErr, forum.ErrPostEditConflict) {
 				form, loadErr := loadForm(request, access, postID, markdown, strconv.FormatInt(int64(revision), 10), true)
 				if loadErr != nil {
 					serveError(response, loadErr)
 					return
 				}
 				status := http.StatusUnprocessableEntity
-				if validation {
+				if blocked {
+					response.Header().Set("Cache-Control", "private, no-store")
+					form.MarkdownError = "This draft contains a blocked link"
+					observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RoutePostEdit, http.StatusUnprocessableEntity, 0)
+				} else if validation {
 					applyPublishingValidation(&form, invalid)
 				} else {
 					status = http.StatusConflict

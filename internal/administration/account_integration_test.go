@@ -65,13 +65,15 @@ func TestAccountAdministrationGovernanceOnPostgreSQL17(t *testing.T) {
 		t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	}
 
+	observedAt := time.Date(2026, 9, 8, 15, 0, 0, 123456000, time.UTC)
+	createdAt := observedAt.Add(-time.Hour)
 	var actorID, secondAdministratorID, memberID int64
 	if err := connections[0].QueryRow(ctx, `
-INSERT INTO public.users (display_name, role) VALUES
-    ('Governance Administrator', 'administrator'),
-    ('Continuity Administrator', 'administrator'),
-    ('Local Member', 'member')
-RETURNING id`).Scan(&actorID); err != nil {
+INSERT INTO public.users (display_name, role, created_at) VALUES
+    ('Governance Administrator', 'administrator', $1),
+    ('Continuity Administrator', 'administrator', $1),
+    ('Local Member', 'member', $1)
+RETURNING id`, createdAt).Scan(&actorID); err != nil {
 		t.Fatalf("insert first account: %v", err)
 	}
 	if err := connections[0].QueryRow(ctx, `SELECT id FROM public.users WHERE display_name = 'Continuity Administrator'`).Scan(&secondAdministratorID); err != nil {
@@ -81,7 +83,6 @@ RETURNING id`).Scan(&actorID); err != nil {
 		t.Fatalf("load member: %v", err)
 	}
 	actor := policy.AccessContext{Authenticated: true, UserID: actorID, Role: policy.RoleAdministrator}
-	observedAt := time.Date(2026, 9, 8, 15, 0, 0, 123456000, time.UTC)
 	querier := accountRuntimeQuerier{connection: connections[0]}
 
 	accounts, err := ListAccounts(ctx, querier, actor, observedAt, 0)

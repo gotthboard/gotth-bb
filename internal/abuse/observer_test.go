@@ -69,8 +69,10 @@ func TestObserverAcceptsEveryFixedTerminalClass(t *testing.T) {
 		{Class: RejectionRequestCapacity, Route: RouteRequestAdmission, RequestID: strings.Repeat("2", 32), Status: 503, RetrySeconds: 1},
 		{Class: RejectionPublicationRate, Route: RouteTopicPublication, RequestID: strings.Repeat("3", 32), Status: 429, RetrySeconds: 60},
 		{Class: RejectionPublicationRate, Route: RouteReplyPublication, RequestID: strings.Repeat("4", 32), Status: 429, RetrySeconds: 60},
-		{Class: RejectionBlocked, Route: RoutePostEdit, RequestID: strings.Repeat("5", 32), Status: 422},
-		{Class: RejectionBlocked, Route: RouteCommunityRules, RequestID: strings.Repeat("6", 32), Status: 422},
+		{Class: RejectionBlocked, Route: RouteTopicPublication, RequestID: strings.Repeat("5", 32), Status: 422},
+		{Class: RejectionBlocked, Route: RouteReplyPublication, RequestID: strings.Repeat("6", 32), Status: 422},
+		{Class: RejectionBlocked, Route: RoutePostEdit, RequestID: strings.Repeat("7", 32), Status: 422},
+		{Class: RejectionBlocked, Route: RouteCommunityRules, RequestID: strings.Repeat("8", 32), Status: 422},
 	} {
 		var output bytes.Buffer
 		observer, err := NewObserver(slog.New(slog.NewJSONHandler(&output, nil)))

@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/discovery"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -42,7 +43,7 @@ func TestAuthenticatedDiscoveryPreflightRunsBeforeSessionLookup(t *testing.T) {
 	}
 	handler, err := newAuthenticatedHandler(
 		callbackTestURLBuilder(t), service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
-		panicTopicPostPageLoader, store.MaximumPostPage,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.DestinationPolicy{}, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &discoveryServices, verifyActivityCursor, nil, nil,
 		url.URL{}, false, nil, nil, "gotth_bb_session", true, unavailableReadiness,
 	)

@@ -32,7 +32,7 @@ func TestPublicRulesRouteIsExactSessionIndependentAndUsesOneProjection(t *testin
 			HTML:  rendered.TrustedHTML(),
 		}, nil
 	}
-	public, _, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	public, _, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}
@@ -53,6 +53,14 @@ func TestPublicRulesRouteIsExactSessionIndependentAndUsesOneProjection(t *testin
 		if response.Code != http.StatusNotFound || loads != 1 {
 			t.Fatalf("noncanonical %q = (status %d, loads %d)", target, response.Code, loads)
 		}
+	}
+}
+
+func TestSiteSettingsHandlerRequiresAbuseObserver(t *testing.T) {
+	t.Parallel()
+	public, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), nil, validSiteHTTPServices())
+	if err == nil || public != nil || private != nil {
+		t.Fatalf("newSiteSettingsHandler(nil observer) = (%v, %v, %v)", public, private, err)
 	}
 }
 
@@ -78,7 +86,7 @@ func TestSiteSettingsGETAndPOSTPreserveAuthorizationAndFullShellRefresh(t *testi
 		}
 		return site.MutationResult{Revision: 5, AuditID: 41}, nil
 	}
-	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}
@@ -121,7 +129,7 @@ func TestSiteSettingsPreflightRejectsBeforeBodyAndMutation(t *testing.T) {
 	services.Update = func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error) {
 		panic("noncanonical settings request mutated state")
 	}
-	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}
@@ -148,7 +156,7 @@ func TestSiteSettingsPOSTRejectsAuthorityAndSizeBeforeBody(t *testing.T) {
 		updateCalls++
 		return site.MutationResult{}, errors.New("settings mutation must not run")
 	}
-	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}
@@ -209,7 +217,7 @@ func TestSiteSettingsPOSTRejectsDuplicateAndUnknownFields(t *testing.T) {
 		updateCalls++
 		return site.MutationResult{}, errors.New("settings mutation must not run")
 	}
-	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}
@@ -293,7 +301,7 @@ func TestSiteSettingsFailuresDoNotLeakServiceDetails(t *testing.T) {
 	services.Rules = func(context.Context) (site.PublicRules, error) {
 		return site.PublicRules{}, errors.New("postgres secret")
 	}
-	public, _, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	public, _, err := newSiteSettingsHandler(callbackTestURLBuilder(t), &captureAbuseObserver{}, services)
 	if err != nil {
 		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
 	}

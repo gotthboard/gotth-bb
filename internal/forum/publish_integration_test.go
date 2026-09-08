@@ -81,7 +81,7 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 	}
 	actor := policy.AccessContext{Authenticated: true, UserID: memberID, Role: policy.RoleMember}
 	createdAt := time.Date(2026, time.September, 2, 4, 45, 0, 0, time.UTC)
-	topic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Concurrent replies", "First **post**")
+	topic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Concurrent replies", "First **post**")
 	if err != nil || topic.TopicID <= 0 || topic.PostID <= 0 || topic.PostNumber != 1 || topic.NodeOrdinal != 1 {
 		t.Fatalf("CreateTopic() = (%+v, %v)", topic, err)
 	}
@@ -107,23 +107,23 @@ WHERE topic.id = $1 AND post.id = $2`, topic.TopicID, topic.PostID, render.Searc
 	if foreignEditable != (store.EditablePost{}) || !errors.Is(foreignEditableErr, pgx.ErrNoRows) {
 		t.Fatalf("foreign GetEditablePost() = (%+v, %v), want missing", foreignEditable, foreignEditableErr)
 	}
-	denied, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "staff-only", "Denied", "must not persist")
+	denied, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "staff-only", "Denied", "must not persist")
 	if !errors.Is(err, ErrPublishingDenied) || denied != (PublishResult{}) {
 		t.Fatalf("read-only CreateTopic() = (%+v, %v), want denied", denied, err)
 	}
-	edited, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-time.Hour) }, actor, topic.PostID, 1, "Edited **first post**")
+	edited, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-time.Hour) }, testDestinationPolicy, actor, topic.PostID, 1, "Edited **first post**")
 	if err != nil || edited != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, NodeOrdinal: 1, Revision: 2}) {
 		t.Fatalf("EditPost() = (%+v, %v)", edited, err)
 	}
-	secondEdit, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-2 * time.Hour) }, actor, topic.PostID, 2, "Edited **again**")
+	secondEdit, err := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(-2 * time.Hour) }, testDestinationPolicy, actor, topic.PostID, 2, "Edited **again**")
 	if err != nil || secondEdit != (EditResult{TopicID: topic.TopicID, PostID: topic.PostID, PostNumber: 1, NodeOrdinal: 1, Revision: 3}) {
 		t.Fatalf("second EditPost() = (%+v, %v)", secondEdit, err)
 	}
-	if stale, staleErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, actor, topic.PostID, 2, "stale overwrite"); stale != (EditResult{}) || !errors.Is(staleErr, ErrPostEditConflict) {
+	if stale, staleErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, testDestinationPolicy, actor, topic.PostID, 2, "stale overwrite"); stale != (EditResult{}) || !errors.Is(staleErr, ErrPostEditConflict) {
 		t.Fatalf("stale EditPost() = (%+v, %v), want conflict", stale, staleErr)
 	}
 	foreignActor := policy.AccessContext{Authenticated: true, UserID: ownerID, Role: policy.RoleAdministrator}
-	if foreign, foreignErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, foreignActor, topic.PostID, 3, "staff rewrite"); foreign != (EditResult{}) || !errors.Is(foreignErr, ErrPostEditDenied) {
+	if foreign, foreignErr := EditPost(ctx, connections[0], func() time.Time { return createdAt.Add(time.Hour) }, testDestinationPolicy, foreignActor, topic.PostID, 3, "staff rewrite"); foreign != (EditResult{}) || !errors.Is(foreignErr, ErrPostEditDenied) {
 		t.Fatalf("foreign EditPost() = (%+v, %v), want denied", foreign, foreignErr)
 	}
 	var editedSource, editedHTML, editedRenderer string
@@ -150,7 +150,7 @@ FROM public.posts WHERE id = $1`, topic.PostID, render.SearchProjectionVersion).
 		go func() {
 			defer wait.Done()
 			<-start
-			result, replyErr := CreateReply(ctx, connection, testPublicationPolicy, actor, topic.TopicID, topic.PostID, "Reply **number**")
+			result, replyErr := CreateReply(ctx, connection, testPublicationPolicy, testDestinationPolicy, actor, topic.TopicID, topic.PostID, "Reply **number**")
 			results <- result
 			errorsChannel <- replyErr
 		}()
@@ -204,14 +204,14 @@ GROUP BY topic.id`, topic.TopicID, render.RendererVersion, render.SearchProjecti
 			firstPostID, latestPostID, replyCount, nextPostNumber, postCount, distinctNumbers, renderedCount, projectedCount)
 	}
 
-	timestampTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Monotonic timestamps", "first")
+	timestampTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Monotonic timestamps", "first")
 	if err != nil {
 		t.Fatalf("create timestamp topic: %v", err)
 	}
-	if _, err := CreateReply(ctx, connections[0], testPublicationPolicy, actor, timestampTopic.TopicID, timestampTopic.PostID, "later clock"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, timestampTopic.TopicID, timestampTopic.PostID, "later clock"); err != nil {
 		t.Fatalf("create later-clock reply: %v", err)
 	}
-	if _, err := CreateReply(ctx, connections[0], testPublicationPolicy, actor, timestampTopic.TopicID, timestampTopic.PostID, "earlier clock"); err != nil {
+	if _, err := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, timestampTopic.TopicID, timestampTopic.PostID, "earlier clock"); err != nil {
 		t.Fatalf("create earlier-clock reply: %v", err)
 	}
 	var timestampsMonotonic bool
@@ -225,15 +225,15 @@ FROM (
 		t.Fatalf("post timestamps monotonic = (%t, %v), want true/nil", timestampsMonotonic, err)
 	}
 
-	threadTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Threaded replies", "root")
+	threadTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Threaded replies", "root")
 	if err != nil {
 		t.Fatalf("create threaded topic: %v", err)
 	}
-	firstChild, err := CreateReply(ctx, connections[0], testPublicationPolicy, actor, threadTopic.TopicID, threadTopic.PostID, "first child")
+	firstChild, err := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, threadTopic.TopicID, threadTopic.PostID, "first child")
 	if err != nil || firstChild.NodeOrdinal != 2 {
 		t.Fatalf("create first child: %v", err)
 	}
-	grandchild, err := CreateReply(ctx, connections[0], testPublicationPolicy, actor, threadTopic.TopicID, firstChild.PostID, "grandchild")
+	grandchild, err := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, threadTopic.TopicID, firstChild.PostID, "grandchild")
 	if err != nil || grandchild.NodeOrdinal != 3 {
 		t.Fatalf("create grandchild: %v", err)
 	}
@@ -242,31 +242,31 @@ FROM (
 	if err := connections[0].QueryRow(ctx, `SELECT parent_post_id, thread_path FROM public.posts WHERE id = $1`, grandchild.PostID).Scan(&parentID, &threadPath); err != nil || parentID != firstChild.PostID || !reflect.DeepEqual(threadPath, []int32{1, 2, 3}) {
 		t.Fatalf("grandchild metadata = (parent %d, path %v, error %v)", parentID, threadPath, err)
 	}
-	otherTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Other topic", "other root")
+	otherTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Other topic", "other root")
 	if err != nil {
 		t.Fatalf("create other topic: %v", err)
 	}
-	if cross, crossErr := CreateReply(ctx, connections[0], testPublicationPolicy, actor, threadTopic.TopicID, otherTopic.PostID, "cross-topic"); cross != (PublishResult{}) || !errors.Is(crossErr, pgx.ErrNoRows) {
+	if cross, crossErr := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, threadTopic.TopicID, otherTopic.PostID, "cross-topic"); cross != (PublishResult{}) || !errors.Is(crossErr, pgx.ErrNoRows) {
 		t.Fatalf("cross-topic reply = (%+v, %v), want missing", cross, crossErr)
 	}
 
-	depthTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Depth limit", "root")
+	depthTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Depth limit", "root")
 	if err != nil {
 		t.Fatalf("create depth topic: %v", err)
 	}
 	depthParent := depthTopic.PostID
 	for depth := int32(2); depth <= MaximumReplyDepth; depth++ {
-		created, createErr := CreateReply(ctx, connections[0], testPublicationPolicy, actor, depthTopic.TopicID, depthParent, "nested")
+		created, createErr := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, depthTopic.TopicID, depthParent, "nested")
 		if createErr != nil {
 			t.Fatalf("create reply at depth %d: %v", depth, createErr)
 		}
 		depthParent = created.PostID
 	}
-	if tooDeep, tooDeepErr := CreateReply(ctx, connections[0], testPublicationPolicy, actor, depthTopic.TopicID, depthParent, "too deep"); tooDeep != (PublishResult{}) || tooDeepErr == nil {
+	if tooDeep, tooDeepErr := CreateReply(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, depthTopic.TopicID, depthParent, "too deep"); tooDeep != (PublishResult{}) || tooDeepErr == nil {
 		t.Fatalf("over-depth reply = (%+v, %v), want rejected", tooDeep, tooDeepErr)
 	}
 
-	deleteTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, actor, "normal", "Author deletion", "retain **source**")
+	deleteTopic, err := CreateTopic(ctx, connections[0], testPublicationPolicy, testDestinationPolicy, actor, "normal", "Author deletion", "retain **source**")
 	if err != nil {
 		t.Fatalf("create delete topic: %v", err)
 	}

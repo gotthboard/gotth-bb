@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/site"
@@ -28,7 +29,10 @@ type SiteHTTPServices struct {
 	Administration *AdministrationHTTPServices
 }
 
-func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http.Handler, http.Handler, error) {
+func newSiteSettingsHandler(builder URLBuilder, observer abuse.Observer, services SiteHTTPServices) (http.Handler, http.Handler, error) {
+	if observer == nil {
+		return nil, nil, fmt.Errorf("site settings abuse observer is required")
+	}
 	if services.Shell == nil || services.Rules == nil || services.Editable == nil || services.Update == nil {
 		return nil, nil, fmt.Errorf("browser site settings services are incomplete")
 	}
@@ -92,7 +96,7 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 		}
 		return authentication.Access, "", true
 	}
-	renderSettings := func(response http.ResponseWriter, request *http.Request, status int, actor auth.AccessContext, formError string) {
+	renderSettings := func(response http.ResponseWriter, request *http.Request, status int, actor auth.AccessContext, formError string, submitted *site.SettingsInput) {
 		settings, loadErr := services.Editable(request.Context(), actor)
 		if loadErr != nil {
 			if errors.Is(loadErr, site.ErrDenied) {
@@ -114,6 +118,13 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 			SiteName: settings.Shell.Name, SiteDescription: settings.Shell.Description, BrandTheme: settings.Shell.Theme,
 			RulesMarkdown: settings.RulesMarkdown, Revision: strconv.FormatInt(settings.Revision, 10), FormError: formError,
 		}
+		if submitted != nil {
+			presentation.SiteName = submitted.Name
+			presentation.SiteDescription = submitted.Description
+			presentation.BrandTheme = submitted.Theme
+			presentation.RulesMarkdown = submitted.RulesMarkdown
+			presentation.Reason = submitted.Reason
+		}
 		if renderErr := renderResponse(response, request, status, siteSettingsPage(settingsView, presentation), siteSettingsContent(settingsView, presentation)); renderErr != nil {
 			panic(renderErr)
 		}
@@ -129,7 +140,7 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 			return
 		}
 		if !allowed {
-			renderSettings(response, request, http.StatusForbidden, actor, "")
+			renderSettings(response, request, http.StatusForbidden, actor, "", nil)
 			return
 		}
 		if request.URL.RawPath != "" || request.URL.RawQuery != "" || request.URL.ForceQuery {
@@ -140,7 +151,7 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 			}
 			return
 		}
-		renderSettings(response, request, http.StatusOK, actor, "")
+		renderSettings(response, request, http.StatusOK, actor, "", nil)
 	})
 	privateRouter.Post("/admin/settings", func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Set("Cache-Control", "no-store")
@@ -150,7 +161,7 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 			return
 		}
 		if !allowed {
-			renderSettings(response, request, http.StatusForbidden, actor, "")
+			renderSettings(response, request, http.StatusForbidden, actor, "", nil)
 			return
 		}
 		if request.URL.RawPath != "" || request.URL.RawQuery != "" || request.URL.ForceQuery {
@@ -162,12 +173,12 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 			return
 		}
 		if csrfErr := validateCSRFRequest(request, maximumSiteSettingsFormBytes); csrfErr != nil {
-			renderSettings(response, request, http.StatusForbidden, actor, "Reload site settings and try again.")
+			renderSettings(response, request, http.StatusForbidden, actor, "Reload site settings and try again.", nil)
 			return
 		}
 		input, parseErr := parseSiteSettingsForm(request)
 		if parseErr != nil {
-			renderSettings(response, request, http.StatusBadRequest, actor, "The site settings form is invalid. Reload it and try again.")
+			renderSettings(response, request, http.StatusBadRequest, actor, "The site settings form is invalid. Reload it and try again.", nil)
 			return
 		}
 		requestID, requestIDErr := moderationRequestUUID(request.Context())
@@ -180,12 +191,16 @@ func newSiteSettingsHandler(builder URLBuilder, services SiteHTTPServices) (http
 		result, updateErr := services.Update(request.Context(), actor, input, requestID)
 		if updateErr != nil {
 			switch {
+			case errors.Is(updateErr, abuse.ErrBlockedDestination):
+				response.Header().Set("Cache-Control", "private, no-store")
+				renderSettings(response, request, http.StatusUnprocessableEntity, actor, "This draft contains a blocked link", &input)
+				observeRoutedAbuse(request, observer, abuse.RejectionBlocked, abuse.RouteCommunityRules, http.StatusUnprocessableEntity, 0)
 			case errors.Is(updateErr, site.ErrInput):
-				renderSettings(response, request, http.StatusUnprocessableEntity, actor, "Check every field. Text must be canonical, the theme must be listed, and the audit reason must be one line.")
+				renderSettings(response, request, http.StatusUnprocessableEntity, actor, "Check every field. Text must be canonical, the theme must be listed, and the audit reason must be one line.", nil)
 			case errors.Is(updateErr, site.ErrDenied):
-				renderSettings(response, request, http.StatusForbidden, actor, "")
+				renderSettings(response, request, http.StatusForbidden, actor, "", nil)
 			case errors.Is(updateErr, site.ErrConflict):
-				renderSettings(response, request, http.StatusConflict, actor, "The settings changed or did not differ. Review the current values and try again.")
+				renderSettings(response, request, http.StatusConflict, actor, "The settings changed or did not differ. Review the current values and try again.", nil)
 			default:
 				if renderErr := renderUnbrandedShellFailure(response, http.StatusServiceUnavailable); renderErr != nil {
 					panic(renderErr)
