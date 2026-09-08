@@ -75,8 +75,9 @@ func TestFirstUnreadMapsBoundedAndDirectTargets(t *testing.T) {
 		{name: "no target", row: validFirstUnreadRow(finite)},
 		{name: "first page", row: firstUnreadTargetRow(finite, 91, 5, 1), want: FirstUnreadTarget{PostID: 91, Page: 1}},
 		{name: "later page", row: firstUnreadTargetRow(finite, 92, 5, 26), want: FirstUnreadTarget{PostID: 92, Page: 2}},
-		{name: "beyond bounded tree", row: firstUnreadTargetRow(finite, 93, 5, 0), want: FirstUnreadTarget{PostID: 93, Direct: true}},
-		{name: "sentinel direct", row: firstUnreadTargetRow(finite, 94, 5, 250001), want: FirstUnreadTarget{PostID: 94, Direct: true}},
+		{name: "last bounded page", row: firstUnreadTargetRow(finite, 93, 5, 250000), want: FirstUnreadTarget{PostID: 93, Page: 10000}},
+		{name: "beyond bounded tree", row: firstUnreadTargetRow(finite, 94, 5, 0), want: FirstUnreadTarget{PostID: 94, Direct: true}},
+		{name: "sentinel direct", row: firstUnreadTargetRow(finite, 95, 5, 250001), want: FirstUnreadTarget{PostID: 95, Direct: true}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

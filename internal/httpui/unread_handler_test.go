@@ -161,7 +161,8 @@ func TestFirstUnreadNavigatesToExactTarget(t *testing.T) {
 		{name: "none", wantStatus: http.StatusSeeOther, wantHeader: "Location", wantValue: "/bb/topics/41"},
 		{name: "first page", target: forum.FirstUnreadTarget{PostID: 91, Page: 1}, wantStatus: http.StatusSeeOther, wantHeader: "Location", wantValue: "/bb/topics/41#post-91"},
 		{name: "later page", target: forum.FirstUnreadTarget{PostID: 92, Page: 3}, wantStatus: http.StatusSeeOther, wantHeader: "Location", wantValue: "/bb/topics/41?page=3#post-92"},
-		{name: "direct htmx", target: forum.FirstUnreadTarget{PostID: 93, Direct: true}, htmx: true, wantStatus: http.StatusNoContent, wantHeader: "HX-Location", wantValue: `{"path":"/bb/posts/93","target":"#main-content","swap":"outerHTML"}`},
+		{name: "last page", target: forum.FirstUnreadTarget{PostID: 93, Page: 10000}, wantStatus: http.StatusSeeOther, wantHeader: "Location", wantValue: "/bb/topics/41?page=10000#post-93"},
+		{name: "direct htmx", target: forum.FirstUnreadTarget{PostID: 94, Direct: true}, htmx: true, wantStatus: http.StatusNoContent, wantHeader: "HX-Location", wantValue: `{"path":"/bb/posts/94","target":"#main-content","swap":"outerHTML"}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			calls := 0
@@ -201,6 +202,7 @@ func TestFirstUnreadMapsStoreAndMalformedTargetFailures(t *testing.T) {
 		{name: "missing", err: pgx.ErrNoRows, status: http.StatusNotFound},
 		{name: "database", err: errors.New("forced database failure"), status: http.StatusServiceUnavailable},
 		{name: "malformed", target: forum.FirstUnreadTarget{PostID: 91, Page: 1, Direct: true}, status: http.StatusServiceUnavailable},
+		{name: "page above maximum", target: forum.FirstUnreadTarget{PostID: 92, Page: 10001}, status: http.StatusServiceUnavailable},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			handler := unreadTestHandler(t, UnreadHTTPServices{
