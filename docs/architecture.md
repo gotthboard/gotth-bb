@@ -657,6 +657,13 @@ Version 1.0 omits group deletion because its existing foreign-key cascades would
 otherwise make area authorization disappear as a side effect of a
 superficially local action.
 
+Every administration writer uses read committed isolation and installs the
+same transaction-local two-second statement and 250-millisecond lock bounds
+before its first application lock. Cancellation rolls back; commit failure is
+reported as unknown and is never retried automatically. The HTML forms carry
+one numeric revision and expected closed value where needed, while target IDs
+come only from canonical paths rather than redundant body fields.
+
 Area administration retains one audited core transaction but replaces the
 timestamp token with the numeric administration revision. Renaming changes only
 the display name; the published slug stays immutable. Ordering remains

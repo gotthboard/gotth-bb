@@ -944,9 +944,11 @@ Tests inspect `moderation_actions`, target rows, group mappings, settings, and
 sessions before and after successful and failed requests. A committed mutation
 must have its exact audit state; a failed mutation must have neither state nor
 audit/session side effects. Unknown commit tests report uncertainty and inspect
-before any explicit retry. Every AN-04 action is tested with missing, blank,
-multiline, control-bearing, boundary, and oversized reasons at both application
-and database constraints.
+before any explicit retry. Application tests cover missing, blank, Unicode-
+space-only, multiline, control-bearing, non-NFC, boundary, and oversized
+reasons. Direct database tests cover NULL requirements (including
+`reinstate_user`), byte boundaries, ASCII-space trim, and POSIX controls without
+pretending PostgreSQL duplicates the application's Unicode-space/NFC rules.
 
 ### 21.2 HTTP, privacy, and accessibility matrix
 
@@ -954,9 +956,11 @@ Route tests cover exact canonical path/query grammar before session/body/
 database work, login and revalidation redirects, fixed administrator `403`,
 fixed missing `404`, validation `400`/`422`, conflict `409`, unavailable `503`,
 shell failure preserving established `403`/`404` while successful pages become
-fixed `503`, and body-nonconsumption for header-CSRF/session/path failures. Each form proves
-its exact field grammar, size limit, duplicate/unknown rejection, one service
-call, and no retry.
+fixed `503`, and body-nonconsumption for header-CSRF/session/path failures. Each
+form proves its exact documented field set, path-only target IDs, conditional
+empty/positive `initial_group_id`, the 16/64/256-KiB route-specific size limits
+and worst-case URL encoding, duplicate/unknown rejection, one service call, and
+no retry.
 
 Ordinary and HTMX success must agree on canonical destination and authoritative
 main-region content. All administrator full-page/fragments are
@@ -964,9 +968,10 @@ main-region content. All administrator full-page/fragments are
 reason, email, avatar, issuer, subject, session identifier, IP, or user agent.
 Only the administrator settings edit form may contain current raw rules
 Markdown; only a mutation form may contain its explicit numeric revision,
-expected role/action, and target ID. Those fields carry no authority and never
-appear in public output, application logs, or metric labels. Tests inspect all
-three boundaries.
+expected role/action, and conditional initial group. Target IDs occur only in
+builder-owned canonical action paths, never as redundant body fields. Those
+values carry no authority and never appear in public output, application logs,
+or metric labels. Tests inspect all three boundaries.
 
 Caddy/Chromium tests cover empty and populated dashboard, 51-account and
 51-group continuation, area archive/restore, role change followed by target session
@@ -1005,9 +1010,10 @@ The representative checkpoint contains at least 25,000 accounts, 25,000 groups,
 25,000 areas, 100,000 topics, 1,000,000 posts, and report/audit rows spanning
 all states. Measure elapsed time, buffers, temporary I/O, relation/index size,
 allocations, RSS, database connections, cancellation, two-second statement and
-250-millisecond lock timeouts, 512-KiB response overflow, and coexistence with
-login, topic/reply publication, moderation, discovery, unread reads, and
-mark-read. Corpus sizes are evidence points, not content/account quotas.
+250-millisecond transaction-local lock timeouts for every writer, commit-
+unknown/no-retry behavior, 512-KiB response overflow, and coexistence with
+login, topic/reply publication, moderation, discovery, unread reads, and mark-
+read. Corpus sizes are evidence points, not content/account quotas.
 
 ### 21.4 Admission gates
 

@@ -2118,9 +2118,12 @@ ordinary migration transaction:
   `revoke_area_group`, and `update_site_settings` to the closed audit actions.
   Existing `change_role`, `grant_group_membership`,
   `revoke_group_membership`, and area actions remain unchanged; and
+- replace the audit reason-shape check so every non-NULL reason has an
+  `octet_length` of 1–2,000 bytes, has no POSIX control character, and equals
+  its PostgreSQL ASCII-space trim; and
 - extend the audit reason-required check to `change_role`, both membership
   actions, `create_area`, `update_area`, both area-group actions, both group
-  lifecycle actions, and `update_site_settings`.
+  lifecycle actions, `reinstate_user`, and `update_site_settings`.
 
 The migration adds no content/account backfill. Dropping and replacing audit
 checks and validating the settings row take the documented PostgreSQL table
@@ -2149,8 +2152,20 @@ application does not invent an in-memory fallback.
 
 Every AN-04 mutation reason uses the existing strict nonblank, control-free,
 single-line 1–2,000-byte boundary. The application rejects it before a
-transaction and the database requires a non-NULL reason for every AN-04 audit
-action.
+transaction. The database applies the byte/control/ASCII-trim defense above
+to every present audit reason and requires a non-NULL reason for every AN-04
+audit action, including the reinstatement action exposed from account detail.
+The application remains responsible for strict UTF-8, NFC, and Unicode-space
+semantics that PostgreSQL's locale-sensitive character classes cannot honestly
+duplicate.
+
+Unless a narrower section says otherwise, every AN-04 writer uses read
+committed isolation, sets transaction-local `statement_timeout` to no more
+than two seconds and `lock_timeout` to 250 milliseconds before acquiring its
+first application lock, and uses the request context for every statement. A
+canceled or timed-out transaction rolls back. A commit error is an unknown
+outcome: the service returns that uncertainty, performs no detached work or
+automatic retry, and requires state/audit inspection before an explicit retry.
 
 `SiteShellPresentation` contains only name, description, and closed theme. One
 primary-key query loads it after exact route/query preflight and, for protected
@@ -2245,12 +2260,13 @@ Group names are NFC/control-free, 1–80 Unicode scalar values, trimmed, and
 case-insensitively unique. `GET /admin/groups` accepts no query or exactly one
 canonical positive `after` ID and returns at most 51 groups ordered by ID;
 the handler renders 50 and row 51 is only a next sentinel. Create accepts
-`_csrf`, `name`, and `reason`. Rename additionally accepts the canonical
-positive group ID and positive numeric revision. Both revalidate the actor in
-the transaction by locking governance and then the actor row before inserting
-or locking the group, reject no-op/stale/overflow state, increment the group
-administration revision on rename, and append one immutable group-target audit.
-Groups are not deleted in version 1.0.
+exactly `_csrf`, `name`, and `reason`. Rename takes its sole group ID from the
+canonical path and accepts exactly `_csrf`, `name`, `reason`, and the positive
+numeric `revision`. Neither body accepts a target ID. Both revalidate the actor
+in the transaction by locking governance and then the actor row before
+inserting or locking the group, reject no-op/stale/overflow state, increment
+the group administration revision on rename, and append one immutable group-
+target audit. Groups are not deleted in version 1.0.
 
 A group-membership mutation targets one canonical positive account ID and one
 canonical positive group ID and accepts exactly `_csrf`, closed `action`
@@ -2268,11 +2284,13 @@ memberships.
 
 ### 21.4 Role and suspension governance
 
-Role input is exactly one of `member`, `moderator`, or `administrator`, plus the
-target's current role, positive numeric administration revision, and one
-1–2,000-character single-line audit reason. The role transaction uses read
-committed isolation,
-two-second statement and 250-millisecond lock timeouts, and this order:
+The role route takes its sole target user ID from the canonical path and
+accepts exactly `_csrf`, closed `role`, closed `expected_role`, positive
+numeric `revision`, and `reason`; no target ID is accepted in the body. `role`
+is exactly one of `member`, `moderator`, or `administrator`, `expected_role`
+is the target's currently rendered closed role, and `reason` uses the common
+1–2,000-byte single-line boundary. The role transaction uses the common read-
+committed isolation and timeout/unknown-outcome contract in this order:
 
 1. lock the governance singleton;
 2. lock actor and target users in ascending positive ID order;
@@ -2309,14 +2327,27 @@ The existing area core transaction remains the sole create/rename/reorder/
 visibility/posting-mode mutation. AN-04 makes it revalidate the current
 administrator inside the transaction, use and increment the positive numeric
 administration revision, preserve the immutable slug, and append one audit row.
-It locks governance, then the actor row, then the target area, then any one
-initial group, matching every other administration writer's prefix.
+Create locks governance, the actor row, and any required initial group before
+inserting the area and mapping. Update locks governance, the actor row, the
+target area, and any required initial group in that order. The area/group
+mapping writer uses the same prefix through its locked target area.
 `GET /admin/areas` accepts no query or exactly the canonical
 `after_order=<nonnegative int32>&after_id=<positive int64>` pair. Its
 authorization-first query returns at most 26 areas ordered by
 `(display_order,id)`; the handler renders 25 and row 26 is only a next sentinel.
 The raw keyset does not promise a stable snapshot across concurrent reorders;
 refresh starts from the beginning.
+
+Area creation accepts exactly `_csrf`, `slug`, `name`, `description`,
+`display_order`, `visibility`, `posting_mode`, `initial_group_id`, and
+`reason`; it accepts no revision. Area core update takes its sole area ID from
+the canonical path and accepts exactly `_csrf`, `name`, `description`,
+`display_order`, `visibility`, `posting_mode`, `initial_group_id`, `reason`,
+and positive numeric `revision`; it accepts neither a body target ID nor a
+slug. `initial_group_id` is a canonical positive group ID exactly when creation
+or a non-group-to-group transition needs the one initial mapping, and is exact
+empty otherwise. Unknown, duplicate, missing, or noncanonical scalar fields
+fail before the transaction.
 
 `GET /admin/areas/{areaID}` returns one area plus at most 51 groups ordered by
 group ID with a nonmultiplying assigned boolean, using optional exact
@@ -2397,13 +2428,16 @@ KiB, and expose neither raw database errors nor submitted audit reasons.
 Unsafe routes require the existing session-derived CSRF token before ordinary
 form parsing, accept only `application/x-www-form-urlencoded`, reject unknown or
 duplicate scalar fields, use generated request IDs, and call exactly one
-service. Ordinary success is empty 303 post/redirect/get. HTMX success is empty
-204 with same-origin `HX-Location` targeting `#main-content`; both resolve to
-the same builder-owned canonical destination. The sole exception is successful
-`POST /admin/settings`: ordinary HTML returns the same empty 303, while HTMX
-returns empty 204 with a builder-owned same-origin `HX-Redirect` and no
-`HX-Location`, forcing a full document so changed shell name, description, and
-theme cannot remain stale. No handler retries or detaches work after
+service. Settings uses its documented 256-KiB body cap; area create/core update
+use 64 KiB; every other AN-04-owned unsafe route uses 16 KiB. These bounds are
+applied before reading/parsing and admit the worst-case URL encoding of their
+bounded fields. Ordinary success is empty 303 post/redirect/get. HTMX success
+is empty 204 with same-origin `HX-Location` targeting `#main-content`; both
+resolve to the same builder-owned canonical destination. The sole exception is
+successful `POST /admin/settings`: ordinary HTML returns the same empty 303,
+while HTMX returns empty 204 with a builder-owned same-origin `HX-Redirect` and
+no `HX-Location`, forcing a full document so changed shell name, description,
+and theme cannot remain stale. No handler retries or detaches work after
 cancellation.
 
 The global navigation has one public `Community rules` link to `/rules` and one
