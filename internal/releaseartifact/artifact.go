@@ -317,7 +317,7 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 8 {
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 14 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
 	statements := make([]string, 0, 25)
@@ -327,42 +327,90 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 		}
 		statements = append(statements, line)
 	}
-	const required = `GRANT UPDATE (singleton)
-ON TABLE public.governance_state
-TO :"runtime_role";
-GRANT SELECT
-ON TABLE public.content_renderer_state
-TO :"runtime_role";
-GRANT SELECT
-ON TABLE public.search_projection_state
-TO :"runtime_role";
-GRANT SELECT,
-      UPDATE (site_name, site_description, brand_theme, rules_markdown,
-              rules_html, rules_renderer_version, administration_revision,
-              updated_at)
-ON TABLE public.site_settings
-TO :"runtime_role";
-GRANT SELECT,
-      INSERT (name, created_by, created_at, updated_at),
-      UPDATE (name, updated_at, administration_revision)
-ON TABLE public.forum_groups
-TO :"runtime_role";
-GRANT USAGE, SELECT
-ON SEQUENCE public.forum_groups_id_seq
-TO :"runtime_role";
-GRANT SELECT,
-      INSERT (group_id, user_id, granted_by, created_at),
-      DELETE
-ON TABLE public.forum_group_members
-TO :"runtime_role";
-GRANT UPDATE (publication_window_started_at, publication_count)
-ON TABLE public.users
-TO :"runtime_role";`
-	if strings.Join(statements, "\n") != required {
+	if strings.Join(statements, "\n") != requiredRuntimeGrantsStatements {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
 	return grants, nil
 }
+
+const requiredRuntimeGrantsStatements = `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM :"runtime_role";
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM :"runtime_role";
+GRANT USAGE ON SCHEMA public TO :"runtime_role";
+GRANT SELECT ON TABLE
+    public.area_groups,
+    public.areas,
+    public.content_renderer_state,
+    public.external_identities,
+    public.forum_group_members,
+    public.forum_groups,
+    public.gotth_schema_migrations,
+    public.governance_state,
+    public.moderation_actions,
+    public.oidc_login_attempts,
+    public.posts,
+    public.report_notes,
+    public.reports,
+    public.search_projection_state,
+    public.sessions,
+    public.site_settings,
+    public.topic_reads,
+    public.topics,
+    public.user_warnings,
+    public.users
+TO :"runtime_role";
+GRANT USAGE, SELECT ON SEQUENCE
+    public.areas_id_seq,
+    public.forum_groups_id_seq,
+    public.moderation_actions_id_seq,
+    public.posts_id_seq,
+    public.report_notes_id_seq,
+    public.reports_id_seq,
+    public.sessions_id_seq,
+    public.topics_id_seq,
+    public.user_warnings_id_seq,
+    public.users_id_seq
+TO :"runtime_role";
+GRANT INSERT, UPDATE ON TABLE
+    public.external_identities,
+    public.oidc_login_attempts,
+    public.sessions,
+    public.topic_reads
+TO :"runtime_role";
+GRANT INSERT, UPDATE ON TABLE
+    public.areas,
+    public.posts,
+    public.reports,
+    public.topics
+TO :"runtime_role";
+GRANT INSERT ON TABLE
+    public.moderation_actions,
+    public.report_notes,
+    public.user_warnings
+TO :"runtime_role";
+GRANT INSERT, DELETE ON TABLE public.area_groups TO :"runtime_role";
+GRANT INSERT (display_name, email, avatar_url, created_at, updated_at, last_login_at),
+      UPDATE (display_name, email, avatar_url, role, suspended_at,
+              suspended_until, suspension_reason, muted_until, updated_at,
+              last_login_at, administration_revision,
+              publication_window_started_at, publication_count)
+ON TABLE public.users
+TO :"runtime_role";
+GRANT UPDATE (singleton)
+ON TABLE public.governance_state
+TO :"runtime_role";
+GRANT UPDATE (site_name, site_description, brand_theme, rules_markdown,
+              rules_html, rules_renderer_version, administration_revision,
+              updated_at)
+ON TABLE public.site_settings
+TO :"runtime_role";
+GRANT INSERT (name, created_by, created_at, updated_at),
+      UPDATE (name, updated_at, administration_revision)
+ON TABLE public.forum_groups
+TO :"runtime_role";
+GRANT INSERT (group_id, user_id, granted_by, created_at),
+      DELETE
+ON TABLE public.forum_group_members
+TO :"runtime_role";`
 
 func writeArchive(path, root string, entries []archiveEntry) (string, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
