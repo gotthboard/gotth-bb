@@ -1,0 +1,124 @@
+AN-03-01 exact-candidate evidence
+================================
+
+Executable/methodology commit:
+  e3d4ddc42629bebba5a31448a7b81eae4e19c44c
+Tree:
+  5539ddca8d7fdd2357613e2418c8b777f9e0bbc3
+Base:
+  fb60a6a16d84aa688868831ddd1f2e145b4169a0
+Bundle SHA-256:
+  8274131de026b98cb3500c8c05824060c27cf91f46c9ace4393b39f7af13b23b
+
+Generation
+----------
+
+Command, from an isolated clone of the exact bundle:
+
+  make generate
+  git diff --exit-code
+  test -z "$(git status --porcelain=v1)"
+
+Toolchain:
+  Node v26.7.0
+  npm 12.0.2
+
+Result: PASS; templ, sqlc, CSS, HTMX, and application-script generation
+produced zero tracked or untracked drift.
+
+Static and race/coverage gates
+------------------------------
+
+Commands, from the detached exact clone on the development host:
+
+  go vet ./...
+  go test -count=1 -race -cover ./...
+
+Result: PASS. The vet transcript was empty, as expected. Representative
+coverage was 96.5% for internal/store and 100.0% for migrations.
+
+Transcript SHA-256 values:
+  go vet: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  race/coverage: 725ad318395a9d4fea1beea94188f3a525525cfd09ca6506e59cf16f1875927e
+
+PostgreSQL 17 integration/race gate
+-----------------------------------
+
+Command, from the same detached exact clone:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=1 -race -cover -tags=integration ./...
+
+Result: PASS on PostgreSQL 17.10. Representative coverage was 97.0% for
+internal/store, 100.0% for internal/migration, 100.0% for internal/readiness,
+and 100.0% for migrations. The upgrade test proved that both `infinity` and
+`-infinity` abort migration 000009 atomically at ledger head 000008, retain
+both markers, leave the new constraint/index absent, and admit a repaired
+retry plus idempotent rerun. Fresh-schema catalog tests attested the validated
+finite-time constraint and exact partial index definition.
+
+The functional matrix covered visitor/member/group/staff area visibility,
+hidden/deleted topics, deleted/redacted/own-post-only heads, exact unread
+counts, all three closed states, duplicate group inputs, empty areas, marker
+retention, malformed marker tuples, inconsistent topic heads, and zero marker
+mutation by read models.
+
+Transcript SHA-256:
+  13a6ac03f0a40250b8b9dca7ad160a3b35d638ec9e236d4a6ff7d032e2df4289
+
+Representative population, migration, and plan gate
+----------------------------------------------------
+
+Command, from the same detached exact clone:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+  GOTTH_BB_RUN_AN03_READ_PLAN_EVIDENCE=1 \
+    go test -count=1 -run TestDiscoveryPlansOnPostgreSQL17 \
+      -tags=integration -v ./internal/store/db
+
+Result: PASS on PostgreSQL 17.10 with 25,000 topics and 250,000 posts.
+
+Population:
+  visibility public/authenticated/groups: 8,333 / 8,334 / 8,333 topics
+  hidden topics: 247
+  deleted topics: 24
+  deleted posts: 493
+  redacted posts: 247
+  rare topic/post search rows: 25 / 250
+  distinct activity timestamps: 10,000
+  population duration: 8.56243288s
+
+Migration 000009:
+  elapsed: 234.893493ms
+  posts relation bytes before migration: 137,871,360
+  topic_reads relation bytes before migration: 1,597,440
+  retained markers: 12,500
+  expected ShareLock wait observed: yes
+  blocks read delta: 939
+  blocks hit delta: 9,522
+  temp bytes delta: 9,011,200
+
+Both force_custom_plan and force_generic_plan passed for visitor, member,
+matching-group member, and staff board/area reads. Structural JSON assertions
+proved:
+
+  - visitor plans apply area/topic authorization and never access topic_reads;
+  - authenticated plans materialize authorized area and topic relations before
+    marker or eligible-post work;
+  - matching-group authorization remains an area_groups SubPlan/EXISTS path
+    and cannot multiply topics or counts;
+  - nonstaff plans preserve area visibility and hidden-topic filters;
+  - all authenticated area-page plans use
+    posts_topic_unread_visible_idx for eligible-head lookup;
+  - marker and actor-excluding eligible-post reads occur only beneath the
+    authorized relations.
+
+Full plan transcript SHA-256:
+  5bfe88ffd92684824e380be8f95452d33ad0b34f7848ac823b15273f76af6bcb
+
+Scope statement
+---------------
+
+This candidate implements AN-03-01 only. It adds no mark-read mutation,
+first-unread route, HTTP/UI read-state rendering, PR, push, merge, tag,
+release, or deployment.
