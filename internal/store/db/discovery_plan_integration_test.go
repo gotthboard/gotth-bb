@@ -189,7 +189,7 @@ WHERE topic_id = 3
 	}
 	if population.administration {
 		populateAdministrationReportsAndAudit(t, ctx, connection, ownerID, authorID, population.postIDOffset)
-		verifyAdministrationCheckpoint(t, ctx, connection, ownerID, population)
+		verifyAdministrationCheckpoint(t, ctx, connection, ownerID)
 		logAdministrationResourceSnapshot(t, ctx, connection, "administration-populated")
 	}
 	if _, err := connection.Exec(ctx, `SELECT
@@ -667,22 +667,24 @@ WHERE report.status <> 'open'`, ownerID); err != nil {
 	}
 }
 
-func verifyAdministrationCheckpoint(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID int64, population discoveryPlanPopulation) {
+func verifyAdministrationCheckpoint(t *testing.T, ctx context.Context, connection *pgx.Conn, ownerID int64) {
 	t.Helper()
 	dashboard, err := New(connection).LoadAdministrationDashboard(ctx, ownerID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !dashboard.ActorPresent || dashboard.UsersTotal != 25_000 || dashboard.Topics != population.topics ||
+	if !dashboard.ActorPresent || dashboard.UsersTotal != 25_000 ||
 		dashboard.OpenReports != 1 || dashboard.InReviewReports != 1 || dashboard.Members+dashboard.Moderators+dashboard.Administrators != dashboard.UsersTotal {
 		t.Fatalf("administration dashboard checkpoint = %+v", dashboard)
 	}
-	var expectedPosts int64
-	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.posts WHERE deleted_at IS NULL AND redacted_at IS NULL`).Scan(&expectedPosts); err != nil {
+	var expectedTopics, expectedPosts int64
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT count(*) FROM public.topics WHERE deleted_at IS NULL),
+    (SELECT count(*) FROM public.posts WHERE deleted_at IS NULL AND redacted_at IS NULL)`).Scan(&expectedTopics, &expectedPosts); err != nil {
 		t.Fatal(err)
 	}
-	if dashboard.Posts != expectedPosts {
-		t.Fatalf("administration dashboard posts=%d want=%d", dashboard.Posts, expectedPosts)
+	if dashboard.Topics != expectedTopics || dashboard.Posts != expectedPosts {
+		t.Fatalf("administration dashboard content topics/posts=%d/%d want=%d/%d", dashboard.Topics, dashboard.Posts, expectedTopics, expectedPosts)
 	}
 	var states, audits int64
 	if err := connection.QueryRow(ctx, `SELECT
