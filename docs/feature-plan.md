@@ -783,6 +783,49 @@ entry gate for the first test-user build.
   corrective work uses `feature/beta-1-mobile-search-repair` and stops before
   RC.1.
 
+### B1-07: Beta.1 breadcrumb link-distinction corrective release
+
+- **Problem and outcome:** the live accessibility gate on the corrected
+  Beta.1.1 candidate found that breadcrumb links were distinguished from nearby
+  text only by color. Make the distinction persistent without changing routes,
+  authority, data, or navigation behavior.
+- **Requirements:** `UX-003`, Beta accessibility acceptance, immutable release
+  identity, guarded delivery, deployment smoke, and owner-confirmation rules.
+- **In scope:** persistent underlines on breadcrumb links; a browser-through-
+  Caddy Axe and reflow regression for populated search and activity pages at
+  both base paths; a negative control on `1.0.0-beta.1.1`; exact
+  content-addressed stylesheet regeneration while retaining both published
+  predecessor stylesheets; deterministic generation, affected and full gates,
+  two fresh CLEAN reviews, guarded merge/mirror, annotated
+  `1.0.0-beta.1.2`, reproducible package/image, application-only replacement,
+  live acceptance, and owner confirmation.
+- **Out of scope:** rewriting or deleting published tags, schema/grant/access
+  changes, cosmetic redesign, unrestricted enrollment, RC.1, stable claims, or
+  unrelated accessibility cleanup.
+- **Trust and permission:** designated-user, Caddy identity, Authentik,
+  secret-file, nonroot, read-only, and capability boundaries are unchanged.
+- **Data and migration:** none; PostgreSQL remains at migration head 000011 and
+  retains its exact container and durable mount identity.
+- **Failure and retry:** a missing negative control, Axe violation, reflow
+  failure, reproducibility mismatch, review finding, remote divergence, smoke
+  failure, or owner rejection withholds known-good status. The running app is
+  retained until replacement; the exact Beta.1.1 app image/configuration is the
+  immediate schema-compatible rollback target afterward.
+- **Acceptance:** Beta.1.1 fails the exact Axe rule; the repaired tree passes
+  populated search/activity Axe and reflow at both base paths plus all affected
+  and repository gates; both published stylesheets remain byte-exact and
+  reachable; two reviews are CLEAN; one commit binds remotes, tag, packages,
+  image, and deployment; live acceptance passes; the owner answer is recorded
+  before known-good status.
+- **Rollback/recovery:** application-only rollback to the exact retained
+  Beta.1.1 image/configuration; no database rollback because this unit has no
+  data change.
+- **Evidence:** `docs/evidence/beta1-07-breadcrumb-a11y-<commit>.txt`, successor
+  release record, and known-good record after confirmation.
+- **Dependency/worktree:** B1-06 produced the immutable failed Beta.1.1
+  candidate; corrective work uses
+  `feature/beta-1-breadcrumb-a11y-repair` and stops before RC.1.
+
 Beta.1 adds no new product feature beyond repairing a demonstrated version 1.0
 gap. Scheduled/off-host backup retention, alert routing, final dependency and
 license review, migration freeze, production deployment, and stable operator

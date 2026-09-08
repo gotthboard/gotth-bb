@@ -5,11 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { auditReflow } from "./browser-accessibility.mjs";
+import { auditAccessibility, auditReflow } from "./browser-accessibility.mjs";
 
 const chromium = process.env.CHROMIUM || "/usr/bin/chromium";
 const target = process.env.GOTTH_BB_DISCOVERY_REFLOW_URL;
 assert(target, "GOTTH_BB_DISCOVERY_REFLOW_URL is required");
+const activityTarget = process.env.GOTTH_BB_DISCOVERY_ACTIVITY_URL;
+assert(activityTarget, "GOTTH_BB_DISCOVERY_ACTIVITY_URL is required");
 
 function devtools(webSocket) {
   let nextID = 1;
@@ -44,7 +46,7 @@ async function waitFor(send, sessionId, expression) {
   throw new Error(`browser condition timed out: ${expression}`);
 }
 
-test("search remains usable at 320 CSS pixels and 200% zoom", async (t) => {
+test("discovery pages remain accessible and usable at 320 CSS pixels and 200% zoom", async (t) => {
   const profile = await mkdtemp(join(tmpdir(), "gotth-bb-discovery-reflow-"));
   const browser = spawn(chromium, [
     "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking",
@@ -79,6 +81,7 @@ test("search remains usable at 320 CSS pixels and 200% zoom", async (t) => {
   await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, sessionId);
   await send("Page.navigate", { url: target }, sessionId);
   await waitFor(send, sessionId, "document.readyState === 'complete' && document.querySelector('input[name=\"from\"]') && document.querySelector('input[name=\"to\"]') && getComputedStyle(document.querySelector('input[name=\"from\"]').closest('label').parentElement).display === 'grid'");
+  await auditAccessibility(send, sessionId, evaluate, "search discovery", false);
   const filterRows = await evaluate(send, sessionId, `(() => {
     const fromLabel = document.querySelector('input[name="from"]').closest('label');
     const toLabel = document.querySelector('input[name="to"]').closest('label');
@@ -98,4 +101,8 @@ test("search remains usable at 320 CSS pixels and 200% zoom", async (t) => {
   console.log(`REFLOW label="search date filter rows" width=320 stacked=true fromBottom=${filterRows.fromBottom} toTop=${filterRows.toTop}`);
   await evaluate(send, sessionId, "document.body.style.minHeight = '200vh'; true");
   await auditReflow(send, sessionId, evaluate, "search filters");
+  await send("Page.navigate", { url: activityTarget }, sessionId);
+  await waitFor(send, sessionId, "document.readyState === 'complete' && Boolean(document.querySelector('#activity-title'))");
+  await auditAccessibility(send, sessionId, evaluate, "activity discovery", false);
+  await auditReflow(send, sessionId, evaluate, "activity discovery");
 });

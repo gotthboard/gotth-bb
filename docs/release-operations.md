@@ -815,13 +815,14 @@ described as disaster recovery.
 
 ### 18.2 Beta.1 corrective successor
 
-If a defect is found after `1.0.0-beta.1` is published but before owner
-confirmation, do not rewrite or delete the tag. A correction that remains
-inside the admitted Beta.1 product and trust boundary uses the next canonical
-SemVer identity `1.0.0-beta.1.1`. Its record must name `1.0.0-beta.1` as a
-failed candidate, demonstrate a negative control on the failed tree and a
-positive control on the repair, pass the affected admission gates and two fresh
-cold reviews, then use a guarded merge and annotated successor tag.
+If a defect is found after a Beta.1 candidate is published but before owner
+confirmation, do not rewrite or delete any published tag. A correction that
+remains inside the admitted Beta.1 product and trust boundary uses the next
+unused canonical SemVer identity in the `1.0.0-beta.1.N` sequence. Its record
+must name every superseded candidate, demonstrate a negative control on the
+immediately failed tree and a positive control on the repair, pass the affected
+admission gates and two fresh cold reviews, then use a guarded merge and
+annotated successor tag.
 
 When the correction has no data or permission change, deployment replaces only
 the application container, preserves PostgreSQL/Caddy/configuration identity,

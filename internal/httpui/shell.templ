@@ -72,7 +72,7 @@ templ areaAdministrationPage(view pageView, page areaAdministrationPageView) {
 templ areaAdministrationContent(view pageView, page areaAdministrationPageView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 underline hover:text-cyan-100">Areas</a>
 			<span aria-hidden="true" class="px-2 text-slate-500">/</span>
 			<span aria-current="page" class="text-slate-400">Manage areas</span>
 		</nav>
@@ -285,7 +285,7 @@ templ areaTopicListPage(view pageView, area areaTopicListView) {
 templ areaTopicListContent(view pageView, area areaTopicListView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-6 focus:outline-none sm:px-6 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-3 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">Board index</a>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 underline hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">Board index</a>
 			<span aria-hidden="true" class="px-2 text-slate-400">›</span>
 			<span aria-current="page">{ area.Name }</span>
 		</nav>
@@ -361,9 +361,9 @@ templ topicPostListPage(view pageView, topic topicPostPageView) {
 templ topicPostListContent(view pageView, topic topicPostPageView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-4 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 shadow-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">Board index</a>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 underline hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">Board index</a>
 			<span aria-hidden="true" class="px-2 text-slate-400">›</span>
-			<a href={ topic.AreaURL } hx-get={ topic.AreaURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 hover:text-blue-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">{ topic.AreaName }</a>
+			<a href={ topic.AreaURL } hx-get={ topic.AreaURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm font-semibold text-blue-300 underline hover:text-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-300">{ topic.AreaName }</a>
 			<span aria-hidden="true" class="px-2 text-slate-400">›</span>
 			<span aria-current="page">{ topic.Title }</span>
 		</nav>
@@ -656,7 +656,7 @@ templ moderationUserPage(view pageView, user moderationUserView) {
 templ moderationUserContent(view pageView, user moderationUserView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-3xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100">Areas</a>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 underline hover:text-cyan-100">Areas</a>
 			<span aria-hidden="true" class="px-2 text-slate-500">/</span>
 			<span aria-current="page" class="text-slate-400">Account status</span>
 		</nav>
@@ -773,7 +773,7 @@ templ discoverySearchPage(view pageView, search discoverySearchPageView) {
 
 templ discoverySearchContent(view pageView, search discoverySearchPageView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
-		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Search</span></nav>
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Search</span></nav>
 		<section aria-labelledby="search-title" class="rounded border border-slate-700 bg-slate-900 p-4 sm:p-6">
 			<h1 id="search-title" class="text-2xl font-bold text-white">Search discussions</h1>
 			<p class="mt-2 text-sm text-slate-400">Search text or an exact author ID. Text supports terms, quoted phrases, OR, and unary -.</p>
@@ -832,7 +832,7 @@ templ discoveryActivityPage(view pageView, activity discoveryActivityPageView) {
 
 templ discoveryActivityContent(view pageView, activity discoveryActivityPageView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
-		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Recent activity</span></nav>
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Recent activity</span></nav>
 		<h1 id="activity-title" class="text-2xl font-bold text-white">Recent activity</h1>
 		if len(activity.Results) == 0 {
 			<p role="status" aria-live="polite" class="mt-4 rounded border border-dashed border-slate-700 p-5 text-slate-300">No more authorized activity is available.</p>
@@ -855,7 +855,7 @@ templ discoveryDirectPostPage(view pageView, post discoveryDirectPostView) {
 
 templ discoveryDirectPostContent(view pageView, post discoveryDirectPostView) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-4xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12">
-		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.AreaURL } hx-get={ post.AreaURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ post.AreaName }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.TopicURL } hx-get={ post.TopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 hover:underline">{ post.TopicTitle }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Post</span></nav>
+		<nav aria-label="Breadcrumb" class="mb-4 text-sm"><a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 underline">Board index</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.AreaURL } hx-get={ post.AreaURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 underline">{ post.AreaName }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><a href={ post.TopicURL } hx-get={ post.TopicURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-blue-300 underline">{ post.TopicTitle }</a><span aria-hidden="true" class="px-2 text-slate-500">›</span><span aria-current="page">Post</span></nav>
 		<article aria-labelledby="direct-post-author" class="rounded border border-slate-700 bg-slate-900">
 			<header class="border-b border-slate-700 bg-slate-800 p-4">
 				<h1 id="direct-post-author" class="font-bold text-blue-100">{ post.AuthorName }</h1>
@@ -877,7 +877,7 @@ templ errorPage(view pageView, status int, heading, message string) {
 templ errorContent(view pageView, status int, heading, message string) {
 	<main id="main-content" tabindex="-1" class="mx-auto min-h-[60vh] w-full max-w-6xl px-4 py-8 focus:outline-none sm:px-6 sm:py-12 lg:px-8">
 		<nav aria-label="Breadcrumb" class="mb-6 text-sm">
-			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
+			<a href={ view.HomeURL } hx-get={ view.HomeURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="rounded-sm text-cyan-200 underline hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300">Areas</a>
 			<span aria-hidden="true" class="px-2 text-slate-500">/</span>
 			<span aria-current="page" class="text-slate-400">Error { status }</span>
 		</nav>

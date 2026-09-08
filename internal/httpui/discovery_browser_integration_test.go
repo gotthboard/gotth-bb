@@ -71,7 +71,15 @@ func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 				Excerpt: "A safe browser-visible excerpt.",
 			}}}, nil
 		},
-		Activity: unavailableActivityService, DirectPost: unavailableDirectPostService,
+		Activity: func(_ context.Context, _ *discovery.AuthenticatedCursor, access auth.AccessContext) (discovery.ActivityPage, error) {
+			if !access.Valid() {
+				return discovery.ActivityPage{}, fmt.Errorf("browser activity access is invalid")
+			}
+			return discovery.ActivityPage{Results: []discovery.ActivityResult{{
+				PostID: 9, CreatedAt: now, AuthorID: 2, AuthorName: "Alice", TopicID: 3,
+				TopicTitle: "Browser evidence", AreaID: 4, AreaSlug: "general", AreaName: "General",
+			}}}, nil
+		}, DirectPost: unavailableDirectPostService,
 	})
 	if err != nil {
 		t.Fatalf("construct discovery handler: %v", err)
@@ -147,10 +155,12 @@ func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 		t.Fatalf("browser DOM escaped base path or exposed unsafe markup")
 	}
 	reflow := exec.Command(node, "--test", filepath.Join("..", "..", "assets", "scripts", "discovery-reflow.chromium.test.mjs"))
-	reflow.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_DISCOVERY_REFLOW_URL="+target)
-	if output, err := reflow.CombinedOutput(); err != nil {
-		t.Fatalf("Chromium discovery reflow failed: %v; output: %s", err, output)
+	reflow.Env = append(os.Environ(), "CHROMIUM="+chromium, "GOTTH_BB_DISCOVERY_REFLOW_URL="+target, "GOTTH_BB_DISCOVERY_ACTIVITY_URL="+publicBase+"/activity")
+	reflowOutput, err := reflow.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Chromium discovery accessibility/reflow failed: %v; output: %s", err, reflowOutput)
 	}
+	t.Logf("Chromium discovery accessibility/reflow admitted:\n%s", strings.TrimSpace(string(reflowOutput)))
 	errorProbe := exec.Command(chromium,
 		"--headless=new", "--disable-background-networking", "--disable-gpu", "--no-first-run", "--no-proxy-server",
 		"--user-data-dir="+filepath.Join(directory, "chromium-error-profile"), "--virtual-time-budget=2000", "--dump-dom", publicBase+"/probe-discovery-error",

@@ -17,11 +17,12 @@ endpoints.
 
 ## Maturity and compatibility
 
-Current status: the restricted-test `1.0.0-beta.1` tag is an immutable failed
-candidate, not a known-good release. Its live acceptance pass found the
-narrow-screen search defect recorded by B1-06. The corrective
-`1.0.0-beta.1.1` identity remains withheld until its guarded release gate and
-owner confirmation complete.
+Current status: the restricted-test `1.0.0-beta.1` and
+`1.0.0-beta.1.1` tags are immutable failed candidates, not known-good
+releases. Live acceptance found the narrow-screen search defect recorded by
+B1-06 and then a breadcrumb link-distinction defect in the corrected candidate.
+The `1.0.0-beta.1.2` identity remains withheld until B1-07's guarded release
+gate and owner confirmation complete.
 
 ## Current source use
 
