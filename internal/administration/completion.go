@@ -584,13 +584,13 @@ func digestIDs(ids []int64) string {
 func mapCompletionBoundaryError(err error) error {
 	switch {
 	case errors.Is(err, ErrAccountAdministrationDenied), errors.Is(err, ErrAreaAdministrationDenied):
-		return ErrAdministrationDenied
+		return fmt.Errorf("%w: %v", ErrAdministrationDenied, err)
 	case errors.Is(err, ErrAccountAdministrationInput), errors.Is(err, ErrAreaAdministrationInput):
-		return ErrAdministrationInput
+		return fmt.Errorf("%w: %v", ErrAdministrationInput, err)
 	case errors.Is(err, ErrAccountAdministrationNotFound):
-		return ErrAdministrationNotFound
+		return fmt.Errorf("%w: %v", ErrAdministrationNotFound, err)
 	case errors.Is(err, ErrAccountAdministrationConflict), errors.Is(err, ErrAreaAdministrationConflict):
-		return ErrAdministrationConflict
+		return fmt.Errorf("%w: %v", ErrAdministrationConflict, err)
 	default:
 		return err
 	}
