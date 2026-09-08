@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Prove the Alpha.2 upgrade and Beta logical recovery path
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- bounded PostgreSQL 17 logical backup and clean-restore helpers
+- complete idempotent Beta runtime privilege contract
+- Alpha.2-compatible search preflight and restore-stable 000010 constraints
+- B1-03 upgrade, restore, readiness, rollback, and limitation evidence
+
+Explanation:
+
+A logical copy of the active migration-000005 Alpha.2 database now upgrades
+through 000011, completes renderer/search work, receives the exact restricted
+runtime ACL, serves through the Beta candidate, backs up, and restores into a
+second clean PostgreSQL 17 instance without row or catalog drift. The rehearsal
+found and repaired three release blockers: a preflight query that referenced a
+not-yet-created column, an incremental grant file that could not recover a
+privilege-free dump and retained broad legacy authority, and two constraint
+expressions whose redundant grouping was not dump/restore stable.
+
+Verification:
+
+- exact populated Alpha.2-to-Beta.1 migration on the retained live copy
+- real custom-format backup, digest/list validation, clean restore, ACL replay,
+  constraint-catalog identity, readiness, and application smoke
+- PostgreSQL 17.10 migration/readiness/governance/administration/abuse tests
+- helper syntax, fake-Docker failure/cancellation/redaction/order tests
+
+Risks / non-goals:
+
+- the live Alpha.2 database was not mutated; live stopped deployment is B1-05
+- backup storage is a distinct dataset on the same physical host and is not
+  represented as off-host disaster recovery
+- scheduling, retention, encryption policy, production RPO/RTO, and RC.1 are
+  out of scope
+
 ### 2026-09-08 — Close Beta.1 accessibility and representative-plan admission
 
 Commit: current commit; hash assigned by Git after commit

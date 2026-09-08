@@ -1,0 +1,142 @@
+Beta.1 B1-03 Alpha.2 upgrade and logical recovery evidence
+============================================================
+
+Candidate
+---------
+
+Commit: ddd792f6ed7f414c372d8c0bc1798061ffdb6151
+Tree: 5b451fd06f71c1b66df6da02a664902fd5075a43
+Version: 1.0.0-beta.1
+Go: go1.26.6 linux/amd64
+PostgreSQL image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+PostgreSQL server: 17.10
+Forum SHA-256: 63ac1858df0f136c674b6f2658338215cf43ac24ad15a8f109fe6722030cd345
+Migrator SHA-256: 14855614b37b5bcc29a06285f6c9c51d079837beacef93c9df825fc546e7532d
+Operator SHA-256: bb10da414cbe1529a3d708d0a3df8ff1d4aa81c36c1c524404b2d4ea5022827d
+Rehearsal image: sha256:2a780f8d79f1a1520beb28590c871d3b5d64ba4e61e725d660edc0d4458dd8ff
+
+Live Alpha.2 source baseline
+----------------------------
+
+The active source remained `gotth-bb-app` on image
+`sha256:f0d2f1788a5df8a6adca891aa18a2ad74cfa93971d78c79bd9f8785bcaacada5`.
+The database remained container `gotth-bb-postgresql-17`, database
+`gotth_bb`, migration owner `gotth_bb_migrate`, and durable mount
+`/tank/gotth-bb/postgres17`. The source ledger was versions 1 through 5,
+count 5. Critical counts were users/topics/posts/reports/moderation-actions
+1/3/21/0/7 and database size was 9,279,155 bytes. Public root and local
+readiness were 200 before and after rehearsal. The live schema was not
+mutated and the active application was not stopped.
+
+The deployed Compose release was
+`/opt/gotth-bb/releases/1.0.0-alpha.2-47c3a17/deploy/container/compose.yml`
+with root-owned non-secret environment inventory and separately mounted
+database/OIDC secret files. Caddy remained the public TLS boundary and the
+application listener remained loopback-only. No secret value entered this
+record, an image, a command argument, or retained output.
+
+Alpha.2 logical backup and first restore
+----------------------------------------
+
+Helper: deploy/postgresql/backup-logical.sh
+Archive: /tank/backups/gotth-bb/20260908-beta1-b103-alpha2-rehearsal.dump
+Bytes: 127609
+SHA-256: cb5aa4165ecf869ab8ec8ede0a1c04d41a26de5517988958b8f92d5a3cc84218
+Elapsed: 2 seconds
+Mode/owner: 0600 root:root
+
+The helper used the source container's local PostgreSQL identity, custom
+format, no privileges, serializable-deferrable snapshot, five-second lock
+wait, archive-list validation, sync, digest, and no-clobber atomic admission.
+The archive restored with the packaged helper to a clean pinned PostgreSQL 17
+tmpfs instance in 0.785 seconds. The restored ledger and critical counts were
+exactly 1..5/count 5 and 1/3/21/0/7.
+
+Stopped-copy upgrade
+--------------------
+
+No application process was attached to the final Alpha.2 restore while the
+exact migrator ran. Migrations 000006 through 000011, renderer completion, and
+search completion committed in 0.354 seconds. The resulting ledger was
+1..11/count 11. Critical counts remained 1/3/21/0/7. Renderer state was
+`goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`, complete, with 21 converted posts.
+Search state was `search-v1-pg17-simple-u15-p2`, complete, with 3 topics and
+21 posts.
+
+The exact packaged runtime ACL was applied after creating the clean target's
+runtime role. It first removed inherited/table/default-era table and sequence
+authority, then restored the explicit Beta read, mutation, sequence, and
+column boundaries. PostgreSQL integration passed for migration, readiness,
+governance, administration, and abuse packages. Runtime has no table-wide
+user UPDATE or DELETE; required OIDC/moderation/administration/publication
+columns are writable while `created_at` and `bio` are not. Renderer/search
+state is read-only, site settings is column-update-only, governance permits
+only the singleton lock column, and immutable audit rows cannot be changed or
+deleted.
+
+The exact nonroot, read-only, cap-dropped candidate image reached readiness
+200 against the upgraded copy. With canonical proxy identity, home, rules,
+search with a valid query, and activity returned 200.
+
+Beta logical backup and clean restore
+-------------------------------------
+
+Archive: /tank/backups/gotth-bb/20260908-beta1-b103-upgraded-canonical.dump
+Bytes: 191311
+SHA-256: 634f9e4eb20d4404b7ee83af9c5a87fcebc885b5bd2b3ba21171b6bbd6627f65
+Backup elapsed: 1.069 seconds
+Restore target: gotth-bb-beta1-b103-restore4, loopback-only, tmpfs
+Restore elapsed: 0.864 seconds
+
+After restore and exact ACL reapplication, the ledger, counts, renderer, and
+search state matched the upgraded source exactly. A complete ordered comparison
+of every public constraint name and `pg_get_constraintdef` result was
+byte-identical between upgraded source and clean restore. The same exact image
+then reached readiness 200 and returned 200 for home, rules, valid search, and
+activity. A deliberate second restore attempt failed closed with
+`target database is not clean` and changed no data.
+
+Defects found and repaired
+--------------------------
+
+1. Search preflight directly referenced `posts.redacted_at`, which does not
+   exist at Alpha.2 head 000005. The preflight now uses a schema-compatible
+   `to_jsonb` probe; population remains a direct current-schema query.
+2. The packaged runtime grant file was only a delta, so a no-privileges restore
+   could not serve and the legacy deployment's broad defaults would violate
+   Beta privilege readiness. It is now the complete idempotent runtime ACL.
+3. Two 000010 CHECK expressions used redundant grouping that PostgreSQL
+   canonicalized differently through pg_dump/restore. The not-yet-live
+   migration now creates the canonical expression directly. Migrated and
+   restored catalogs are identical rather than accepted through an exception.
+
+Verification
+------------
+
+- Focused unit tests for backup/restore, search preflight, ACL readiness, site
+  readiness, and migration contracts passed.
+- PostgreSQL 17.10 integration passed for migrations, cmd/migrate, readiness,
+  governance, administration, abuse, and site behavior.
+- The populated exact 000001..000005 integration fixture upgrades to exact
+  000011 and completes renderer/search work.
+- Both helper paths passed against real PostgreSQL 17 containers; fake-Docker
+  tests cover invalid arguments, unsafe paths, no-clobber, archive/list/digest,
+  wrong-major, nonclean target, failure, cancellation, bounded output,
+  redaction, and command/stdin ordering.
+- Live Alpha.2 remained head 000005 with unchanged critical counts and 200
+  public/readiness responses after the rehearsal.
+
+Recovery boundary and limitation
+--------------------------------
+
+The exact Alpha.2 image/configuration plus the retained verified Alpha.2
+archive form the pre-upgrade rollback pair. After a live database reaches
+000011, Alpha.2 must not be started against it; rollback requires restoring
+the verified pre-upgrade archive before restarting Alpha.2, or a reviewed
+forward repair. No volume deletion or Compose `down -v` is permitted.
+
+Both database storage and `/tank/backups/gotth-bb` are distinct datasets on
+the same physical host/failure domain. This is an adequate restricted-Beta
+rehearsal and rollback copy, not off-host disaster recovery. Scheduling,
+retention, encryption policy, off-host replication, and production RPO/RTO
+remain later operational gates.

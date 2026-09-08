@@ -77,7 +77,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000011 | implemented |
 | `OPS-002` | bounded public liveness/readiness | readiness and deployed health tests | implemented |
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
-| `OPS-004` | deployment/migration/backup/restore/rollback procedures | deployment/migration procedures exist; packaged logical helpers and Beta rehearsal pending B1-03/B1-05 | blocked |
+| `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 packaged-helper, live-copy upgrade, Beta backup/clean-restore, readiness, and rollback rehearsal complete; live release record pending B1-05 | blocked |
 | `OPS-005` | fail-closed identity/session/access validation | auth/policy/readiness/failure tests | implemented |
 
 ## Existing retained evidence
