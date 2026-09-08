@@ -106,7 +106,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "document.readyState === 'complete' && document.body.textContent.includes('Board administration')");
 
   let accessibility = await send("Accessibility.getFullAXTree", {}, sessionId);
-  let namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${node.name?.value || ''}`);
+  let namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${String(node.name?.value || '').replace(/\s+/g, ' ').trim()}`);
   for (const expected of ["heading:Board administration", "link:Overview", "link:Accounts", "link:Groups", "link:Areas", "link:Settings"]) {
     assert(namedRoles.includes(expected), `accessibility tree lacks ${expected}`);
   }
@@ -123,7 +123,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Change role')");
 
   accessibility = await send("Accessibility.getFullAXTree", {}, sessionId);
-  namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${node.name?.value || ''}`);
+  namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${String(node.name?.value || '').replace(/\s+/g, ' ').trim()}`);
   for (const expected of ["heading:Local Member", "combobox:Role", "textbox:Audit reason", "button:Change role", "button:Revoke"]) {
     assert(namedRoles.includes(expected), `account accessibility tree lacks ${expected}`);
   }
