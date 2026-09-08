@@ -988,15 +988,19 @@ semantic headings/status/errors, accessible names, and mobile/desktop widths.
 
 Fresh and upgrade migration tests cover exact head 000010, default preservation,
 exact singleton cardinality, current rules-renderer tuple, audit constraint and
-runtime grants, positive administration revisions and atomic increments,
-lock/scan behavior, transaction rollback, unknown outcome,
+the exact AN-04 runtime-grant delta, positive administration revisions and
+atomic increments, lock/scan behavior, transaction rollback, unknown outcome,
 idempotent rerun, readiness, and prior/current artifact exact-head failure.
 Corrupt theme, nonfinite time, stale renderer, missing/duplicate settings, audit
 constraint drift, or runtime-grant drift must fail closed.
 
-Privilege evidence proves mapping DELETE succeeds only on
-`forum_group_members` and `area_groups`, while DELETE remains denied on users,
-groups, areas, settings, and audit rows. Audit evidence proves exact target
+Privilege evidence starts from the admitted pre-AN-04 restricted-role fixture,
+applies the packaged delta twice, and proves settings SELECT/column-UPDATE,
+group SELECT/create/rename and identity-sequence use, and membership SELECT/
+insert/delete. It proves settings insert/delete/key-update, mapping UPDATE, and
+DELETE on users/groups/areas/settings/audit rows remain denied. Existing
+`area_groups` mapping INSERT/DELETE remains in the baseline and is re-proved
+without being misreported as a new grant. Audit evidence proves exact target
 columns and bounded state/digests for settings, role, membership, group, area,
 and area-group actions.
 

@@ -2142,13 +2142,30 @@ optimistic token.
 Readiness extends exact-head verification with catalog attestation for the
 singleton relation, all four revision columns and their positive checks,
 column types/defaults/nullability, audit target/action constraints, runtime
-grants, exact one-row cardinality, finite time, closed theme, and current
-rules-renderer tuple. The packaged grant artifact gives the runtime role only
-the SELECT/INSERT/UPDATE privileges required by the admitted operations,
-DELETE only on `forum_group_members` and `area_groups`, and no DELETE on
-settings, users, groups, or areas. Missing, duplicate,
-malformed, or stale settings fail readiness and page rendering closed. The
-application does not invent an in-memory fallback.
+grant delta, exact one-row cardinality, finite time, closed theme, and current
+rules-renderer tuple. The packaged grant artifact preserves the pre-AN-04
+runtime baseline and adds exactly:
+
+- `SELECT` plus column-level `UPDATE(site_name, site_description, brand_theme,
+  rules_markdown, rules_html, rules_renderer_version,
+  administration_revision, updated_at)` on `site_settings`, with no INSERT,
+  DELETE, or key update;
+- `SELECT`, column-level `INSERT(name, created_by, created_at, updated_at)`, and
+  column-level `UPDATE(name, updated_at, administration_revision)` on
+  `forum_groups`;
+- `USAGE, SELECT` on `forum_groups_id_seq`; and
+- `SELECT`, column-level `INSERT(group_id, user_id, granted_by, created_at)`,
+  and DELETE on `forum_group_members`, with no UPDATE.
+
+Existing area administration already requires mapping INSERT/DELETE on
+`area_groups`; AN-04 does not relabel that baseline as a new grant. Readiness
+attests the required delta and rejects INSERT/DELETE/key-update on settings,
+DELETE on users/groups/areas/audit rows, UPDATE on either mapping relation, or
+missing group-sequence privileges. It does not claim an additive artifact can
+erase or globally attest unrelated operator-managed grants outside the required
+delta and explicit forbidden-operation set.
+Missing, duplicate, malformed, or stale settings fail readiness and page
+rendering closed. The application does not invent an in-memory fallback.
 
 ### 21.2 Site presentation, settings mutation, and public rules
 

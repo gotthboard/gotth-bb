@@ -246,9 +246,11 @@ notes, screenshots, or repository files.
   revisions, and revised audit checks. PostgreSQL's constant defaults avoid
   rewriting existing user/group/area rows, but constraint validation and audit-
   check replacement still take measured table locks and scans. The packaged
-  runtime grants add only the SELECT/INSERT/UPDATE privileges required by the
-  admitted operations, DELETE only on the two mapping relations, and no DELETE
-  on settings, users, groups, or areas.
+  runtime-grant delta adds settings SELECT/column-UPDATE, group SELECT/create/
+  rename plus `forum_groups_id_seq` usage, and membership SELECT/insert/delete.
+  It preserves the pre-AN-04 baseline, adds no settings insert/delete/key
+  update, adds no mapping update, and does not grant deletion of users, groups,
+  areas, settings, or audit rows.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -429,10 +431,10 @@ required sequence is:
    before retrying.
    AN-04 migration 000010 is also a stopped ordinary migration. Record the
    locks and scans used to add/validate positive revisions and replace audit
-   checks, then attest the seeded settings tuple and exact runtime grants. A
-   failed transaction leaves the ledger at 000009; after an unknown outcome,
-   inspect the ledger, singleton, revisions, constraints, and grants before any
-   retry.
+   checks, then attest the seeded settings tuple, exact AN-04 grant delta, and
+   explicit forbidden operations. A failed transaction leaves the ledger at
+   000009; after an unknown outcome, inspect the ledger, singleton, revisions,
+   constraints, and grants before any retry.
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
@@ -440,8 +442,10 @@ required sequence is:
    migration owner by default; the application readiness role needs the
    artifact's narrow `SELECT` on `content_renderer_state`. Reapplying this
    `GRANT` artifact is idempotent. After 000008 it also supplies the exact
-   read-only `search_projection_state` grant. Do not transfer table ownership
-   or substitute table-wide mutation privileges.
+   read-only `search_projection_state` grant. After 000010 it supplies the
+   exact AN-04 settings/group/membership table-column and group-sequence delta
+   without replacing the pre-AN-04 runtime baseline. Do not transfer table
+   ownership or substitute table-wide mutation privileges.
 11. Build the application image from the verified archive and verify labels and
    database-free binary identities.
 12. Validate the resolved Compose model without printing its environment.
