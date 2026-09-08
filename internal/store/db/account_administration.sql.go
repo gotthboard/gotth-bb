@@ -42,7 +42,8 @@ WITH changed AS (
       AND forum_user.role = $4
       AND forum_user.administration_revision = $5
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.role, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.role, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -55,7 +56,7 @@ WITH changed AS (
                               'administration_revision', $5::bigint),
            jsonb_build_object('role', changed.role,
                               'administration_revision', changed.administration_revision),
-           $8, $2::timestamptz
+           $8, changed.updated_at
     FROM changed
     RETURNING id, target_user_id
 ), revoked AS (
@@ -185,7 +186,8 @@ WITH mapping AS (
     WHERE forum_user.id = mapping.user_id
       AND forum_user.administration_revision = $5
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -198,7 +200,7 @@ WITH mapping AS (
                               'administration_revision', $5::bigint),
            jsonb_build_object('group_id', mapping.group_id, 'member', true,
                               'administration_revision', changed.administration_revision),
-           $7, $4::timestamptz
+           $7, changed.updated_at
     FROM changed
     JOIN mapping ON mapping.user_id = changed.id
     RETURNING id, target_user_id
@@ -634,12 +636,13 @@ const renameAdministrationGroupAndAudit = `-- name: RenameAdministrationGroupAnd
 WITH changed AS (
     UPDATE public.forum_groups AS forum_group
     SET name = $1,
-        updated_at = $2::timestamptz,
+        updated_at = GREATEST(forum_group.updated_at, $2::timestamptz),
         administration_revision = forum_group.administration_revision + 1
     WHERE forum_group.id = $3
       AND forum_group.administration_revision = $4
       AND forum_group.administration_revision < 9223372036854775807
-    RETURNING forum_group.id, forum_group.name, forum_group.administration_revision
+    RETURNING forum_group.id, forum_group.name, forum_group.updated_at,
+              forum_group.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_group_id,
@@ -652,7 +655,7 @@ WITH changed AS (
                               'administration_revision', $4::bigint),
            jsonb_build_object('name', changed.name,
                               'administration_revision', changed.administration_revision),
-           $8, $2::timestamptz
+           $8, changed.updated_at
     FROM changed
     RETURNING id, target_group_id
 )
@@ -715,7 +718,8 @@ WITH mapping AS (
     WHERE forum_user.id = mapping.user_id
       AND forum_user.administration_revision = $4
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -728,7 +732,7 @@ WITH mapping AS (
                               'administration_revision', $4::bigint),
            jsonb_build_object('group_id', mapping.group_id, 'member', false,
                               'administration_revision', changed.administration_revision),
-           $7, $3::timestamptz
+           $7, changed.updated_at
     FROM changed
     JOIN mapping ON mapping.user_id = changed.id
     RETURNING id, target_user_id

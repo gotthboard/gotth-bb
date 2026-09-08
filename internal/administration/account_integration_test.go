@@ -140,7 +140,7 @@ RETURNING id`).Scan(&actorID); err != nil {
 	if _, err := ChangeAccountRole(ctx, connections[1], func() time.Time { return observedAt.Add(6 * time.Second) }, secondActor, actorID, policy.RoleMember, policy.RoleAdministrator, "Reject final administrator removal", 1, testAdministrationRequestID(10)); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("stale demoted actor role change error = %v", err)
 	}
-	if _, err := ChangeAccountRole(ctx, connections[0], func() time.Time { return observedAt.Add(6 * time.Second) }, actor, actorID, policy.RoleMember, policy.RoleAdministrator, "Reject self role change", 1, testAdministrationRequestID(11)); !errors.Is(err, ErrAccountAdministrationInput) {
+	if _, err := ChangeAccountRole(ctx, connections[0], func() time.Time { return observedAt.Add(6 * time.Second) }, actor, actorID, policy.RoleMember, policy.RoleAdministrator, "Reject self role change", 1, testAdministrationRequestID(11)); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("self role change error = %v", err)
 	}
 }

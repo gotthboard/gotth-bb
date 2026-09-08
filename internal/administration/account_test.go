@@ -73,7 +73,7 @@ func TestAccountAdministrationClosedInputGrammars(t *testing.T) {
 			t.Fatalf("validAdministrationGroupName(%q) = %t, want %t", value, got, want)
 		}
 	}
-	for value, want := range map[string]bool{"Reason": true, " padded ": false, "line\nbreak": false, "": false} {
+	for value, want := range map[string]bool{"Reason": true, "Cafe\u0301": true, " padded ": false, "line\nbreak": false, "": false} {
 		if got := validAdministrationReason(value); got != want {
 			t.Fatalf("validAdministrationReason(%q) = %t, want %t", value, got, want)
 		}

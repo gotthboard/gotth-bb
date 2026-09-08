@@ -193,12 +193,13 @@ JOIN audit ON audit.target_group_id = created.id;
 WITH changed AS (
     UPDATE public.forum_groups AS forum_group
     SET name = sqlc.arg(name),
-        updated_at = sqlc.arg(observed_at)::timestamptz,
+        updated_at = GREATEST(forum_group.updated_at, sqlc.arg(observed_at)::timestamptz),
         administration_revision = forum_group.administration_revision + 1
     WHERE forum_group.id = sqlc.arg(group_id)
       AND forum_group.administration_revision = sqlc.arg(expected_revision)
       AND forum_group.administration_revision < 9223372036854775807
-    RETURNING forum_group.id, forum_group.name, forum_group.administration_revision
+    RETURNING forum_group.id, forum_group.name, forum_group.updated_at,
+              forum_group.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_group_id,
@@ -211,7 +212,7 @@ WITH changed AS (
                               'administration_revision', sqlc.arg(expected_revision)::bigint),
            jsonb_build_object('name', changed.name,
                               'administration_revision', changed.administration_revision),
-           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+           sqlc.arg(request_id), changed.updated_at
     FROM changed
     RETURNING id, target_group_id
 )
@@ -234,7 +235,8 @@ WITH mapping AS (
     WHERE forum_user.id = mapping.user_id
       AND forum_user.administration_revision = sqlc.arg(expected_revision)
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -247,7 +249,7 @@ WITH mapping AS (
                               'administration_revision', sqlc.arg(expected_revision)::bigint),
            jsonb_build_object('group_id', mapping.group_id, 'member', true,
                               'administration_revision', changed.administration_revision),
-           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+           sqlc.arg(request_id), changed.updated_at
     FROM changed
     JOIN mapping ON mapping.user_id = changed.id
     RETURNING id, target_user_id
@@ -271,7 +273,8 @@ WITH mapping AS (
     WHERE forum_user.id = mapping.user_id
       AND forum_user.administration_revision = sqlc.arg(expected_revision)
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -284,7 +287,7 @@ WITH mapping AS (
                               'administration_revision', sqlc.arg(expected_revision)::bigint),
            jsonb_build_object('group_id', mapping.group_id, 'member', false,
                               'administration_revision', changed.administration_revision),
-           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+           sqlc.arg(request_id), changed.updated_at
     FROM changed
     JOIN mapping ON mapping.user_id = changed.id
     RETURNING id, target_user_id
@@ -304,7 +307,8 @@ WITH changed AS (
       AND forum_user.role = sqlc.arg(expected_role)
       AND forum_user.administration_revision = sqlc.arg(expected_revision)
       AND forum_user.administration_revision < 9223372036854775807
-    RETURNING forum_user.id, forum_user.role, forum_user.administration_revision
+    RETURNING forum_user.id, forum_user.role, forum_user.updated_at,
+              forum_user.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -317,7 +321,7 @@ WITH changed AS (
                               'administration_revision', sqlc.arg(expected_revision)::bigint),
            jsonb_build_object('role', changed.role,
                               'administration_revision', changed.administration_revision),
-           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+           sqlc.arg(request_id), changed.updated_at
     FROM changed
     RETURNING id, target_user_id
 ), revoked AS (

@@ -436,11 +436,14 @@ func ChangeGroupMembership(ctx context.Context, beginner accountTransactionBegin
 }
 
 func ChangeAccountRole(ctx context.Context, beginner accountTransactionBeginner, clock func() time.Time, actor policy.AccessContext, targetUserID int64, role, expectedRole policy.Role, reason string, revision int64, requestID pgtype.UUID) (AccountMutationResult, error) {
-	if targetUserID <= 0 || targetUserID == actor.UserID || revision <= 0 || !validAdministrationRole(role) || !validAdministrationRole(expectedRole) || role == expectedRole {
+	if targetUserID <= 0 || revision <= 0 || !validAdministrationRole(role) || !validAdministrationRole(expectedRole) || role == expectedRole {
 		return AccountMutationResult{}, fmt.Errorf("%w: role change", ErrAccountAdministrationInput)
 	}
 	if err := validateAccountMutationBoundary(ctx, beginner, clock, actor, reason, requestID); err != nil {
 		return AccountMutationResult{}, err
+	}
+	if targetUserID == actor.UserID {
+		return AccountMutationResult{}, ErrAccountAdministrationDenied
 	}
 	observedAt, err := accountMutationTime(clock)
 	if err != nil {
@@ -701,7 +704,7 @@ func validAdministrationGroupName(value string) bool {
 
 func validAdministrationReason(value string) bool {
 	return len(value) >= 1 && len(value) <= 2_000 && utf8.ValidString(value) && strings.TrimSpace(value) == value &&
-		norm.NFC.IsNormalString(value) && strings.IndexFunc(value, unicode.IsControl) < 0
+		strings.IndexFunc(value, unicode.IsControl) < 0
 }
 
 func validAdministrationRole(role policy.Role) bool {
