@@ -318,16 +318,21 @@ identity access, or content history.
 
 ### 8.1 Core relations
 
-- `users`: local identity, profile snapshot, role, suspension state, timestamps.
+- `users`: local identity, profile snapshot, role, suspension state, timestamps,
+  and forum-administration revision.
 - `external_identities`: OIDC issuer and subject, unique as a pair.
 - `governance_state`: one singleton row used only to serialize bootstrap and
   administrator-continuity checks.
-- `forum_groups`: locally administered groups and stable local identifiers.
+- `forum_groups`: locally administered groups, stable local identifiers, and
+  administration revision.
 - `forum_group_members`: audited local user-to-group membership.
 - `sessions`: hashed opaque token, user, issued/expiry/validation timestamps,
   revocation state, and minimal client audit fields.
 - `oidc_login_attempts`: short-lived, one-time state/nonce/PKCE records.
-- `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order.
+- `site_settings`: one bounded presentation/rules singleton with an
+  administration revision.
+- `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order,
+  and administration revision.
 - `area_groups`: local groups allowed to view a group-restricted area.
 - `topics`: area, author, title, state, activity pointers, counters.
 - `posts`: topic, author, stable number, Markdown source, sanitized rendering,
@@ -435,7 +440,9 @@ Database constraints remain authoritative. Application checks improve errors
 but do not replace uniqueness, foreign keys, check constraints, and transaction
 isolation.
 
-## 10. Search and unread state
+## 10. Feature data paths
+
+### 10.1 Search and recent activity
 
 PostgreSQL 17 full-text search is sufficient for version 1.0; `gotth-search`
 remains a placeholder and no external service enters the data path. AN-02 owns
@@ -502,6 +509,8 @@ predicates are initially empty. Rollback remains forward repair or the existing
 verified pre-migration restore; AN-02 adds no down-migration fiction or backup
 engine.
 
+### 10.2 Unread state
+
 Unread state reuses `topic_reads` as one monotonic acknowledgment per user and
 topic. `post_number` remains its chronological coordinate even though topic
 pages render immutable tree order. This mismatch is not hidden: opening a page
@@ -564,6 +573,101 @@ counts are likewise population-dependent. Five-second read/first-unread and
 two-second mark-read contexts, statement timeouts no longer than those
 contexts, and the database pool bound failure, but do not manufacture a
 constant-time claim.
+
+### 10.3 Administration completion
+
+Administration is a set of ordinary PostgreSQL-backed forum operations, not a
+second identity authority. Authentik still owns authentication and enrollment;
+the board stores and changes only forum-local role, suspension, group, area,
+and presentation state. Every protected request reloads that local authority,
+so a committed role, group, or suspension change does not wait for OIDC claim
+refresh. No board route receives Authentik administrative credentials.
+
+Migration 000010 adds one `site_settings` singleton, positive administration
+revision counters to the existing user, group, and area rows, and the audit
+target/actions required by settings and group/area mapping operations. The
+singleton stores bounded source fields plus a closed theme name and the exact
+sanitized community-rules HTML/renderer version produced from bounded Markdown.
+It is seeded with the current built-in presentation so an upgrade does not
+invent a visible rebrand. Existing rows receive revision 1 through PostgreSQL's
+constant-default mechanism; constraint validation and audit-check replacement
+still take real locks and scans. Readiness attests the exact singleton,
+revisions, checks, audit contract, and current rules-renderer tuple; malformed
+or stale state fails rendered pages closed rather than silently substituting
+defaults.
+
+Site presentation uses three deliberately separate projections. A shell read
+returns only site name, short description, and closed theme after route-specific
+authorization and main-data work succeeds; HTMX fragments, redirects, static
+assets, health, and readiness do not perform it. The public rules read alone
+returns the bounded trusted rules HTML. The administrator edit read alone
+returns source, renderer metadata, and numeric revision. The service keeps no
+process-local settings cache, invalidation bus, or polling loop: a committed
+update is visible to the next database read on every instance. This spends one
+small bounded query per full document instead of copying up to 262 KiB of rules
+HTML through every shell or hiding cross-process staleness behind a clever
+cache.
+
+The built-in theme is a closed value mapped to static, compiled CSS selectors.
+Administrators cannot supply CSS, script, HTML, a URL, or a remote logo. Rules
+reuse the admitted GFM renderer and sanitizer; only the trusted stored HTML is
+rendered. The public rules response contains no administrator identity,
+revision, audit reason, or unpublished state.
+
+Account administration exposes bounded local projections. The list keysets on
+positive user ID and returns at most 51 identities to render 50 plus a next
+sentinel. A detail read returns display name, closed local role, effective
+suspension state, and numeric administration revision. A separate group page
+keysets on group ID and returns 51 rows with a membership boolean to render 50
+plus a next sentinel. Paging the relation replaces the dishonest lifetime quota
+and population-sized set replacement. Email, avatar, issuer, subject, session,
+IP, and user-agent columns never enter these queries or templates.
+
+Role changes lock the governance singleton before actor and target rows in
+ascending user-ID order. The transaction revalidates a current unsuspended
+administrator, rejects self-targeting and no-op/stale state, counts active
+administrators when demoting an administrator, updates the closed role, appends
+one immutable audit row, increments the target's administration revision, and
+revokes all target sessions before commit. Suspension/reinstatement uses the
+same governance/user lock order and increments the same revision. This
+preserves the permanent bootstrap closure and administrator continuity under
+concurrent role and suspension changes. The browser reports an unknown commit
+as unknown and does not retry it.
+
+Group create/rename and single membership grant/revoke are separate audited
+transactions. Names remain case-insensitively unique. A mapping mutation locks
+governance, actor/target users in ID order, and the one group; revalidates the
+numeric user revision; changes exactly one mapping; increments the revision;
+and appends exactly one grant/revoke audit. A no-op or stale revision conflicts.
+Version 1.0 omits group deletion because its existing foreign-key cascades would
+otherwise make area authorization disappear as a side effect of a
+superficially local action.
+
+Area administration retains one audited core transaction but replaces the
+timestamp token with the numeric administration revision. Renaming changes only
+the display name; the published slug stays immutable. Ordering remains
+`(display_order, id)` and the private page uses that raw keyset without claiming
+a snapshot across concurrent reorders. Area/group assignments are paged and
+changed one mapping at a time; creation or transition to group visibility takes
+one existing initial group so the schema invariant is never transiently false.
+Archive is the closed `archived` posting mode and restore explicitly selects
+`normal` or `read_only`; authorized reads remain available while publication
+fails through the existing posting predicate. Areas are not deleted.
+
+The administrator dashboard uses one read-only repeatable-read transaction and
+one database timestamp to return exact, mutually consistent buckets: total
+local accounts by role and effective suspension, undeleted topics,
+undeleted/unredacted posts, and reports in `open` or `in_review`. Authorization
+is rechecked inside the transaction before aggregates run. The query is
+population-dependent and receives a bounded context and statement timeout; it
+returns no partial or approximate result to manufacture availability.
+
+All administration pages are private and no-store. Strict path/query grammar,
+session freshness, role authorization, bounded body parsing, CSRF validation,
+request-ID creation, and database mutation remain in that order. Ordinary HTML
+uses post/redirect/get; successful HTMX mutations use the existing same-origin
+main-region navigation. JavaScript does not grant authority and its absence
+does not remove a control.
 
 ## 11. Rendering and client behavior
 

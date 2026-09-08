@@ -296,6 +296,7 @@ Required columns:
 - `suspended_at`, `suspended_until`, `suspension_reason` nullable
 - `muted_until` nullable
 - `created_at`, `updated_at`, `last_login_at`
+- positive `administration_revision` used only by forum-local administration
 
 Role has a check constraint. Display/profile fields have explicit length
 limits. Suspensions do not delete the row.
@@ -338,12 +339,22 @@ Issuer and subject are not user-editable.
 ### 6.4 `forum_groups` and `forum_group_members`
 
 `forum_groups` contains a stable generated ID, unique bounded name, creator,
-and timestamps. `forum_group_members` contains `group_id`, `user_id`, the
+timestamps, and a positive administration revision. `forum_group_members`
+contains `group_id`, `user_id`, the
 administrator that granted membership, and timestamps, with primary key
 `(group_id, user_id)` and an index on `(user_id, group_id)`. Role and membership
 changes append audit events in the same transaction.
 
-### 6.5 `sessions`
+### 6.5 `site_settings`
+
+One boolean-keyed singleton stores the bounded public site name, short
+description, closed compiled theme, community-rules source, trusted rendered
+HTML, renderer version, positive administration revision, and timestamps. The
+runtime may select and update the row but may not insert or delete it. Shell,
+rules, and edit queries select distinct projections so rules bodies are not
+copied through ordinary page rendering.
+
+### 6.6 `sessions`
 
 - `id`
 - `token_hash` unique
@@ -356,7 +367,7 @@ Only a cryptographic hash of the opaque token is stored. Session lookup uses a
 constant-time comparison where application comparison is required. Expired and
 revoked sessions never authenticate.
 
-### 6.6 `oidc_login_attempts`
+### 6.7 `oidc_login_attempts`
 
 - hashed/state lookup key
 - protected nonce and PKCE verifier material
@@ -368,7 +379,7 @@ revoked sessions never authenticate.
 
 State is single use. Cleanup is bounded and safe to repeat.
 
-### 6.7 `areas` and `area_groups`
+### 6.8 `areas` and `area_groups`
 
 `areas` includes:
 
@@ -376,6 +387,7 @@ State is single use. Cleanup is bounded and safe to repeat.
 - `display_order`
 - `visibility`, `posting_mode`
 - `created_by`, `updated_by`, timestamps
+- positive `administration_revision`
 
 `area_groups` uses primary key `(area_id, group_id)` and foreign keys to the
 local group relation.
@@ -387,7 +399,7 @@ Constraints:
 - Slugs are normalized, bounded, and immutable after publication unless a
   redirect record is added. Version 1.0 may therefore prohibit slug changes.
 
-### 6.8 `topics`
+### 6.9 `topics`
 
 - `id`, `area_id`, `author_id`, `title`, normalized optional slug
 - `state` such as `open`, `locked`, `hidden`, `archived`
@@ -407,7 +419,7 @@ the existing deferred constraints validate the complete pair at commit. The
 topic begins with reply count 0 and next post number 2. Ordinary publication is
 not a moderation transition and does not create a moderation-audit row.
 
-### 6.9 `posts`
+### 6.10 `posts`
 
 - `id`, `topic_id`, `author_id`, `post_number`
 - `parent_post_id` nullable only for the first post
@@ -492,7 +504,7 @@ existing topic activity, so a request that waited on the lock cannot move
 chronological post timestamps or area-list activity backward. There is no
 automatic retry after an unknown commit outcome.
 
-### 6.10 `topic_reads`
+### 6.11 `topic_reads`
 
 - `user_id`, `topic_id`, `last_read_post_number`, `read_at`
 - primary key `(user_id, topic_id)`
@@ -511,7 +523,7 @@ advances. Read projections reject a marker above `topics.next_post_number - 1`,
 a non-finite time, or any malformed nullable tuple with fixed service failure.
 Missing rows are meaningful and are never pre-created in bulk.
 
-### 6.11 Reports and audit
+### 6.12 Reports and audit
 
 `reports` identifies exactly one supported target type and target ID, records a
 bounded reason, workflow status, assignment, and resolution. Report submission
@@ -826,6 +838,7 @@ Internal routes are shown relative to the configured external base URL.
 | Method | Route | Purpose | Minimum actor |
 | --- | --- | --- | --- |
 | `GET` | `/` | Area index | Visitor |
+| `GET` | `/rules` | Current community rules | Visitor |
 | `GET` | `/login` | Start Authentik login | Visitor |
 | `GET` | `/register` | Redirect to the fixed Authentik enrollment flow | Visitor |
 | `GET` | `/auth/callback` | OIDC callback | Login attempt |
@@ -857,6 +870,18 @@ Internal routes are shown relative to the configured external base URL.
 | `GET` | `/admin/areas` | Area management | Administrator |
 | `POST` | `/admin/areas` | Create area | Administrator |
 | `POST` | `/admin/areas/{id}` | Change area | Administrator |
+| `GET` | `/admin/areas/{id}` | Area/group assignment detail | Administrator |
+| `POST` | `/admin/areas/{id}/groups/{groupID}` | Grant/revoke one area group | Administrator |
+| `GET` | `/admin` | Administration dashboard | Administrator |
+| `GET` | `/admin/accounts` | Local-account list | Administrator |
+| `GET` | `/admin/accounts/{id}` | Local-account detail | Administrator |
+| `POST` | `/admin/accounts/{id}/role` | Change local role | Administrator |
+| `POST` | `/admin/accounts/{id}/groups/{groupID}` | Grant/revoke one membership | Administrator |
+| `GET` | `/admin/groups` | Local-group list | Administrator |
+| `POST` | `/admin/groups` | Create local group | Administrator |
+| `POST` | `/admin/groups/{id}` | Rename local group | Administrator |
+| `GET` | `/admin/settings` | Site settings form | Administrator |
+| `POST` | `/admin/settings` | Update site settings | Administrator |
 | `GET` | `/search` | Access-filtered search | Visitor |
 | `GET` | `/activity` | Access-filtered recent posts | Visitor |
 | `GET` | `/posts/{id}` | Bounded direct post target | Post viewer |
@@ -2055,7 +2080,298 @@ artifact. After it commits, exact-head readiness prevents the prior artifact
 from starting; recovery is forward repair/current artifact or the existing
 verified pre-000009 restore. No down-migration or inferred rollback is claimed.
 
-## 21. Definition of implementation complete
+## 21. AN-04 administration completion
+
+AN-04 completes the existing forum-local administration surfaces. It does not
+add an Authentik client with administrative scope, local credentials, account
+creation, impersonation, bulk mutation, arbitrary branding code, or a second
+authorization system.
+
+### 21.1 Migration 000010 and site settings
+
+Migration `000010_administration_completion.sql` performs these changes in one
+ordinary migration transaction:
+
+- create exactly one `public.site_settings` row keyed by `singleton boolean`
+  constrained to true;
+- store `site_name text`, `site_description text`, `brand_theme text`,
+  `rules_markdown text`, `rules_html text`, `rules_renderer_version text`,
+  positive `administration_revision bigint`, and finite `updated_at timestamptz`;
+- add positive `administration_revision bigint NOT NULL DEFAULT 1` columns to
+  `users`, `forum_groups`, and `areas`; application mutations increment them
+  atomically and reject overflow;
+- bound the site name to 1–80 Unicode scalar values, the description to 0–280,
+  rules source to 65,536 bytes, and rules HTML to 262,144 bytes; reject control
+  characters in database checks where PostgreSQL can express the rule and
+  enforce strict UTF-8/NFC at the application boundary; close themes to `blue`,
+  `cyan`, `emerald`, `amber`, or `rose` and the renderer version to exact
+  `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`;
+- seed the current presentation (`GOTTH Board`, `Community discussions, plainly
+  organized.`, `blue`, and empty source/HTML under the exact current renderer)
+  so upgrade does not silently rebrand the site;
+- add nullable `target_site boolean` to `moderation_actions`, constrain a
+  present value to true, add `site` to the closed target types, and extend the
+  exact-one-target rule accordingly; and
+- add `create_group`, `rename_group`, `grant_area_group`,
+  `revoke_area_group`, and `update_site_settings` to the closed audit actions.
+  Existing `change_role`, `grant_group_membership`,
+  `revoke_group_membership`, and area actions remain unchanged.
+
+The migration adds no content/account backfill. Dropping and replacing audit
+checks and validating the settings row take the documented PostgreSQL table
+locks and scans; evidence records them instead of calling the change free.
+Fresh and upgrade paths finish at exact head 000010. A failed or unknown
+transaction is inspected through the migration ledger and catalog before any
+retry. There is no down migration; rollback is the prior artifact before 000010
+or forward repair/current artifact after it commits.
+
+Administration mutations still set finite `updated_at` for operator context,
+but that timestamp is informational and never serves as authority or an
+optimistic token.
+
+Readiness extends exact-head verification with catalog attestation for the
+singleton relation, all four revision columns and their positive checks,
+column types/defaults/nullability, audit target/action constraints, runtime
+grants, exact one-row cardinality, finite time, closed theme, and current
+rules-renderer tuple. The packaged grant artifact gives the runtime role only
+the SELECT/INSERT/UPDATE privileges required by the admitted operations and no
+DELETE on settings, users, groups, areas, or their mappings. Missing, duplicate,
+malformed, or stale settings fail readiness and page rendering closed. The
+application does not invent an in-memory fallback.
+
+### 21.2 Site presentation, settings mutation, and public rules
+
+`SiteShellPresentation` contains only name, description, and closed theme. One
+primary-key query loads it after route-specific path/query/session/
+authorization and main-data work succeeds and before buffering a full browser
+document. HTMX fragments, static assets, health, readiness, redirects, and
+fixed plain unavailable responses do not perform this query.
+
+`PublicRules` is a separate primary-key projection containing only trusted
+rules HTML. `EditableSiteSettings` is a third administrator-only projection
+containing source fields, renderer metadata, and the positive numeric revision.
+No shell query selects rules source or HTML. There is no process-local cache,
+notification channel, or propagation claim.
+
+The public `GET /rules` accepts the exact canonical path and no query, is
+read-only, renders the current sanitized rules, and returns a fixed unavailable
+response when the row is malformed or unavailable. Empty rules render an
+explicit no-rules message. The response exposes no update time, actor, audit
+reason, raw Markdown, or renderer metadata. Every outcome is `no-store`, so an
+intermediary cannot contradict the next-read propagation contract.
+
+The administrator settings form accepts exactly `_csrf`, `site_name`,
+`site_description`, `brand_theme`, `rules_markdown`, `reason`, and `revision`.
+The form body is at most 256 KiB, which admits the worst-case form encoding of
+the 65,536-byte rules source plus the bounded scalar fields. Text is strict UTF-8/NFC, has no controls other
+than line feed in Markdown, and has no surrounding whitespace where the field
+contract forbids it. `revision` is the canonical positive decimal
+administration revision from the database. Before opening a transaction, the service validates the closed
+theme and renders/sanitizes rules through the admitted GFM boundary.
+
+The transaction sets `statement_timeout` to at most two seconds and
+`lock_timeout` to 250 milliseconds, locks the governance singleton, locks and
+revalidates the current unsuspended administrator row, locks the settings singleton, compares
+the exact revision, rejects a no-op or revision overflow, updates every settings
+field and renderer tuple, increments the revision by one, and appends one
+`update_site_settings` audit. Previous/resulting audit objects contain only the
+bounded name, description, theme, renderer version, and SHA-256 digests of the
+rules source and HTML; rules bodies never enter the audit row's 16-KiB JSON
+boundary. Rendering or audit failure commits nothing. Commit failure is unknown
+and is not retried automatically.
+
+Themes map only to static compiled selectors on a closed `data-brand-theme`
+attribute. No settings field becomes CSS, HTML, JavaScript, URL, asset path,
+CSP source, or template name.
+
+### 21.3 Bounded account and group projections
+
+`GET /admin/accounts` accepts either no query or exactly one canonical positive
+`after` user ID. The authorization-first query rechecks the current actor as an
+unsuspended administrator before producing at most 51 users ordered by ID; the
+handler renders 50 and uses only row 51 as the next sentinel. Returned columns
+are ID, display name, closed role, effective suspended boolean, finite creation
+and update times, and no external-identity/session/profile-contact fields.
+
+`GET /admin/accounts/{userID}` returns the same account state, positive
+administration revision, and the already admitted moderation status needed for
+suspend/reinstate controls. It does not load a population-sized membership set.
+An optional exact `groups_after` positive group ID pages a separate
+authorization-first projection of at most 51 groups ordered by ID, each with a
+nonmultiplying membership boolean; the handler renders 50 and row 51 is only a
+next sentinel. Reaching every membership requires paging, not an installation-
+wide quota.
+
+Group names are NFC/control-free, 1–80 Unicode scalar values, trimmed, and
+case-insensitively unique. `GET /admin/groups` accepts no query or exactly one
+canonical positive `after` ID and returns at most 51 groups ordered by ID;
+the handler renders 50 and row 51 is only a next sentinel. Create accepts
+`_csrf`, `name`, and `reason`. Rename additionally accepts the canonical
+positive group ID and positive numeric revision. Both revalidate the actor in
+the transaction by locking governance and then the actor row before inserting
+or locking the group, reject no-op/stale/overflow state, increment the group
+administration revision on rename, and append one immutable group-target audit.
+Groups are not deleted in version 1.0.
+
+A group-membership mutation targets one canonical positive account ID and one
+canonical positive group ID and accepts exactly `_csrf`, closed `action`
+(`grant` or `revoke`), `reason`, and the target account's positive numeric
+revision. The transaction locks governance, actor and target users in ascending
+ID order, then the one group; revalidates the active administrator, active
+target, group, and revision; rejects a no-op or revision overflow; changes
+exactly one mapping; increments the target administration revision; and appends
+exactly one matching grant/revoke audit under the request ID. Any mapping,
+revision, or audit failure rolls back the whole mutation. Local group access
+changes on the next protected request because session authentication reloads
+memberships.
+
+### 21.4 Role and suspension governance
+
+Role input is exactly one of `member`, `moderator`, or `administrator`, plus the
+target's current role, positive numeric administration revision, and one 1–2,000-character
+single-line audit reason. The role transaction uses read committed isolation,
+two-second statement and 250-millisecond lock timeouts, and this order:
+
+1. lock the governance singleton;
+2. lock actor and target users in ascending positive ID order;
+3. revalidate the current unsuspended administrator and exact distinct target;
+4. reject stale revision, stale expected role, no-op, malformed persisted state,
+   revision overflow, or an effectively suspended target;
+5. when demoting an active administrator, count active administrators under the
+   governance lock and require at least two before the change;
+6. update the target role and finite `updated_at`, and increment its
+   administration revision;
+7. append one `change_role` audit with exact previous/resulting role; and
+8. revoke every unrevoked target session at the same database time before one
+   commit.
+
+Self-role changes are forbidden. The target signs in again after every role
+change, including demotion. An OIDC callback updates profile fields only and
+cannot overwrite the role. Concurrent role, bootstrap, and administrator
+suspension changes serialize on the same governance singleton and cannot leave
+zero active administrators.
+
+Account suspension/reinstatement remains the existing audited moderation
+transaction and routes. The administration account detail links those controls
+instead of adding a second implementation. AN-04 updates that transaction to
+increment the same user administration revision under its existing governance/
+user lock order, so a concurrent role or membership form cannot survive a
+suspension-state change. Administrators can target another
+role under the existing hierarchy/continuity rules; moderators retain their
+existing member-only authority. No surface allows self-suspension.
+
+### 21.5 Areas and administrator counts
+
+The existing area core transaction remains the sole create/rename/reorder/
+visibility/posting-mode mutation. AN-04 makes it revalidate the current
+administrator inside the transaction, use and increment the positive numeric
+administration revision, preserve the immutable slug, and append one audit row.
+It locks governance, then the actor row, then the target area, then any one
+initial group, matching every other administration writer's prefix.
+`GET /admin/areas` accepts no query or exactly the canonical
+`after_order=<nonnegative int32>&after_id=<positive int64>` pair. Its
+authorization-first query returns at most 26 areas ordered by
+`(display_order,id)`; the handler renders 25 and row 26 is only a next sentinel.
+The raw keyset does not promise a stable snapshot across concurrent reorders;
+refresh starts from the beginning.
+
+`GET /admin/areas/{areaID}` returns one area plus at most 51 groups ordered by
+group ID with a nonmultiplying assigned boolean, using optional exact
+`groups_after`; the handler renders 50. Create or transition from non-group to
+group visibility requires exactly one existing `initial_group_id` and creates
+that mapping in the same transaction. Updating an already group-visible area
+preserves its mappings; leaving group visibility removes them in the same core
+transaction. A separate area/group mutation accepts exactly `_csrf`, closed
+`action` (`grant` or `revoke`), `reason`, and the area's numeric revision. It
+locks governance, actor, area, and group in that order; rejects stale/no-op/
+overflow state and revoking the last mapping of a group-visible area; changes
+one mapping; increments the area revision; and appends exactly one
+`grant_area_group` or `revoke_area_group` audit.
+
+Rename changes `name`; reorder changes `display_order`; archive changes posting
+mode to `archived`; restore must explicitly select `normal` or `read_only`. An
+archived area remains readable to an otherwise authorized actor, while every
+publication path rejects it. Area deletion is not implemented.
+
+The dashboard query begins a read-only repeatable-read transaction, sets a
+two-second statement timeout, obtains one database time, and revalidates the
+administrator before aggregates. It returns nonnegative exact counts for:
+
+- all local users and users by closed role;
+- effectively active and effectively suspended users at the transaction time;
+- topics with `deleted_at IS NULL`;
+- posts with `deleted_at IS NULL AND redacted_at IS NULL`; and
+- reports separately in `open` and `in_review`.
+
+Every closed role and report state must reconcile to its returned total. A
+negative, NULL, unknown, internally inconsistent, timed-out, canceled, or
+partially scanned result fails the whole dashboard with fixed `503`; no
+approximation or stale cache is substituted. The query is openly population-
+dependent and never runs for a non-administrator.
+
+### 21.6 Routes, responses, and resources
+
+AN-04 owns these routes in addition to the existing `/admin/areas` and account
+moderation routes:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/rules` | Current public community rules |
+| `GET` | `/admin` | Exact administrator dashboard and navigation |
+| `GET` | `/admin/accounts` | Bounded local-account list |
+| `GET` | `/admin/accounts/{userID}` | Local account/role/group detail |
+| `POST` | `/admin/accounts/{userID}/role` | Audited role change |
+| `POST` | `/admin/accounts/{userID}/groups/{groupID}` | Audited one-membership grant/revoke |
+| `GET` | `/admin/groups` | Bounded local-group management |
+| `POST` | `/admin/groups` | Audited group creation |
+| `POST` | `/admin/groups/{groupID}` | Audited group rename |
+| `GET` | `/admin/areas/{areaID}` | Bounded area/group detail |
+| `POST` | `/admin/areas/{areaID}/groups/{groupID}` | Audited one-area/group grant/revoke |
+| `GET` | `/admin/settings` | Site settings form |
+| `POST` | `/admin/settings` | Audited site settings update |
+
+Except for `/rules`, exact path/query grammar runs before session, body, and
+database work. Missing sessions enter the existing login flow; stale sessions
+enter revalidation; current non-administrators receive fixed `403`. All
+administrator responses are `private, no-store`, fully buffered to at most 512
+KiB, and expose neither raw database errors nor submitted audit reasons.
+
+Unsafe routes require the existing session-derived CSRF token before ordinary
+form parsing, accept only `application/x-www-form-urlencoded`, reject unknown or
+duplicate scalar fields, use generated request IDs, and call exactly one
+service. Ordinary success is empty 303 post/redirect/get. HTMX success is empty
+204 with same-origin `HX-Location` targeting `#main-content`; both resolve to
+the same builder-owned canonical destination. No handler retries or detaches
+work after cancellation.
+
+The global navigation has one `Administration` link to `/admin`, shown only for
+the current administrator context. Dashboard links reach areas, accounts,
+groups, and settings. All controls have labels, visible focus, semantic status
+and error text, keyboard access, and ordinary HTML fallbacks. The public rules
+link is available independently of JavaScript.
+
+Application logs retain route pattern, fixed outcome, status, duration, and
+bounded counts only. They exclude account/group IDs and names, site/rules
+content, revisions, role/group sets, audit reasons, and submitted bodies.
+PostgreSQL diagnostics remain a separate operator-controlled boundary.
+
+### 21.7 Admission and rollback
+
+AN-04 verification uses PostgreSQL 17 with visitor/member/group/moderator/
+administrator matrices, concurrent role/suspension/bootstrap and membership/
+area/settings writers, migration failure/unknown-outcome inspection, strict
+HTTP/HTMX behavior, site-presentation propagation across two application
+instances, keyboard/no-JavaScript browser tests through Caddy, representative
+population plans/resources, deterministic generation, repository integrity,
+and reproducible release artifacts.
+
+The exact final tree must retain evidence and receive two fresh independent
+CLEAN reviews. After migration 000010 commits, an artifact requiring head
+000009 fails exact-head readiness; rollback is forward repair/current artifact
+or a verified pre-000010 database restore. No application fallback drops audit,
+rules-renderer, or authorization checks to run an older binary.
+
+## 22. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

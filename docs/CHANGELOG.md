@@ -5,6 +5,44 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Admit bounded AN-04 administration-completion contract
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- PRD and architecture boundaries for forum-local administration
+- migration 000010, settings, revisions, audit, store, route, and resource
+  contracts
+- serial AN-04-01 through AN-04-04 decomposition and verification gates
+
+Explanation:
+
+Complete version 1.0 administration without making the board an identity
+provider or hiding population-sized work behind arbitrary quotas. The contract
+adds separate bounded site shell/rules/edit projections, numeric administration
+revisions, paged account/group/area projections, one-mapping audited group
+mutations, explicit role continuity and session revocation, exact private
+counts, and ordinary HTML/HTMX administration. Authentik administration,
+account creation, impersonation, group/area deletion, arbitrary branding code,
+bulk mutation, and external analytics remain excluded.
+
+Verification:
+
+- cold judge loop with two fresh CLEAN reviews required on one exact contract
+  commit/tree
+- implementation units require PostgreSQL 17 migration/concurrency/plan/
+  resource evidence, strict HTTP/privacy tests, and Caddy/Chromium accessibility
+- integrated admission requires deterministic generation, repository integrity,
+  and reproducible release artifacts before delivery
+
+Risks / non-goals:
+
+- exact dashboard counts remain administrator-only population-dependent reads
+- settings are read from PostgreSQL with no hidden process-local cache
+- this checkpoint adds no executable code, migration file, route, PR, push,
+  merge, tag, release, or deployment
+
 ### 2026-09-07 — Add monotonic AN-03 mark-read service
 
 Commit: current commit; hash assigned by Git after commit

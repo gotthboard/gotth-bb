@@ -522,7 +522,58 @@ mutations:
    timestamp visible to other users, external service, background worker,
    cursor key, publication quota, or deployment authority.
 
-## 12. Stable 1.0 acceptance boundary
+## 12. AN-04 acceptance boundary
+
+AN-04 completes version 1.0 administration without turning the board into an
+identity provider or a general analytics system:
+
+1. Administrators retain one audited area surface for create, rename,
+   deterministic `(display_order, id)` ordering, visibility/group restrictions,
+   and posting mode. `archived` remains readable to an otherwise authorized
+   actor but rejects new topics and replies; restore explicitly selects
+   `normal` or `read_only`. Published slugs remain immutable and areas are not
+   deleted in version 1.0.
+2. Administrators can page through local accounts, inspect one account's local
+   role and suspension state, page through its local group assignments, and use
+   the existing audited suspension/reinstatement boundary. No email, avatar URL, OIDC
+   subject, token, session identifier, IP, or user-agent data appears in the
+   account administration surface.
+3. Administrators can create and rename forum-local groups and grant or revoke
+   one account/group membership per audited request. Group lists and assignment
+   state are paged rather than constrained by a made-up installation-wide
+   quota. Version 1.0 does not delete groups;
+   this prevents an apparently simple administrative action from silently
+   cascading area-access changes. Area restrictions continue to reference the
+   same local groups and take effect on the next protected request.
+4. Administrators can change another active local account among the closed
+   `member`, `moderator`, and `administrator` roles. Self-role changes are
+   rejected. Every role change serializes with first-administrator governance,
+   preserves at least one active administrator, revokes the target's sessions,
+   and records one immutable audit event before commit. OIDC claims never grant
+   or restore a local role or group.
+5. Administrators can update one singleton site name, short description,
+   closed built-in brand theme, and community-rules Markdown. The admitted GFM
+   renderer and sanitizer produce the stored rules HTML; arbitrary CSS,
+   JavaScript, remote logos, tracking pixels, and embeds are excluded. The
+   public `/rules` page and every full document use current database state; no
+   process-local cache creates a hidden propagation window.
+6. The administrator dashboard exposes exact local account totals and closed
+   role/suspension buckets, undeleted topic and undeleted/unredacted post totals,
+   and open/in-review report totals. These values are private administrator
+   state, never added to visitor/member responses, shared caches, logs, metric
+   labels, or unauthenticated terminal behavior.
+7. Every administrative read and mutation requires a current unsuspended local
+   administrator loaded from PostgreSQL. Mutations use the existing session,
+   revalidation, CSRF, request-ID, bounded-form, transaction, audit, and unknown-
+   commit rules. Missing, stale, malformed, conflicting, or inaccessible state
+   fails closed without partial mutation.
+8. Administration remains base-path-safe, `private, no-store`, bounded, and
+   usable with ordinary HTML, HTMX, keyboard navigation, and JavaScript absent.
+   AN-04 adds no Authentik credentials or management API, account creation,
+   impersonation, bulk administration, external analytics, new service,
+   background worker, deployment authority, or retention policy.
+
+## 13. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -536,7 +587,7 @@ mutations:
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 13. Constraints and assumptions
+## 14. Constraints and assumptions
 
 - The forum is a single deployable Go service and PostgreSQL database in
   version 1.0.
@@ -547,7 +598,7 @@ mutations:
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 14. Open owner decisions
+## 15. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 implementation begins:
@@ -559,7 +610,7 @@ implementation begins:
 5. Content retention duration for soft-deleted posts and audit events.
 6. Initial rate-limit values and new-account period.
 
-## 15. Change control
+## 16. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update

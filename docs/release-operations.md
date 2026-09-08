@@ -242,6 +242,13 @@ notes, screenshots, or repository files.
   000008; inspect and apply a
   reviewed forward repair before retrying rather than deleting or inventing
   marker state.
+- Migration 000010 adds the site-settings singleton, positive administration
+  revisions, and revised audit checks. PostgreSQL's constant defaults avoid
+  rewriting existing user/group/area rows, but constraint validation and audit-
+  check replacement still take measured table locks and scans. The packaged
+  runtime grants add only the SELECT/INSERT/UPDATE privileges required by the
+  admitted operations and no DELETE on settings, users, groups, areas, or
+  mapping rows.
 - Connections require the deployment's approved transport protection.
 - Pool sizes and timeouts are bounded and fit the server connection budget.
 - PostgreSQL version support is documented and tested.
@@ -420,6 +427,12 @@ required sequence is:
    000008 and requires inspected forward repair; the migration does not silently
    rewrite it. Inspect the ledger and catalogs after an unknown commit outcome
    before retrying.
+   AN-04 migration 000010 is also a stopped ordinary migration. Record the
+   locks and scans used to add/validate positive revisions and replace audit
+   checks, then attest the seeded settings tuple and exact runtime grants. A
+   failed transaction leaves the ledger at 000009; after an unknown outcome,
+   inspect the ledger, singleton, revisions, constraints, and grants before any
+   retry.
 10. Before starting the application, the migration owner must apply the exact
    packaged `deploy/postgresql/runtime-grants.sql` with the deployment's
    restricted runtime role as psql's `runtime_role` variable. This is required
@@ -464,6 +477,13 @@ Every deployed prerelease verifies:
   first-unread navigation, and a CSRF-protected mark-read action; a visitor
   receives no personalized state; restricted topics do not alter counts; and
   ordinary GETs leave markers unchanged.
+- Once AN-04 is present, verify the public rules page and current shell
+  presentation, then as a designated administrator page accounts/groups/areas,
+  change and restore one disposable account role, grant and revoke one
+  disposable membership and area restriction, archive/restore one disposable
+  area, and reconcile dashboard counts. Confirm every mutation audit and target
+  session revocation without using production identities or content as test
+  fixtures.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
 
@@ -492,6 +512,10 @@ Decision order after failure:
    the prior artifact from starting. Use the current artifact/forward repair or
    restore the verified pre-000009 database backup; do not invent a down
    migration or delete private marker state by hand.
+   AN-04 migration 000010 likewise changes exact-head readiness, audit checks,
+   and administration revisions. Use the current artifact/forward repair or
+   restore the verified pre-000010 database backup; an older artifact must not
+   mutate the expanded administration schema.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the

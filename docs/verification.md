@@ -893,3 +893,110 @@ redaction, repository-integrity, and release-artifact reproducibility gates.
 Evidence records exact commit/tree, commands, environment, versions, checksums,
 result, and explicit gaps. Two fresh independent cold reviews must both be
 CLEAN on the same exact state before handoff.
+
+## 21. AN-04 administration-completion evidence contract
+
+AN-04 evidence treats every administrator projection and mutation as a private
+authorization boundary. Possession of a rendered form, target ID, revision, or
+prior administrator session is never authority.
+
+### 21.1 Functional and authorization matrix
+
+Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
+
+- area create, display-name rename, equal-order ID tie-breaking, reorder,
+  public/authenticated/group visibility, paged zero/one/many group restrictions,
+  normal/read-only/archive, explicit restore to both allowed modes, immutable
+  slug, raw-keyset behavior across concurrent reorder, initial group on
+  transition, single grant/revoke, last-group protection, no-op, stale/
+  overflowing revision, missing group, audit failure, and every publication
+  path while archived;
+- account list boundaries 0/1/50/51, canonical continuation, account detail,
+  member/moderator/administrator role labels, active/future/expired/indefinite
+  suspension state, paged zero/one/many memberships, 50/51 group-page
+  boundaries, and no contact, identity, session, IP, or user-agent columns;
+- role changes across every distinct role pair; stale/no-op/self targets;
+  suspended/missing/malformed actor or target; target session revocation;
+  OIDC login preserving the result; final-active-administrator protection; and
+  concurrent bootstrap, role, and suspension operations in both lock orders;
+- group create/rename, Unicode/NFC/control/length/case-fold boundaries,
+  duplicate names, 50/51 pagination, stale/no-op/overflowing rename, single
+  membership grant/revoke/no-op/stale/missing cases, exact one-row audit,
+  rollback on any audit failure, and immediate next-
+  request area-access changes;
+- default and updated site presentation, separate shell/rules/edit projections,
+  proof that ordinary shells do not select/copy rules bodies, every closed
+  theme, rejected arbitrary theme/CSS/HTML/URL/control input, GFM and sanitizer
+  fixtures, source/HTML size
+  boundaries, stale/no-op/overflowing settings, digest-only bounded audit,
+  renderer/audit failure, two-instance next-read propagation, empty/nonempty
+  public rules, and no raw Markdown or private
+  revision metadata in public output; and
+- exact dashboard reconciliation for empty and populated relations, all role
+  and effective-suspension buckets, deleted topics/posts, redacted posts,
+  open/in-review/resolved/dismissed reports, cancellation, timeout, malformed
+  counts, and zero execution for visitor/member/moderator requests.
+
+Tests inspect `moderation_actions`, target rows, group mappings, settings, and
+sessions before and after successful and failed requests. A committed mutation
+must have its exact audit state; a failed mutation must have neither state nor
+audit/session side effects. Unknown commit tests report uncertainty and inspect
+before any explicit retry.
+
+### 21.2 HTTP, privacy, and accessibility matrix
+
+Route tests cover exact canonical path/query grammar before session/body/
+database work, login and revalidation redirects, fixed administrator `403`,
+fixed missing `404`, validation `400`/`422`, conflict `409`, unavailable `503`,
+and body-nonconsumption for header-CSRF/session/path failures. Each form proves
+its exact field grammar, size limit, duplicate/unknown rejection, one service
+call, and no retry.
+
+Ordinary and HTMX success must agree on canonical destination and authoritative
+main-region content. All administrator full-page/fragments are
+`private, no-store`, never enter shared caches, and contain no audit reason,
+email, avatar, issuer, subject, session identifier, IP, user agent, raw rules
+Markdown, or hidden target state. Application logs and metric labels are
+inspected for the same exclusions.
+
+Caddy/Chromium tests cover empty and populated dashboard, 51-account and
+51-group continuation, area archive/restore, role change followed by target session
+failure, membership-driven access loss/gain, group create/rename, site name/
+description/theme and rules propagation, base-path deployment, full-page and
+HTMX history, JavaScript disabled, keyboard-only completion, visible focus,
+semantic headings/status/errors, accessible names, and mobile/desktop widths.
+
+### 21.3 Migration, plans, concurrency, and resources
+
+Fresh and upgrade migration tests cover exact head 000010, default preservation,
+exact singleton cardinality, current rules-renderer tuple, audit constraint and
+runtime grants, positive administration revisions and atomic increments,
+lock/scan behavior, transaction rollback, unknown outcome,
+idempotent rerun, readiness, and prior/current artifact exact-head failure.
+Corrupt theme, nonfinite time, stale renderer, missing/duplicate settings, audit
+constraint drift, or runtime-grant drift must fail closed.
+
+Retain custom and forced-generic `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for
+account list/detail, group membership, area administration, role continuity,
+and dashboard counts. Structural assertions prove administrator revalidation
+before private identity or aggregate work, group membership as nonmultiplying
+sets, the 51-row account/group fences, primary-key target starts, and expected indexes.
+Planner observations do not become hints or universal latency guarantees.
+
+The representative checkpoint contains at least 25,000 accounts, 25,000 groups,
+25,000 areas, 100,000 topics, 1,000,000 posts, and report/audit rows spanning
+all states. Measure elapsed time, buffers, temporary I/O, relation/index size,
+allocations, RSS, database connections, cancellation, two-second statement and
+250-millisecond lock timeouts, 512-KiB response overflow, and coexistence with
+login, topic/reply publication, moderation, discovery, unread reads, and
+mark-read. Corpus sizes are evidence points, not content/account quotas.
+
+### 21.4 Admission gates
+
+The exact final candidate must pass SQL/Templ/static generation, gofmt, vet,
+focused unit/HTTP, PostgreSQL integration/race, migration, population/plan/
+resource, authorization-leakage, browser-through-Caddy, CSRF/cache/log-
+redaction, repository-integrity, and release-artifact reproducibility gates.
+Evidence records exact commit/tree, commands, environment, versions, checksums,
+results, and explicit gaps. Two fresh independent cold reviews must both be
+CLEAN on the same exact state before handoff.

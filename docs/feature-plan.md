@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-alpha.N` — AN-03 contract admitted; implementation pending |
+| Current target | `1.0.0-alpha.N` — AN-04 contract admitted; implementation pending |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -457,8 +457,41 @@ explicit authorization.
 
 Requirements: ADMIN-001 through ADMIN-005.
 
-- Area ordering, archive/restore, group rules, account state, site settings,
-  community rules, and basic authorized counts.
+AN-04 depends on admitted AN-03 commit
+`f845105ca3ad9283b498eb4efa5baf08c328281f`. Its serial implementation units
+are:
+
+1. **AN-04-01 — schema, site presentation, and settings.** Add migration
+   000010's singleton site settings, positive administration revisions, closed
+   brand theme, current rendered-rules tuple, audit target/actions, and exact
+   catalog/readiness checks. Add separate shell/rules/edit projections, the
+   public rules page, and audited administrator settings transaction. Preserve
+   static/health/fragment independence and use no process-local settings cache.
+2. **AN-04-02 — account, role, and group governance.** Add bounded
+   administrator account list/detail reads, create/rename group transactions,
+   paged single group-membership grants/revocations, and role changes. Serialize role
+   changes with the governance singleton, reject self-role changes, preserve one
+   active administrator, revoke the target's sessions when its role changes,
+   and retain the existing audited suspension service.
+3. **AN-04-03 — administration routes, counts, and progressive UI.** Add the
+   administrator dashboard and exact membership/activity/moderation counts;
+   bounded account, group, area-mapping, and settings pages; strict CSRF-protected mutation
+   routes; a single administration navigation entry; full-page/HTMX parity;
+   base-path handling; private no-store responses; and browser-through-Caddy
+   keyboard/accessibility evidence. Retain the existing area service while
+   proving explicit rename/reorder/archive/restore/group-restriction behavior.
+4. **AN-04-04 — integrated admission.** Reproduce generated state; run focused
+   unit, PostgreSQL 17 integration/race, migration, representative population/
+   plan/resource, authorization-leakage, browser, repository-integrity, and
+   exact-artifact gates; retain evidence; then obtain two fresh clean reviews
+   on one exact final tree.
+
+The units stay in one isolated feature worktree and move one at a time through
+DONE/HANDOFF/orchestrator review. AN-04 adds no Authentik administration,
+password management, group deletion, arbitrary CSS or remote branding asset,
+impersonation, bulk mutation, analytics warehouse, external service, or
+background worker. Workers do not create PRs, merge, push, release, or deploy
+without explicit authorization.
 
 ### AN-05: basic abuse controls
 

@@ -13,9 +13,10 @@ but it may not silently change one.
 
 Implementation history is recorded in the [change log](CHANGELOG.md).
 
-The current target is `1.0.0-alpha.2`: the compact forum surface and
-parent-addressed threaded replies. Additional alpha, beta, and
-release-candidate builds follow before `1.0.0`.
+The current target is `1.0.0-alpha.N`: AN-03 unread state is merged and the
+AN-04 administration-completion contract is admitted for serial implementation.
+AN-05 abuse controls, beta, release-candidate, and stable admission remain
+subsequent boundaries before `1.0.0`.
 
 ## Document status
 
