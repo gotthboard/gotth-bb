@@ -364,17 +364,17 @@ func UpdateAreaCompletion(ctx context.Context, beginner accountTransactionBeginn
 		if err != nil {
 			return err
 		}
-		if addInitialGroupAfterUpdate {
-			if err := replaceAreaGroups(mutationContext, queries, areaID, actor.UserID, []int64{input.InitialGroupID}, administrationTime(observedAt)); err != nil {
-				return err
-			}
-		}
 		changed, err := queries.UpdateAdministrationAreaAndAudit(mutationContext, db.UpdateAdministrationAreaAndAuditParams{Name: input.Name, Description: input.Description, DisplayOrder: input.DisplayOrder, Visibility: string(input.Visibility), PostingMode: string(input.PostingMode), ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AreaID: areaID, ExpectedRevision: input.Revision, Reason: administrationReason(input.Reason), PreviousState: previousJSON, ResultingState: resultingJSON, RequestID: requestID})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("%w: conditional area update", ErrAdministrationConflict)
 		}
 		if err != nil {
 			return err
+		}
+		if addInitialGroupAfterUpdate {
+			if err := replaceAreaGroups(mutationContext, queries, areaID, actor.UserID, []int64{input.InitialGroupID}, administrationTime(observedAt)); err != nil {
+				return err
+			}
 		}
 		if changed.AreaID != areaID || changed.Slug != input.Slug || changed.AdministrationRevision != input.Revision+1 || changed.AuditID <= 0 {
 			return fmt.Errorf("update area returned invalid state")
