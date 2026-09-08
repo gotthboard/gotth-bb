@@ -140,6 +140,114 @@ func TestSiteSettingsPreflightRejectsBeforeBodyAndMutation(t *testing.T) {
 	}
 }
 
+func TestSiteSettingsPOSTRejectsAuthorityAndSizeBeforeBody(t *testing.T) {
+	t.Parallel()
+	updateCalls := 0
+	services := validSiteHTTPServices()
+	services.Update = func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error) {
+		updateCalls++
+		return site.MutationResult{}, errors.New("settings mutation must not run")
+	}
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
+	}
+	token := validCSRFTokenForTest(0x61)
+	adminContext := func(request *http.Request) *http.Request {
+		ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{
+			SessionID: 9, Access: auth.AccessContext{Authenticated: true, UserID: 7, Role: auth.RoleAdministrator},
+		})
+		return request.WithContext(context.WithValue(ctx, csrfTokenContextKey{}, token))
+	}
+	staleContext := func(request *http.Request) *http.Request {
+		ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{SessionID: 9})
+		return request.WithContext(ctx)
+	}
+
+	tests := []struct {
+		name          string
+		contextualize func(*http.Request) *http.Request
+		headerToken   string
+		contentLength int64
+		wantStatus    int
+	}{
+		{name: "missing session", contextualize: func(request *http.Request) *http.Request { return request }, wantStatus: http.StatusSeeOther},
+		{name: "stale session", contextualize: staleContext, wantStatus: http.StatusSeeOther},
+		{name: "malformed header CSRF", contextualize: adminContext, headerToken: "malformed", wantStatus: http.StatusForbidden},
+		{name: "declared body over limit", contextualize: adminContext, contentLength: maximumSiteSettingsFormBytes + 1, wantStatus: http.StatusForbidden},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			body := &countingReadCloser{reader: strings.NewReader("secret=body")}
+			request := httptest.NewRequest(http.MethodPost, "/admin/settings", nil)
+			request.Body = body
+			request.ContentLength = test.contentLength
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			if test.headerToken != "" {
+				request.Header.Set(csrfHeaderName, test.headerToken)
+			}
+			request = test.contextualize(request)
+			response := httptest.NewRecorder()
+			private.ServeHTTP(response, request)
+			if response.Code != test.wantStatus || body.reads != 0 || updateCalls != 0 || !strings.Contains(response.Header().Get("Cache-Control"), "no-store") {
+				t.Fatalf("settings POST = (status %d, reads %d, updates %d, cache %q)", response.Code, body.reads, updateCalls, response.Header().Get("Cache-Control"))
+			}
+			if strings.Contains(response.Body.String(), "secret") {
+				t.Fatalf("settings rejection exposed submitted body: %q", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestSiteSettingsPOSTRejectsDuplicateAndUnknownFields(t *testing.T) {
+	t.Parallel()
+	updateCalls := 0
+	services := validSiteHTTPServices()
+	services.Update = func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error) {
+		updateCalls++
+		return site.MutationResult{}, errors.New("settings mutation must not run")
+	}
+	_, private, err := newSiteSettingsHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatalf("newSiteSettingsHandler() returned error: %v", err)
+	}
+	token := validCSRFTokenForTest(0x61)
+	valid := url.Values{
+		"_csrf": {token}, "site_name": {"Board"}, "site_description": {"Description"},
+		"brand_theme": {"blue"}, "rules_markdown": {"# Rules"}, "reason": {"Update rules"}, "revision": {"1"},
+	}
+	for _, test := range []struct {
+		name string
+		form url.Values
+	}{
+		{name: "unknown", form: func() url.Values { form := cloneValues(valid); form.Set("unknown", "value"); return form }()},
+		{name: "duplicate", form: func() url.Values {
+			form := cloneValues(valid)
+			form["site_name"] = []string{"Board", "Other"}
+			return form
+		}()},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(http.MethodPost, "/admin/settings", strings.NewReader(test.form.Encode()))
+			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			request.Header.Set(csrfHeaderName, token)
+			ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, auth.SessionAuthentication{
+				SessionID: 9, Access: auth.AccessContext{Authenticated: true, UserID: 7, Role: auth.RoleAdministrator},
+			})
+			ctx = context.WithValue(ctx, csrfTokenContextKey{}, token)
+			response := httptest.NewRecorder()
+			private.ServeHTTP(response, request.WithContext(ctx))
+			if response.Code != http.StatusBadRequest || updateCalls != 0 || !strings.Contains(response.Header().Get("Cache-Control"), "no-store") {
+				t.Fatalf("settings POST = (status %d, updates %d, cache %q)", response.Code, updateCalls, response.Header().Get("Cache-Control"))
+			}
+		})
+	}
+}
+
 func TestExactSiteRoutePreflightRejectsBeforeSessionBodyAndDatabase(t *testing.T) {
 	t.Parallel()
 	nextCalls := 0
