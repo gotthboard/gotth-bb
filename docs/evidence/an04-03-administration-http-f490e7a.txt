@@ -1,0 +1,59 @@
+AN-04-03 final reviewed source identity
+=======================================
+
+Tested executable/methodology commit:
+  f490e7a062674728b4287592b8bb0f46d219fdaa
+
+Tested tree:
+  972ef5eb4566f751f8f815942ab61172a4199270
+
+Detailed predecessor evidence:
+  docs/evidence/an04-03-administration-http-a996c09.txt
+  docs/evidence/an04-03-administration-http-3b7a5b4.txt
+
+Final source delta
+------------------
+
+The last review split two previously conflated claims:
+
+- synthetic valid-UTF-8 forms prove that the shared parser admits exactly
+  16,384 and 65,536 encoded bytes; and
+- separate maximum legal forms prove that bounded application values fit
+  those caps after worst-case percent encoding.
+
+The legal small form uses an 80-rune NFC/control-free group name, a
+2,000-byte NFC/control-free audit reason, and maximum canonical positive path
+and revision identifiers. The legal area form uses the 80-byte slug, 120-rune
+name, 4,000-rune description, 2,000-byte reason, maximum int32 display order,
+maximum positive initial group ID, and longest relevant closed enum values.
+Both reach mocks that assert every exact service argument and return one valid
+result. Neither proof relies on a field that the application rejects.
+
+Exact-tree gates
+----------------
+
+Pinned generation on agenthost with Node v26.7.0/npm 12.0.2 passed with zero
+drift and the stylesheet retained its exact SHA-256 filename.
+
+On development, PostgreSQL 17.10 and the final exact tree passed:
+
+  scripts/test-alpha3-evidence-custody.sh
+  gofmt cleanliness
+  go vet -mod=readonly ./...
+  go test -mod=readonly -race -coverprofile=<unit> ./...
+  go test -mod=readonly -tags=integration -p=1 ./...
+  go test -mod=readonly -tags=integration -p=2 -race -covermode=atomic ./...
+  go test -mod=readonly -tags=integration -p=1 -coverprofile=<integration> ./...
+  GOTTH_BB_BROWSER_CADDY=1 go test -mod=readonly -tags=integration \
+    -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' -count=5 -v \
+    ./internal/httpui
+
+All five final Caddy v2.11.4 / Chromium 151.0.7922.71 browser repetitions
+passed with JavaScript disabled, native keyboard navigation, accessible names,
+visible focus, the /bb base path, and the exact role mutation. Integration
+coverage remained 75.3% for internal/administration, 72.1% for
+internal/httpui, 97.1% for internal/store, and 100.0% for migrations.
+
+This file establishes AN-04-03 only. Representative scale/plan/resource,
+coexistence, package reproducibility, PR/merge, and whole-feature admission
+remain AN-04-04 work.
