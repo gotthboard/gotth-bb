@@ -1,0 +1,135 @@
+Beta.1 narrow-screen search corrective admission
+=================================================
+
+Scope
+-----
+
+The published annotated tag 1.0.0-beta.1 resolves to
+96ac77b2d9fad03bdd528b83a2c0763820ed644c. Its first live accessibility
+pass found horizontal overflow on /search at a 320 CSS-pixel viewport: the
+date-filter wrapper used an unconditional two-column grid. That tag remains
+immutable failed-candidate evidence and is not a known-good reference.
+
+This admission covers only the corrective implementation and its test
+methodology. Release identity, guarded merge, package/image reproduction,
+application-only replacement, live smoke, and owner confirmation remain the
+subsequent 1.0.0-beta.1.1 release gate described by B1-06.
+
+Implementation identity
+-----------------------
+
+Implementation and final browser-oracle commit:
+5d75e28520b0bbdd668fc4b81340cced7c68f392
+
+Tree:
+40e2711432feb1850eadfe68613e2904b0fa9131
+
+Contract-admission commit:
+838a02169b39d0233d2b9a917351205d90645ffb
+
+The implementation:
+
+- changes the date-filter wrapper from unconditional grid-cols-2 to
+  sm:grid-cols-2, stacking the controls below the 40rem breakpoint;
+- regenerates the Tailwind stylesheet and changes its content-addressed name
+  from app-3faf03fa...css to app-3104ce3e...css;
+- updates the embed, pinned digest, generator target, and canonical route
+  inventory to the exact new stylesheet identity;
+- serves the stylesheet in the discovery browser fixture; and
+- adds a Chromium reflow gate that waits for applied CSS, checks actual client
+  width, and directly proves the two date-filter rows stack at 320 CSS pixels.
+
+Generated stylesheet SHA-256:
+3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251
+
+Environment
+-----------
+
+- evidence host: development
+- Go: go1.26.6 linux/amd64
+- Node.js: v26.7.0
+- npm: 12.0.2
+- Chromium: 151.0.7922.71 Arch Linux
+- Caddy: v2.11.4
+- PostgreSQL: 17.10 (Debian 17.10-1.pgdg13+1)
+
+Deterministic generation
+------------------------
+
+Commands:
+
+  npm 12.0.2 ci --ignore-scripts
+  go tool templ generate
+  npm 12.0.2 run generate:css
+  git diff --exit-code
+
+Result: PASS. Regeneration left no tracked difference. The stylesheet bytes
+hashed to the exact content-addressed filename above.
+
+The first two draft candidates were rejected rather than admitted. ac8fd9c
+omitted regenerated CSS. c2a2aa7 changed bytes under the stale content-addressed
+path, and TestEmbeddedStaticAssetsMatchPinnedGeneration rejected the mismatch.
+No assertion was weakened to make either candidate pass.
+
+Negative control
+----------------
+
+The final test harness was overlaid onto a clean detached checkout of the
+failed release source commit 96ac77b2d9fad03bdd528b83a2c0763820ed644c.
+Through Caddy, both the empty base path and /bb failed as required. Chromium
+reported the old wrapper class "grid grid-cols-2 gap-3", two 121px columns,
+and same-row geometry (fromBottom=682, toTop=612) at the 320 CSS-pixel gate.
+
+Earlier draft oracles were rejected because they passed the known-bad tree:
+the fixture did not serve CSS and the width check used innerWidth instead of
+the document client width. The admitted negative control includes both repairs
+and proves that the gate detects the original defect.
+
+Positive browser control
+------------------------
+
+Command:
+
+  GOTTH_BB_BROWSER_CADDY=1 go test -mod=readonly -tags=integration \
+    ./internal/httpui -run '^TestDiscoveryBrowserThroughCaddy$' -count=1 -v
+
+Result: PASS on the implementation-equivalent tree for both supported base
+paths. The gate loads the exact stylesheet, requires stacked date rows at 320
+CSS pixels, and runs the shared 320-pixel and 200%-zoom reflow assertions.
+
+Repository-wide verification
+----------------------------
+
+Commands:
+
+  go vet -mod=readonly ./...
+  GOMAXPROCS=4 go test -mod=readonly -count=1 -p=2 -race -cover ./...
+
+Result: PASS after correct stylesheet custody. Relevant non-integration
+coverage included internal/httpui 72.5%; all packages passed the race detector.
+
+PostgreSQL integration/race verification
+----------------------------------------
+
+Against the existing task-owned PostgreSQL 17.10 test container, with its
+credential supplied only through protected environment input:
+
+  GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 -p=2 \
+    -race -covermode=atomic ./...
+
+Result: PASS. Representative coverage included internal/forum 93.7%,
+internal/httpui 72.5%, internal/migration 100.0%, internal/moderation 83.6%,
+internal/readiness 100.0%, internal/render 96.0%, internal/store 97.1%, and
+migrations 100.0%. No migration, grant, or production data change is part of
+this correction.
+
+Admission limits
+----------------
+
+- 1.0.0-beta.1 remains immutable and failed; this record does not rewrite it.
+- No RC.1, stable, enrollment, permission, schema, or data work is admitted.
+- Existing PostgreSQL, Caddy, Authentik, secret-file, nonroot, read-only, and
+  capability boundaries remain unchanged.
+- 1.0.0-beta.1.1 cannot become known-good until two fresh cold reviews, guarded
+  delivery, reproducible tagged artifacts, live smoke/reflow, and affirmative
+  owner confirmation all pass.
