@@ -223,14 +223,7 @@ WHERE id=ANY($1::bigint[]) AND next_post_number=4 AND reply_count=2`, topicIDs).
 		t.Fatalf("admitted state = users %d topics %d posts %d", admittedUsers, admittedTopics, admittedPosts)
 	}
 	pool.Close()
-	var finalConnections int64
-	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_stat_activity
-WHERE datname=current_database()`).Scan(&finalConnections); err != nil {
-		t.Fatal(err)
-	}
-	if finalConnections != baselineConnections {
-		t.Fatalf("database connections after pool close = %d, want baseline %d", finalConnections, baselineConnections)
-	}
+	finalConnections := waitForAN05AdmissionConnectionBaseline(t, ctx, observer, baselineConnections)
 	var databaseBytes, userBytes, topicBytes, postBytes, tempFiles, tempBytes int64
 	if err := observer.QueryRow(ctx, `SELECT
     pg_database_size(current_database()),
@@ -249,6 +242,25 @@ FROM pg_stat_database WHERE datname=current_database()`).Scan(&databaseBytes, &u
 		baselineConnections, peakConnections.Load(), finalConnections, peakLocks.Load(), peakWaiting.Load(), databaseBytes, userBytes, topicBytes, postBytes,
 		tempFiles, tempBytes, int64(after.HeapAlloc)-int64(before.HeapAlloc), after.TotalAlloc-before.TotalAlloc,
 		int64(after.Sys)-int64(before.Sys), beforeRSS, an05AdmissionRSSKiB())
+}
+
+func waitForAN05AdmissionConnectionBaseline(t *testing.T, ctx context.Context, observer *pgx.Conn, baseline int64) int64 {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		var connections int64
+		if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_catalog.pg_stat_activity
+WHERE datname=current_database()`).Scan(&connections); err != nil {
+			t.Fatal(err)
+		}
+		if connections == baseline {
+			return connections
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("database connections after pool close = %d, want baseline %d", connections, baseline)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func runAN05PublicationWave(t *testing.T, tasks int, operation func(int) error) {
