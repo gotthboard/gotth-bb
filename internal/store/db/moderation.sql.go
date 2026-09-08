@@ -185,21 +185,23 @@ SELECT
     forum_user.suspension_reason,
     forum_user.muted_until,
     forum_user.created_at,
-    forum_user.updated_at
+    forum_user.updated_at,
+    forum_user.administration_revision
 FROM public.users AS forum_user
 WHERE forum_user.id = $1
 FOR UPDATE OF forum_user
 `
 
 type LockUserForSuspensionRow struct {
-	ID               int64
-	Role             string
-	SuspendedAt      pgtype.Timestamptz
-	SuspendedUntil   pgtype.Timestamptz
-	SuspensionReason pgtype.Text
-	MutedUntil       pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
+	ID                     int64
+	Role                   string
+	SuspendedAt            pgtype.Timestamptz
+	SuspendedUntil         pgtype.Timestamptz
+	SuspensionReason       pgtype.Text
+	MutedUntil             pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
 }
 
 func (q *Queries) LockUserForSuspension(ctx context.Context, userID int64) (LockUserForSuspensionRow, error) {
@@ -214,6 +216,7 @@ func (q *Queries) LockUserForSuspension(ctx context.Context, userID int64) (Lock
 		&i.MutedUntil,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 	)
 	return i, err
 }
@@ -224,15 +227,19 @@ WITH changed AS (
     SET suspended_at = NULL,
         suspended_until = NULL,
         suspension_reason = NULL,
-        updated_at = GREATEST($1::timestamptz, forum_user.updated_at)
+        updated_at = GREATEST($1::timestamptz, forum_user.updated_at),
+        administration_revision = forum_user.administration_revision + 1
     WHERE forum_user.id = $2
       AND forum_user.suspended_at <= $3::timestamptz
       AND (
           forum_user.suspended_until IS NULL
           OR forum_user.suspended_until > $3::timestamptz
       )
+      AND forum_user.administration_revision = $4
+      AND forum_user.administration_revision < 9223372036854775807
     RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
-              forum_user.suspension_reason, forum_user.updated_at
+              forum_user.suspension_reason, forum_user.updated_at,
+              forum_user.administration_revision
 ),
 audit AS (
     INSERT INTO public.moderation_actions (
@@ -249,28 +256,31 @@ audit AS (
     )
     SELECT
         'forum_user',
-        $4,
+        $5,
         'user',
         changed.id,
         'reinstate_user',
-        $5,
+        $6,
         jsonb_build_object(
-            'suspended_at', $6::timestamptz,
-            'suspended_until', $7::timestamptz,
-            'suspension_reason', $8::text
+            'suspended_at', $7::timestamptz,
+            'suspended_until', $8::timestamptz,
+            'suspension_reason', $9::text,
+            'administration_revision', $4::bigint
         ),
         jsonb_build_object(
             'suspended_at', changed.suspended_at,
             'suspended_until', changed.suspended_until,
-            'suspension_reason', changed.suspension_reason
+            'suspension_reason', changed.suspension_reason,
+            'administration_revision', changed.administration_revision
         ),
-        $9,
+        $10,
         changed.updated_at
     FROM changed
     RETURNING id, target_user_id
 )
 SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
-       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+       changed.suspension_reason, changed.updated_at,
+       changed.administration_revision, audit.id AS audit_id
 FROM changed
 JOIN audit ON audit.target_user_id = changed.id
 `
@@ -279,6 +289,7 @@ type ReinstateUserAndAuditParams struct {
 	UpdatedAt                pgtype.Timestamptz
 	UserID                   int64
 	ObservedAt               pgtype.Timestamptz
+	ExpectedRevision         int64
 	ActorUserID              pgtype.Int8
 	Reason                   pgtype.Text
 	PreviousSuspendedAt      pgtype.Timestamptz
@@ -288,12 +299,13 @@ type ReinstateUserAndAuditParams struct {
 }
 
 type ReinstateUserAndAuditRow struct {
-	UserID           int64
-	SuspendedAt      pgtype.Timestamptz
-	SuspendedUntil   pgtype.Timestamptz
-	SuspensionReason pgtype.Text
-	UpdatedAt        pgtype.Timestamptz
-	AuditID          int64
+	UserID                 int64
+	SuspendedAt            pgtype.Timestamptz
+	SuspendedUntil         pgtype.Timestamptz
+	SuspensionReason       pgtype.Text
+	UpdatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
+	AuditID                int64
 }
 
 func (q *Queries) ReinstateUserAndAudit(ctx context.Context, arg ReinstateUserAndAuditParams) (ReinstateUserAndAuditRow, error) {
@@ -301,6 +313,7 @@ func (q *Queries) ReinstateUserAndAudit(ctx context.Context, arg ReinstateUserAn
 		arg.UpdatedAt,
 		arg.UserID,
 		arg.ObservedAt,
+		arg.ExpectedRevision,
 		arg.ActorUserID,
 		arg.Reason,
 		arg.PreviousSuspendedAt,
@@ -315,6 +328,7 @@ func (q *Queries) ReinstateUserAndAudit(ctx context.Context, arg ReinstateUserAn
 		&i.SuspendedUntil,
 		&i.SuspensionReason,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 		&i.AuditID,
 	)
 	return i, err
@@ -326,15 +340,19 @@ WITH changed AS (
     SET suspended_at = GREATEST($1::timestamptz, forum_user.created_at),
         suspended_until = NULL,
         suspension_reason = $2,
-        updated_at = GREATEST($3::timestamptz, forum_user.updated_at)
+        updated_at = GREATEST($3::timestamptz, forum_user.updated_at),
+        administration_revision = forum_user.administration_revision + 1
     WHERE forum_user.id = $4
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > $5::timestamptz
           OR forum_user.suspended_until <= $5::timestamptz
       )
+      AND forum_user.administration_revision = $6
+      AND forum_user.administration_revision < 9223372036854775807
     RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
-              forum_user.suspension_reason, forum_user.updated_at
+              forum_user.suspension_reason, forum_user.updated_at,
+              forum_user.administration_revision
 ),
 audit AS (
     INSERT INTO public.moderation_actions (
@@ -351,28 +369,31 @@ audit AS (
     )
     SELECT
         'forum_user',
-        $6,
+        $7,
         'user',
         changed.id,
         'suspend_user',
         $2,
         jsonb_build_object(
-            'suspended_at', $7::timestamptz,
-            'suspended_until', $8::timestamptz,
-            'suspension_reason', $9::text
+            'suspended_at', $8::timestamptz,
+            'suspended_until', $9::timestamptz,
+            'suspension_reason', $10::text,
+            'administration_revision', $6::bigint
         ),
         jsonb_build_object(
             'suspended_at', changed.suspended_at,
             'suspended_until', changed.suspended_until,
-            'suspension_reason', changed.suspension_reason
+            'suspension_reason', changed.suspension_reason,
+            'administration_revision', changed.administration_revision
         ),
-        $10,
+        $11,
         changed.updated_at
     FROM changed
     RETURNING id, target_user_id
 )
 SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
-       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+       changed.suspension_reason, changed.updated_at,
+       changed.administration_revision, audit.id AS audit_id
 FROM changed
 JOIN audit ON audit.target_user_id = changed.id
 `
@@ -383,6 +404,7 @@ type SuspendUserAndAuditParams struct {
 	UpdatedAt                pgtype.Timestamptz
 	UserID                   int64
 	ObservedAt               pgtype.Timestamptz
+	ExpectedRevision         int64
 	ActorUserID              pgtype.Int8
 	PreviousSuspendedAt      pgtype.Timestamptz
 	PreviousSuspendedUntil   pgtype.Timestamptz
@@ -391,12 +413,13 @@ type SuspendUserAndAuditParams struct {
 }
 
 type SuspendUserAndAuditRow struct {
-	UserID           int64
-	SuspendedAt      pgtype.Timestamptz
-	SuspendedUntil   pgtype.Timestamptz
-	SuspensionReason pgtype.Text
-	UpdatedAt        pgtype.Timestamptz
-	AuditID          int64
+	UserID                 int64
+	SuspendedAt            pgtype.Timestamptz
+	SuspendedUntil         pgtype.Timestamptz
+	SuspensionReason       pgtype.Text
+	UpdatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
+	AuditID                int64
 }
 
 func (q *Queries) SuspendUserAndAudit(ctx context.Context, arg SuspendUserAndAuditParams) (SuspendUserAndAuditRow, error) {
@@ -406,6 +429,7 @@ func (q *Queries) SuspendUserAndAudit(ctx context.Context, arg SuspendUserAndAud
 		arg.UpdatedAt,
 		arg.UserID,
 		arg.ObservedAt,
+		arg.ExpectedRevision,
 		arg.ActorUserID,
 		arg.PreviousSuspendedAt,
 		arg.PreviousSuspendedUntil,
@@ -419,6 +443,7 @@ func (q *Queries) SuspendUserAndAudit(ctx context.Context, arg SuspendUserAndAud
 		&i.SuspendedUntil,
 		&i.SuspensionReason,
 		&i.UpdatedAt,
+		&i.AdministrationRevision,
 		&i.AuditID,
 	)
 	return i, err

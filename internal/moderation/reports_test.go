@@ -134,7 +134,7 @@ type reportServiceTestTx struct {
 
 func (tx *reportServiceTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	if strings.Contains(query, "LockUserForSuspension") {
-		return reportTestRow{values: []any{tx.actor.ID, tx.actor.Role, tx.actor.SuspendedAt, tx.actor.SuspendedUntil, tx.actor.SuspensionReason, tx.actor.MutedUntil, tx.actor.CreatedAt, tx.actor.UpdatedAt}}
+		return reportTestRow{values: []any{tx.actor.ID, tx.actor.Role, tx.actor.SuspendedAt, tx.actor.SuspendedUntil, tx.actor.SuspensionReason, tx.actor.MutedUntil, tx.actor.CreatedAt, tx.actor.UpdatedAt, tx.actor.AdministrationRevision}}
 	}
 	if strings.Contains(query, "CountActiveReportsByReporter") {
 		return reportTestRow{values: []any{tx.activeReports}}

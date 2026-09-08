@@ -34,7 +34,7 @@ func TestChangeUserSuspensionCommitsExactTransitions(t *testing.T) {
 			wantObservedAt:  time.Date(2026, time.September, 2, 9, 0, 0, 0, time.UTC),
 			wantSuspendedAt: time.Date(2026, time.September, 2, 10, 0, 0, 0, time.UTC),
 			wantUpdatedAt:   time.Date(2026, time.September, 2, 11, 0, 0, 0, time.UTC),
-			wantResult:      UserSuspensionResult{UserID: 41, Suspended: true, AuditID: 81},
+			wantResult:      UserSuspensionResult{UserID: 41, Suspended: true, Revision: 2, AuditID: 81},
 			wantSteps:       []string{"governance", "actor", "target", "suspend", "commit"},
 		},
 		{
@@ -42,7 +42,7 @@ func TestChangeUserSuspensionCommitsExactTransitions(t *testing.T) {
 			clock:          time.Date(2026, time.September, 2, 12, 0, 0, 123456789, time.UTC),
 			wantObservedAt: time.Date(2026, time.September, 2, 12, 0, 0, 123456000, time.UTC),
 			wantUpdatedAt:  time.Date(2026, time.September, 2, 12, 0, 0, 123456000, time.UTC),
-			wantResult:     UserSuspensionResult{UserID: 41, AuditID: 82},
+			wantResult:     UserSuspensionResult{UserID: 41, Revision: 2, AuditID: 82},
 			wantSteps:      []string{"governance", "actor", "target", "reinstate", "commit"},
 		},
 	} {
@@ -81,7 +81,7 @@ func TestChangeUserSuspensionEnforcesHierarchyAndAdministratorContinuity(t *test
 	}{
 		{name: "moderator cannot suspend moderator", actor: moderator, target: activeSuspensionTarget(41, "moderator", testCreatedAt(), testCreatedAt()), wantCause: ErrUserModerationDenied},
 		{name: "administrator preserves final administrator", actor: administrator, target: activeSuspensionTarget(41, "administrator", testCreatedAt(), testCreatedAt()), administrators: 1, wantCause: ErrAdministratorContinuity},
-		{name: "administrator may suspend another when two remain", actor: administrator, target: activeSuspensionTarget(41, "administrator", testCreatedAt(), testCreatedAt()), administrators: 2, wantResult: UserSuspensionResult{UserID: 41, Suspended: true, AuditID: 83}, wantChanges: 1},
+		{name: "administrator may suspend another when two remain", actor: administrator, target: activeSuspensionTarget(41, "administrator", testCreatedAt(), testCreatedAt()), administrators: 2, wantResult: UserSuspensionResult{UserID: 41, Suspended: true, Revision: 2, AuditID: 83}, wantChanges: 1},
 	} {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
@@ -139,7 +139,7 @@ func TestChangeUserSuspensionRevalidatesLockedActorAndOrdersUserLocks(t *testing
 				}
 				return
 			}
-			if err != nil || result != (UserSuspensionResult{UserID: 41, Suspended: true, AuditID: 84}) ||
+			if err != nil || result != (UserSuspensionResult{UserID: 41, Suspended: true, Revision: 2, AuditID: 84}) ||
 				!reflect.DeepEqual(tx.steps, []string{"governance", "target", "actor", "suspend", "commit"}) {
 				t.Fatalf("locked actor success = (%+v, %v), tx %+v", result, err, tx)
 			}
@@ -318,7 +318,7 @@ func storedRole(role policy.Role) string {
 
 func activeSuspensionTarget(id int64, role string, createdAt, updatedAt time.Time) db.LockUserForSuspensionRow {
 	return db.LockUserForSuspensionRow{
-		ID: id, Role: role,
+		ID: id, Role: role, AdministrationRevision: 1,
 		CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
 		UpdatedAt: pgtype.Timestamptz{Time: updatedAt, Valid: true},
 	}
@@ -342,7 +342,7 @@ type userSuspensionTestBeginner struct {
 	err error
 }
 
-func (beginner userSuspensionTestBeginner) Begin(context.Context) (pgx.Tx, error) {
+func (beginner userSuspensionTestBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
 	if beginner.err != nil {
 		return nil, beginner.err
 	}
@@ -368,6 +368,8 @@ type userSuspensionTestTx struct {
 
 func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	switch {
+	case strings.Contains(query, "ConfigureAdministrationTransaction"):
+		return userModerationTestRow{values: []any{"2s", "250ms"}}
 	case strings.Contains(query, "LockGovernanceState"):
 		tx.steps = append(tx.steps, "governance")
 		if tx.failure == "governance" {
@@ -393,7 +395,7 @@ func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, argume
 		if tx.failure == "invalid-role" && step == "target" {
 			user.Role = "invented"
 		}
-		return userModerationTestRow{values: []any{user.ID, user.Role, user.SuspendedAt, user.SuspendedUntil, user.SuspensionReason, user.MutedUntil, user.CreatedAt, user.UpdatedAt}}
+		return userModerationTestRow{values: []any{user.ID, user.Role, user.SuspendedAt, user.SuspendedUntil, user.SuspensionReason, user.MutedUntil, user.CreatedAt, user.UpdatedAt, user.AdministrationRevision}}
 	case strings.Contains(query, "CountActiveAdministrators"):
 		tx.steps = append(tx.steps, "count")
 		if tx.failure == "count" {
@@ -407,11 +409,11 @@ func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, argume
 			return userModerationTestRow{err: errModerationTest}
 		}
 		if tx.failure == "invalid-change" {
-			return userModerationTestRow{values: []any{int64(0), pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, pgtype.Timestamptz{}, int64(0)}}
+			return userModerationTestRow{values: []any{int64(0), pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, pgtype.Timestamptz{}, int64(0), int64(0)}}
 		}
 		suspendedAt := pgtype.Timestamptz{Time: tx.suspendedAt, Valid: true}
 		updatedAt := pgtype.Timestamptz{Time: tx.updatedAt, Valid: true}
-		return userModerationTestRow{values: []any{tx.targetID, suspendedAt, pgtype.Timestamptz{}, pgtype.Text{String: tx.reason, Valid: true}, updatedAt, tx.auditID}}
+		return userModerationTestRow{values: []any{tx.targetID, suspendedAt, pgtype.Timestamptz{}, pgtype.Text{String: tx.reason, Valid: true}, updatedAt, tx.target.AdministrationRevision + 1, tx.auditID}}
 	case strings.Contains(query, "ReinstateUserAndAudit"):
 		tx.steps = append(tx.steps, "reinstate")
 		tx.captureReinstate(arguments)
@@ -419,10 +421,10 @@ func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, argume
 			return userModerationTestRow{err: errModerationTest}
 		}
 		if tx.failure == "invalid-change" {
-			return userModerationTestRow{values: []any{int64(0), pgtype.Timestamptz{Valid: true}, pgtype.Timestamptz{}, pgtype.Text{}, pgtype.Timestamptz{}, int64(0)}}
+			return userModerationTestRow{values: []any{int64(0), pgtype.Timestamptz{Valid: true}, pgtype.Timestamptz{}, pgtype.Text{}, pgtype.Timestamptz{}, int64(0), int64(0)}}
 		}
 		updatedAt := pgtype.Timestamptz{Time: tx.updatedAt, Valid: true}
-		return userModerationTestRow{values: []any{tx.targetID, pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, updatedAt, tx.auditID}}
+		return userModerationTestRow{values: []any{tx.targetID, pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, updatedAt, tx.target.AdministrationRevision + 1, tx.auditID}}
 	default:
 		panic("unexpected user moderation query")
 	}
@@ -435,11 +437,11 @@ func (tx *userSuspensionTestTx) captureSuspend(arguments []any) {
 	tx.updatedAt = arguments[2].(pgtype.Timestamptz).Time
 	tx.targetID = arguments[3].(int64)
 	tx.observedAt = arguments[4].(pgtype.Timestamptz).Time
-	tx.actorID = arguments[5].(pgtype.Int8).Int64
-	tx.previousAt = arguments[6].(pgtype.Timestamptz)
-	tx.previousUntil = arguments[7].(pgtype.Timestamptz)
-	tx.previousReason = arguments[8].(pgtype.Text)
-	tx.requestID = arguments[9].(pgtype.UUID)
+	tx.actorID = arguments[6].(pgtype.Int8).Int64
+	tx.previousAt = arguments[7].(pgtype.Timestamptz)
+	tx.previousUntil = arguments[8].(pgtype.Timestamptz)
+	tx.previousReason = arguments[9].(pgtype.Text)
+	tx.requestID = arguments[10].(pgtype.UUID)
 }
 
 func (tx *userSuspensionTestTx) captureReinstate(arguments []any) {
@@ -447,12 +449,12 @@ func (tx *userSuspensionTestTx) captureReinstate(arguments []any) {
 	tx.updatedAt = arguments[0].(pgtype.Timestamptz).Time
 	tx.targetID = arguments[1].(int64)
 	tx.observedAt = arguments[2].(pgtype.Timestamptz).Time
-	tx.actorID = arguments[3].(pgtype.Int8).Int64
-	tx.reason = arguments[4].(pgtype.Text).String
-	tx.previousAt = arguments[5].(pgtype.Timestamptz)
-	tx.previousUntil = arguments[6].(pgtype.Timestamptz)
-	tx.previousReason = pgtype.Text{String: arguments[7].(string), Valid: true}
-	tx.requestID = arguments[8].(pgtype.UUID)
+	tx.actorID = arguments[4].(pgtype.Int8).Int64
+	tx.reason = arguments[5].(pgtype.Text).String
+	tx.previousAt = arguments[6].(pgtype.Timestamptz)
+	tx.previousUntil = arguments[7].(pgtype.Timestamptz)
+	tx.previousReason = pgtype.Text{String: arguments[8].(string), Valid: true}
+	tx.requestID = arguments[9].(pgtype.UUID)
 }
 
 func (tx *userSuspensionTestTx) Commit(context.Context) error {
@@ -499,6 +501,6 @@ func (row userModerationTestRow) Scan(destinations ...any) error {
 
 type panicUserSuspensionBeginner struct{}
 
-func (panicUserSuspensionBeginner) Begin(context.Context) (pgx.Tx, error) {
+func (panicUserSuspensionBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
 	panic("user moderation transaction began")
 }

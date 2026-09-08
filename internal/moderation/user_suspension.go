@@ -10,8 +10,11 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const userSuspensionTimeout = 2 * time.Second
 
 var (
 	ErrUserModerationInput     = errors.New("invalid user moderation input")
@@ -23,7 +26,12 @@ var (
 type UserSuspensionResult struct {
 	UserID    int64
 	Suspended bool
+	Revision  int64
 	AuditID   int64
+}
+
+type suspensionTransactionBeginner interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
 
 // ChangeUserSuspension indefinitely suspends or explicitly reinstates one
@@ -40,7 +48,7 @@ type UserSuspensionResult struct {
 // with no retry or detached work.
 func ChangeUserSuspension(
 	ctx context.Context,
-	beginner transactionBeginner,
+	beginner suspensionTransactionBeginner,
 	clock func() time.Time,
 	actor policy.AccessContext,
 	targetUserID int64,
@@ -83,10 +91,19 @@ func ChangeUserSuspension(
 		return UserSuspensionResult{}, fmt.Errorf("user moderation clock returned a zero time")
 	}
 	now = now.UTC().Truncate(time.Microsecond)
+	mutationContext, cancel := context.WithTimeout(ctx, userSuspensionTimeout)
+	defer cancel()
 
 	result := UserSuspensionResult{}
-	err := store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
-		governanceLocked, err := queries.LockGovernanceState(ctx)
+	err := store.WithinTxOptions(mutationContext, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
+		configured, err := queries.ConfigureAdministrationTransaction(mutationContext)
+		if err != nil {
+			return fmt.Errorf("configure user moderation transaction: %w", err)
+		}
+		if configured.SetConfig != "2s" || configured.SetConfig_2 != "250ms" {
+			return fmt.Errorf("user moderation transaction configuration is invalid")
+		}
+		governanceLocked, err := queries.LockGovernanceState(mutationContext)
 		if err != nil {
 			return fmt.Errorf("lock user moderation governance state: %w", err)
 		}
@@ -97,11 +114,11 @@ func ChangeUserSuspension(
 		if secondUserID < firstUserID {
 			firstUserID, secondUserID = secondUserID, firstUserID
 		}
-		firstUser, err := queries.LockUserForSuspension(ctx, firstUserID)
+		firstUser, err := queries.LockUserForSuspension(mutationContext, firstUserID)
 		if err != nil {
 			return fmt.Errorf("lock first user for moderation: %w", err)
 		}
-		secondUser, err := queries.LockUserForSuspension(ctx, secondUserID)
+		secondUser, err := queries.LockUserForSuspension(mutationContext, secondUserID)
 		if err != nil {
 			return fmt.Errorf("lock second user for moderation: %w", err)
 		}
@@ -126,7 +143,7 @@ func ChangeUserSuspension(
 			return ErrUserModerationConflict
 		}
 		if suspend && target.Role == "administrator" {
-			administrators, countErr := queries.CountActiveAdministrators(ctx, observedAt)
+			administrators, countErr := queries.CountActiveAdministrators(mutationContext, observedAt)
 			if countErr != nil {
 				return fmt.Errorf("count active administrators for suspension: %w", countErr)
 			}
@@ -146,10 +163,11 @@ func ChangeUserSuspension(
 				suspendedAt = target.CreatedAt.Time.UTC().Truncate(time.Microsecond)
 			}
 			suspendedAtTime := pgtype.Timestamptz{Time: suspendedAt, Valid: true}
-			changed, changeErr := queries.SuspendUserAndAudit(ctx, db.SuspendUserAndAuditParams{
+			changed, changeErr := queries.SuspendUserAndAudit(mutationContext, db.SuspendUserAndAuditParams{
 				ObservedAt: observedAt, SuspendedAt: suspendedAtTime, UpdatedAt: updatedAtTime,
 				Reason: pgtype.Text{String: reason, Valid: true}, UserID: targetUserID,
-				ActorUserID: actorID, PreviousSuspendedAt: target.SuspendedAt,
+				ExpectedRevision: target.AdministrationRevision,
+				ActorUserID:      actorID, PreviousSuspendedAt: target.SuspendedAt,
 				PreviousSuspendedUntil: target.SuspendedUntil, PreviousSuspensionReason: target.SuspensionReason,
 				RequestID: requestID,
 			})
@@ -159,15 +177,16 @@ func ChangeUserSuspension(
 			if changed.UserID != targetUserID || !changed.SuspendedAt.Valid || changed.SuspendedAt.InfinityModifier != pgtype.Finite ||
 				!changed.SuspendedAt.Time.Equal(suspendedAt) || changed.SuspendedUntil.Valid || !changed.SuspensionReason.Valid ||
 				changed.SuspensionReason.String != reason || !changed.UpdatedAt.Valid || changed.UpdatedAt.InfinityModifier != pgtype.Finite ||
-				!changed.UpdatedAt.Time.Equal(updatedAt) || changed.AuditID <= 0 {
+				!changed.UpdatedAt.Time.Equal(updatedAt) || changed.AdministrationRevision != target.AdministrationRevision+1 || changed.AuditID <= 0 {
 				return fmt.Errorf("user suspension returned an invalid result")
 			}
-			result = UserSuspensionResult{UserID: changed.UserID, Suspended: true, AuditID: changed.AuditID}
+			result = UserSuspensionResult{UserID: changed.UserID, Suspended: true, Revision: changed.AdministrationRevision, AuditID: changed.AuditID}
 			return nil
 		}
-		changed, changeErr := queries.ReinstateUserAndAudit(ctx, db.ReinstateUserAndAuditParams{
+		changed, changeErr := queries.ReinstateUserAndAudit(mutationContext, db.ReinstateUserAndAuditParams{
 			ObservedAt: observedAt, UpdatedAt: updatedAtTime, UserID: targetUserID, ActorUserID: actorID,
-			Reason: pgtype.Text{String: reason, Valid: true}, PreviousSuspendedAt: target.SuspendedAt,
+			ExpectedRevision: target.AdministrationRevision,
+			Reason:           pgtype.Text{String: reason, Valid: true}, PreviousSuspendedAt: target.SuspendedAt,
 			PreviousSuspendedUntil: target.SuspendedUntil, PreviousSuspensionReason: target.SuspensionReason.String,
 			RequestID: requestID,
 		})
@@ -175,10 +194,11 @@ func ChangeUserSuspension(
 			return fmt.Errorf("reinstate user and audit: %w", changeErr)
 		}
 		if changed.UserID != targetUserID || changed.SuspendedAt.Valid || changed.SuspendedUntil.Valid || changed.SuspensionReason.Valid ||
-			!changed.UpdatedAt.Valid || changed.UpdatedAt.InfinityModifier != pgtype.Finite || !changed.UpdatedAt.Time.Equal(updatedAt) || changed.AuditID <= 0 {
+			!changed.UpdatedAt.Valid || changed.UpdatedAt.InfinityModifier != pgtype.Finite || !changed.UpdatedAt.Time.Equal(updatedAt) ||
+			changed.AdministrationRevision != target.AdministrationRevision+1 || changed.AuditID <= 0 {
 			return fmt.Errorf("user reinstatement returned an invalid result")
 		}
-		result = UserSuspensionResult{UserID: changed.UserID, AuditID: changed.AuditID}
+		result = UserSuspensionResult{UserID: changed.UserID, Revision: changed.AdministrationRevision, AuditID: changed.AuditID}
 		return nil
 	})
 	if err != nil {
@@ -202,7 +222,8 @@ func validSuspensionReason(reason string) bool {
 // Complexity: for r <= 2,000 suspension-reason bytes, time is O(r), Omega(1),
 // and auxiliary space is tight Theta(1).
 func validSuspensionTarget(target db.LockUserForSuspensionRow, expectedID int64) bool {
-	if target.ID != expectedID || target.ID <= 0 || !validUserRole(target.Role) ||
+	if target.ID != expectedID || target.ID <= 0 || !validUserRole(target.Role) || target.AdministrationRevision <= 0 ||
+		target.AdministrationRevision == int64(^uint64(0)>>1) ||
 		!finiteTimestamp(target.CreatedAt) || !finiteTimestamp(target.UpdatedAt) ||
 		target.UpdatedAt.Time.Before(target.CreatedAt.Time) ||
 		target.MutedUntil.Valid && (!finiteTimestamp(target.MutedUntil) || !target.MutedUntil.Time.After(target.CreatedAt.Time)) {

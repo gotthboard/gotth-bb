@@ -70,7 +70,7 @@ type areaAdministrationQuerier interface {
 	ListForumGroupsForAreaAdministration(context.Context) ([]db.ListForumGroupsForAreaAdministrationRow, error)
 }
 
-type transactionBeginner interface {
+type areaTransactionBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
@@ -125,7 +125,7 @@ func LoadAreaManagement(ctx context.Context, querier areaAdministrationQuerier, 
 	return page, nil
 }
 
-func CreateArea(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, input AreaInput, requestID pgtype.UUID) (AreaMutationResult, error) {
+func CreateArea(ctx context.Context, beginner areaTransactionBeginner, clock func() time.Time, actor policy.AccessContext, input AreaInput, requestID pgtype.UUID) (AreaMutationResult, error) {
 	if err := validateMutationBoundary(ctx, beginner, clock, actor, &input, requestID, true); err != nil {
 		return AreaMutationResult{}, err
 	}
@@ -162,7 +162,7 @@ func CreateArea(ctx context.Context, beginner transactionBeginner, clock func() 
 	return result, nil
 }
 
-func UpdateArea(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, areaID int64, input AreaInput, requestID pgtype.UUID) (AreaMutationResult, error) {
+func UpdateArea(ctx context.Context, beginner areaTransactionBeginner, clock func() time.Time, actor policy.AccessContext, areaID int64, input AreaInput, requestID pgtype.UUID) (AreaMutationResult, error) {
 	if areaID <= 0 {
 		return AreaMutationResult{}, fmt.Errorf("%w: target", ErrAreaAdministrationInput)
 	}
@@ -220,7 +220,7 @@ func UpdateArea(ctx context.Context, beginner transactionBeginner, clock func() 
 	return result, nil
 }
 
-func validateMutationBoundary(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, input *AreaInput, requestID pgtype.UUID, requireSlug bool) error {
+func validateMutationBoundary(ctx context.Context, beginner areaTransactionBeginner, clock func() time.Time, actor policy.AccessContext, input *AreaInput, requestID pgtype.UUID, requireSlug bool) error {
 	if ctx == nil || beginner == nil || clock == nil {
 		return fmt.Errorf("area administration mutation boundary is incomplete")
 	}

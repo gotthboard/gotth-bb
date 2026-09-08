@@ -77,40 +77,40 @@ func TestModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T) {
 			},
 		},
 		{
-			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime},
+			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime, int64(7)},
 			wantArgs:   []any{int64(42)},
 			required:   []string{"FROM public.users AS forum_user", "FOR UPDATE OF forum_user"},
 			invoke:     func(q *Queries) (any, error) { return q.LockUserForSuspension(context.Background(), 42) },
-			wantResult: LockUserForSuspensionRow{ID: 42, Role: "member", SuspendedAt: previousAt, SuspendedUntil: previousUntil, SuspensionReason: previousReason, CreatedAt: atTime, UpdatedAt: atTime},
+			wantResult: LockUserForSuspensionRow{ID: 42, Role: "member", SuspendedAt: previousAt, SuspendedUntil: previousUntil, SuspensionReason: previousReason, CreatedAt: atTime, UpdatedAt: atTime, AdministrationRevision: 7},
 		},
 		{
 			name:      "suspend user and audit",
-			rowValues: []any{int64(42), suspendedAt, pgtype.Timestamptz{}, reason, updatedAt, int64(72)},
-			wantArgs:  []any{suspendedAt, reason, updatedAt, int64(42), observedAt, actorID, previousAt, previousUntil, previousReason, requestID},
-			required:  []string{"suspended_at = GREATEST($1::timestamptz", "updated_at = GREATEST($3::timestamptz", "forum_user.suspended_at > $5::timestamptz", "'suspend_user'", "'suspension_reason', $9::text", "JOIN audit ON audit.target_user_id = changed.id"},
+			rowValues: []any{int64(42), suspendedAt, pgtype.Timestamptz{}, reason, updatedAt, int64(8), int64(72)},
+			wantArgs:  []any{suspendedAt, reason, updatedAt, int64(42), observedAt, int64(7), actorID, previousAt, previousUntil, previousReason, requestID},
+			required:  []string{"suspended_at = GREATEST($1::timestamptz", "updated_at = GREATEST($3::timestamptz", "forum_user.suspended_at > $5::timestamptz", "administration_revision = forum_user.administration_revision + 1", "'suspend_user'", "'suspension_reason', $10::text", "JOIN audit ON audit.target_user_id = changed.id"},
 			invoke: func(q *Queries) (any, error) {
 				return q.SuspendUserAndAudit(context.Background(), SuspendUserAndAuditParams{
 					ObservedAt: observedAt, SuspendedAt: suspendedAt, UpdatedAt: updatedAt,
-					Reason: reason, UserID: 42, ActorUserID: actorID,
+					Reason: reason, UserID: 42, ExpectedRevision: 7, ActorUserID: actorID,
 					PreviousSuspendedAt: previousAt, PreviousSuspendedUntil: previousUntil,
 					PreviousSuspensionReason: previousReason, RequestID: requestID,
 				})
 			},
-			wantResult: SuspendUserAndAuditRow{UserID: 42, SuspendedAt: suspendedAt, SuspensionReason: reason, UpdatedAt: updatedAt, AuditID: 72},
+			wantResult: SuspendUserAndAuditRow{UserID: 42, SuspendedAt: suspendedAt, SuspensionReason: reason, UpdatedAt: updatedAt, AdministrationRevision: 8, AuditID: 72},
 		},
 		{
 			name:      "reinstate user and audit",
-			rowValues: []any{int64(42), pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, updatedAt, int64(73)},
-			wantArgs:  []any{updatedAt, int64(42), observedAt, actorID, reason, previousAt, previousUntil, previousReason.String, requestID},
-			required:  []string{"SET suspended_at = NULL", "updated_at = GREATEST($1::timestamptz", "forum_user.suspended_at <= $3::timestamptz", "'reinstate_user'", "'suspension_reason', $8::text", "JOIN audit ON audit.target_user_id = changed.id"},
+			rowValues: []any{int64(42), pgtype.Timestamptz{}, pgtype.Timestamptz{}, pgtype.Text{}, updatedAt, int64(8), int64(73)},
+			wantArgs:  []any{updatedAt, int64(42), observedAt, int64(7), actorID, reason, previousAt, previousUntil, previousReason.String, requestID},
+			required:  []string{"SET suspended_at = NULL", "updated_at = GREATEST($1::timestamptz", "forum_user.suspended_at <= $3::timestamptz", "administration_revision = forum_user.administration_revision + 1", "'reinstate_user'", "'suspension_reason', $9::text", "JOIN audit ON audit.target_user_id = changed.id"},
 			invoke: func(q *Queries) (any, error) {
 				return q.ReinstateUserAndAudit(context.Background(), ReinstateUserAndAuditParams{
-					ObservedAt: observedAt, UpdatedAt: updatedAt, UserID: 42, ActorUserID: actorID, Reason: reason,
+					ObservedAt: observedAt, UpdatedAt: updatedAt, UserID: 42, ExpectedRevision: 7, ActorUserID: actorID, Reason: reason,
 					PreviousSuspendedAt: previousAt, PreviousSuspendedUntil: previousUntil,
 					PreviousSuspensionReason: previousReason.String, RequestID: requestID,
 				})
 			},
-			wantResult: ReinstateUserAndAuditRow{UserID: 42, UpdatedAt: updatedAt, AuditID: 73},
+			wantResult: ReinstateUserAndAuditRow{UserID: 42, UpdatedAt: updatedAt, AdministrationRevision: 8, AuditID: 73},
 		},
 	} {
 		test := test

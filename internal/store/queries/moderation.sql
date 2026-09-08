@@ -55,7 +55,8 @@ SELECT
     forum_user.suspension_reason,
     forum_user.muted_until,
     forum_user.created_at,
-    forum_user.updated_at
+    forum_user.updated_at,
+    forum_user.administration_revision
 FROM public.users AS forum_user
 WHERE forum_user.id = sqlc.arg(user_id)
 FOR UPDATE OF forum_user;
@@ -66,15 +67,19 @@ WITH changed AS (
     SET suspended_at = GREATEST(sqlc.arg(suspended_at)::timestamptz, forum_user.created_at),
         suspended_until = NULL,
         suspension_reason = sqlc.arg(reason),
-        updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, forum_user.updated_at)
+        updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, forum_user.updated_at),
+        administration_revision = forum_user.administration_revision + 1
     WHERE forum_user.id = sqlc.arg(user_id)
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
           OR forum_user.suspended_until <= sqlc.arg(observed_at)::timestamptz
       )
+      AND forum_user.administration_revision = sqlc.arg(expected_revision)
+      AND forum_user.administration_revision < 9223372036854775807
     RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
-              forum_user.suspension_reason, forum_user.updated_at
+              forum_user.suspension_reason, forum_user.updated_at,
+              forum_user.administration_revision
 ),
 audit AS (
     INSERT INTO public.moderation_actions (
@@ -99,12 +104,14 @@ audit AS (
         jsonb_build_object(
             'suspended_at', sqlc.narg(previous_suspended_at)::timestamptz,
             'suspended_until', sqlc.narg(previous_suspended_until)::timestamptz,
-            'suspension_reason', sqlc.narg(previous_suspension_reason)::text
+            'suspension_reason', sqlc.narg(previous_suspension_reason)::text,
+            'administration_revision', sqlc.arg(expected_revision)::bigint
         ),
         jsonb_build_object(
             'suspended_at', changed.suspended_at,
             'suspended_until', changed.suspended_until,
-            'suspension_reason', changed.suspension_reason
+            'suspension_reason', changed.suspension_reason,
+            'administration_revision', changed.administration_revision
         ),
         sqlc.arg(request_id),
         changed.updated_at
@@ -112,7 +119,8 @@ audit AS (
     RETURNING id, target_user_id
 )
 SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
-       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+       changed.suspension_reason, changed.updated_at,
+       changed.administration_revision, audit.id AS audit_id
 FROM changed
 JOIN audit ON audit.target_user_id = changed.id;
 
@@ -142,15 +150,19 @@ WITH changed AS (
     SET suspended_at = NULL,
         suspended_until = NULL,
         suspension_reason = NULL,
-        updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, forum_user.updated_at)
+        updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, forum_user.updated_at),
+        administration_revision = forum_user.administration_revision + 1
     WHERE forum_user.id = sqlc.arg(user_id)
       AND forum_user.suspended_at <= sqlc.arg(observed_at)::timestamptz
       AND (
           forum_user.suspended_until IS NULL
           OR forum_user.suspended_until > sqlc.arg(observed_at)::timestamptz
       )
+      AND forum_user.administration_revision = sqlc.arg(expected_revision)
+      AND forum_user.administration_revision < 9223372036854775807
     RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
-              forum_user.suspension_reason, forum_user.updated_at
+              forum_user.suspension_reason, forum_user.updated_at,
+              forum_user.administration_revision
 ),
 audit AS (
     INSERT INTO public.moderation_actions (
@@ -175,12 +187,14 @@ audit AS (
         jsonb_build_object(
             'suspended_at', sqlc.arg(previous_suspended_at)::timestamptz,
             'suspended_until', sqlc.narg(previous_suspended_until)::timestamptz,
-            'suspension_reason', sqlc.arg(previous_suspension_reason)::text
+            'suspension_reason', sqlc.arg(previous_suspension_reason)::text,
+            'administration_revision', sqlc.arg(expected_revision)::bigint
         ),
         jsonb_build_object(
             'suspended_at', changed.suspended_at,
             'suspended_until', changed.suspended_until,
-            'suspension_reason', changed.suspension_reason
+            'suspension_reason', changed.suspension_reason,
+            'administration_revision', changed.administration_revision
         ),
         sqlc.arg(request_id),
         changed.updated_at
@@ -188,6 +202,7 @@ audit AS (
     RETURNING id, target_user_id
 )
 SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,
-       changed.suspension_reason, changed.updated_at, audit.id AS audit_id
+       changed.suspension_reason, changed.updated_at,
+       changed.administration_revision, audit.id AS audit_id
 FROM changed
 JOIN audit ON audit.target_user_id = changed.id;
