@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Changelog prose describing credential-hash verification"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+paths = ['''^docs/CHANGELOG\.md$''']
+regexes = ['''^credential hash, observation''']

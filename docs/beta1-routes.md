@@ -18,10 +18,10 @@ state and read markers are explicit mutations but are not moderation audits.
 | `GET` | `/topics/{topicID}` | optional session plus topic/area policy | no | visitor dynamic or `private, no-store` | yes / no / no | equivalent `404` |
 | `GET` | `/health/live` | public | no | `no-store` | no / no / no | fixed `200` while process serves |
 | `GET` | `/health/ready` | public bounded readiness | no | `no-store` | yes / no / no | fixed `503` without detail |
-| `GET, HEAD` | `/static/{app-css-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/app-3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa.css` | public exact content address | no | one-year public immutable | no / no / no | `404` |
 | `GET, HEAD` | `/static/htmx-2.0.10.min.js` | public exact version | no | one-year public immutable | no / no / no | `404` |
-| `GET, HEAD` | `/static/{discovery-script-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
-| `GET, HEAD` | `/static/{toolbar-script-digest}` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/discovery-response-83d6c618d951879489e90e83d947a31d4211b8f565604c773346fd1ef0d4152b.js` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/markdown-toolbar-9b94e2d14953039596b28abd1bf40cda34ebc0fcd910204606ca0f3862b36848.js` | public exact content address | no | one-year public immutable | no / no / no | `404` |
 | `GET` | `/login` | public | no | `no-store` | yes / OIDC attempt / no | bounded `400`/`503` |
 | `GET` | `/auth/callback` | one-time OIDC state | no | `no-store` | yes / identity plus session / no | fixed failed-login result |
 | `GET` | `/auth/revalidate` | existing local session | no | `no-store` | yes / OIDC attempt / no | login or bounded failure |

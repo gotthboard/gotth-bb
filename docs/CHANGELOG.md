@@ -5,6 +5,50 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Close the Beta.1 route and pre-release security inventory
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- mechanical PRD requirement, production route, emitted-URL, and mutation-CSRF
+  admission tests
+- exact content-addressed static-route inventory
+- `golang.org/x/net`, `x/text`, and their required toolchain dependencies
+- raw task-list checkbox sanitizer boundary and Caddy browser-header evidence
+- pinned Gitleaks false-positive boundary for one exact historical changelog
+  sentence
+
+Explanation:
+
+The Beta inventory is executable rather than a prose count: every PRD ID must
+map one-to-one to traceability, router operations must remain in the admitted
+set, all emitted URL shapes must resolve to a registered route, and every POST
+row must record CSRF protection. The vulnerability gate found reachable
+GO-2026-5970 and GO-2026-5026 paths and imported parser code below the fixed
+`x/net` boundary. Updating those modules changed duplicate-attribute parsing,
+so task-list inputs now compare the raw tag against three renderer-admitted
+spellings before any normalizing tokenizer can erase malformed input.
+
+Verification:
+
+- requirement, route, emitted-URL, CSRF, configuration, and sanitizer tests
+- repository-wide race/coverage plus PostgreSQL 17 serial and race/atomic
+  integration suites on the designated evidence host
+- Caddy 2.11.4 and Chromium 151 checks at empty and `/bb` base paths, including
+  proxy identity overwrite, fixed browser headers, no-script mutation failure,
+  and keyboard operation
+- `govulncheck` 1.7.0 reports no vulnerabilities after the repair
+- Gitleaks 8.30.1 reports no leak in the worktree or all 403 repository commits
+
+Risks / non-goals:
+
+- the exact live Authentik provider-disable check remains B1-05 deployment
+  evidence; this change proves the configured 30-minute value and local
+  next-request authority checks
+- accessibility/reflow and representative-data admission remain B1-02
+- no database migration, new route, product feature, tag, or deployment occurs
+
 ### 2026-09-08 — Admit the Beta.1 closure and recovery contract
 
 Commit: current commit; hash assigned by Git after commit

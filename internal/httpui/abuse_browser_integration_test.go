@@ -143,7 +143,11 @@ func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 	if err != nil {
 		t.Fatalf("construct browser request admission: %v", err)
 	}
-	upstream := httptest.NewServer(admittedApplication)
+	securedApplication, err := NewBrowserSecurityHandler(admittedApplication)
+	if err != nil {
+		t.Fatalf("construct browser security handler: %v", err)
+	}
+	upstream := httptest.NewServer(securedApplication)
 	defer upstream.Close()
 
 	directory := t.TempDir()
@@ -282,11 +286,30 @@ func waitForAbuseCaddy(t *testing.T, target string, log *bytes.Buffer) {
 		response, err := client.Get(target)
 		if err == nil {
 			_ = response.Body.Close()
-			if response.StatusCode == http.StatusOK && strings.Contains(response.Header.Get("Cache-Control"), "no-store") {
+			if response.StatusCode == http.StatusOK && strings.Contains(response.Header.Get("Cache-Control"), "no-store") && hasBetaBrowserSecurityHeaders(response.Header) {
 				return
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("Caddy did not serve abuse route: %s", log.String())
+}
+
+func hasBetaBrowserSecurityHeaders(header http.Header) bool {
+	want := map[string]string{
+		"Content-Security-Policy":      browserContentSecurityPolicy,
+		"Cross-Origin-Opener-Policy":   "same-origin",
+		"Cross-Origin-Resource-Policy": "same-origin",
+		"Origin-Agent-Cluster":         "?1",
+		"Permissions-Policy":           "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+		"Referrer-Policy":              "no-referrer",
+		"X-Content-Type-Options":       "nosniff",
+		"X-Frame-Options":              "DENY",
+	}
+	for name, value := range want {
+		if header.Get(name) != value {
+			return false
+		}
+	}
+	return true
 }

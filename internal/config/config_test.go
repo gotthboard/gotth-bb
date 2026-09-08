@@ -79,6 +79,20 @@ func TestLoadUsesOptionalDefaultsAndAllowsDevelopmentPublicClient(t *testing.T) 
 	}
 }
 
+func TestLoadAdmitsBetaThirtyMinuteRevalidationInterval(t *testing.T) {
+	t.Parallel()
+
+	values := validConfigEnvironment()
+	values["AUTH_REVALIDATE_INTERVAL"] = "30m"
+	got, err := Load(mapLookup(values))
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	if got.AuthRevalidateInterval != 30*time.Minute {
+		t.Fatalf("AuthRevalidateInterval = %s, want 30m", got.AuthRevalidateInterval)
+	}
+}
+
 func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 	t.Parallel()
 
