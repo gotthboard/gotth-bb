@@ -108,7 +108,7 @@ func ListAccounts(ctx context.Context, querier accountAdministrationQuerier, act
 		AfterUserID: afterUserID, PageLimit: administrationPageQueryLimit,
 	})
 	if err != nil {
-		return AccountPage{}, fmt.Errorf("%w: list accounts", ErrAccountAdministrationUnavailable)
+		return AccountPage{}, fmt.Errorf("%w: list accounts: %w", ErrAccountAdministrationUnavailable, err)
 	}
 	if len(rows) == 0 {
 		return AccountPage{}, ErrAccountAdministrationDenied
@@ -153,7 +153,7 @@ func LoadAccount(ctx context.Context, querier accountAdministrationQuerier, acto
 		return AccountSummary{}, ErrAccountAdministrationDenied
 	}
 	if err != nil {
-		return AccountSummary{}, fmt.Errorf("%w: load account", ErrAccountAdministrationUnavailable)
+		return AccountSummary{}, fmt.Errorf("%w: load account: %w", ErrAccountAdministrationUnavailable, err)
 	}
 	if !row.AccountPresent {
 		if !emptyLoadedAccountRow(row) {
@@ -180,7 +180,7 @@ func ListAccountGroups(ctx context.Context, querier accountAdministrationQuerier
 		AfterGroupID: afterGroupID, PageLimit: administrationPageQueryLimit,
 	})
 	if err != nil {
-		return AccountGroupPage{}, fmt.Errorf("%w: list account groups", ErrAccountAdministrationUnavailable)
+		return AccountGroupPage{}, fmt.Errorf("%w: list account groups: %w", ErrAccountAdministrationUnavailable, err)
 	}
 	if len(rows) == 0 {
 		return AccountGroupPage{}, ErrAccountAdministrationDenied
@@ -224,7 +224,7 @@ func ListGroups(ctx context.Context, querier accountAdministrationQuerier, actor
 		ActorUserID: actor.UserID, ObservedAt: administrationTime(observedAt), AfterGroupID: afterGroupID, PageLimit: administrationPageQueryLimit,
 	})
 	if err != nil {
-		return GroupPage{}, fmt.Errorf("%w: list groups", ErrAccountAdministrationUnavailable)
+		return GroupPage{}, fmt.Errorf("%w: list groups: %w", ErrAccountAdministrationUnavailable, err)
 	}
 	if len(rows) == 0 {
 		return GroupPage{}, ErrAccountAdministrationDenied
@@ -590,7 +590,7 @@ func lockAdministrationUsers(ctx context.Context, queries *db.Queries, actorUser
 		return db.LockAdministrationUserRow{}, db.LockAdministrationUserRow{}, fmt.Errorf("lock first administration user: %w", err)
 	}
 	if secondID == firstID {
-		return db.LockAdministrationUserRow{}, db.LockAdministrationUserRow{}, ErrAccountAdministrationDenied
+		return first, first, nil
 	}
 	second, err := queries.LockAdministrationUser(ctx, secondID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -609,7 +609,8 @@ func lockAdministrationUsers(ctx context.Context, queries *db.Queries, actorUser
 }
 
 func validLockedAdministrator(row db.LockAdministrationUserRow, actor policy.AccessContext, observedAt time.Time) bool {
-	if !validLockedAdministrationUser(row, actor.UserID) || effectiveSuspended(row, observedAt) || row.Role != "administrator" {
+	if !validLockedAdministrationUser(row, actor.UserID) || effectiveSuspended(row, observedAt) ||
+		row.MutedUntil.Valid && row.MutedUntil.Time.After(observedAt) || row.Role != "administrator" {
 		return false
 	}
 	return actor.Role == policy.RoleAdministrator
@@ -755,7 +756,7 @@ func administrationReason(reason string) pgtype.Text {
 
 func mapAccountWriteError(operation string, err error) error {
 	var postgresError *pgconn.PgError
-	if errors.As(err, &postgresError) && (postgresError.Code == "23505" || postgresError.Code == "23514") {
+	if errors.As(err, &postgresError) && postgresError.Code == "23505" {
 		return fmt.Errorf("%w: %s", ErrAccountAdministrationConflict, operation)
 	}
 	return fmt.Errorf("%s: %w", operation, err)

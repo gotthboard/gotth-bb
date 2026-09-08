@@ -83,16 +83,27 @@ func TestAccountAdministrationClosedInputGrammars(t *testing.T) {
 	}
 }
 
+func TestAccountAdministrationReadPreservesQueryCause(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("query canceled")
+	actor := policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator}
+	_, err := ListAccounts(context.Background(), accountReadTestQuerier{accountsErr: cause}, actor, time.Now(), 0)
+	if !errors.Is(err, ErrAccountAdministrationUnavailable) || !errors.Is(err, cause) {
+		t.Fatalf("ListAccounts() error = %v, want unavailable and cause", err)
+	}
+}
+
 type accountReadTestQuerier struct {
-	accounts []db.ListAccountsForAdministrationRow
-	load     db.LoadAccountForAdministrationRow
-	loadErr  error
-	groups   []db.ListAccountGroupsForAdministrationRow
-	all      []db.ListGroupsForAdministrationRow
+	accounts    []db.ListAccountsForAdministrationRow
+	accountsErr error
+	load        db.LoadAccountForAdministrationRow
+	loadErr     error
+	groups      []db.ListAccountGroupsForAdministrationRow
+	all         []db.ListGroupsForAdministrationRow
 }
 
 func (querier accountReadTestQuerier) ListAccountsForAdministration(context.Context, db.ListAccountsForAdministrationParams) ([]db.ListAccountsForAdministrationRow, error) {
-	return querier.accounts, nil
+	return querier.accounts, querier.accountsErr
 }
 
 func (querier accountReadTestQuerier) LoadAccountForAdministration(context.Context, db.LoadAccountForAdministrationParams) (db.LoadAccountForAdministrationRow, error) {

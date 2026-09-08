@@ -119,6 +119,32 @@ RETURNING id`).Scan(&actorID); err != nil {
 	if err != nil || revoked.Revision != 3 {
 		t.Fatalf("revoke ChangeGroupMembership() = (%+v, %v)", revoked, err)
 	}
+	if _, err := connections[0].Exec(ctx, `
+CREATE FUNCTION public.reject_account_administration_audit()
+RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject account administration audit'; END; $$;
+CREATE TRIGGER reject_account_administration_audit
+BEFORE INSERT ON public.moderation_actions
+FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); err != nil {
+		t.Fatalf("create rejecting account audit trigger: %v", err)
+	}
+	if _, err := ChangeGroupMembership(ctx, connections[0], func() time.Time { return observedAt.Add(3 * time.Second) }, actor, memberID, created.GroupID, true, "Exercise atomic audit rollback", revoked.Revision, testAdministrationRequestID(15)); err == nil {
+		t.Fatal("audit-rejected membership change returned no error")
+	}
+	if _, err := connections[0].Exec(ctx, `DROP TRIGGER reject_account_administration_audit ON public.moderation_actions; DROP FUNCTION public.reject_account_administration_audit()`); err != nil {
+		t.Fatalf("drop rejecting account audit trigger: %v", err)
+	}
+	var rolledBackMembership bool
+	var rolledBackRevision int64
+	if err := connections[0].QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM public.forum_group_members WHERE user_id = $1 AND group_id = $2), administration_revision FROM public.users WHERE id = $1`, memberID, created.GroupID).Scan(&rolledBackMembership, &rolledBackRevision); err != nil || rolledBackMembership || rolledBackRevision != revoked.Revision {
+		t.Fatalf("audit rollback state = (member %t, revision %d, %v)", rolledBackMembership, rolledBackRevision, err)
+	}
+	selfGranted, err := ChangeGroupMembership(ctx, connections[0], func() time.Time { return observedAt.Add(3 * time.Second) }, actor, actorID, created.GroupID, true, "Grant administrator membership", 1, testAdministrationRequestID(12))
+	if err != nil || selfGranted.UserID != actorID || selfGranted.Revision != 2 {
+		t.Fatalf("self grant ChangeGroupMembership() = (%+v, %v)", selfGranted, err)
+	}
+	if _, err := ChangeGroupMembership(ctx, connections[0], func() time.Time { return observedAt.Add(3 * time.Second) }, actor, actorID, created.GroupID, false, "Revoke administrator membership", selfGranted.Revision, testAdministrationRequestID(13)); err != nil {
+		t.Fatalf("self revoke ChangeGroupMembership() error = %v", err)
+	}
 
 	if _, err := connections[0].Exec(ctx, `INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at) VALUES (decode(repeat('11', 32), 'hex'), $1, $2, $2, $2, $3)`, memberID, observedAt, observedAt.Add(time.Hour)); err != nil {
 		t.Fatalf("insert member session: %v", err)
@@ -126,6 +152,9 @@ RETURNING id`).Scan(&actorID); err != nil {
 	changedRole, err := ChangeAccountRole(ctx, connections[0], func() time.Time { return observedAt.Add(4 * time.Second) }, actor, memberID, policy.RoleModerator, policy.RoleMember, "Promote the local member", revoked.Revision, testAdministrationRequestID(8))
 	if err != nil || changedRole.Role != policy.RoleModerator || changedRole.Revision != 4 || changedRole.RevokedSessions != 1 {
 		t.Fatalf("ChangeAccountRole() = (%+v, %v)", changedRole, err)
+	}
+	if _, err := ChangeAccountRole(ctx, connections[0], time.Now, actor, memberID, policy.RoleAdministrator, policy.RoleMember, "Reject stale role form", revoked.Revision, testAdministrationRequestID(16)); !errors.Is(err, ErrAccountAdministrationConflict) {
+		t.Fatalf("stale ChangeAccountRole() error = %v", err)
 	}
 	var role string
 	var activeSessions, auditCount int64
@@ -142,6 +171,30 @@ RETURNING id`).Scan(&actorID); err != nil {
 	}
 	if _, err := ChangeAccountRole(ctx, connections[0], func() time.Time { return observedAt.Add(6 * time.Second) }, actor, actorID, policy.RoleMember, policy.RoleAdministrator, "Reject self role change", 1, testAdministrationRequestID(11)); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("self role change error = %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.forum_groups (name, created_by) SELECT 'Paged Group ' || value, $1 FROM generate_series(1, 50) AS value`, actorID); err != nil {
+		t.Fatalf("insert paged groups: %v", err)
+	}
+	groupsPage, err := ListGroups(ctx, querier, actor, observedAt.Add(6*time.Second), 0)
+	if err != nil || len(groupsPage.Groups) != 50 || groupsPage.NextAfter != groupsPage.Groups[49].ID {
+		t.Fatalf("ListGroups(51 boundary) = (%+v, %v)", groupsPage, err)
+	}
+	membershipPage, err := ListAccountGroups(ctx, querier, actor, observedAt.Add(6*time.Second), memberID, 0)
+	if err != nil || len(membershipPage.Groups) != 50 || membershipPage.NextAfter != membershipPage.Groups[49].ID {
+		t.Fatalf("ListAccountGroups(51 boundary) = (%+v, %v)", membershipPage, err)
+	}
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.users (display_name) SELECT 'Paged Account ' || value FROM generate_series(1, 49) AS value`); err != nil {
+		t.Fatalf("insert paged accounts: %v", err)
+	}
+	accountsPage, err := ListAccounts(ctx, querier, actor, observedAt.Add(6*time.Second), 0)
+	if err != nil || len(accountsPage.Accounts) != 50 || accountsPage.NextAfter != accountsPage.Accounts[49].ID {
+		t.Fatalf("ListAccounts(51 boundary) = (%+v, %v)", accountsPage, err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = $2 WHERE id = $1`, actorID, observedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("mute administrator fixture: %v", err)
+	}
+	if _, err := CreateGroup(ctx, connections[0], func() time.Time { return observedAt.Add(7 * time.Second) }, actor, "Denied Group", "Reject muted administrator", testAdministrationRequestID(14)); !errors.Is(err, ErrAccountAdministrationDenied) {
+		t.Fatalf("muted administrator CreateGroup() error = %v", err)
 	}
 }
 
