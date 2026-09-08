@@ -27,6 +27,20 @@ import (
 )
 
 func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		basePath string
+	}{
+		{name: "empty base path"},
+		{name: "nonempty base path", basePath: "/bb"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runDiscoveryBrowserThroughCaddy(t, test.basePath)
+		})
+	}
+}
+
+func runDiscoveryBrowserThroughCaddy(t *testing.T, basePath string) {
 	if os.Getenv("GOTTH_BB_BROWSER_CADDY") != "1" {
 		t.Skip("set GOTTH_BB_BROWSER_CADDY=1 on the designated evidence host")
 	}
@@ -39,8 +53,8 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 		t.Fatalf("locate Chromium: %v", err)
 	}
 	port := reserveDiscoveryTestPort(t)
-	publicBase := fmt.Sprintf("http://127.0.0.1:%d/bb", port)
-	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
+	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
+	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
 	now := pgtype.Timestamptz{Time: time.Date(2026, 9, 7, 20, 0, 0, 0, time.UTC), Valid: true}
 	inner, err := newDiscoveryHandler(builder, DiscoveryHTTPServices{
 		Search: func(_ context.Context, request discovery.SearchRequest, access auth.AccessContext) (discovery.SearchPage, error) {
@@ -81,7 +95,7 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	defer upstream.Close()
 
 	directory := t.TempDir()
-	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n handle_path /bb/* {\n  reverse_proxy %s\n }\n}\n", port, upstream.URL)
+	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n %s\n}\n", port, browserCaddyProxy(basePath, upstream.URL))
 	configurationPath := filepath.Join(directory, "Caddyfile")
 	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
 		t.Fatalf("write temporary Caddyfile: %v", err)
@@ -113,17 +127,17 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	}
 	document := browserOutput.String()
 	for _, required := range []string{
-		`<html lang="en"`, `aria-label="Primary"`, `href="/bb/search"`, `href="/bb/activity"`,
-		`src="/bb/static/` + discoveryResponseFilename + `"`,
+		`<html lang="en"`, `aria-label="Primary"`, `href="` + basePath + `/search"`, `href="` + basePath + `/activity"`,
+		`src="` + basePath + `/static/` + discoveryResponseFilename + `"`,
 		`<main id="main-content" tabindex="-1"`, `<label class="grid gap-1 font-semibold">Search text`,
 		`<label class="grid gap-1 font-semibold">Author ID`, `<h1 id="search-title"`,
-		`A safe browser-visible excerpt.`, `href="/bb/posts/9"`,
+		`A safe browser-visible excerpt.`, `href="` + basePath + `/posts/9"`,
 	} {
 		if !strings.Contains(document, required) {
 			t.Fatalf("browser DOM lacks %q", required)
 		}
 	}
-	if strings.Contains(document, `href="/search`) || strings.Contains(document, `href="/activity`) || strings.Contains(document, `<script>alert`) {
+	if basePath != "" && (strings.Contains(document, `href="/search`) || strings.Contains(document, `href="/activity`)) || strings.Contains(document, `<script>alert`) {
 		t.Fatalf("browser DOM escaped base path or exposed unsafe markup")
 	}
 	errorProbe := exec.Command(chromium,
@@ -138,10 +152,24 @@ func TestDiscoveryBrowserThroughCaddy(t *testing.T) {
 	if strings.Contains(errorDOM.String(), ">pending<") || !strings.Contains(errorDOM.String(), "Invalid search") || !strings.Contains(errorDOM.String(), `id="main-content"`) {
 		t.Fatalf("marked discovery 400 did not replace the HTMX target: %s", errorDOM.String())
 	}
-	t.Logf("browser-through-Caddy admitted: caddy=%s chromium=%s bytes=%d", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), len(document))
+	t.Logf("browser-through-Caddy admitted: base_path=%q caddy=%s chromium=%s bytes=%d", basePath, commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), len(document))
 }
 
 func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		basePath string
+	}{
+		{name: "empty base path"},
+		{name: "nonempty base path", basePath: "/bb"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runUnreadControlsKeyboardAndNoScriptThroughCaddy(t, test.basePath)
+		})
+	}
+}
+
+func runUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath string) {
 	if os.Getenv("GOTTH_BB_BROWSER_CADDY") != "1" {
 		t.Skip("set GOTTH_BB_BROWSER_CADDY=1 on the designated evidence host")
 	}
@@ -158,8 +186,8 @@ func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		t.Fatalf("locate Node: %v", err)
 	}
 	port := reserveDiscoveryTestPort(t)
-	publicBase := fmt.Sprintf("http://127.0.0.1:%d/bb", port)
-	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
+	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
+	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
 	var marked atomic.Bool
 
 	topicHandler, err := newTopicPostListHandler(builder, store.MaximumPostPage, func(context.Context, auth.AccessContext, int64, int32) (store.VisibleTopicPostPage, error) {
@@ -226,7 +254,7 @@ func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	defer upstream.Close()
 
 	directory := t.TempDir()
-	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n handle_path /bb/* {\n  reverse_proxy %s\n }\n}\n", port, upstream.URL)
+	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n %s\n}\n", port, browserCaddyProxy(basePath, upstream.URL))
 	configurationPath := filepath.Join(directory, "Caddyfile")
 	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
 		t.Fatalf("write temporary Caddyfile: %v", err)
@@ -255,7 +283,15 @@ func TestUnreadControlsKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	if !marked.Load() {
 		t.Fatal("keyboard mark-read form did not invoke the server mutation")
 	}
-	t.Logf("unread browser-through-Caddy admitted: caddy=%s chromium=%s node=%s\n%s", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
+	t.Logf("unread browser-through-Caddy admitted: base_path=%q caddy=%s chromium=%s node=%s\n%s", basePath, commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
+}
+
+func browserCaddyProxy(basePath, upstream string) string {
+	proxy := "reverse_proxy " + upstream
+	if basePath != "" {
+		return fmt.Sprintf("handle_path %s/* {\n  %s\n }", basePath, proxy)
+	}
+	return proxy
 }
 
 func reserveDiscoveryTestPort(t *testing.T) int {

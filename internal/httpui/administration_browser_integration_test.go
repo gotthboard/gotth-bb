@@ -29,6 +29,20 @@ import (
 )
 
 func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		basePath string
+	}{
+		{name: "empty base path"},
+		{name: "nonempty base path", basePath: "/bb"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runAdministrationKeyboardAndNoScriptThroughCaddy(t, test.basePath)
+		})
+	}
+}
+
+func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath string) {
 	if os.Getenv("GOTTH_BB_BROWSER_CADDY") != "1" {
 		t.Skip("set GOTTH_BB_BROWSER_CADDY=1 on the designated evidence host")
 	}
@@ -45,8 +59,8 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		t.Fatalf("locate Node: %v", err)
 	}
 	port := reserveDiscoveryTestPort(t)
-	publicBase := fmt.Sprintf("http://127.0.0.1:%d/bb", port)
-	builder := mustAbsoluteURLBuilder(t, publicBase, "/bb")
+	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
+	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
 	services := administrationCompletionTestServices()
 	var changed atomic.Bool
 	var emptyDashboard, membership, areaAssigned, memberSession, sessionRevoked atomic.Bool
@@ -297,7 +311,7 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 	defer upstream.Close()
 
 	directory := t.TempDir()
-	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n handle_path /bb/* {\n  reverse_proxy %s\n }\n}\n", port, upstream.URL)
+	configuration := fmt.Sprintf("{\n admin off\n auto_https off\n}\nhttp://127.0.0.1:%d {\n %s\n}\n", port, browserCaddyProxy(basePath, upstream.URL))
 	configurationPath := filepath.Join(directory, "Caddyfile")
 	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
 		t.Fatalf("write temporary Caddyfile: %v", err)
@@ -332,5 +346,5 @@ func TestAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T) {
 		t.Fatalf("browser matrix did not complete: group=%q area_mode=%q assigned=%t site=%q rules=%q session_revoked=%t",
 			groupName.Load(), areaMode.Load(), areaAssigned.Load(), siteName.Load(), rulesMarkdown.Load(), sessionRevoked.Load())
 	}
-	t.Logf("administration browser-through-Caddy admitted: caddy=%s chromium=%s node=%s\n%s", commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
+	t.Logf("administration browser-through-Caddy admitted: base_path=%q caddy=%s chromium=%s node=%s\n%s", basePath, commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
 }
