@@ -2,9 +2,9 @@ AN-05-04 integrated admission and delivery evidence
 ===================================================
 
 Tested executable/methodology commit:
-  d29a27bdce8b7f16cf6682d30bb07820bafa39b6
+  1abbeab935bd6b1644623a22aa48d2a7d3afe9e9
 Tested tree:
-  d3c4fa8ef75d50ce9be445d98bd08184d1c39c84
+  e0560b1a47fb9edff72ddc22adc7d9f7c3e986da
 Admitted AN-05-03 base:
   550c17089af467c857b17787cf7e9f687e0ea3a0
 
@@ -33,8 +33,8 @@ Exact gates
      git diff --check
      test -z "$(git status --short)"
      git fsck --no-dangling
-     test "$(git rev-parse HEAD^{commit})" = d29a27bdce8b7f16cf6682d30bb07820bafa39b6
-     test "$(git rev-parse HEAD^{tree})" = d3c4fa8ef75d50ce9be445d98bd08184d1c39c84
+     test "$(git rev-parse HEAD^{commit})" = 1abbeab935bd6b1644623a22aa48d2a7d3afe9e9
+     test "$(git rev-parse HEAD^{tree})" = e0560b1a47fb9edff72ddc22adc7d9f7c3e986da
 
 2. Exact detached remote custody, static analysis, and repository-wide unit
    race/coverage:
@@ -88,17 +88,17 @@ Exact gates
 8. Two byte-identical Linux/amd64 packages:
 
      go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
-       --commit d29a27bdce8b7f16cf6682d30bb07820bafa39b6 \
+       --commit 1abbeab935bd6b1644623a22aa48d2a7d3afe9e9 \
        --goos linux --goarch amd64 \
-       --output /tmp/gotth-bb-an05-04-release-d29a27b-a
+       --output /tmp/gotth-bb-an05-04-release-1abbeab-a
      go run -mod=readonly ./cmd/package --version 1.0.0-alpha.2 \
-       --commit d29a27bdce8b7f16cf6682d30bb07820bafa39b6 \
+       --commit 1abbeab935bd6b1644623a22aa48d2a7d3afe9e9 \
        --goos linux --goarch amd64 \
-       --output /tmp/gotth-bb-an05-04-release-d29a27b-b
-     cmp /tmp/gotth-bb-an05-04-release-d29a27b-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
-       /tmp/gotth-bb-an05-04-release-d29a27b-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
-     cmp /tmp/gotth-bb-an05-04-release-d29a27b-a/SHA256SUMS \
-       /tmp/gotth-bb-an05-04-release-d29a27b-b/SHA256SUMS
+       --output /tmp/gotth-bb-an05-04-release-1abbeab-b
+     cmp /tmp/gotth-bb-an05-04-release-1abbeab-a/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz \
+       /tmp/gotth-bb-an05-04-release-1abbeab-b/gotth-bb-1.0.0-alpha.2-linux-amd64.tar.gz
+     cmp /tmp/gotth-bb-an05-04-release-1abbeab-a/SHA256SUMS \
+       /tmp/gotth-bb-an05-04-release-1abbeab-b/SHA256SUMS
 
 Results
 -------
@@ -110,44 +110,47 @@ Results
 - The fixed-capacity request gate launched 4,096 distinct IPv6 clients
   concurrently. All 4,096 were admitted exactly once, map cardinality was
   4,096, and client 4,097 received the fixed capacity result. Under the race
-  detector it completed in 123.463262ms with HeapAlloc delta 4,649,512 bytes,
-  TotalAlloc delta 5,347,872 bytes, Go Sys delta 21,848,064 bytes, and observed
-  RSS 33,372 to 139,092 KiB.
+  detector it completed in 121.739291ms with HeapAlloc delta 4,671,408 bytes,
+  TotalAlloc delta 5,357,032 bytes, Go Sys delta 25,780,224 bytes, and observed
+  RSS 33,100 to 142,056 KiB.
 - Each publication-population repetition created one topic and two replies for
   each of 1,000 established accounts: 3,000 successful publications, exact
   durable per-account count 3, 1,000 topics, and 3,000 posts. The five race
-  repetitions recorded topic waves of 505.199355ms to 572.490069ms and reply
-  waves of 991.144265ms to 1.090185099s. The pool was fixed at 32 connections;
+  repetitions recorded topic waves of 530.997524ms to 625.614899ms and reply
+  waves of 1.029159143s to 1.185921766s. The pool was fixed at 32 connections;
   observed database connections peaked at 33 including the observer and
-  returned from baseline 1 to final 1. Peak database locks were 1,619 to 1,703,
-  lock waiters 5 to 6, temp files/bytes zero, and cancellation left the tuple
+  returned from baseline 1 to final 1. Peak database locks were 1,490 to 1,878,
+  lock waiters 5 to 9, temp files/bytes zero, and cancellation left the tuple
   unchanged. The production service's tested transaction-local limits remained
   statement_timeout=2s and lock_timeout=250ms.
 - The representative database contained 25,000 accounts, 25,000 groups,
   25,000 areas, 100,000 ordinary topics, 1,000,000 ordinary posts, and one
   250,001-node depth-32 topic. Custom and forced-generic structural checks
-  passed. Final database size was 815,060,659 bytes; topics occupied 49,192,960
+  passed. Final database size was 815,085,235 bytes; topics occupied 49,192,960
   bytes and posts 730,710,016 bytes. The evidence process recorded HeapAlloc
-  2,275,904 bytes, TotalAlloc 27,013,152 bytes, Go Sys 17,946,888 bytes, RSS
-  21,456 KiB, 377 temp files, and 3,301,801,554 temp bytes after every plan.
+  2,554,880 bytes, TotalAlloc 26,714,408 bytes, Go Sys 14,014,728 bytes, RSS
+  21,236 KiB, 377 temp files, and 3,296,190,034 temp bytes after every plan.
 - One simultaneous start ran ordinary read, authentication, recent activity,
   moderation, first-unread, mark-read, publication, administration dashboard,
-  and discovery search. All completed without error in 4.899056ms, 6.953338ms,
-  22.463008ms, 24.795405ms, 24.807465ms, 30.375841ms, 32.797629ms,
-  254.051804ms, and 1.741016774s respectively. Connections returned 1 to 1;
+  and discovery search. All completed without error in 4.490245ms, 7.455168ms,
+  14.515671ms, 14.602692ms, 16.864034ms, 26.082788ms, 30.446422ms,
+  243.000989ms, and 1.75120069s respectively. Connections returned 1 to 1;
   cancellation passed.
-- Five browser repetitions covered both base paths each. Caddy overwrote every
-  forged identity header with one canonical `127.0.0.1` value and removed the
-  other forwarding headers before the application. With page JavaScript
+- Five browser repetitions covered both base paths each. The exact Caddy
+  binary's adapted JSON contained one reverse proxy that set
+  `X-Forwarded-For` to `{http.request.remote.host}` and deleted `Forwarded` and
+  `X-Real-IP`. Caddy then overwrote every forged identity header with one
+  canonical `127.0.0.1` value and removed the other forwarding headers before
+  the application. With page JavaScript
   disabled, native keyboard Enter submission produced blocked-link 422 and
   publication-rate 429 pages with draft preservation; edit and community-rules
   blocked forms also retained safe fields. Four fixed observer events appeared
   per base path without addresses, account/content values, destinations, or
   rules.
 - The two archives were byte-identical:
-  SHA-256 ffd743b8742efecf1eabb88066fb7ba2a81b9f94477daab8d550ea14690c24d6
+  SHA-256 233981a4bf1a098ccfe65f20e3356659aa8b9209d4c99b980b2c2f59c0370e01
   Their checksum files were byte-identical:
-  SHA-256 82cc124d3f9c50df8439273e94729bf9f31ab4e7a8262e5deb9ab957263ab5f5
+  SHA-256 c2850778f19ae5380819f79649b7e7a0adbc3860384f8a165005d99010242d9e
 
 Rejected attempts and repairs
 -----------------------------
@@ -177,6 +180,10 @@ Rejected attempts and repairs
   `pgxpool.Close` returned. The final cleanup oracle waits at most two seconds
   for `pg_stat_activity` to converge to the exact baseline; five race
   repetitions then passed.
+- The first final review found that live forged-header overwrite did not prove
+  the configured Caddy trust boundary survived adaptation. The final browser
+  gate parses the exact Caddy binary's adapted JSON and structurally attests
+  the set/delete request-header operations before starting the proxy.
 
 Gaps and boundary
 -----------------
