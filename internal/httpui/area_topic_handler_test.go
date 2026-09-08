@@ -130,7 +130,9 @@ func TestAreaTopicListHandlerRendersOnlyAuthenticatedReadState(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request)
 			body := response.Body.String()
-			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `href="/bb/topics/41/unread"`) && strings.Contains(body, ">New<")
+			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `href="/bb/topics/41/unread"`) &&
+				strings.Contains(body, `hx-get="/bb/topics/41/unread"`) && strings.Contains(body, `hx-target="#main-content"`) &&
+				strings.Contains(body, `hx-swap="outerHTML"`) && strings.Contains(body, ">New<")
 			if response.Code != test.wantStatus || gotControls != test.wantControls {
 				t.Fatalf("read-state response = (status %d controls %t body %q)", response.Code, gotControls, body)
 			}

@@ -328,7 +328,7 @@ templ areaTopicListContent(view pageView, area areaTopicListView) {
 									</h2>
 									<p class="mt-1 text-xs text-slate-400">Started by { topic.Author }</p>
 									if topic.FirstUnreadURL != "" {
-										<a href={ topic.FirstUnreadURL } class="mt-2 inline-block rounded-sm text-sm font-semibold text-cyan-200 hover:text-cyan-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
+										<a href={ topic.FirstUnreadURL } hx-get={ topic.FirstUnreadURL } hx-target="#main-content" hx-swap="outerHTML" class="mt-2 inline-block rounded-sm text-sm font-semibold text-cyan-200 hover:text-cyan-100 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
 									}
 								</div>
 							</div>
@@ -380,7 +380,7 @@ templ topicPostListContent(view pageView, topic topicPostPageView) {
 			<p class="mt-1 text-sm text-slate-400">Page { topic.Number } · { topic.TotalPosts } visible conversation nodes</p>
 			if topic.FirstUnreadURL != "" {
 				<div class="mt-4 flex flex-wrap items-center gap-3">
-					<a href={ topic.FirstUnreadURL } class="rounded border border-cyan-800 px-3 py-2 text-sm font-semibold text-cyan-200 hover:border-cyan-600 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
+					<a href={ topic.FirstUnreadURL } hx-get={ topic.FirstUnreadURL } hx-target="#main-content" hx-swap="outerHTML" class="rounded border border-cyan-800 px-3 py-2 text-sm font-semibold text-cyan-200 hover:border-cyan-600 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200">Jump to first unread post</a>
 					if topic.MarkReadAction != "" {
 						<form method="post" action={ topic.MarkReadAction } hx-post={ topic.MarkReadAction } hx-target="#main-content" hx-swap="outerHTML">
 							<input type="hidden" name="_csrf" value={ topic.CSRFToken }/>

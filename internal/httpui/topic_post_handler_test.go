@@ -134,7 +134,9 @@ func TestTopicPostListHandlerRendersOnlyAuthenticatedUnreadControls(t *testing.T
 			response := httptest.NewRecorder()
 			handler.ServeHTTP(response, request.WithContext(ctx))
 			body := response.Body.String()
-			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `action="/bb/topics/42/read"`) && strings.Contains(body, ">Unread<")
+			gotControls := strings.Contains(body, "Jump to first unread post") && strings.Contains(body, `href="/bb/topics/42/unread"`) &&
+				strings.Contains(body, `hx-get="/bb/topics/42/unread"`) && strings.Contains(body, `hx-target="#main-content"`) &&
+				strings.Contains(body, `hx-swap="outerHTML"`) && strings.Contains(body, `action="/bb/topics/42/read"`) && strings.Contains(body, ">Unread<")
 			if response.Code != test.wantStatus || gotControls != test.wantControls {
 				t.Fatalf("unread controls response = (status %d controls %t body %q)", response.Code, gotControls, body)
 			}
