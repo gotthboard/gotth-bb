@@ -910,7 +910,8 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
   slug, raw-keyset behavior across concurrent reorder, initial group on
   transition, single grant/revoke, last-group protection, no-op, stale/
   overflowing revision, missing group, audit failure, and every publication
-  path while archived; core area audit count/digest at high mapping cardinality;
+  path while archived; bounded description/group digests and streaming O(1)-
+  auxiliary hashing at high mapping cardinality;
 - account list boundaries 0/1/50/51, canonical continuation, account detail,
   member/moderator/administrator role labels, active/future/expired/indefinite
   suspension state, paged zero/one/many memberships, 50/51 group-page
@@ -928,7 +929,8 @@ Automated unit, HTTP, and PostgreSQL 17 tests shall cover:
   proof that ordinary shells do not select/copy rules bodies, every closed
   theme, rejected arbitrary theme/CSS/HTML/URL/control input, GFM and sanitizer
   fixtures, source/HTML size
-  boundaries, stale/no-op/overflowing settings, digest-only bounded audit,
+  boundaries, exact empty source/HTML sentinel, rejection of every other blank
+  source, stale/no-op/overflowing settings, digest-only bounded audit,
   renderer/audit failure, two-instance next-read propagation, empty/nonempty
   public rules, and no raw Markdown or private
   revision metadata in public output; and
@@ -954,17 +956,21 @@ call, and no retry.
 
 Ordinary and HTMX success must agree on canonical destination and authoritative
 main-region content. All administrator full-page/fragments are
-`private, no-store`, never enter shared caches, and contain no audit reason,
-email, avatar, issuer, subject, session identifier, IP, user agent, raw rules
-Markdown, or hidden target state. Application logs and metric labels are
-inspected for the same exclusions.
+`private, no-store` and never enter shared caches. They contain no prior audit
+reason, email, avatar, issuer, subject, session identifier, IP, or user agent.
+Only the administrator settings edit form may contain current raw rules
+Markdown; only a mutation form may contain its explicit numeric revision,
+expected role/action, and target ID. Those fields carry no authority and never
+appear in public output, application logs, or metric labels. Tests inspect all
+three boundaries.
 
 Caddy/Chromium tests cover empty and populated dashboard, 51-account and
 51-group continuation, area archive/restore, role change followed by target session
 failure, membership-driven access loss/gain, group create/rename, site name/
 description/theme and rules propagation, discoverable base-path-built rules and
 administration navigation, base-path deployment, full-page and
-HTMX history, JavaScript disabled, keyboard-only completion, visible focus,
+HTMX history, settings `HX-Redirect` full-shell refresh, JavaScript disabled,
+keyboard-only completion, visible focus,
 semantic headings/status/errors, accessible names, and mobile/desktop widths.
 
 ### 21.3 Migration, plans, concurrency, and resources
@@ -986,8 +992,9 @@ and area-group actions.
 Retain custom and forced-generic `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` for
 account list/detail, group membership, area administration, role continuity,
 and dashboard counts. Structural assertions prove administrator revalidation
-before private identity or aggregate work, group membership as nonmultiplying
-sets, the 51-row account/group fences, primary-key target starts, and expected indexes.
+through the required materialized actor fence before private identity or
+aggregate work, group membership as nonmultiplying sets, the 51-row account/
+group fences, primary-key target starts, and expected indexes.
 Planner observations do not become hints or universal latency guarantees.
 
 The representative checkpoint contains at least 25,000 accounts, 25,000 groups,

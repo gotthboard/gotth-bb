@@ -612,8 +612,10 @@ cache.
 
 The built-in theme is a closed value mapped to static, compiled CSS selectors.
 Administrators cannot supply CSS, script, HTML, a URL, or a remote logo. Rules
-reuse the admitted GFM renderer and sanitizer; only the trusted stored HTML is
-rendered. The public rules response contains no administrator identity,
+reuse the admitted GFM renderer and sanitizer for nonempty source; exact empty
+source/HTML is the sole explicit no-rules sentinel because the content renderer
+correctly rejects blank posts. Only the trusted stored HTML is rendered. The
+public rules response contains no administrator identity,
 revision, audit reason, or unpublished state.
 
 Account administration exposes bounded local projections. The list keysets on
@@ -623,7 +625,10 @@ suspension state, and numeric administration revision. A separate group page
 keysets on group ID and returns 51 rows with a membership boolean to render 50
 plus a next sentinel. Paging the relation replaces the dishonest lifetime quota
 and population-sized set replacement. Email, avatar, issuer, subject, session,
-IP, and user-agent columns never enter these queries or templates.
+IP, and user-agent columns never enter these queries or templates. Every
+private administration read uses a materialized current-administrator CTE and
+makes all target/mapping/aggregate work depend on that row; handler call order
+is not the authorization mechanism.
 
 Role changes lock the governance singleton before actor and target rows in
 ascending user-ID order. The transaction revalidates a current unsuspended

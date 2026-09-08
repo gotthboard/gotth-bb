@@ -2106,6 +2106,8 @@ ordinary migration transaction:
   enforce strict UTF-8/NFC at the application boundary; close themes to `blue`,
   `cyan`, `emerald`, `amber`, or `rose` and the renderer version to exact
   `goldmark-v1.8.5-gfm-bluemonday-v1.0.27-p2`;
+- require `rules_markdown` and `rules_html` to be either both exact empty
+  strings or both nonempty, making the empty-rules state a closed sentinel;
 - seed the current presentation (`GOTTH Board`, `Community discussions, plainly
   organized.`, `blue`, and empty source/HTML under the exact current renderer)
   so upgrade does not silently rebrand the site;
@@ -2171,8 +2173,11 @@ the 65,536-byte rules source plus the bounded scalar fields. Text is strict
 UTF-8/NFC, has no controls other than line feed in Markdown, and has no
 surrounding whitespace where the field contract forbids it. `revision` is the
 canonical positive decimal administration revision from the database. Before
-opening a transaction, the service validates the closed theme and renders/
-sanitizes rules through the admitted GFM boundary.
+opening a transaction, the service validates the closed theme. Exact empty
+rules source produces the exact empty HTML sentinel with the current renderer
+version; every nonempty source must be nonblank and renders/sanitizes through
+the admitted `render.RenderMarkdown` boundary. No other path manufactures
+trusted rules HTML.
 
 The transaction sets `statement_timeout` to at most two seconds and
 `lock_timeout` to 250 milliseconds, locks the governance singleton, locks and
@@ -2193,6 +2198,16 @@ attribute. No settings field becomes CSS, HTML, JavaScript, URL, asset path,
 CSP source, or template name.
 
 ### 21.3 Bounded account and group projections
+
+Every private administration page store query begins with one `actor AS
+MATERIALIZED` CTE that selects the exact current user only when its persisted
+role is `administrator` and its suspension is not effective at the query's one
+database time. Every target, group, area, mapping, or aggregate CTE depends on
+that row through an inner join or lateral input; no private relation is
+referenced by an independent sibling CTE. An absent actor row yields the fixed
+denial without target existence, cardinality, continuation, or timing detail.
+The retained custom/generic JSON plans must show the actor fence before private
+work; application call order is not accepted as a substitute.
 
 `GET /admin/accounts` accepts either no query or exactly one canonical positive
 `after` user ID. The authorization-first query rechecks the current actor as an
@@ -2301,13 +2316,16 @@ one mapping; increments the area revision; and appends exactly one
 `grant_area_group` or `revoke_area_group` audit targeted to the area with the
 one group ID and previous/resulting assignment boolean in bounded state.
 
-Area core audits never serialize the complete group set. They store the mapping
-count and SHA-256 digest of sorted canonical group IDs before and after the
-change. The digest input is the concatenation of each positive ID as one
-unsigned 64-bit big-endian value; zero mappings use SHA-256 of empty bytes.
-Leaving group visibility deletes the mappings in one set-based
-statement under the locked area; its time and lock footprint are openly O(g),
-bounded by the transaction timeout, and failure is atomic.
+Area core audit objects contain only slug, name, lowercase hexadecimal SHA-256
+of the exact description UTF-8 bytes, display order, visibility, posting mode,
+administration revision, group-mapping count, and group-mapping digest. They
+never serialize the description or complete group set. The group digest input
+is the concatenation of each positive sorted ID as one unsigned 64-bit big-
+endian value; zero mappings use SHA-256 of empty bytes. The service streams
+ordered IDs into the hash under the locked area with O(1) auxiliary memory.
+Leaving group visibility deletes the mappings in one set-based statement under
+that lock; its time and lock footprint are openly O(g), bounded by the
+transaction timeout, and failure is atomic.
 
 Rename changes `name`; reorder changes `display_order`; archive changes posting
 mode to `archived`; restore must explicitly select `normal` or `read_only`. An
@@ -2353,8 +2371,9 @@ moderation routes:
 | `GET` | `/admin/settings` | Site settings form |
 | `POST` | `/admin/settings` | Audited site settings update |
 
-Except for `/rules`, exact path/query grammar runs before session, body, and
-database work. Missing sessions enter the existing login flow; stale sessions
+For every route, exact path/query grammar runs before session, body, and
+database work. `/rules` performs no session lookup. Missing sessions on
+protected routes enter the existing login flow; stale sessions
 enter revalidation; current non-administrators receive fixed `403`. All
 administrator responses are `private, no-store`, fully buffered to at most 512
 KiB, and expose neither raw database errors nor submitted audit reasons.
@@ -2364,8 +2383,12 @@ form parsing, accept only `application/x-www-form-urlencoded`, reject unknown or
 duplicate scalar fields, use generated request IDs, and call exactly one
 service. Ordinary success is empty 303 post/redirect/get. HTMX success is empty
 204 with same-origin `HX-Location` targeting `#main-content`; both resolve to
-the same builder-owned canonical destination. No handler retries or detaches
-work after cancellation.
+the same builder-owned canonical destination. The sole exception is successful
+`POST /admin/settings`: ordinary HTML returns the same empty 303, while HTMX
+returns empty 204 with a builder-owned same-origin `HX-Redirect` and no
+`HX-Location`, forcing a full document so changed shell name, description, and
+theme cannot remain stale. No handler retries or detaches work after
+cancellation.
 
 The global navigation has one public `Community rules` link to `/rules` and one
 `Administration` link to `/admin` shown only for the current administrator
