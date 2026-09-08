@@ -43,7 +43,7 @@ func TestCreateTopicCommitsAuthorizedRenderedFirstPost(t *testing.T) {
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 201, PostNumber: 1, NodeOrdinal: 1}) {
 		t.Fatalf("CreateTopic() = (%+v, %v)", result, err)
 	}
-	if !tx.committed || tx.rolledBack || tx.createdTopic != 1 || tx.createdReply != 0 {
+	if !tx.committed || tx.rolledBack || tx.createdTopic != 1 || tx.createdReply != 0 || tx.beginOptions != (pgx.TxOptions{IsoLevel: pgx.ReadCommitted}) {
 		t.Fatalf("transaction = (commit %t rollback %t topic %d reply %d)", tx.committed, tx.rolledBack, tx.createdTopic, tx.createdReply)
 	}
 	wantSteps := []string{"configure", "lock-actor", "actor-groups", "lock-area", "area-groups", "database-time", "replace-window", "create-topic", "commit"}
@@ -68,7 +68,7 @@ func TestCreateReplyCommitsAuthorizedOrderedPost(t *testing.T) {
 	if err != nil || result != (PublishResult{TopicID: 101, PostID: 202, PostNumber: 2, NodeOrdinal: 2}) {
 		t.Fatalf("CreateReply() = (%+v, %v)", result, err)
 	}
-	if !tx.committed || tx.rolledBack || tx.createdTopic != 0 || tx.createdReply != 1 || tx.topicIDArgument != 101 || tx.authorID != 12 ||
+	if !tx.committed || tx.rolledBack || tx.createdTopic != 0 || tx.createdReply != 1 || tx.beginOptions != (pgx.TxOptions{IsoLevel: pgx.ReadCommitted}) || tx.topicIDArgument != 101 || tx.authorID != 12 ||
 		tx.parentPostID != 201 ||
 		tx.markdown != "A `reply`" || tx.renderedHTML != "<p>A <code>reply</code></p>\n" || tx.rendererVersion != render.RendererVersion ||
 		tx.postSearchText != "A reply" || tx.searchProjectionVersion != render.SearchProjectionVersion ||
@@ -322,6 +322,10 @@ func (panicPublishBeginner) Begin(context.Context) (pgx.Tx, error) {
 	panic("transaction must not begin")
 }
 
+func (panicPublishBeginner) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
+	panic("transaction must not begin")
+}
+
 var errPublishTest = errors.New("forced publishing failure")
 
 type publishTestBeginner struct {
@@ -329,10 +333,11 @@ type publishTestBeginner struct {
 	err error
 }
 
-func (beginner publishTestBeginner) Begin(context.Context) (pgx.Tx, error) {
+func (beginner publishTestBeginner) BeginTx(_ context.Context, options pgx.TxOptions) (pgx.Tx, error) {
 	if beginner.err != nil {
 		return nil, beginner.err
 	}
+	beginner.tx.beginOptions = options
 	return beginner.tx, nil
 }
 
@@ -354,6 +359,7 @@ type publishTestTx struct {
 	failure                                                                          string
 	createdTopic, createdReply                                                       int
 	committed, rolledBack                                                            bool
+	beginOptions                                                                     pgx.TxOptions
 }
 
 func (tx *publishTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {

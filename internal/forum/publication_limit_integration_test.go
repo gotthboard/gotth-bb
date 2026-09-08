@@ -452,8 +452,8 @@ type publicationUnknownCommitBeginner struct {
 	commitErr  error
 }
 
-func (beginner publicationUnknownCommitBeginner) Begin(ctx context.Context) (pgx.Tx, error) {
-	tx, err := beginner.connection.Begin(ctx)
+func (beginner publicationUnknownCommitBeginner) BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	tx, err := beginner.connection.BeginTx(ctx, options)
 	if err != nil {
 		return nil, err
 	}

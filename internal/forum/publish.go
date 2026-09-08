@@ -52,6 +52,10 @@ type transactionBeginner interface {
 	Begin(context.Context) (pgx.Tx, error)
 }
 
+type publicationTransactionBeginner interface {
+	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
+}
+
 type PublishResult struct {
 	TopicID     int64
 	PostID      int64
@@ -136,7 +140,7 @@ func renderPublishingDraft(markdownSource string) (render.RenderedMarkdown, erro
 // and no detached work.
 func CreateTopic(
 	ctx context.Context,
-	beginner transactionBeginner,
+	beginner publicationTransactionBeginner,
 	publicationPolicy abuse.PublicationPolicy,
 	actor policy.AccessContext,
 	areaSlug string,
@@ -175,7 +179,7 @@ func CreateTopic(
 	}
 
 	result := PublishResult{}
-	err = store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
+	err = store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
 		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
 			return fmt.Errorf("configure topic publication transaction: %w", err)
 		}
@@ -235,7 +239,7 @@ func CreateTopic(
 // reply-number allocation.
 func CreateReply(
 	ctx context.Context,
-	beginner transactionBeginner,
+	beginner publicationTransactionBeginner,
 	publicationPolicy abuse.PublicationPolicy,
 	actor policy.AccessContext,
 	topicID int64,
@@ -277,7 +281,7 @@ func CreateReply(
 	}
 
 	result := PublishResult{}
-	err = store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
+	err = store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
 		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
 			return fmt.Errorf("configure reply publication transaction: %w", err)
 		}
