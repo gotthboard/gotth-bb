@@ -520,7 +520,7 @@ func requireAuthorizedSearchCandidate(t *testing.T, mode, shape string, expected
 		{relation: "area_groups", filter: "group_id"},
 	}
 	for _, required := range requiredRelations {
-		if !planUsesFilteredRelation(*candidate, required.relation, required.filter) {
+		if !planUsesConditionedRelation(*candidate, required.relation, required.filter) {
 			t.Fatalf("%s %s candidate lost authorized %s filter %q: %s", mode, shape, required.relation, required.filter, encoded)
 		}
 	}
@@ -548,12 +548,6 @@ func findPlanNode(node *explainPlanNode, match func(*explainPlanNode) bool) *exp
 func planUsesIndex(node explainPlanNode, indexName string) bool {
 	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
 		return candidate.IndexName == indexName
-	}) != nil
-}
-
-func planUsesFilteredRelation(node explainPlanNode, relation, filter string) bool {
-	return findPlanNode(&node, func(candidate *explainPlanNode) bool {
-		return candidate.RelationName == relation && strings.Contains(candidate.Filter, filter)
 	}) != nil
 }
 
