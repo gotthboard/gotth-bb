@@ -112,10 +112,9 @@ RETURNING id`, accounts)
 	if err != nil {
 		t.Fatal(err)
 	}
+	poolConfig.ConnConfig.Database = an05AdmissionDatabase
 	poolConfig.MaxConns = maximumConns
 	poolConfig.MinConns = maximumConns
-	poolConfig.MaxConnLifetime = 0
-	poolConfig.MaxConnIdleTime = 0
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		t.Fatal(err)
