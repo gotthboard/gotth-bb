@@ -1,0 +1,120 @@
+AN-03-02 exact-candidate evidence
+================================
+
+Executable/methodology commit:
+  2f1abfb9ca9cbb4e6421ce0d09bfbca973f0e43b
+Tree:
+  7f3f37e9b83e6b93b713ac1259a188ab57f55ecb
+Base:
+  6c7540e41f2d27b736eda38ef65e984766e2bb97
+Bundle SHA-256:
+  a57d08c215601153c74c66e20f1cdab2accab514a1a9c86bc306bba80612adc5
+
+Generation
+----------
+
+Commands, from an isolated clone of the exact bundle:
+
+  make generate
+  git diff --exit-code
+  test -z "$(git status --porcelain=v1)"
+
+Toolchain:
+  Node v26.7.0
+  npm 12.0.2
+
+Result: PASS; Templ, sqlc, CSS, HTMX, and application-script generation
+produced zero tracked or untracked drift.
+
+Static and race/coverage gates
+------------------------------
+
+Commands, from a detached exact clone on the development host:
+
+  go vet ./...
+  go test -count=1 -race -cover ./...
+
+Result: PASS. Representative coverage was 97.5% for internal/forum, 96.6%
+for internal/store, and 100.0% for migrations.
+
+Transcript SHA-256 values:
+  go vet: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  race/coverage: 9ecf7408b14f45fdd77d5447fd05dbd17ddf4a06bebce24e78ff5aeee2da9b1f
+
+PostgreSQL 17 integration/race gates
+------------------------------------
+
+Commands, from the same detached exact clone:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=1 -race -cover -tags=integration ./...
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+    go test -count=5 -race -cover -tags=integration \
+      -run '^TestMarkTopicReadTransactionsOnPostgreSQL17$' ./internal/forum
+
+Result: PASS on PostgreSQL 17.10. Full integration coverage was 97.5% for
+internal/forum, 97.1% for internal/store, 100.0% for internal/migration and
+internal/readiness, and 100.0% for migrations. The focused five-run gate was
+40.7% package coverage.
+
+The functional matrix covered first insert; equal/lower/higher and unknown-
+outcome retries; exact read-time retention/advance; no eligible boundary;
+member/group/staff authorization; revocation and restoration; hidden and
+deleted topics; muted and suspended actors; cancellation; the transaction-
+local 250ms row-lock timeout; posts committed after the mark snapshot;
+concurrent devices; malformed private rows; hard post purge and topic cascade;
+and zero markers from successful and denied publication. Generated-query
+inspection proves the mark statement is the sole topic_reads mutation and
+that topic/reply publishing statements do not reference private markers.
+
+Transcript SHA-256 values:
+  full integration/race: 3fe5789a3f197ef121458dd622bfbbfa8caca368ef961bbc77d9370d7c43ae79
+  focused five-run race: 0ceadf7193c8b78c5bd78a8dd1a905b38cae5e8886a40ac83b082156b88b3467
+
+Representative population and plan gate
+---------------------------------------
+
+Command, from the same detached exact clone:
+
+  GOTTH_BB_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
+  GOTTH_BB_RUN_AN03_READ_PLAN_EVIDENCE=1 \
+    go test -count=1 -run '^TestDiscoveryPlansOnPostgreSQL17$' \
+      -tags=integration -v ./internal/store/db
+
+Result: PASS on PostgreSQL 17.10 with 25,000 topics and 250,000 posts.
+
+Population:
+  visibility public/authenticated/groups: 8,333 / 8,334 / 8,333 topics
+  hidden topics: 247
+  deleted topics: 24
+  deleted posts: 493
+  redacted posts: 247
+  retained markers: 12,500 before the mark-read plan
+  population duration: 8.418115431s
+
+Migration 000009 checkpoint:
+  elapsed: 224.77204ms
+  posts relation bytes: 137,871,360
+  topic_reads relation bytes: 1,597,440
+  expected ShareLock wait observed: yes
+  blocks read delta: 903
+  blocks hit delta: 9,558
+  temp bytes delta: 9,011,200
+
+Both force_custom_plan and force_generic_plan passed for the exact generated
+mark-read statement. Structural JSON assertions proved the materialized
+authorized-topic fence contains area visibility plus topic deletion/hidden
+filters before the boundary; the boundary uses
+posts_topic_unread_visible_idx and applies the actor exclusion below it. The
+existing visitor/member/group/staff read-model assertions also remained green.
+
+Plan transcript SHA-256:
+  ff2a6d7ebc1bd21d28638d46a5693d8ff224ef5da09e87fff84f847dae1a74c3
+
+Scope statement
+---------------
+
+This candidate implements AN-03-02 only. It adds no HTTP mark-read route,
+CSRF handling, first-unread route, UI, PR, push, merge, tag, release,
+deployment, or AN-03-03 work.
