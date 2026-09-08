@@ -128,7 +128,7 @@ FROM public.users WHERE id = $1`, memberID).Scan(&active, &auditCount); err != n
 	suspendRequestID := pgtype.UUID{Bytes: [16]byte{0x82}, Valid: true}
 	suspended, err := ChangeUserSuspension(ctx, connection, func() time.Time { return suspendedAt }, moderator,
 		memberID, true, "Repeated abuse", suspendRequestID)
-	if err != nil || suspended.UserID != memberID || !suspended.Suspended || suspended.AuditID <= 0 {
+	if err != nil || suspended.UserID != memberID || !suspended.Suspended || suspended.Revision != 2 || suspended.AuditID <= 0 {
 		t.Fatalf("ChangeUserSuspension(suspend) = (%+v, %v)", suspended, err)
 	}
 	var storedSuspendedAt, updatedAt, auditedAt time.Time
@@ -143,12 +143,14 @@ SELECT forum_user.suspended_at, forum_user.updated_at,
        action.previous_state = jsonb_build_object(
            'suspended_at', NULL::timestamptz,
            'suspended_until', NULL::timestamptz,
-           'suspension_reason', NULL::text
+		   'suspension_reason', NULL::text,
+		   'administration_revision', 1::bigint
        ),
        action.resulting_state = jsonb_build_object(
            'suspended_at', forum_user.suspended_at,
            'suspended_until', forum_user.suspended_until,
-           'suspension_reason', forum_user.suspension_reason
+		   'suspension_reason', forum_user.suspension_reason,
+		   'administration_revision', forum_user.administration_revision
        ),
        action.request_id, action.created_at,
        (SELECT count(*) FROM public.moderation_actions)
@@ -188,7 +190,7 @@ WHERE forum_user.id = $1
 	reinstateRequestID := pgtype.UUID{Bytes: [16]byte{0x84}, Valid: true}
 	reinstated, err := ChangeUserSuspension(ctx, connection, func() time.Time { return reinstatedAt }, moderator,
 		memberID, false, "Appeal accepted", reinstateRequestID)
-	if err != nil || reinstated.UserID != memberID || reinstated.Suspended || reinstated.AuditID <= suspended.AuditID {
+	if err != nil || reinstated.UserID != memberID || reinstated.Suspended || reinstated.Revision != 3 || reinstated.AuditID <= suspended.AuditID {
 		t.Fatalf("ChangeUserSuspension(reinstate) = (%+v, %v)", reinstated, err)
 	}
 	if err := connection.QueryRow(ctx, `
@@ -199,12 +201,14 @@ SELECT forum_user.suspended_at IS NULL AND forum_user.suspended_until IS NULL AN
        action.previous_state = jsonb_build_object(
            'suspended_at', $3::timestamptz,
            'suspended_until', NULL::timestamptz,
-           'suspension_reason', 'Repeated abuse'::text
+		   'suspension_reason', 'Repeated abuse'::text,
+		   'administration_revision', 2::bigint
        ),
        action.resulting_state = jsonb_build_object(
            'suspended_at', NULL::timestamptz,
            'suspended_until', NULL::timestamptz,
-           'suspension_reason', NULL::text
+		   'suspension_reason', NULL::text,
+		   'administration_revision', 3::bigint
        ),
        action.request_id, action.created_at,
        (SELECT count(*) FROM public.moderation_actions)
