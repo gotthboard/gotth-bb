@@ -257,9 +257,13 @@ notes, screenshots, or repository files.
   It preserves the pre-AN-04 baseline, adds no settings insert/delete/key
   update, adds no mapping update, and does not grant deletion of users, groups,
   areas, settings, or audit rows.
-- Migration 000011 adds only the consistent publication-window tuple to
-  `users`. Its constant count default avoids rewriting existing rows, while the
-  check validation still scans and locks the relation. The runtime-grant delta
+- Migration 000011 adds the consistent publication-window tuple and validates
+  finite account-creation time because account age now selects security policy.
+  Its constant count default avoids rewriting existing rows, while both check
+  validations still scan and lock the relation. A legacy nonfinite
+  `users.created_at` aborts the entire migration; inspect and apply a reviewed
+  forward data repair before retrying rather than inventing account age. The
+  runtime-grant delta
   adds UPDATE only on `publication_window_started_at` and `publication_count`;
   it grants no table-wide account mutation.
 - Connections require the deployment's approved transport protection.
@@ -463,9 +467,10 @@ required sequence is:
    000009; after an unknown outcome, inspect the ledger, singleton, revisions,
    constraints, and grants before any retry.
    AN-05 migration 000011 is another stopped ordinary migration. Record the
-   user-relation lock and validation scan for the constant-size publication
-   tuple, then attest its exact defaults/check and the narrow column-UPDATE
-   grant. Existing rows must remain `(NULL, 0)`. A failed transaction leaves
+   user-relation lock and validation scans for finite account-creation time and
+   the constant-size publication tuple, then attest its exact defaults, both
+   checks, and the narrow column-UPDATE grant. Existing publication tuples must
+   remain `(NULL, 0)`. A failed transaction leaves
    the ledger at 000010; after an unknown outcome, inspect ledger, columns,
    constraint, tuples, and grants before retrying.
 10. Before starting the application, the migration owner must apply the exact
@@ -561,8 +566,9 @@ Decision order after failure:
    and administration revisions. Use the current artifact/forward repair or
    restore the verified pre-000010 database backup; an older artifact must not
    mutate the expanded administration schema.
-   AN-05 migration 000011 changes exact-head readiness and makes publication
-   counters part of every topic/reply commit. Use current artifact/forward
+   AN-05 migration 000011 changes exact-head readiness, requires finite account-
+   creation time, and makes publication counters part of every topic/reply
+   commit. Use current artifact/forward
    repair or restore the verified pre-000011 database backup; an older artifact
    must not publish without the counter.
 3. If migration outcome is unknown, inspect migration and database state before

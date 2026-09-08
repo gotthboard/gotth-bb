@@ -2619,12 +2619,17 @@ Membership writers lock that same row before changing a mapping, so the
 transaction authorizes target policy with one database-current actor rather
 than the request snapshot. After target authorization and immediately before
 counter mutation, a separate statement reads `clock_timestamp()`. The service
-rejects database time before account creation. It chooses the strict limit when
-`database_now < created_at + NEW_ACCOUNT_PERIOD`; equality is established.
-The current window remains active while
-`database_now < window_started_at + PUBLISH_RATE_WINDOW`. An elapsed or empty
-window becomes `(database_now, 1)`; an active below-limit window increments;
-an active at-limit window returns the ceiling number of seconds to its end.
+rejects database time before account creation, computes account age by checked
+subtraction, and chooses the strict limit while age is less than
+`NEW_ACCOUNT_PERIOD`; equality is established. It likewise determines window
+age by subtraction rather than by adding a duration to a stored PostgreSQL
+timestamp. A start ahead of database time by at most one configured window is
+treated as an active window after a bounded clock regression, with
+`Retry-After` clamped to one window. A start farther in the future is malformed
+stored state and makes publication unavailable. An elapsed or empty window
+becomes `(database_now, 1)`; an active below-limit window increments; an active
+at-limit window returns the ceiling number of seconds to its end. No decision
+can overflow by adding a duration to a maximum finite PostgreSQL timestamp.
 
 Content input and blocked-destination validation happen before transaction
 begin. Inside the transaction, account revalidation precedes area/topic target

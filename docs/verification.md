@@ -1076,8 +1076,9 @@ configured capacity.
 ### 22.2 Publication transaction matrix
 
 Fresh and upgrade PostgreSQL 17 tests cover migration head 000011, unchanged
-existing account tuples, both tuple shapes, nonfinite start, negative/zero/
-overflow count, exact columns/defaults/check, lock/scan behavior, transaction
+existing account tuples, both tuple shapes, finite and positive/negative-
+infinity account creation, nonfinite window start, negative/zero/overflow
+count, exact columns/defaults/checks, lock/scan behavior, transaction
 rollback, unknown migration outcome, readiness, idempotent rerun, and exact
 restricted-role grant delta. Runtime can select and update only the two
 publication columns; table-wide account update, created-at change, insert,
@@ -1089,12 +1090,17 @@ counts below/equal/above configured limit, database clock before account
 creation, malformed stored tuples, suspension/mute/role drift, missing actor,
 concurrent group grant/revocation in both lock orders, read-only/archived/
 restricted/locked/missing targets, validation failure,
-renderer/policy failure, insert/update/audit-independent failure,
+renderer/policy failure, insert/counter-update failure,
 cancellation, lock timeout, and begin/commit failure. Before/after inspection
 proves denied or failed publication has neither post/topic/counter effects;
 success has exactly one counter increment and one publication in one commit.
 Every lock-timeout case proves the two-second statement and 250-millisecond
 transaction-local lock settings were installed before the account lock.
+Time-boundary tests cover exact new-account equality, minimum and maximum
+finite PostgreSQL timestamps, subtraction saturation, a window start ahead by
+exactly/less than one window, a start farther ahead than one window, and a
+clamped positive `Retry-After`. They prove no policy decision adds a duration
+to a stored database timestamp or overflows at PostgreSQL's finite extremes.
 
 At least `2N+2` simultaneous requests for one account at empty and near-limit
 state prove exactly the configured successes and monotonic count under both
