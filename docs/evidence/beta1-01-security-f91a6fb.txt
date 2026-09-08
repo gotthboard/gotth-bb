@@ -1,10 +1,14 @@
 Beta.1 B1-01 requirement, leakage, and security evidence
 ========================================================
 
-Tested implementation/methodology commit:
+Tested production implementation commit:
   f91a6fbc4a0786dc1aa850db8aeb4fb269b5fddc
-Tested tree:
+Production implementation tree:
   1759e433729c4706f003514cc1de6450fce5cfbe
+Final B1-01 test methodology commit:
+  4973fdbde8247ee41e86c6da820484d8fb758887
+Final B1-01 test methodology tree:
+  23de2001df70998294cd88b0dece3204698cfb6d
 Admitted B1-00 contract commit:
   28143d74f284d59f13bcc9dbe613c84f207b0423
 
@@ -100,9 +104,11 @@ Exact gates
        -run '^Test(AbuseRejectionNoScriptThroughCaddy|AdministrationKeyboardAndNoScriptThroughCaddy|DiscoveryBrowserThroughCaddy|UnreadControlsKeyboardAndNoScriptThroughCaddy)$'
 
    Both base paths passed the forged-forwarding-header overwrite, fixed
-   browser-header, cache, blocked-destination 422, rate-limit 429, draft
-   preservation, and JavaScript-disabled native Enter checks. Administration,
-   discovery, and unread keyboard/accessibility-tree journeys also passed.
+   browser-header, exact host-only Secure/HttpOnly/SameSite=Lax subtree cookie,
+   cache, blocked-destination 422, rate-limit 429, draft preservation, and
+   JavaScript-disabled native Enter checks. Administration, discovery, and
+   unread keyboard/accessibility-tree journeys also passed. The cookie probe
+   was rerun from the exact final methodology commit/tree above.
 
 6. Candidate package, image, resolved configuration, and binary strings:
 
@@ -127,7 +133,10 @@ Exact gates
 Results and coverage
 --------------------
 
-- Every exact gate above passed on commit `f91a6fb` / tree `1759e43`.
+- Every production/static/database/package/image gate above passed on commit
+  `f91a6fb` / tree `1759e43`. The final Caddy cookie/header gate plus custody,
+  vet, vulnerability, and worktree-secret checks passed again on exact test
+  methodology commit `4973fdb` / tree `23de200`.
 - Serial/race integration coverage included 97.2% `internal/auth`, 93.7%
   `internal/forum`, 83.6% `internal/moderation`, 97.1% `internal/store`, and
   100% migrations and readiness. HTTP unit race coverage was 72.5%; its
@@ -161,6 +170,13 @@ Rejected attempts and repairs
   generic keys. They were not waved away: exact rule/count/match and committed
   `go.sum` equality were proved privately, then all remaining strings scanned
   clean.
+- A cold review rejected the initial cookie evidence because construction was
+  proved in-process but only headers had crossed Caddy. The repaired two-base-
+  path gate emits a production-built session cookie and requires its exact
+  host-only Secure, HttpOnly, SameSite=Lax, expiry, and `/` or `/bb/` scope
+  after Caddy. Its first nonempty-path run correctly failed because the test
+  expected `/bb` instead of the narrower documented `/bb/`; the oracle was
+  corrected and the exact committed rerun passed both paths.
 
 Remaining boundary
 ------------------

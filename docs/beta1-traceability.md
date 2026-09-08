@@ -70,7 +70,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `UX-004` | ordinary HTML with HTMX-equivalent enhancement | full/HTMX/no-script tests through AN-05 | implemented |
 | `UX-005` | diagnosable failed HTMX behavior | focused handler/browser tests; complete Beta failure journey pending B1-02 | blocked |
 | `SEC-001` | CSRF validation on unsafe routes | CSRF middleware and every mutation's HTTP tests | implemented |
-| `SEC-002` | scoped Secure/HttpOnly/SameSite cookies | cookie/config/HTTP tests and B1-01 candidate scan; live HTTPS inspection remains B1-05 | implemented |
+| `SEC-002` | scoped Secure/HttpOnly/SameSite cookies | B1-01 exact cookie construction and two-base-path Caddy inspection; live deployment smoke remains B1-05 | implemented |
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |
 | `SEC-004` | escaped templates and boundary sanitizer | B1-01 fixed-parser/raw-tag regression plus template/render/XSS tests | implemented |
 | `SEC-005` | bounded structured redacted logs | observability and AN-02/AN-05 log evidence | implemented |
