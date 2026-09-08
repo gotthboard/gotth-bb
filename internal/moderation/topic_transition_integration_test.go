@@ -69,11 +69,14 @@ func TestTopicTransitionsOnPostgreSQL17(t *testing.T) {
 	if _, err := connection.Exec(ctx, `INSERT INTO public.areas (slug, name, created_by, updated_by) VALUES ('moderation', 'Moderation', $1, $1)`, moderatorID); err != nil {
 		t.Fatalf("insert area: %v", err)
 	}
-	createdAt := time.Date(2026, time.September, 2, 8, 0, 0, 0, time.UTC)
 	moderator := policy.AccessContext{Authenticated: true, UserID: moderatorID, Role: policy.RoleModerator}
-	topic, err := forum.CreateTopic(ctx, connection, func() time.Time { return createdAt }, moderator, "moderation", "Audited topic", "body")
+	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, moderator, "moderation", "Audited topic", "body")
 	if err != nil {
 		t.Fatalf("forum.CreateTopic() returned error: %v", err)
+	}
+	var createdAt time.Time
+	if err := connection.QueryRow(ctx, `SELECT created_at FROM public.topics WHERE id = $1`, topic.TopicID).Scan(&createdAt); err != nil {
+		t.Fatalf("read topic creation time: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `
 CREATE FUNCTION public.reject_topic_moderation_audit()

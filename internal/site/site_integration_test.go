@@ -67,12 +67,12 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 		t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	}
 
+	observedAt := time.Date(2026, time.September, 8, 14, 0, 0, 123456000, time.UTC)
 	var actorID int64
-	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Settings Administrator', 'administrator') RETURNING id`).Scan(&actorID); err != nil {
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role, created_at, updated_at) VALUES ('Settings Administrator', 'administrator', $1, $1) RETURNING id`, observedAt.Add(-time.Hour)).Scan(&actorID); err != nil {
 		t.Fatalf("insert administrator: %v", err)
 	}
 	actor := policy.AccessContext{Authenticated: true, UserID: actorID, Role: policy.RoleAdministrator}
-	observedAt := time.Date(2026, time.September, 8, 14, 0, 0, 123456000, time.UTC)
 	editable, err := LoadEditable(ctx, db.New(connections[0]), actor, observedAt)
 	if err != nil || editable.Revision != 1 || editable.Shell.Name == "" {
 		t.Fatalf("initial LoadEditable() = (%+v, %v)", editable, err)

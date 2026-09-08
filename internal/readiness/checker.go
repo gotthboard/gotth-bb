@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/searchprojection"
 	"github.com/gotthboard/gotth-bb/internal/site"
@@ -169,6 +170,9 @@ func (checker *Checker) Check(ctx context.Context) error {
 	}
 	if err := site.Ready(probeContext, checker.database); err != nil {
 		return fmt.Errorf("site settings readiness failed: %w", err)
+	}
+	if err := abuse.PublicationReady(probeContext, checker.database); err != nil {
+		return fmt.Errorf("publication readiness failed: %w", err)
 	}
 	return nil
 }

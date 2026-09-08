@@ -175,7 +175,10 @@ func run(
 	if err != nil || requestLimiter == nil {
 		return fmt.Errorf("load abuse policy failed")
 	}
-	_ = abusePolicy
+	publicationPolicy := abusePolicy.PublicationPolicy()
+	if !publicationPolicy.Valid() {
+		return fmt.Errorf("load publication policy failed")
+	}
 	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{Level: configured.LogLevel}))
 	abuseObserver, err := abuse.NewObserver(logger)
 	if err != nil {
@@ -249,10 +252,10 @@ func run(
 		},
 		store.MaximumPostPage,
 		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateTopic(publishContext, pool, time.Now, access, areaSlug, title, markdown)
+			return forumservice.CreateTopic(publishContext, pool, publicationPolicy, access, areaSlug, title, markdown)
 		},
 		func(publishContext context.Context, access auth.AccessContext, topicID, parentPostID int64, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateReply(publishContext, pool, time.Now, access, topicID, parentPostID, markdown)
+			return forumservice.CreateReply(publishContext, pool, publicationPolicy, access, topicID, parentPostID, markdown)
 		},
 		func(editContext context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
 			return store.GetEditablePost(editContext, queries, postID, access)

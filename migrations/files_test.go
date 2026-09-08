@@ -24,6 +24,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000008_search_projection.sql",
 		"000009_unread_state.sql",
 		"000010_administration_completion.sql",
+		"000011_publication_limits.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -35,6 +36,40 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestPublicationLimitSchemaStepIsAdditiveAndDoesNotSpend(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000011_publication_limits.sql")
+	if err != nil {
+		t.Fatalf("read publication-limit migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"UPDATE public.users",
+		"DELETE FROM public.users",
+		"CREATE INDEX",
+		"CREATE TRIGGER",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("publication-limit migration contains forbidden work %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"publication_window_started_at timestamp with time zone",
+		"publication_count integer NOT NULL DEFAULT 0",
+		"users_created_at_finite",
+		"pg_catalog.isfinite(created_at)",
+		"users_publication_window_consistent",
+		"pg_catalog.isfinite(publication_window_started_at)",
+		"publication_window_started_at >= created_at",
+		"publication_count BETWEEN 1 AND 100000",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("publication-limit migration lacks required contract %q", required)
 		}
 	}
 }

@@ -151,7 +151,7 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 			t.Fatalf("restore current head: %v", err)
 		}
 		rootID := publicTopic.postIDs[0]
-		otherReply, err := CreateReply(ctx, connection, func() time.Time { return baseTime.Add(time.Hour) }, other, publicTopic.id, rootID, "new other reply")
+		otherReply, err := CreateReply(ctx, connection, testPublicationPolicy, other, publicTopic.id, rootID, "new other reply")
 		if err != nil || otherReply.PostNumber != 7 {
 			t.Fatalf("CreateReply(other) = (%+v, %v)", otherReply, err)
 		}
@@ -165,7 +165,7 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 			t.Fatalf("higher retry marker = (%d, %s), want 7 after %s", got, readAt, firstReadAt)
 		}
 		_, advancedAt := inspectMarker(t, ctx, connection, readerID, publicTopic.id)
-		ownReply, err := CreateReply(ctx, connection, func() time.Time { return baseTime.Add(2 * time.Hour) }, reader, publicTopic.id, rootID, "own reply")
+		ownReply, err := CreateReply(ctx, connection, testPublicationPolicy, reader, publicTopic.id, rootID, "own reply")
 		if err != nil || ownReply.PostNumber != 8 {
 			t.Fatalf("CreateReply(own) = (%+v, %v)", ownReply, err)
 		}
@@ -305,7 +305,7 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 		result := make(chan error, 1)
 		go func() { result <- MarkTopicRead(context.Background(), connections[4], reader, topic.id) }()
 		waitForPostgreSQLLock(t, ctx, connection, connections[4].PgConn().PID())
-		published, err := CreateReply(ctx, connections[5], func() time.Time { return baseTime.Add(10 * time.Hour) }, other, topic.id, topic.postIDs[0], "post after snapshot")
+		published, err := CreateReply(ctx, connections[5], testPublicationPolicy, other, topic.id, topic.postIDs[0], "post after snapshot")
 		if err != nil || published.PostNumber != 3 {
 			_ = blocker.Rollback(context.Background())
 			t.Fatalf("CreateReply() during marker lock = (%+v, %v)", published, err)
@@ -486,12 +486,12 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 
 	t.Run("publishing creates no marker", func(t *testing.T) {
 		before := markerCount(t, ctx, connection)
-		created, err := CreateTopic(ctx, connection, func() time.Time { return baseTime.Add(16 * time.Hour) }, reader, "public", "No automatic marker", "body")
+		created, err := CreateTopic(ctx, connection, testPublicationPolicy, reader, "public", "No automatic marker", "body")
 		if err != nil {
 			t.Fatalf("CreateTopic() returned error: %v", err)
 		}
 		assertNoMarker(t, ctx, connection, readerID, created.TopicID)
-		if _, err := CreateTopic(ctx, connection, time.Now, reader, "read-only", "Denied marker", "body"); !errors.Is(err, ErrPublishingDenied) {
+		if _, err := CreateTopic(ctx, connection, testPublicationPolicy, reader, "read-only", "Denied marker", "body"); !errors.Is(err, ErrPublishingDenied) {
 			t.Fatalf("denied CreateTopic() error = %v", err)
 		}
 		if got := markerCount(t, ctx, connection); got != before {

@@ -317,7 +317,7 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 7 {
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 8 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
 	statements := make([]string, 0, 25)
@@ -354,6 +354,9 @@ GRANT SELECT,
       INSERT (group_id, user_id, granted_by, created_at),
       DELETE
 ON TABLE public.forum_group_members
+TO :"runtime_role";
+GRANT UPDATE (publication_window_started_at, publication_count)
+ON TABLE public.users
 TO :"runtime_role";`
 	if strings.Join(statements, "\n") != required {
 		return nil, fmt.Errorf("runtime grants are invalid")

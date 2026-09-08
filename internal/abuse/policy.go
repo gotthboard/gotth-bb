@@ -48,24 +48,13 @@ type RateProfile struct {
 	NewAccountPeriod      time.Duration
 }
 
-// PublicationProfile returns the four immutable durable-publication values.
-func (policy Policy) PublicationProfile() (uint32, uint32, time.Duration, time.Duration) {
-	return policy.publicationLimit, policy.newAccountLimit, policy.publicationWindow, policy.newAccountPeriod
-}
-
 // LoadPolicy descriptor-opens one bounded immutable rules file and validates
 // its complete canonical form without exposing path or content in errors.
 func LoadPolicy(path string, profile RateProfile) (Policy, error) {
 	if path == "" || len(path) > 4096 || strings.IndexByte(path, 0) >= 0 || !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
 		return Policy{}, fmt.Errorf("abuse rules file is invalid")
 	}
-	if profile.RequestLimit == 0 || profile.RequestLimit > 100_000 ||
-		profile.RequestClientCapacity == 0 || profile.RequestClientCapacity > 65_536 ||
-		profile.PublicationLimit == 0 || profile.PublicationLimit > 100_000 ||
-		profile.NewAccountLimit == 0 || profile.NewAccountLimit > profile.PublicationLimit ||
-		profile.RequestWindow < time.Second || profile.RequestWindow > 24*time.Hour ||
-		profile.PublicationWindow < time.Second || profile.PublicationWindow > 24*time.Hour ||
-		profile.NewAccountPeriod < time.Minute || profile.NewAccountPeriod > 30*24*time.Hour {
+	if !validRateProfile(profile) {
 		return Policy{}, fmt.Errorf("abuse rules file is invalid")
 	}
 	rootFD, err := unix.Open("/", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
@@ -91,6 +80,29 @@ func LoadPolicy(path string, profile RateProfile) (Policy, error) {
 	if err != nil {
 		return Policy{}, fmt.Errorf("abuse rules file is invalid")
 	}
+	return policy.withRateProfile(profile), nil
+}
+
+// NewEmptyPolicy constructs the same validated rate policy as an empty rules
+// file. It supports isolated composition without a filesystem boundary.
+func NewEmptyPolicy(profile RateProfile) (Policy, error) {
+	if !validRateProfile(profile) {
+		return Policy{}, fmt.Errorf("abuse rate profile is invalid")
+	}
+	return (Policy{}).withRateProfile(profile), nil
+}
+
+func validRateProfile(profile RateProfile) bool {
+	return !(profile.RequestLimit == 0 || profile.RequestLimit > 100_000 ||
+		profile.RequestClientCapacity == 0 || profile.RequestClientCapacity > 65_536 ||
+		profile.PublicationLimit == 0 || profile.PublicationLimit > 100_000 ||
+		profile.NewAccountLimit == 0 || profile.NewAccountLimit > profile.PublicationLimit ||
+		profile.RequestWindow < time.Second || profile.RequestWindow > 24*time.Hour ||
+		profile.PublicationWindow < time.Second || profile.PublicationWindow > 24*time.Hour ||
+		profile.NewAccountPeriod < time.Minute || profile.NewAccountPeriod > 30*24*time.Hour)
+}
+
+func (policy Policy) withRateProfile(profile RateProfile) Policy {
 	policy.requestLimit = profile.RequestLimit
 	policy.requestWindow = profile.RequestWindow
 	policy.requestClientCapacity = profile.RequestClientCapacity
@@ -98,7 +110,7 @@ func LoadPolicy(path string, profile RateProfile) (Policy, error) {
 	policy.newAccountLimit = profile.NewAccountLimit
 	policy.publicationWindow = profile.PublicationWindow
 	policy.newAccountPeriod = profile.NewAccountPeriod
-	return policy, nil
+	return policy
 }
 
 func loadOpenedPolicy(file *os.File) (Policy, error) {

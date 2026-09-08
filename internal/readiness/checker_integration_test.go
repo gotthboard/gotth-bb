@@ -161,8 +161,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 7 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 7", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 8 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 8", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -210,6 +210,51 @@ WHERE namespace.nspname = 'public' AND search_state.relname = 'search_projection
 	}
 	if err := restrictedChecker.Check(ctx); err != nil {
 		t.Fatalf("restricted Check() rejected exact release after packaged grant: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `GRANT UPDATE (display_name) ON public.users TO `+roleIdentifier); err != nil {
+		t.Fatalf("widen runtime user-column authority: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted runtime UPDATE authority outside the publication tuple")
+	}
+	if _, err := connection.Exec(ctx, `REVOKE UPDATE (display_name) ON public.users FROM `+roleIdentifier); err != nil {
+		t.Fatalf("restore runtime user-column authority: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored publication privilege boundary: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.users DROP CONSTRAINT users_publication_window_consistent,
+ADD CONSTRAINT users_publication_window_consistent CHECK (true)`); err != nil {
+		t.Fatalf("replace publication tuple constraint with impostor: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted a same-name publication CHECK (true) impostor")
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.users DROP CONSTRAINT users_publication_window_consistent,
+ADD CONSTRAINT users_publication_window_consistent CHECK (
+    (publication_window_started_at IS NULL AND publication_count = 0)
+    OR
+    (publication_window_started_at IS NOT NULL
+     AND pg_catalog.isfinite(publication_window_started_at)
+     AND publication_window_started_at >= created_at
+     AND publication_count BETWEEN 1 AND 100000)
+)`); err != nil {
+		t.Fatalf("restore exact publication tuple constraint: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored publication tuple constraint: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.users ALTER COLUMN publication_count SET DEFAULT 1`); err != nil {
+		t.Fatalf("install publication count default impostor: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err == nil {
+		t.Fatal("Check() accepted publication count default drift")
+	}
+	if _, err := connection.Exec(ctx, `ALTER TABLE public.users ALTER COLUMN publication_count SET DEFAULT 0`); err != nil {
+		t.Fatalf("restore publication count default: %v", err)
+	}
+	if err := restrictedChecker.Check(ctx); err != nil {
+		t.Fatalf("Check() rejected restored publication count default: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `DROP INDEX public.posts_activity_current_idx;
 CREATE INDEX posts_activity_current_idx ON public.posts (id)`); err != nil {

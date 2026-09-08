@@ -1,3 +1,29 @@
+-- name: ConfigurePublicationTransaction :exec
+SELECT
+    set_config('statement_timeout', '2000ms', true),
+    set_config('lock_timeout', '250ms', true);
+
+-- name: LockPublicationActor :one
+SELECT
+    forum_user.id,
+    forum_user.role,
+    forum_user.suspended_at,
+    forum_user.suspended_until,
+    forum_user.muted_until,
+    forum_user.created_at,
+    forum_user.publication_window_started_at,
+    forum_user.publication_count,
+    clock_timestamp()::timestamp with time zone AS observed_at
+FROM public.users AS forum_user
+WHERE forum_user.id = sqlc.arg(actor_user_id)
+FOR UPDATE OF forum_user;
+
+-- name: ListLockedPublicationActorGroupIDs :many
+SELECT membership.group_id
+FROM public.forum_group_members AS membership
+WHERE membership.user_id = sqlc.arg(actor_user_id)
+ORDER BY membership.group_id;
+
 -- name: LockAreaForTopicCreation :one
 SELECT
     area.id,
@@ -13,6 +39,16 @@ FROM public.area_groups AS mapping
 WHERE mapping.area_id = sqlc.arg(area_id)
 ORDER BY mapping.group_id
 FOR SHARE OF mapping;
+
+-- name: PublicationDatabaseTime :one
+SELECT clock_timestamp()::timestamp with time zone AS database_now;
+
+-- name: ReplacePublicationWindow :one
+UPDATE public.users AS forum_user
+SET publication_window_started_at = sqlc.arg(window_started_at),
+    publication_count = sqlc.arg(publication_count)
+WHERE forum_user.id = sqlc.arg(actor_user_id)
+RETURNING forum_user.publication_window_started_at, forum_user.publication_count;
 
 -- name: CreateTopicAndFirstPost :one
 WITH identifiers AS (

@@ -292,7 +292,7 @@ func (q *Queries) GetActiveSessionForRotation(ctx context.Context, arg GetActive
 }
 
 const getUserByExternalIdentity = `-- name: GetUserByExternalIdentity :one
-SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at, u.administration_revision
+SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at, u.administration_revision, u.publication_window_started_at, u.publication_count
 FROM public.users AS u
 JOIN public.external_identities AS identity ON identity.user_id = u.id
 WHERE identity.issuer = $1
@@ -322,6 +322,8 @@ func (q *Queries) GetUserByExternalIdentity(ctx context.Context, arg GetUserByEx
 		&i.UpdatedAt,
 		&i.LastLoginAt,
 		&i.AdministrationRevision,
+		&i.PublicationWindowStartedAt,
+		&i.PublicationCount,
 	)
 	return i, err
 }
@@ -415,7 +417,7 @@ VALUES (
     $1, $2, $3,
     $4, $4, $4
 )
-RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision
+RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count
 `
 
 type InsertUserParams struct {
@@ -448,6 +450,8 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.UpdatedAt,
 		&i.LastLoginAt,
 		&i.AdministrationRevision,
+		&i.PublicationWindowStartedAt,
+		&i.PublicationCount,
 	)
 	return i, err
 }
@@ -513,7 +517,7 @@ SET display_name = $1,
     updated_at = $4,
     last_login_at = $4
 WHERE id = $5
-RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision
+RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count
 `
 
 type UpdateUserFromOIDCParams struct {
@@ -548,6 +552,8 @@ func (q *Queries) UpdateUserFromOIDC(ctx context.Context, arg UpdateUserFromOIDC
 		&i.UpdatedAt,
 		&i.LastLoginAt,
 		&i.AdministrationRevision,
+		&i.PublicationWindowStartedAt,
+		&i.PublicationCount,
 	)
 	return i, err
 }

@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const configurePublicationTransaction = `-- name: ConfigurePublicationTransaction :exec
+SELECT
+    set_config('statement_timeout', '2000ms', true),
+    set_config('lock_timeout', '250ms', true)
+`
+
+func (q *Queries) ConfigurePublicationTransaction(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, configurePublicationTransaction)
+	return err
+}
+
 const createReplyAndAdvanceTopic = `-- name: CreateReplyAndAdvanceTopic :one
 WITH inserted_post AS (
     INSERT INTO public.posts (
@@ -213,6 +224,33 @@ func (q *Queries) CreateTopicAndFirstPost(ctx context.Context, arg CreateTopicAn
 	return i, err
 }
 
+const listLockedPublicationActorGroupIDs = `-- name: ListLockedPublicationActorGroupIDs :many
+SELECT membership.group_id
+FROM public.forum_group_members AS membership
+WHERE membership.user_id = $1
+ORDER BY membership.group_id
+`
+
+func (q *Queries) ListLockedPublicationActorGroupIDs(ctx context.Context, actorUserID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listLockedPublicationActorGroupIDs, actorUserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var group_id int64
+		if err := rows.Scan(&group_id); err != nil {
+			return nil, err
+		}
+		items = append(items, group_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockAreaForTopicCreation = `-- name: LockAreaForTopicCreation :one
 SELECT
     area.id,
@@ -264,6 +302,51 @@ func (q *Queries) LockAreaGroupIDs(ctx context.Context, areaID int64) ([]int64, 
 	return items, nil
 }
 
+const lockPublicationActor = `-- name: LockPublicationActor :one
+SELECT
+    forum_user.id,
+    forum_user.role,
+    forum_user.suspended_at,
+    forum_user.suspended_until,
+    forum_user.muted_until,
+    forum_user.created_at,
+    forum_user.publication_window_started_at,
+    forum_user.publication_count,
+    clock_timestamp()::timestamp with time zone AS observed_at
+FROM public.users AS forum_user
+WHERE forum_user.id = $1
+FOR UPDATE OF forum_user
+`
+
+type LockPublicationActorRow struct {
+	ID                         int64
+	Role                       string
+	SuspendedAt                pgtype.Timestamptz
+	SuspendedUntil             pgtype.Timestamptz
+	MutedUntil                 pgtype.Timestamptz
+	CreatedAt                  pgtype.Timestamptz
+	PublicationWindowStartedAt pgtype.Timestamptz
+	PublicationCount           int32
+	ObservedAt                 pgtype.Timestamptz
+}
+
+func (q *Queries) LockPublicationActor(ctx context.Context, actorUserID int64) (LockPublicationActorRow, error) {
+	row := q.db.QueryRow(ctx, lockPublicationActor, actorUserID)
+	var i LockPublicationActorRow
+	err := row.Scan(
+		&i.ID,
+		&i.Role,
+		&i.SuspendedAt,
+		&i.SuspendedUntil,
+		&i.MutedUntil,
+		&i.CreatedAt,
+		&i.PublicationWindowStartedAt,
+		&i.PublicationCount,
+		&i.ObservedAt,
+	)
+	return i, err
+}
+
 const lockTopicForReply = `-- name: LockTopicForReply :one
 SELECT
     topic.id AS topic_id,
@@ -312,5 +395,42 @@ func (q *Queries) LockTopicForReply(ctx context.Context, arg LockTopicForReplyPa
 		&i.ParentPostID,
 		&i.ParentDepth,
 	)
+	return i, err
+}
+
+const publicationDatabaseTime = `-- name: PublicationDatabaseTime :one
+SELECT clock_timestamp()::timestamp with time zone AS database_now
+`
+
+func (q *Queries) PublicationDatabaseTime(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, publicationDatabaseTime)
+	var database_now pgtype.Timestamptz
+	err := row.Scan(&database_now)
+	return database_now, err
+}
+
+const replacePublicationWindow = `-- name: ReplacePublicationWindow :one
+UPDATE public.users AS forum_user
+SET publication_window_started_at = $1,
+    publication_count = $2
+WHERE forum_user.id = $3
+RETURNING forum_user.publication_window_started_at, forum_user.publication_count
+`
+
+type ReplacePublicationWindowParams struct {
+	WindowStartedAt  pgtype.Timestamptz
+	PublicationCount int32
+	ActorUserID      int64
+}
+
+type ReplacePublicationWindowRow struct {
+	PublicationWindowStartedAt pgtype.Timestamptz
+	PublicationCount           int32
+}
+
+func (q *Queries) ReplacePublicationWindow(ctx context.Context, arg ReplacePublicationWindowParams) (ReplacePublicationWindowRow, error) {
+	row := q.db.QueryRow(ctx, replacePublicationWindow, arg.WindowStartedAt, arg.PublicationCount, arg.ActorUserID)
+	var i ReplacePublicationWindowRow
+	err := row.Scan(&i.PublicationWindowStartedAt, &i.PublicationCount)
 	return i, err
 }

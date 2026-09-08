@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	forumservice "github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
@@ -20,6 +21,14 @@ import (
 )
 
 const discoveryTestDatabase = "gotth_bb_an02_02_discovery_test"
+
+var discoveryPublicationPolicy = func() abuse.PublicationPolicy {
+	policy, err := abuse.NewPublicationPolicy(100_000, 100_000, 24*time.Hour, time.Minute)
+	if err != nil {
+		panic(err)
+	}
+	return policy
+}()
 
 func TestDiscoveryAuthorizationCursorAndDirectPostOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -64,6 +73,9 @@ func TestDiscoveryAuthorizationCursorAndDirectPostOnPostgreSQL17(t *testing.T) {
 	memberID := insertDiscoveryUser(t, ctx, connection, "Member", "member")
 	moderatorID := insertDiscoveryUser(t, ctx, connection, "Moderator", "moderator")
 	groupID := insertDiscoveryGroup(t, ctx, connection, ownerID)
+	if _, err := connection.Exec(ctx, `INSERT INTO public.forum_group_members (group_id, user_id, granted_by) VALUES ($1, $2, $3)`, groupID, memberID, ownerID); err != nil {
+		t.Fatalf("insert discovery group membership: %v", err)
+	}
 	publicArea := insertDiscoveryArea(t, ctx, connection, ownerID, "public", "public", 0)
 	authArea := insertDiscoveryArea(t, ctx, connection, ownerID, "members", "authenticated", 0)
 	groupArea := insertDiscoveryArea(t, ctx, connection, ownerID, "group", "groups", groupID)
@@ -224,11 +236,17 @@ func insertDiscoveryArea(t *testing.T, ctx context.Context, connection *pgx.Conn
 	return slug
 }
 
-func createDiscoveryTopic(t *testing.T, ctx context.Context, connection *pgx.Conn, actor policy.AccessContext, area string, at time.Time, title, body string) forumservice.PublishResult {
+func createDiscoveryTopic(t *testing.T, ctx context.Context, connection *pgx.Conn, actor policy.AccessContext, area string, createdAt time.Time, title, body string) forumservice.PublishResult {
 	t.Helper()
-	result, err := forumservice.CreateTopic(ctx, connection, func() time.Time { return at }, actor, area, title, body)
+	result, err := forumservice.CreateTopic(ctx, connection, discoveryPublicationPolicy, actor, area, title, body)
 	if err != nil {
 		t.Fatalf("CreateTopic(%q): %v", title, err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.topics SET created_at = $2, updated_at = $2 WHERE id = $1`, result.TopicID, createdAt); err != nil {
+		t.Fatalf("set topic fixture time for %q: %v", title, err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.posts SET created_at = $2, updated_at = $2 WHERE id = $1`, result.PostID, createdAt); err != nil {
+		t.Fatalf("set post fixture time for %q: %v", title, err)
 	}
 	return result
 }

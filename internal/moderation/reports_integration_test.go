@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
@@ -21,6 +22,14 @@ import (
 )
 
 const reportModerationTestDatabase = "gotth_bb_an01_report_moderation_test"
+
+var moderationPublicationPolicy = func() abuse.PublicationPolicy {
+	policy, err := abuse.NewPublicationPolicy(100_000, 100_000, 24*time.Hour, time.Minute)
+	if err != nil {
+		panic(err)
+	}
+	return policy
+}()
 
 func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -76,15 +85,15 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 	reporter := policy.AccessContext{Authenticated: true, UserID: reporterID, Role: policy.RoleMember}
 	target := policy.AccessContext{Authenticated: true, UserID: targetUserID, Role: policy.RoleMember}
 	staff := policy.AccessContext{Authenticated: true, UserID: moderatorID, Role: policy.RoleModerator}
-	topic, err := forum.CreateTopic(ctx, connection, func() time.Time { return createdAt.Add(time.Minute) }, reporter, "source", "Reported topic", "root")
+	topic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, reporter, "source", "Reported topic", "root")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reply, err := forum.CreateReply(ctx, connection, func() time.Time { return createdAt.Add(2 * time.Minute) }, target, topic.TopicID, topic.PostID, "reply")
+	reply, err := forum.CreateReply(ctx, connection, moderationPublicationPolicy, target, topic.TopicID, topic.PostID, "reply")
 	if err != nil {
 		t.Fatal(err)
 	}
-	hiddenTopic, err := forum.CreateTopic(ctx, connection, func() time.Time { return createdAt.Add(2 * time.Minute) }, target, "source", "Hidden topic", "hidden root")
+	hiddenTopic, err := forum.CreateTopic(ctx, connection, moderationPublicationPolicy, target, "source", "Hidden topic", "hidden root")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -133,9 +133,9 @@ func TestLoadPolicyUsesASealedRegularReadOnlyFile(t *testing.T) {
 	if err != nil || len(policy.domains) != 1 || policy.domains[0] != "example.com" {
 		t.Fatalf("LoadPolicy() = (%+v, %v)", policy, err)
 	}
-	established, newAccount, window, period := policy.PublicationProfile()
-	if established != 10 || newAccount != 3 || window != 10*time.Minute || period != 24*time.Hour {
-		t.Fatalf("PublicationProfile() = (%d, %d, %s, %s)", established, newAccount, window, period)
+	publication := policy.PublicationPolicy()
+	if !publication.Valid() || publication.establishedLimit != 10 || publication.newAccountLimit != 3 || publication.window != 10*time.Minute || publication.newAccountPeriod != 24*time.Hour {
+		t.Fatalf("PublicationPolicy() = %+v", publication)
 	}
 	limiter, err := policy.NewRequestLimiter(strings.NewReader(strings.Repeat("k", 32)), time.Now)
 	if err != nil || limiter == nil {

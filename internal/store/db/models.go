@@ -213,20 +213,22 @@ type TopicRead struct {
 }
 
 type User struct {
-	ID                     int64
-	DisplayName            string
-	Email                  pgtype.Text
-	AvatarUrl              pgtype.Text
-	Bio                    string
-	Role                   string
-	SuspendedAt            pgtype.Timestamptz
-	SuspendedUntil         pgtype.Timestamptz
-	SuspensionReason       pgtype.Text
-	MutedUntil             pgtype.Timestamptz
-	CreatedAt              pgtype.Timestamptz
-	UpdatedAt              pgtype.Timestamptz
-	LastLoginAt            pgtype.Timestamptz
-	AdministrationRevision int64
+	ID                         int64
+	DisplayName                string
+	Email                      pgtype.Text
+	AvatarUrl                  pgtype.Text
+	Bio                        string
+	Role                       string
+	SuspendedAt                pgtype.Timestamptz
+	SuspendedUntil             pgtype.Timestamptz
+	SuspensionReason           pgtype.Text
+	MutedUntil                 pgtype.Timestamptz
+	CreatedAt                  pgtype.Timestamptz
+	UpdatedAt                  pgtype.Timestamptz
+	LastLoginAt                pgtype.Timestamptz
+	AdministrationRevision     int64
+	PublicationWindowStartedAt pgtype.Timestamptz
+	PublicationCount           int32
 }
 
 type UserWarning struct {

@@ -85,7 +85,7 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 	if err := checker.Check(context.Background()); err != nil {
 		t.Fatalf("Check() returned error: %v", err)
 	}
-	if migrationCalls != 1 || !database.called || len(database.queries) != 6 || database.queries[0] != governanceInvariantSQL {
+	if migrationCalls != 1 || !database.called || len(database.queries) != 8 || database.queries[0] != governanceInvariantSQL {
 		t.Fatalf("calls = (migrations %d, database %t, queries %d)", migrationCalls, database.called, len(database.queries))
 	}
 	arguments := database.allArguments[0]

@@ -9,6 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -21,6 +22,7 @@ import (
 var (
 	ErrInvalidPublishingInput = errors.New("invalid forum publishing input")
 	ErrPublishingDenied       = errors.New("forum publishing denied")
+	ErrPublicationRateLimited = errors.New("forum publication rate limited")
 )
 
 const MaximumReplyDepth int32 = 32
@@ -56,6 +58,14 @@ type PublishResult struct {
 	PostNumber  int32
 	NodeOrdinal int64
 }
+
+// PublicationRateLimitError exposes only one bounded whole-second retry.
+type PublicationRateLimitError struct {
+	RetryAfterSeconds int64
+}
+
+func (limited PublicationRateLimitError) Error() string { return ErrPublicationRateLimited.Error() }
+func (limited PublicationRateLimitError) Unwrap() error { return ErrPublicationRateLimited }
 
 // RenderTopicDraft applies the exact bounded field validation and sanitized
 // Markdown renderer used before topic publication. The opaque result may be
@@ -112,21 +122,22 @@ func renderPublishingDraft(markdownSource string) (render.RenderedMarkdown, erro
 	return rendered, nil
 }
 
-// CreateTopic validates and renders one first post before locking the current
-// area policy. It authorizes against that locked policy and commits the topic,
-// first post, counters, and timestamps as one transaction.
+// CreateTopic validates and renders one first post before locking and
+// revalidating the current account, its groups, and the target area. It commits
+// the durable publication window, topic, first post, counters, and database
+// timestamps as one transaction.
 //
 // Complexity: for title bytes t, bounded Markdown bytes m, actor groups a,
 // area groups p, renderer work R(m), and database work D, time is
 // O(t+m+a*p+a+p+R(m)+D), Omega(1), without one tight bound because invalid
 // input and external database work vary. Auxiliary space is O(m+R(m)+p),
 // Omega(1); the driver and renderer own their result buffers. There is one
-// transaction with three application statements plus begin/commit, no retry,
+// transaction with eight application statements plus begin/commit, no retry,
 // and no detached work.
 func CreateTopic(
 	ctx context.Context,
 	beginner transactionBeginner,
-	clock func() time.Time,
+	publicationPolicy abuse.PublicationPolicy,
 	actor policy.AccessContext,
 	areaSlug string,
 	title string,
@@ -138,8 +149,8 @@ func CreateTopic(
 	if beginner == nil {
 		return PublishResult{}, fmt.Errorf("create topic transaction beginner is required")
 	}
-	if clock == nil {
-		return PublishResult{}, fmt.Errorf("create topic clock is required")
+	if !publicationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create topic publication policy is invalid")
 	}
 	if !actor.Valid() || !actor.Authenticated {
 		return PublishResult{}, fmt.Errorf("create topic actor is invalid")
@@ -162,13 +173,16 @@ func CreateTopic(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create topic search projection: %w", err)
 	}
-	atTime, err := publishingTime(clock)
-	if err != nil {
-		return PublishResult{}, fmt.Errorf("create topic: %w", err)
-	}
 
 	result := PublishResult{}
 	err = store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
+		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
+			return fmt.Errorf("configure topic publication transaction: %w", err)
+		}
+		currentActor, lockedActor, err := lockPublicationActor(ctx, queries, actor)
+		if err != nil {
+			return fmt.Errorf("lock topic publication actor: %w", err)
+		}
 		area, err := queries.LockAreaForTopicCreation(ctx, areaSlug)
 		if err != nil {
 			return fmt.Errorf("lock topic area: %w", err)
@@ -180,11 +194,15 @@ func CreateTopic(
 		if err != nil {
 			return fmt.Errorf("load topic area policy: %w", err)
 		}
-		if !policy.CanCreateTopic(actor, areaPolicy) {
+		if !policy.CanCreateTopic(currentActor, areaPolicy) {
 			return ErrPublishingDenied
 		}
+		atTime, err := admitPublication(ctx, queries, publicationPolicy, lockedActor)
+		if err != nil {
+			return err
+		}
 		created, err := queries.CreateTopicAndFirstPost(ctx, db.CreateTopicAndFirstPostParams{
-			AreaID: area.ID, AuthorID: actor.UserID, Title: title, AtTime: atTime,
+			AreaID: area.ID, AuthorID: currentActor.UserID, Title: title, AtTime: atTime,
 			TopicSearchText: norm.NFC.String(title), SearchProjectionVersion: pgtype.Text{String: searchProjectionVersion, Valid: true},
 			MarkdownSource: markdownSource, RenderedHtml: renderedHTML, RendererVersion: rendererVersion, PostSearchText: postSearchText,
 		})
@@ -203,21 +221,22 @@ func CreateTopic(
 	return result, nil
 }
 
-// CreateReply validates and renders one reply before locking its current topic
-// and area policy. Authorization, immutable post-number allocation, insertion,
-// and topic counter/activity advancement commit as one transaction.
+// CreateReply validates and renders one reply before locking and revalidating
+// the current account, its groups, and the target topic/area policy. The
+// durable publication window, immutable post-number allocation, insertion,
+// and topic advancement commit as one transaction.
 //
 // Complexity: for bounded Markdown bytes m, actor groups a, area groups p,
 // renderer work R(m), and database work D, time is
 // O(m+a*p+a+p+R(m)+D), Omega(1), without one tight bound because invalid input
 // and external database work vary. Auxiliary space is O(m+R(m)+p), Omega(1).
-// There is one transaction with three application statements plus
+// There is one transaction with eight application statements plus
 // begin/commit, no retry, and no detached work; the topic row lock serializes
 // reply-number allocation.
 func CreateReply(
 	ctx context.Context,
 	beginner transactionBeginner,
-	clock func() time.Time,
+	publicationPolicy abuse.PublicationPolicy,
 	actor policy.AccessContext,
 	topicID int64,
 	parentPostID int64,
@@ -229,8 +248,8 @@ func CreateReply(
 	if beginner == nil {
 		return PublishResult{}, fmt.Errorf("create reply transaction beginner is required")
 	}
-	if clock == nil {
-		return PublishResult{}, fmt.Errorf("create reply clock is required")
+	if !publicationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create reply publication policy is invalid")
 	}
 	if !actor.Valid() || !actor.Authenticated {
 		return PublishResult{}, fmt.Errorf("create reply actor is invalid")
@@ -256,13 +275,16 @@ func CreateReply(
 	if err != nil {
 		return PublishResult{}, fmt.Errorf("create reply search projection: %w", err)
 	}
-	atTime, err := publishingTime(clock)
-	if err != nil {
-		return PublishResult{}, fmt.Errorf("create reply: %w", err)
-	}
 
 	result := PublishResult{}
 	err = store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
+		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
+			return fmt.Errorf("configure reply publication transaction: %w", err)
+		}
+		currentActor, lockedActor, err := lockPublicationActor(ctx, queries, actor)
+		if err != nil {
+			return fmt.Errorf("lock reply publication actor: %w", err)
+		}
 		topic, err := queries.LockTopicForReply(ctx, db.LockTopicForReplyParams{TopicID: topicID, ParentPostID: parentPostID})
 		if err != nil {
 			return fmt.Errorf("lock reply topic: %w", err)
@@ -274,11 +296,15 @@ func CreateReply(
 		if err != nil {
 			return fmt.Errorf("load reply area policy: %w", err)
 		}
-		if !policy.CanReply(actor, areaPolicy, policy.TopicState(topic.TopicState)) {
+		if !policy.CanReply(currentActor, areaPolicy, policy.TopicState(topic.TopicState)) {
 			return ErrPublishingDenied
 		}
+		atTime, err := admitPublication(ctx, queries, publicationPolicy, lockedActor)
+		if err != nil {
+			return err
+		}
 		created, err := queries.CreateReplyAndAdvanceTopic(ctx, db.CreateReplyAndAdvanceTopicParams{
-			AuthorID: actor.UserID, MarkdownSource: markdownSource, RenderedHtml: renderedHTML,
+			AuthorID: currentActor.UserID, MarkdownSource: markdownSource, RenderedHtml: renderedHTML,
 			RendererVersion: rendererVersion, ParentPostID: pgtype.Int8{Int64: parentPostID, Valid: true}, AtTime: atTime,
 			PostSearchText: postSearchText, SearchProjectionVersion: pgtype.Text{String: searchProjectionVersion, Valid: true}, TopicID: topicID,
 		})
@@ -297,6 +323,119 @@ func CreateReply(
 	return result, nil
 }
 
+func lockPublicationActor(ctx context.Context, queries *db.Queries, actor policy.AccessContext) (policy.AccessContext, db.LockPublicationActorRow, error) {
+	locked, err := queries.LockPublicationActor(ctx, actor.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+		}
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, err
+	}
+	if locked.ID != actor.UserID || locked.ID <= 0 || !finitePublishingTime(locked.CreatedAt) || !finitePublishingTime(locked.ObservedAt) ||
+		locked.PublicationCount < 0 || locked.PublicationCount > 100_000 ||
+		locked.PublicationWindowStartedAt.Valid != (locked.PublicationCount > 0) ||
+		locked.PublicationWindowStartedAt.Valid && (!finitePublishingTime(locked.PublicationWindowStartedAt) || locked.PublicationWindowStartedAt.Time.Before(locked.CreatedAt.Time)) {
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+	}
+	role, valid := publishingRole(locked.Role)
+	if !valid || role != actor.Role {
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+	}
+	if locked.SuspendedAt.Valid && !finitePublishingTime(locked.SuspendedAt) ||
+		locked.SuspendedUntil.Valid && !finitePublishingTime(locked.SuspendedUntil) ||
+		locked.MutedUntil.Valid && !finitePublishingTime(locked.MutedUntil) ||
+		locked.SuspendedUntil.Valid && !locked.SuspendedAt.Valid ||
+		locked.SuspendedAt.Valid && locked.SuspendedAt.Time.Before(locked.CreatedAt.Time) ||
+		locked.SuspendedUntil.Valid && !locked.SuspendedUntil.Time.After(locked.SuspendedAt.Time) ||
+		locked.MutedUntil.Valid && !locked.MutedUntil.Time.After(locked.CreatedAt.Time) ||
+		locked.ObservedAt.Time.Before(locked.CreatedAt.Time) {
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+	}
+	observedAt := locked.ObservedAt.Time.UTC()
+	suspended := locked.SuspendedAt.Valid && !locked.SuspendedAt.Time.After(observedAt) &&
+		(!locked.SuspendedUntil.Valid || locked.SuspendedUntil.Time.After(observedAt))
+	muted := locked.MutedUntil.Valid && locked.MutedUntil.Time.After(observedAt)
+	groups, err := queries.ListLockedPublicationActorGroupIDs(ctx, actor.UserID)
+	if err != nil {
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, err
+	}
+	for index, groupID := range groups {
+		if groupID <= 0 || index > 0 && groupID <= groups[index-1] {
+			return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+		}
+	}
+	current := policy.AccessContext{Authenticated: true, UserID: locked.ID, Role: role, GroupIDs: groups, Suspended: suspended}
+	if muted {
+		mutedUntil := locked.MutedUntil.Time.UTC()
+		current.MutedUntil = &mutedUntil
+	}
+	if !current.Valid() {
+		return policy.AccessContext{}, db.LockPublicationActorRow{}, ErrPublishingDenied
+	}
+	return current, locked, nil
+}
+
+func admitPublication(ctx context.Context, queries *db.Queries, publicationPolicy abuse.PublicationPolicy, locked db.LockPublicationActorRow) (pgtype.Timestamptz, error) {
+	databaseNow, err := queries.PublicationDatabaseTime(ctx)
+	if err != nil {
+		return pgtype.Timestamptz{}, fmt.Errorf("read publication database time: %w", err)
+	}
+	if !finitePublishingTime(databaseNow) {
+		return pgtype.Timestamptz{}, fmt.Errorf("publication database time is invalid")
+	}
+	var startedAt *time.Time
+	if locked.PublicationWindowStartedAt.Valid {
+		value := locked.PublicationWindowStartedAt.Time.UTC()
+		startedAt = &value
+	}
+	decision, err := publicationPolicy.DecidePublication(locked.CreatedAt.Time, databaseNow.Time, startedAt, locked.PublicationCount)
+	if err != nil {
+		return pgtype.Timestamptz{}, fmt.Errorf("decide publication admission: %w", err)
+	}
+	if retry := decision.RetryAfterSeconds(); retry > 0 {
+		return pgtype.Timestamptz{}, PublicationRateLimitError{RetryAfterSeconds: retry}
+	}
+	replaced, err := queries.ReplacePublicationWindow(ctx, db.ReplacePublicationWindowParams{
+		WindowStartedAt:  pgtype.Timestamptz{Time: decision.StartedAt, Valid: true},
+		PublicationCount: decision.Count,
+		ActorUserID:      locked.ID,
+	})
+	if err != nil {
+		return pgtype.Timestamptz{}, fmt.Errorf("replace publication window: %w", err)
+	}
+	if !finitePublishingTime(replaced.PublicationWindowStartedAt) || !replaced.PublicationWindowStartedAt.Time.Equal(decision.StartedAt) || replaced.PublicationCount != decision.Count {
+		return pgtype.Timestamptz{}, fmt.Errorf("publication window update returned an invalid result")
+	}
+	return pgtype.Timestamptz{Time: databaseNow.Time.UTC().Truncate(time.Microsecond), Valid: true}, nil
+}
+
+func finitePublishingTime(value pgtype.Timestamptz) bool {
+	return value.Valid && value.InfinityModifier == pgtype.Finite && !value.Time.IsZero()
+}
+
+func publishingRole(value string) (policy.Role, bool) {
+	switch value {
+	case "member":
+		return policy.RoleMember, true
+	case "moderator":
+		return policy.RoleModerator, true
+	case "administrator":
+		return policy.RoleAdministrator, true
+	default:
+		return 0, false
+	}
+}
+
+// publishingTime returns one finite, UTC, PostgreSQL-microsecond timestamp for
+// edit and delete operations, which do not spend the publication window.
+func publishingTime(clock func() time.Time) (pgtype.Timestamptz, error) {
+	now := clock()
+	if now.IsZero() {
+		return pgtype.Timestamptz{}, fmt.Errorf("publishing clock returned a zero time")
+	}
+	return pgtype.Timestamptz{Time: now.UTC().Truncate(time.Microsecond), Valid: true}, nil
+}
+
 // lockedAreaPolicy obtains and validates the group mappings protected by the
 // caller's already-held area lock.
 //
@@ -310,18 +449,6 @@ func lockedAreaPolicy(ctx context.Context, queries *db.Queries, areaID int64, vi
 		return policy.AreaPolicy{}, fmt.Errorf("lock area group mappings: %w", err)
 	}
 	return policy.AreaPolicy{Visibility: policy.Visibility(visibility), PostingMode: policy.PostingMode(postingMode), GroupIDs: groupIDs}, nil
-}
-
-// publishingTime returns one finite, UTC, PostgreSQL-microsecond timestamp.
-//
-// Complexity: time and auxiliary space are tight Theta(1); the supplied clock
-// is called exactly once.
-func publishingTime(clock func() time.Time) (pgtype.Timestamptz, error) {
-	now := clock()
-	if now.IsZero() {
-		return pgtype.Timestamptz{}, fmt.Errorf("publishing clock returned a zero time")
-	}
-	return pgtype.Timestamptz{Time: now.UTC().Truncate(time.Microsecond), Valid: true}, nil
 }
 
 // validTopicTitle checks the database's 1-200-character bound and rejects

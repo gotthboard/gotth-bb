@@ -250,7 +250,7 @@ func (*fakeDatabasePool) QueryRow(_ context.Context, query string, _ ...any) pgx
 		return fakeSiteShellRow{}
 	case strings.Contains(query, "AND (SELECT count(*) FROM public.site_settings) = 1"):
 		return fakeSiteReadinessRow{}
-	case strings.Contains(query, "WITH expected_constraints AS"):
+	case strings.Contains(query, "WITH expected_constraints"):
 		return fakeBooleanRow(true)
 	case strings.Contains(query, "pg_catalog.pg_class"):
 		return fakeBooleanRow(true)
@@ -463,7 +463,7 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	_, readinessReadErr := readinessBody.ReadFrom(readinessResponse.Body)
 	_ = readinessResponse.Body.Close()
 	if readinessReadErr != nil || readinessResponse.StatusCode != http.StatusOK || readinessBody.String() != "ok\n" {
-		t.Fatalf("GET /health/ready = (status %d, body %q, read %v)", readinessResponse.StatusCode, readinessBody.String(), readinessReadErr)
+		t.Fatalf("GET /health/ready = (status %d, body %q, read %v, logs %q)", readinessResponse.StatusCode, readinessBody.String(), readinessReadErr, logs.String())
 	}
 	rootResponse, err := client.Get("http://" + listener.Addr().String() + "/")
 	if err != nil {
@@ -803,6 +803,15 @@ func validCursorKeyringFactory(string) (discovery.CursorKeyring, error) {
 }
 
 func validAbuseFactory(configured config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error) {
+	policy, err := abuse.NewEmptyPolicy(abuse.RateProfile{
+		RequestLimit: configured.RequestLimit, RequestWindow: configured.RequestWindow,
+		RequestClientCapacity: configured.RequestClientCapacity,
+		PublicationLimit:      configured.PublishLimit, NewAccountLimit: configured.NewAccountPublishLimit,
+		PublicationWindow: configured.PublishWindow, NewAccountPeriod: configured.NewAccountPeriod,
+	})
+	if err != nil {
+		return abuse.Policy{}, nil, err
+	}
 	limiter, err := abuse.NewRequestLimiter(
 		strings.NewReader(strings.Repeat("k", 32)),
 		configured.RequestClientCapacity,
@@ -810,7 +819,7 @@ func validAbuseFactory(configured config.AbuseConfig) (abuse.Policy, *abuse.Requ
 		configured.RequestWindow,
 		time.Now,
 	)
-	return abuse.Policy{}, limiter, err
+	return policy, limiter, err
 }
 
 func mapLookup(values map[string]string) func(string) (string, bool) {

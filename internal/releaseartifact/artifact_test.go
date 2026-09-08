@@ -74,6 +74,13 @@ GRANT SELECT,
       DELETE
 ON TABLE public.forum_group_members
 TO :"runtime_role";
+
+-- Publication admission locks and revalidates the current account, then may
+-- mutate only its durable fixed-window tuple. Never replace this with table-
+-- wide UPDATE authority.
+GRANT UPDATE (publication_window_started_at, publication_count)
+ON TABLE public.users
+TO :"runtime_role";
 `
 
 const (
