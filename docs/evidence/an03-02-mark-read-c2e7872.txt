@@ -2,13 +2,13 @@ AN-03-02 exact-candidate evidence
 ================================
 
 Executable/methodology commit:
-  f7078d350d4605bc97771a37f54781482d877e11
+  c2e7872b078347866cd69b0485510874a880c8b0
 Tree:
-  87af77678ebbfd953d63df0beab7d26ce5bf3bba
+  bf131978662965f03d849124e385c603614979de
 Base:
   6c7540e41f2d27b736eda38ef65e984766e2bb97
 Bundle SHA-256:
-  583b3f86719713ff5fb8df37e42134ba0da07068d2bcaef37932a34a12de1f9a
+  4f0f86cbd8441274433cf77099567ba3355fb6390fc87dc833896f697302c0da
 
 Generation
 ----------
@@ -39,7 +39,7 @@ for internal/store, and 100.0% for migrations.
 
 Transcript SHA-256 values:
   go vet: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-  race/coverage: 3d6e25a68c5472b69073610edb3faed7ecaf3e768c6a2a9150f56148aa7e522d
+  race/coverage: 11a71ef3cdbb8c83da95ae66ecf96a3de8b8479e52076df0cdf31b9bed07120e
 
 PostgreSQL 17 integration/race gates
 ------------------------------------
@@ -63,14 +63,15 @@ outcome retries; exact read-time retention/advance; no eligible boundary;
 member/group/staff authorization; revocation and restoration; hidden and
 deleted topics; muted and suspended actors; cancellation; the transaction-
 local 250ms row-lock timeout; posts committed after the mark snapshot;
-concurrent devices; malformed private rows; hard post purge and topic cascade;
+concurrent devices with lower/higher boundaries in both commit orders;
+malformed private rows; hard post purge and topic cascade;
 and zero markers from successful and denied publication. Generated-query
 inspection proves the mark statement is the sole topic_reads mutation and
 that topic/reply publishing statements do not reference private markers.
 
 Transcript SHA-256 values:
-  full integration/race: bc6dc6b86295ce9c780ee6f5f2cef8098de8118f6cc5f6beac19a80ac68c646f
-  focused five-run race: b101b1f3113651130a09840fca13d5b13557ea568f68418f559605ca4b877eec
+  full integration/race: 57be7aa0d49ecd430a160199053d48c0fd044e5552069315132bee6f0dbd7937
+  focused five-run race: 9cb205fa75798c58186c4f9a03356774c557e9177879b190cec27d66894caa38
 
 Representative population and plan gate
 ---------------------------------------
@@ -91,15 +92,15 @@ Population:
   deleted posts: 493
   redacted posts: 247
   retained markers: 12,500 before the mark-read plan
-  population duration: 8.38241386s
+  population duration: 8.53272191s
 
 Migration 000009 checkpoint:
-  elapsed: 231.90276ms
+  elapsed: 237.003166ms
   posts relation bytes: 137,871,360
   topic_reads relation bytes: 1,597,440
   expected ShareLock wait observed: yes
-  blocks read delta: 937
-  blocks hit delta: 9,502
+  blocks read delta: 825
+  blocks hit delta: 9,636
   temp bytes delta: 9,003,008
 
 Both force_custom_plan and force_generic_plan passed for the exact generated
@@ -111,7 +112,7 @@ actor exclusion below it. The existing visitor/member/group/staff read-model
 assertions also remained green.
 
 Plan transcript SHA-256:
-  aea354ef2deb557314079abf20541822cf5e0c2ef61fe073b3c1a9f7563705e9
+  bdf12729952bb23ba2ff06688502c4585e3e53c98755380a97dfe668aa292559
 
 Scope statement
 ---------------
