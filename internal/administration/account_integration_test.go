@@ -217,6 +217,7 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); er
 	})
 	baselineGrants := `
 GRANT USAGE ON SCHEMA public TO ` + roleIdentifier + `;
+GRANT SELECT ON public.governance_state TO ` + roleIdentifier + `;
 GRANT SELECT, UPDATE ON public.users TO ` + roleIdentifier + `;
 GRANT SELECT, UPDATE ON public.sessions TO ` + roleIdentifier + `;
 GRANT SELECT, INSERT ON public.moderation_actions TO ` + roleIdentifier + `;
