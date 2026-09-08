@@ -1,0 +1,153 @@
+AN-04-03 administration HTTP and progressive UI evidence
+==========================================================
+
+Boundary
+--------
+
+Tested executable/methodology commit:
+  a996c09a7e38f23944b0e734e813231c900cc6b1
+
+Tested tree:
+  ed8d8520214c94c45e15596848bc06face25c307
+
+Parent admitted AN-04-02 commit:
+  8f53557
+
+This evidence covers AN-04-03 only: exact administrator dashboard and bounded
+account/group/area pages, strict mutation routes, private progressive UI,
+base-path navigation, and keyboard/no-JavaScript browser operation. AN-04-04
+retains the larger representative population, structural plan, resource,
+coexistence, package, and integrated-admission gate.
+
+Generation and generated-state custody
+----------------------------------------
+
+Host: agenthost
+  Node v26.7.0
+  npm 12.0.2
+
+Command:
+  make generate
+  git diff --exit-code
+  git status --porcelain=v1
+
+Result: PASS. templ, sqlc, Tailwind, HTMX, discovery response, and Markdown
+toolbar generation completed with zero tracked drift and a clean tree. The
+existing content-addressed stylesheet was preserved byte-for-byte:
+
+  3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa
+  internal/httpui/static/app-3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa.css
+
+Focused HTTP proof
+------------------
+
+Command:
+  GOMAXPROCS=2 go test -p=2 ./internal/httpui \
+    -run 'TestAdministrationCompletion|TestAdministrationArea|TestAdministrationPreflight' \
+    -count=1
+  GOMAXPROCS=2 go vet ./internal/httpui
+  git diff --check
+
+Result: PASS. Direct tests prove the exact field set and service arguments for
+all seven AN-04-03 mutations; IDs occur only in canonical paths; area creation
+accepts the required positive or empty initial group states; duplicate and
+unknown fields fail without a second service call; declared 16-KiB and 64-KiB
+overages fail before a body read; and both exact limits admit worst-case
+percent-encoded bodies. Missing, stale, and non-administrator sessions plus an
+invalid CSRF header fail before reading the request body. The repair also put
+the route limit around ParseForm after valid header CSRF, closing an actual
+unbounded-header-body path.
+
+Repository-wide unit, race, and coverage gate
+---------------------------------------------
+
+Host: development
+
+Commands:
+  scripts/test-alpha3-evidence-custody.sh
+  test -z "$(gofmt -l $(git ls-files --cached --others --exclude-standard -- '*.go'))"
+  go vet -mod=readonly ./...
+  go test -mod=readonly -race \
+    -coverprofile=/tmp/gotth-bb-an04-03-a996c09-unit.cover ./...
+
+Result: PASS. All packages passed under the race detector. Selected coverage:
+  internal/httpui          72.1%
+  internal/store           96.6%
+  internal/migration       99.6%
+  internal/render          95.2%
+
+PostgreSQL integration gate
+---------------------------
+
+Host: development
+PostgreSQL: 17.10 (Debian 17.10-1.pgdg13+1)
+Database endpoint: disposable loopback-only task database; credential omitted
+
+Commands:
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=1 ./...
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=2 -race -covermode=atomic ./...
+  GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-test-dsn> \
+    go test -mod=readonly -tags=integration -p=1 \
+      -coverprofile=/tmp/gotth-bb-an04-03-a996c09-integration.cover ./...
+
+Result: PASS. The full serial, race/atomic-coverage, and serial-coverage suites
+passed. Selected integration coverage:
+  internal/administration  75.3%
+  internal/auth            97.2%
+  internal/forum           95.0%
+  internal/httpui          72.1%
+  internal/migration       100.0%
+  internal/readiness       100.0%
+  internal/store           97.1%
+  migrations               100.0%
+
+Browser-through-Caddy gate
+--------------------------
+
+Host: development
+Caddy: v2.11.4
+Chromium: 151.0.7922.71 Arch Linux
+Node used only by the browser harness: v26.5.1
+
+Command:
+  GOTTH_BB_BROWSER_CADDY=1 \
+    go test -mod=readonly -tags=integration \
+      -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+      -count=1 -v ./internal/httpui
+
+Result: PASS. A real Chromium session behind Caddy and the /bb base path used
+native keyboard navigation with JavaScript disabled from the dashboard to the
+account page, focused and completed the role-change form, and submitted the
+exact actor/target/role/reason/revision/request-ID boundary. Accessibility-tree
+names and visible focus were asserted. The browser package reported one pass,
+zero failures, zero skips, and zero cancellations.
+
+Cold review repairs before final admission
+------------------------------------------
+
+The judge loop rejected earlier candidates for:
+
+1. changing generated Tailwind output beneath an old content-addressed name;
+2. accepting group-visible areas with zero mappings and manufacturing detail
+   group counts;
+3. allowing a final constructor without the complete administration service;
+4. browser evidence that did not validate exact role-mutation arguments; and
+5. incomplete exact-form and body-nonconsumption/size-boundary proof.
+
+All were repaired before this evidence was retained. The stylesheet digest is
+again exact, inconsistent group-visible state fails closed, construction is
+all-or-nothing, the browser mock checks the complete mutation boundary, and the
+HTTP tests cover every documented mutation grammar plus the shared wire-limit
+mechanism.
+
+Scope and limitations
+---------------------
+
+The 24-file AN-04-03 delta contains the administration completion service,
+queries, handlers, generated templates, navigation, browser harness, and
+tests. It adds no Authentik administration, password management, group or area
+deletion, arbitrary CSS, impersonation, bulk mutation, analytics service,
+external service, tag, release, or deployment. Corpus sizes and observed test
+times are evidence points, not universal latency guarantees.
