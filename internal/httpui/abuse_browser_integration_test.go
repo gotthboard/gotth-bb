@@ -5,6 +5,7 @@ package httpui
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -155,6 +156,7 @@ func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 	if err := os.WriteFile(configurationPath, []byte(configuration), 0o600); err != nil {
 		t.Fatalf("write Caddyfile: %v", err)
 	}
+	assertAbuseCaddyAdaptedIdentity(t, caddy, configurationPath)
 	caddyContext, cancelCaddy := context.WithCancel(context.Background())
 	var caddyLog bytes.Buffer
 	command := exec.CommandContext(caddyContext, caddy, "run", "--config", configurationPath, "--adapter", "caddyfile")
@@ -189,6 +191,70 @@ func runAbuseRejectionNoScriptThroughCaddy(t *testing.T, basePath string) {
 		t.Fatalf("Caddy identity overwrite = requests %d failures %q", requests, failures)
 	}
 	t.Logf("abuse browser-through-Caddy admitted: base_path=%q identity_requests=%d caddy=%s chromium=%s node=%s\n%s", basePath, requests, commandPathVersion(t, caddy, "version"), commandPathVersion(t, chromium, "--version"), commandPathVersion(t, node, "--version"), output)
+}
+
+func assertAbuseCaddyAdaptedIdentity(t *testing.T, caddy, configurationPath string) {
+	t.Helper()
+	command := exec.Command(caddy, "adapt", "--config", configurationPath, "--adapter", "caddyfile")
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		t.Fatalf("adapt Caddy configuration: %v\n%s", err, stderr.String())
+	}
+	var adapted any
+	if err := json.Unmarshal(stdout.Bytes(), &adapted); err != nil {
+		t.Fatalf("decode adapted Caddy configuration: %v\n%s", err, stdout.String())
+	}
+	proxies := make([]map[string]any, 0, 1)
+	var walk func(any)
+	walk = func(value any) {
+		switch value := value.(type) {
+		case map[string]any:
+			if value["handler"] == "reverse_proxy" {
+				proxies = append(proxies, value)
+			}
+			for _, child := range value {
+				walk(child)
+			}
+		case []any:
+			for _, child := range value {
+				walk(child)
+			}
+		}
+	}
+	walk(adapted)
+	if len(proxies) != 1 {
+		t.Fatalf("adapted reverse-proxy handlers = %d, want 1", len(proxies))
+	}
+	headers, ok := proxies[0]["headers"].(map[string]any)
+	if !ok {
+		t.Fatal("adapted reverse proxy has no header operations")
+	}
+	requestHeaders, ok := headers["request"].(map[string]any)
+	if !ok {
+		t.Fatal("adapted reverse proxy has no request-header operations")
+	}
+	set, ok := requestHeaders["set"].(map[string]any)
+	if !ok || len(set) != 1 || !equalAbuseCaddyStrings(set["X-Forwarded-For"], "{http.request.remote.host}") {
+		t.Fatalf("adapted request-header set = %#v", requestHeaders["set"])
+	}
+	deleted, ok := requestHeaders["delete"].([]any)
+	if !ok || len(deleted) != 2 || !equalAbuseCaddyStrings(deleted, "Forwarded", "X-Real-IP") {
+		t.Fatalf("adapted request-header delete = %#v", requestHeaders["delete"])
+	}
+}
+
+func equalAbuseCaddyStrings(value any, want ...string) bool {
+	values, ok := value.([]any)
+	if !ok || len(values) != len(want) {
+		return false
+	}
+	for index, expected := range want {
+		if values[index] != expected {
+			return false
+		}
+	}
+	return true
 }
 
 type browserAbuseObserver struct {
