@@ -123,6 +123,27 @@ func TestMembershipRejectsUnpinnedGroup(t *testing.T) {
 	}
 }
 
+func TestUserInGroupUsesExactPinnedFilter(t *testing.T) {
+	client, server := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		query := request.URL.Query()
+		if request.Method != http.MethodGet || request.URL.Path != "/api/v3/core/users/" ||
+			query.Get("uuid") != testUserUUID || query.Get("groups_by_pk") != testAcceptedGroup ||
+			query.Get("include_groups") != "false" || query.Get("include_roles") != "false" || query.Get("page_size") != "2" {
+			t.Errorf("unexpected membership verification: %s %s", request.Method, request.URL.RequestURI())
+		}
+		_, _ = io.WriteString(response, `{"pagination":{"next":0},"results":[{"pk":17,"uuid":"`+testUserUUID+`","username":"member","name":"Member","email":"member@example.test","is_active":true}]}`)
+	}))
+	defer server.Close()
+	defer client.Close()
+	member, err := client.UserInGroup(context.Background(), testUserUUID, testAcceptedGroup)
+	if err != nil || !member {
+		t.Fatalf("UserInGroup() = (%t, %v)", member, err)
+	}
+	if _, err := client.UserInGroup(context.Background(), testUserUUID, testUserUUID); err == nil {
+		t.Fatal("unpinned group accepted")
+	}
+}
+
 func TestInvitationOperationsForceFlowAndSingleUse(t *testing.T) {
 	requests := 0
 	client, server := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {

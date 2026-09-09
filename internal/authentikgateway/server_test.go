@@ -29,6 +29,7 @@ type fakeRemote struct {
 	err         error
 	group       string
 	userPK      int64
+	member      bool
 	displayName string
 }
 
@@ -50,18 +51,22 @@ func (remote *fakeRemote) PendingUsers(context.Context) ([]authentikcontrol.User
 	remote.wait()
 	return []authentikcontrol.User{{PK: 17, UUID: testUser}}, false, remote.err
 }
+func (remote *fakeRemote) UserInGroup(context.Context, string, string) (bool, error) {
+	remote.calls.Add(1)
+	return remote.member, remote.err
+}
 func (remote *fakeRemote) Groups(context.Context) (authentikcontrol.Group, authentikcontrol.Group, authentikcontrol.Group, error) {
 	remote.wait()
 	return authentikcontrol.Group{}, authentikcontrol.Group{}, authentikcontrol.Group{}, remote.err
 }
 func (remote *fakeRemote) AddUser(_ context.Context, group string, pk int64) error {
 	remote.calls.Add(1)
-	remote.group, remote.userPK = group, pk
+	remote.group, remote.userPK, remote.member = group, pk, true
 	return remote.err
 }
 func (remote *fakeRemote) RemoveUser(_ context.Context, group string, pk int64) error {
 	remote.calls.Add(1)
-	remote.group, remote.userPK = group, pk
+	remote.group, remote.userPK, remote.member = group, pk, false
 	return remote.err
 }
 func (remote *fakeRemote) CreateInvitation(_ context.Context, _, _, _, displayName string) (authentikcontrol.Invitation, error) {
@@ -156,12 +161,12 @@ func TestMembershipPinsGroupAndResolvesUser(t *testing.T) {
 	handler, _ := NewHandler(remote, testObjects(), time.Now)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request(http.MethodPost, "/v1/groups/accepted/add", `{"user_uuid":"`+testUser+`"}`))
-	if response.Code != http.StatusNoContent || remote.group != testObjects().Groups.Accepted || remote.userPK != 17 || remote.calls.Load() != 2 {
+	if response.Code != http.StatusNoContent || remote.group != testObjects().Groups.Accepted || remote.userPK != 17 || remote.calls.Load() != 3 {
 		t.Fatalf("unexpected transition: status=%d group=%q pk=%d calls=%d", response.Code, remote.group, remote.userPK, remote.calls.Load())
 	}
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, request(http.MethodPost, "/v1/groups/accepted/add", `{"user_uuid":"`+testUser+`","user_uuid":"`+testUser+`"}`))
-	if response.Code != http.StatusBadRequest || remote.calls.Load() != 2 {
+	if response.Code != http.StatusBadRequest || remote.calls.Load() != 3 {
 		t.Fatalf("duplicate JSON reached remote: %d calls=%d", response.Code, remote.calls.Load())
 	}
 }

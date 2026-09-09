@@ -130,6 +130,32 @@ func (client *Client) PendingUsers(ctx context.Context) ([]User, bool, error) {
 	return response.Results, response.Pagination.Next != 0, nil
 }
 
+// UserInGroup verifies one exact UUID against one pinned group without
+// returning or accepting a mutable membership set.
+func (client *Client) UserInGroup(ctx context.Context, userUUID, groupUUID string) (bool, error) {
+	if !canonicalUUID.MatchString(userUUID) || !client.pinnedGroup(groupUUID) {
+		return false, ErrInvalid
+	}
+	query := url.Values{
+		"uuid":           {userUUID},
+		"groups_by_pk":   {groupUUID},
+		"include_groups": {"false"},
+		"include_roles":  {"false"},
+		"page_size":      {"2"},
+	}
+	var response page[User]
+	if err := client.requestJSON(ctx, http.MethodGet, "/api/v3/core/users/", query, nil, http.StatusOK, &response); err != nil {
+		return false, err
+	}
+	if len(response.Results) == 0 {
+		return false, nil
+	}
+	if len(response.Results) != 1 || response.Pagination.Next != 0 || response.Results[0].UUID != userUUID || !validUser(response.Results[0]) {
+		return false, ErrRemoteInvalid
+	}
+	return true, nil
+}
+
 // Groups retrieves and verifies all three pinned groups.
 func (client *Client) Groups(ctx context.Context) (Group, Group, Group, error) {
 	accepted, err := client.group(ctx, client.objects.Groups.Accepted)

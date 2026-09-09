@@ -40,6 +40,7 @@ var canonicalSlug = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 type Remote interface {
 	UserByUUID(context.Context, string) (authentikcontrol.User, bool, error)
 	PendingUsers(context.Context) ([]authentikcontrol.User, bool, error)
+	UserInGroup(context.Context, string, string) (bool, error)
 	Groups(context.Context) (authentikcontrol.Group, authentikcontrol.Group, authentikcontrol.Group, error)
 	AddUser(context.Context, string, int64) error
 	RemoveUser(context.Context, string, int64) error
@@ -190,6 +191,13 @@ func (handler *Handler) membership(response http.ResponseWriter, request *http.R
 			err = handler.remote.AddUser(request.Context(), group, user.PK)
 		} else {
 			err = handler.remote.RemoveUser(request.Context(), group, user.PK)
+		}
+	}
+	if err == nil {
+		var member bool
+		member, err = handler.remote.UserInGroup(request.Context(), body.UserUUID, group)
+		if err == nil && member != (parts[1] == "add") {
+			err = authentikcontrol.ErrRemoteInvalid
 		}
 	}
 	if err != nil {

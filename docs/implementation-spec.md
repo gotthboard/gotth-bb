@@ -3185,7 +3185,7 @@ the gateway exposes no token route or generic proxy operation, never returns
 the raw token, and never returns the key of any other token.
 
 The gateway's outbound Go client has concrete methods only for: retrieve a user by the pinned UUID
-filter; list at most 51 users through the fixed pending-group filter; retrieve
+filter; verify that UUID through one pinned-group filter; list at most 51 users through the fixed pending-group filter; retrieve
 the three pinned groups; add/remove that exact user on one pinned group; and
 create/list/retrieve/delete invitations forced to the invitation flow. It has
 no Authentik email, task, event, or generic-object method. It uses
@@ -3241,7 +3241,8 @@ only the exact status/body pairs `400 {"error":"invalid_request"}`,
 `502 {"error":"remote_invalid"}`, or
 `503 {"error":"remote_unavailable"}`, each as one newline-terminated JSON
 object; no Authentik body, URL, numeric key, token, exception, or profile value
-appears in an error. Board's
+appears in an error. Each membership mutation performs the exact filtered
+readback and reports success only when the requested state is observed. Board's
 Unix client has a 2.5-second total timeout, never follows redirects, and never
 retries a mutation. The gateway admits at most eight concurrent Authentik
 calls; excess work receives `503` without an outbound call.
