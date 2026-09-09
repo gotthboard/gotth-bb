@@ -123,4 +123,12 @@ forum identity instead of proving recovery.
 Also retain Caddy `/data`, Authentik `/data` and `/certs`, the exact non-secret
 configuration inventory, and every required secret reference. Logical database
 archives alone do not preserve Caddy certificates or Authentik media/signing
-state.
+state. Stop Caddy and both Authentik processes before archiving those bind
+mounts. Create each filesystem archive under a root-owned mode-0700 backup
+directory with `umask 077`, preserve numeric ownership, ACLs, and extended
+attributes, and store a SHA-256 sidecar beside each mode-0600 archive. These are
+secret-bearing recovery artifacts, not the non-secret inventory. Before
+restore, verify every sidecar, require each destination bind mount to be empty,
+extract with numeric ownership/ACL/xattr preservation, and rerun preflight.
+Partial extraction leaves a contaminated destination that must be replaced
+from the retained archive; it is never treated as a retryable clean target.

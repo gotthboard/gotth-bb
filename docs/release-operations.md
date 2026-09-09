@@ -868,8 +868,11 @@ the packaged standalone Compose model and the exact sequence below:
    unchanged Board/Auth identities, and a repeated smoke pass.
 6. Create separate digested logical backups of Board and Authentik PostgreSQL
    plus a non-secret inventory of Caddy state/configuration and required secret
-   references. Restore both databases into clean task-owned services, restore
-   required non-database state, reapply the packaged Board runtime grants, and
+   references. Filesystem archives containing Caddy/Auth state are root-owned
+   mode 0600 under a mode-0700 backup directory and preserve numeric ownership,
+   ACLs, and extended attributes. Restore both databases into clean task-owned
+   services, restore required non-database state, reapply the packaged Board
+   runtime grants, and
    repeat identity and smoke checks at the exact original Board/Auth origins.
    A substituted recovery hostname or port changes the OIDC issuer and is not
    recovery evidence. Same-host storage remains an explicit Beta limitation,
