@@ -8,7 +8,12 @@ The examples contain no working secret. Copy both example environment files to
 root-owned deployment state outside the release directory, replace every
 example hostname/path/image/subject, and create all required durable directories
 before rendering Compose. Caddy's data and config directories must be writable
-by UID/GID 65532. Secret files must be regular root-owned mode-0440 files: use
+by UID/GID 65532. The Board PostgreSQL directory is UID/GID 999, the pinned
+Alpine Authentik PostgreSQL directory is UID/GID 70. Authentik data, templates,
+and certificate directories are UID/GID 1000 with modes 0770, 0700, and 0750
+respectively, matching the pinned worker's startup contract. The database
+directories are mode 0700.
+Secret files must be regular root-owned mode-0440 files: use
 group 999 for both PostgreSQL passwords, group 1000 for the Authentik instance
 key, and group 65532 for the Board database URL, OIDC secret, and cursor
 keyring. The pinned Authentik server receives supplemental groups 999 and
@@ -30,12 +35,13 @@ validates their framing, exports them only into the Authentik process, and
 replaces itself. Docker image/configuration metadata retains no secret value.
 
 Set `GOTTH_BB_COMPOSE_ENV_FILE` to the absolute deployment-environment path.
-Then validate before starting anything:
+Run the root-only preflight before starting anything. It rejects mismatched
+public/OIDC origins, overlapping durable paths, incorrect numeric ownership or
+modes, secret framing, mutable Board image naming, and an invalid Compose
+render:
 
 ```sh
-docker compose --env-file "$GOTTH_BB_COMPOSE_ENV_FILE" \
-  --project-directory deploy/standalone \
-  -f deploy/standalone/compose.yml config --quiet
+sudo deploy/standalone/preflight.sh "$GOTTH_BB_COMPOSE_ENV_FILE"
 ```
 
 For a fresh install, start both PostgreSQL services and Authentik server/worker

@@ -8,10 +8,13 @@ from authentik.providers.oauth2.models import OAuth2Provider
 
 
 def read_secret(path):
-    value = Path(path).read_text(encoding="utf-8").rstrip("\n")
-    if not value or "\n" in value or "\r" in value:
+    raw = Path(path).read_bytes()
+    if not raw or len(raw) > 4096 or b"\x00" in raw or b"\n" in raw or b"\r" in raw:
         raise RuntimeError("OIDC client secret file has invalid framing")
-    return value
+    try:
+        return raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as error:
+        raise RuntimeError("OIDC client secret file is not UTF-8") from error
 
 
 secret = read_secret("/run/secrets/oidc_client_secret")

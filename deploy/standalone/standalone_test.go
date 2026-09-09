@@ -84,7 +84,8 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 		t.Fatal("Board blueprint couples subjects to the Authentik instance secret")
 	}
 	if !strings.Contains(apply, `os.environ.pop("GOTTH_BB_OIDC_CLIENT_SECRET", None)`) ||
-		!strings.Contains(apply, `provider.client_secret != secret`) {
+		!strings.Contains(apply, `provider.client_secret != secret`) ||
+		!strings.Contains(apply, `b"\x00" in raw`) || !strings.Contains(apply, `b"\n" in raw`) {
 		t.Fatal("blueprint apply does not clear and verify the mounted provider secret")
 	}
 }
@@ -104,6 +105,27 @@ func TestFreshDatabaseRoleInitializationDoesNotPutSecretInArguments(t *testing.T
 	}
 	if strings.Contains(init, `--set=runtime_password`) {
 		t.Fatal("runtime-role initializer places the password in process arguments")
+	}
+}
+
+func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
+	t.Parallel()
+	preflight := readContractFile(t, "preflight.sh")
+	for _, required := range []string{
+		`[ "$(id -u)" -eq 0 ]`,
+		`deployment.env must be root:root mode 0600`,
+		`public URL and Board Caddy host differ`,
+		`OIDC redirect URI differs from the Board callback`,
+		`Board and Authentik public origins must differ`,
+		`durable and secret paths overlap`,
+		`contains NUL, CR, or LF framing`,
+		`app OIDC issuer differs from dedicated Authentik`,
+		`docker compose --env-file "$deployment_env"`,
+		`echo STANDALONE_PREFLIGHT_OK`,
+	} {
+		if !strings.Contains(preflight, required) {
+			t.Errorf("preflight.sh lacks %q", required)
+		}
 	}
 }
 

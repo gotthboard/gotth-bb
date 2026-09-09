@@ -46,6 +46,7 @@ var testDeploymentFiles = map[string]struct {
 	"deploy/standalone/compose.yml":                    {data: "name: gotth-bb-standalone\nservices: {}\n", mode: 0o644},
 	"deploy/standalone/deployment.env.example":         {data: "GOTTH_BB_IMAGE=example\n", mode: 0o644},
 	"deploy/standalone/postgresql/init-runtime.sh":     {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
+	"deploy/standalone/preflight.sh":                   {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
 }
 
 type boundedFailWriter struct {
@@ -126,6 +127,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/deploy/standalone/compose.yml",
 		root + "/deploy/standalone/deployment.env.example",
 		root + "/deploy/standalone/postgresql/init-runtime.sh",
+		root + "/deploy/standalone/preflight.sh",
 		root + "/gotth-bb",
 		root + "/gotth-bb-migrate",
 		root + "/gotth-bb-operator",
@@ -154,6 +156,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"git show " + testCommit + ":deploy/standalone/compose.yml",
 		"git show " + testCommit + ":deploy/standalone/deployment.env.example",
 		"git show " + testCommit + ":deploy/standalone/postgresql/init-runtime.sh",
+		"git show " + testCommit + ":deploy/standalone/preflight.sh",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb ./cmd/forum",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-migrate ./cmd/migrate",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-operator ./cmd/operator",
