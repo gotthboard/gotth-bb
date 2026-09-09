@@ -1438,8 +1438,10 @@ grants and the effective authority Authentik enforces:
   inherited excess, while the same action on a non-owned invitation is denied;
   and
 - successful creation of another API token forced to the same service account,
-  as the documented `rbac_allow_create_without_perm` excess, followed by
-  fixture cleanup through the disposable tenant's authoritative database.
+  retrieval of its newly granted key, and one authenticated read through that
+  replacement token, as the documented `rbac_allow_create_without_perm`
+  excess, followed by fixture cleanup through the disposable tenant's
+  authoritative database.
 
 A separate Go-client contract test proves callers cannot supply an arbitrary
 user query, group, flow, invitation, origin, path, method, or redirect. It
@@ -1455,8 +1457,8 @@ This is an expected upstream `204`, not a fabricated denial. Removing view
 permission must prove that retrieve/list/delete become unusable, documenting
 why permission subtraction cannot satisfy the required reconciliation surface.
 It must also prove Authentik permits the service account to mint a replacement
-API token for itself without `add_token`. Neither upstream action may exist in
-the Board-to-gateway protocol.
+API token for itself without `add_token`, retrieve its key, and authenticate
+with it. Neither upstream action may exist in the Board-to-gateway protocol.
 The Board-to-gateway contract test then proves the containment boundary: Board
 has no control-token mount or file descriptor, only the expected Board UID can
 connect, every route and method outside the closed Unix protocol is rejected,

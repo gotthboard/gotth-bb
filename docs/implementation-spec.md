@@ -3159,8 +3159,10 @@ request can exercise that upstream capability.
 
 Authentik's token API separately declares create permissible without model
 permission for every authenticated non-superuser and forces the new token to
-that requester's own account. The raw service token can therefore mint another
-service-account API token even though its role has no `add_token` permission.
+that requester's own account. Creation grants that requester object permission
+to retrieve the new key. The raw service token can therefore mint and use
+another service-account API token even though its role has no `add_token`
+permission.
 That is a second documented upstream excess, not an admissible Board feature:
 the gateway exposes no token route or generic proxy operation, never returns
 the raw token, and never returns the key of any other token.

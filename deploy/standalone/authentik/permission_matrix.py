@@ -19,11 +19,11 @@ FIXTURE = "gotth-bb-b109-permission-fixture"
 CHILD_TOKEN = FIXTURE + "-child-token"
 
 
-def call(method, path, expected, body=None):
+def call(method, path, expected, body=None, request_headers=None):
     response = requests.request(
         method,
         ORIGIN + path,
-        headers=HEADERS,
+        headers=HEADERS if request_headers is None else request_headers,
         json=body,
         timeout=2,
         allow_redirects=False,
@@ -135,6 +135,19 @@ try:
     control_user = User.objects.get(username="gotth-bb-control")
     if child_token.user_id != control_user.pk or child_token.user_id == test_user.pk:
         raise RuntimeError("self-issued token was not forced to control service account")
+    child_key = call("GET", f"/core/tokens/{CHILD_TOKEN}/view_key/", {200}).json()["key"]
+    if not child_key or len(child_key) > 4096 or any(char in child_key for char in "\r\n\x00"):
+        raise RuntimeError("self-issued token key has invalid framing")
+    call(
+        "GET",
+        f"/core/users/?uuid={control_user.uuid}&page_size=2",
+        {200},
+        request_headers={
+            "Authorization": f"Bearer {child_key}",
+            "Accept": "application/json",
+        },
+    )
+    child_key = ""
     forbidden("GET", "/tasks/tasks/")
     forbidden("GET", "/events/events/export/")
 
