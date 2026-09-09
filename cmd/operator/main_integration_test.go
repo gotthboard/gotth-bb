@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 
 const operatorTestDatabase = "gotth_bb_alpha1_operator_command_test"
 
-func TestOperatorBootstrapCommandOnPostgreSQL17(t *testing.T) {
+func TestOperatorGovernanceCommandsOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Fatal("GOTTH_BB_TEST_DATABASE_URL is required for integration tests")
@@ -112,5 +113,72 @@ func TestOperatorBootstrapCommandOnPostgreSQL17(t *testing.T) {
 	}
 	if err := setup.QueryRow(ctx, `SELECT count(*) FROM public.moderation_actions`).Scan(&auditCount); err != nil || auditCount != 1 {
 		t.Fatalf("second run audit count = (%d, %v), want one", auditCount, err)
+	}
+
+	if _, err := setup.Exec(ctx, `INSERT INTO public.sessions
+		(token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at)
+		VALUES ($1, $3, $4, $4, $4, $5), ($2, $3, $4, $4, $4, $5)`,
+		bytes.Repeat([]byte{0x41}, 32), bytes.Repeat([]byte{0x42}, 32), userID, createdAt, createdAt.Add(time.Hour)); err != nil {
+		t.Fatalf("insert sessions before identity rebind: %v", err)
+	}
+	if _, err := setup.Exec(ctx, `INSERT INTO public.oidc_login_attempts
+		(state_hash, nonce_ciphertext, pkce_verifier_ciphertext, purpose, return_path, created_at, expires_at)
+		VALUES ($1, $2, $3, 'login', '/', $4, $5)`,
+		bytes.Repeat([]byte{0x43}, 32), []byte{0x44}, []byte{0x45}, createdAt, createdAt.Add(time.Hour)); err != nil {
+		t.Fatalf("insert pending login before identity rebind: %v", err)
+	}
+	const replacementIssuer = "https://auth.board.example.test/application/o/gotth-bb/"
+	const replacementSubject = "replacement-user-uuid"
+	rebind := func(rebindContext context.Context, database operatorConnection, exactClock func() time.Time, oldIssuer, oldSubject, newIssuer, newSubject, operatorIdentifier string, requestID pgtype.UUID) (governance.IdentityRebindResult, error) {
+		return governance.RebindExternalIdentity(
+			rebindContext, database, exactClock,
+			oldIssuer, oldSubject, newIssuer, newSubject, operatorIdentifier, requestID,
+		)
+	}
+	rebindArgs := []string{
+		"rebind-external-identity",
+		"--old-issuer", issuer, "--old-subject", subject,
+		"--new-issuer", replacementIssuer, "--new-subject", replacementSubject,
+		"--operator", "integration-operator",
+	}
+	clock = func() time.Time { return createdAt.Add(2 * time.Second) }
+	output.Reset()
+	if err := runOperator(
+		ctx, lookup, rebindArgs, &output, bytes.NewReader(bytes.Repeat([]byte{0x29}, 16)),
+		clock, connect, bootstrap, rebind,
+	); err != nil {
+		t.Fatalf("runOperator(rebind) returned error: %v", err)
+	}
+	var reboundIssuer, reboundSubject, rebindAction, previousState, resultingState string
+	var revokedSessions, pendingAttempts int
+	if err := setup.QueryRow(ctx, `SELECT identity.issuer, identity.subject,
+		(SELECT count(*) FROM public.sessions WHERE user_id = $1 AND revoked_at IS NOT NULL),
+		(SELECT count(*) FROM public.oidc_login_attempts WHERE consumed_at IS NULL),
+		action.action_type, action.previous_state::text, action.resulting_state::text
+		FROM public.external_identities AS identity
+		JOIN public.moderation_actions AS action ON action.target_user_id = identity.user_id
+		WHERE identity.user_id = $1 AND action.action_type = 'rebind_external_identity'`, userID).Scan(
+		&reboundIssuer, &reboundSubject, &revokedSessions, &pendingAttempts,
+		&rebindAction, &previousState, &resultingState,
+	); err != nil || reboundIssuer != replacementIssuer || reboundSubject != replacementSubject ||
+		revokedSessions != 2 || pendingAttempts != 0 || rebindAction != "rebind_external_identity" ||
+		strings.Contains(previousState, issuer) || strings.Contains(previousState, subject) ||
+		strings.Contains(resultingState, replacementIssuer) || strings.Contains(resultingState, replacementSubject) {
+		t.Fatalf("rebind state = (%q, %q, sessions %d, attempts %d, action %q, previous %q, resulting %q, %v)",
+			reboundIssuer, reboundSubject, revokedSessions, pendingAttempts, rebindAction, previousState, resultingState, err)
+	}
+	if !strings.Contains(output.String(), fmt.Sprintf("user_id=%d", userID)) ||
+		!strings.Contains(output.String(), "revoked_sessions=2 discarded_login_attempts=1") {
+		t.Fatalf("runOperator(rebind) output = %q", output.String())
+	}
+	output.Reset()
+	if err := runOperator(
+		ctx, lookup, rebindArgs, &output, bytes.NewReader(bytes.Repeat([]byte{0x30}, 16)),
+		clock, connect, bootstrap, rebind,
+	); err == nil || output.Len() != 0 {
+		t.Fatalf("second rebind = (output %q, error %v), want no output/error", output.String(), err)
+	}
+	if err := setup.QueryRow(ctx, `SELECT count(*) FROM public.moderation_actions`).Scan(&auditCount); err != nil || auditCount != 2 {
+		t.Fatalf("second rebind audit count = (%d, %v), want two", auditCount, err)
 	}
 }

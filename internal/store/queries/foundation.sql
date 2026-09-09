@@ -167,6 +167,88 @@ SELECT updated.id AS user_id, audit.id AS audit_id
 FROM updated
 JOIN audit ON audit.target_user_id = updated.id;
 
+-- name: RebindExternalIdentityAndAudit :one
+WITH target AS MATERIALIZED (
+    SELECT identity.user_id
+    FROM public.external_identities AS identity
+    WHERE identity.issuer = sqlc.arg(old_issuer)
+      AND identity.subject = sqlc.arg(old_subject)
+    FOR UPDATE OF identity
+),
+updated AS (
+    UPDATE public.external_identities AS identity
+    SET issuer = sqlc.arg(new_issuer),
+        subject = sqlc.arg(new_subject),
+        last_verified_at = greatest(identity.last_verified_at, sqlc.arg(at_time)::timestamptz)
+    FROM target
+    WHERE identity.user_id = target.user_id
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.external_identities AS collision
+          WHERE collision.issuer = sqlc.arg(new_issuer)
+            AND collision.subject = sqlc.arg(new_subject)
+            AND collision.user_id <> target.user_id
+      )
+    RETURNING identity.user_id
+),
+revoked AS (
+    UPDATE public.sessions AS session
+    SET revoked_at = greatest(session.issued_at, sqlc.arg(at_time)::timestamptz)
+    FROM updated
+    WHERE session.user_id = updated.user_id
+      AND session.revoked_at IS NULL
+    RETURNING session.id
+),
+discarded AS (
+    DELETE FROM public.oidc_login_attempts AS attempt
+    WHERE attempt.consumed_at IS NULL
+      AND EXISTS (SELECT 1 FROM updated)
+    RETURNING attempt.state_hash
+),
+counts AS MATERIALIZED (
+    SELECT
+        (SELECT count(*)::bigint FROM revoked) AS revoked_sessions,
+        (SELECT count(*)::bigint FROM discarded) AS discarded_login_attempts
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        operator_identifier,
+        target_type,
+        target_user_id,
+        action_type,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'operator',
+        sqlc.arg(operator_identifier),
+        'user',
+        updated.user_id,
+        'rebind_external_identity',
+        jsonb_build_object('provider', 'previous'),
+        jsonb_build_object(
+            'provider', 'replacement',
+            'revoked_sessions', counts.revoked_sessions,
+            'discarded_login_attempts', counts.discarded_login_attempts
+        ),
+        sqlc.arg(request_id),
+        sqlc.arg(at_time)::timestamptz
+    FROM updated
+    CROSS JOIN counts
+    RETURNING id, target_user_id
+)
+SELECT
+    updated.user_id,
+    audit.id AS audit_id,
+    counts.revoked_sessions,
+    counts.discarded_login_attempts
+FROM updated
+JOIN audit ON audit.target_user_id = updated.user_id
+CROSS JOIN counts;
+
 -- name: ClaimInitialAdministratorAndAudit :one
 WITH current_session AS MATERIALIZED (
     SELECT session.id, session.user_id

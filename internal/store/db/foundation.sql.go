@@ -493,6 +493,126 @@ func (q *Queries) LockGovernanceState(ctx context.Context) (bool, error) {
 	return singleton, err
 }
 
+const rebindExternalIdentityAndAudit = `-- name: RebindExternalIdentityAndAudit :one
+WITH target AS MATERIALIZED (
+    SELECT identity.user_id
+    FROM public.external_identities AS identity
+    WHERE identity.issuer = $1
+      AND identity.subject = $2
+    FOR UPDATE OF identity
+),
+updated AS (
+    UPDATE public.external_identities AS identity
+    SET issuer = $3,
+        subject = $4,
+        last_verified_at = greatest(identity.last_verified_at, $5::timestamptz)
+    FROM target
+    WHERE identity.user_id = target.user_id
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.external_identities AS collision
+          WHERE collision.issuer = $3
+            AND collision.subject = $4
+            AND collision.user_id <> target.user_id
+      )
+    RETURNING identity.user_id
+),
+revoked AS (
+    UPDATE public.sessions AS session
+    SET revoked_at = greatest(session.issued_at, $5::timestamptz)
+    FROM updated
+    WHERE session.user_id = updated.user_id
+      AND session.revoked_at IS NULL
+    RETURNING session.id
+),
+discarded AS (
+    DELETE FROM public.oidc_login_attempts AS attempt
+    WHERE attempt.consumed_at IS NULL
+      AND EXISTS (SELECT 1 FROM updated)
+    RETURNING attempt.state_hash
+),
+counts AS MATERIALIZED (
+    SELECT
+        (SELECT count(*)::bigint FROM revoked) AS revoked_sessions,
+        (SELECT count(*)::bigint FROM discarded) AS discarded_login_attempts
+),
+audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind,
+        operator_identifier,
+        target_type,
+        target_user_id,
+        action_type,
+        previous_state,
+        resulting_state,
+        request_id,
+        created_at
+    )
+    SELECT
+        'operator',
+        $6,
+        'user',
+        updated.user_id,
+        'rebind_external_identity',
+        jsonb_build_object('provider', 'previous'),
+        jsonb_build_object(
+            'provider', 'replacement',
+            'revoked_sessions', counts.revoked_sessions,
+            'discarded_login_attempts', counts.discarded_login_attempts
+        ),
+        $7,
+        $5::timestamptz
+    FROM updated
+    CROSS JOIN counts
+    RETURNING id, target_user_id
+)
+SELECT
+    updated.user_id,
+    audit.id AS audit_id,
+    counts.revoked_sessions,
+    counts.discarded_login_attempts
+FROM updated
+JOIN audit ON audit.target_user_id = updated.user_id
+CROSS JOIN counts
+`
+
+type RebindExternalIdentityAndAuditParams struct {
+	OldIssuer          string
+	OldSubject         string
+	NewIssuer          string
+	NewSubject         string
+	AtTime             pgtype.Timestamptz
+	OperatorIdentifier pgtype.Text
+	RequestID          pgtype.UUID
+}
+
+type RebindExternalIdentityAndAuditRow struct {
+	UserID                 int64
+	AuditID                int64
+	RevokedSessions        int64
+	DiscardedLoginAttempts int64
+}
+
+func (q *Queries) RebindExternalIdentityAndAudit(ctx context.Context, arg RebindExternalIdentityAndAuditParams) (RebindExternalIdentityAndAuditRow, error) {
+	row := q.db.QueryRow(ctx, rebindExternalIdentityAndAudit,
+		arg.OldIssuer,
+		arg.OldSubject,
+		arg.NewIssuer,
+		arg.NewSubject,
+		arg.AtTime,
+		arg.OperatorIdentifier,
+		arg.RequestID,
+	)
+	var i RebindExternalIdentityAndAuditRow
+	err := row.Scan(
+		&i.UserID,
+		&i.AuditID,
+		&i.RevokedSessions,
+		&i.DiscardedLoginAttempts,
+	)
+	return i, err
+}
+
 const updateExternalIdentityVerification = `-- name: UpdateExternalIdentityVerification :exec
 UPDATE public.external_identities
 SET last_verified_at = $1

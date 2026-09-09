@@ -49,6 +49,61 @@ func TestRunBootstrapsExactAdministratorAndReportsCommittedIDs(t *testing.T) {
 	}
 }
 
+func TestRunOperatorRebindsExactExternalIdentityAndReportsCommittedCounts(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 8, 20, 30, 0, 123456789, time.UTC)
+	connection := &operatorTestConnection{}
+	var output bytes.Buffer
+	err := runOperator(
+		context.Background(),
+		operatorMapLookup(map[string]string{"DATABASE_URL": "postgres://operator:secret@db.example.test:5433/forum?sslmode=require"}),
+		[]string{
+			"rebind-external-identity",
+			"--old-issuer", "https://shared.example/application/o/gotth-bb/", "--old-subject", "old-subject",
+			"--new-issuer", "https://auth.board.example/application/o/gotth-bb/", "--new-subject", "new-subject",
+			"--operator", "operator@example.test",
+		},
+		&output, bytes.NewReader(bytes.Repeat([]byte{0x43}, 16)), func() time.Time { return now },
+		func(context.Context, *pgx.ConnConfig) (operatorConnection, error) { return connection, nil },
+		panicAdministratorBootstrap,
+		func(ctx context.Context, database operatorConnection, clock func() time.Time, oldIssuer, oldSubject, newIssuer, newSubject, operator string, requestID pgtype.UUID) (governance.IdentityRebindResult, error) {
+			if ctx == nil || database != connection || !clock().Equal(now) ||
+				oldIssuer != "https://shared.example/application/o/gotth-bb/" || oldSubject != "old-subject" ||
+				newIssuer != "https://auth.board.example/application/o/gotth-bb/" || newSubject != "new-subject" ||
+				operator != "operator@example.test" || !requestID.Valid || requestID.Bytes[6]>>4 != 4 || requestID.Bytes[8]>>6 != 2 {
+				t.Fatal("identity rebinder did not receive exact operator authority")
+			}
+			return governance.IdentityRebindResult{UserID: 41, AuditID: 73, RevokedSessions: 2, DiscardedLoginAttempts: 3}, nil
+		},
+	)
+	want := "external identity rebind committed: user_id=41 audit_id=73 revoked_sessions=2 discarded_login_attempts=3\n"
+	if err != nil || output.String() != want || connection.closeCalls != 1 {
+		t.Fatalf("runOperator() = (%q, %v, close calls %d)", output.String(), err, connection.closeCalls)
+	}
+}
+
+func TestRunOperatorRejectsIncompleteRebindBeforeConfiguration(t *testing.T) {
+	t.Parallel()
+
+	lookup := func(string) (string, bool) { panic("configuration must not be read") }
+	for _, args := range [][]string{
+		{"rebind-external-identity"},
+		{"rebind-external-identity", "--old-issuer", "old", "--old-subject", "old-subject", "--new-issuer", "new", "--new-subject", "new-subject"},
+		{"rebind-external-identity", "--old-issuer", "old", "--old-subject", "old-subject", "--new-issuer", "new", "--new-subject", "new-subject", "--operator", "operator", "extra"},
+	} {
+		if err := runOperator(
+			context.Background(), lookup, args, io.Discard, bytes.NewReader(make([]byte, 16)), time.Now,
+			panicOperatorConnect, panicAdministratorBootstrap,
+			func(context.Context, operatorConnection, func() time.Time, string, string, string, string, string, pgtype.UUID) (governance.IdentityRebindResult, error) {
+				panic("identity rebinder must not run")
+			},
+		); err == nil {
+			t.Fatalf("runOperator() accepted arguments %q", args)
+		}
+	}
+}
+
 func TestRunReportsReleaseIdentityWithoutDatabaseAccess(t *testing.T) {
 	t.Parallel()
 

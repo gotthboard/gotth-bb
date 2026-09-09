@@ -137,8 +137,8 @@ func TestApplyReleaseUpgradesPopulatedAlpha2OnPostgreSQL17(t *testing.T) {
 	); err != nil {
 		t.Fatalf("inspect upgraded Alpha.2 database: %v", err)
 	}
-	if migrationCount != 11 || postCount != 1 || !rendererComplete || !projectionComplete {
-		t.Fatalf("upgraded Alpha.2 state = (migrations %d, posts %d, renderer %t, projection %t), want 11/1/true/true", migrationCount, postCount, rendererComplete, projectionComplete)
+	if migrationCount != 12 || postCount != 1 || !rendererComplete || !projectionComplete {
+		t.Fatalf("upgraded Alpha.2 state = (migrations %d, posts %d, renderer %t, projection %t), want 12/1/true/true", migrationCount, postCount, rendererComplete, projectionComplete)
 	}
 }
 

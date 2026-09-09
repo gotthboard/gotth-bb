@@ -25,6 +25,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000009_unread_state.sql",
 		"000010_administration_completion.sql",
 		"000011_publication_limits.sql",
+		"000012_external_identity_rebind.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -37,6 +38,31 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
 		}
+	}
+}
+
+func TestExternalIdentityRebindMigrationAddsOnlyTheGovernedAuditAction(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000012_external_identity_rebind.sql")
+	if err != nil {
+		t.Fatalf("read external-identity-rebind migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"UPDATE public.external_identities",
+		"UPDATE public.sessions",
+		"DELETE FROM public.oidc_login_attempts",
+		"INSERT INTO public.moderation_actions",
+		"CREATE TABLE",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("external-identity-rebind migration contains operator work %q", forbidden)
+		}
+	}
+	if !strings.Contains(sql, "'rebind_external_identity'") ||
+		strings.Count(sql, "DROP CONSTRAINT") != 1 || strings.Count(sql, "ADD CONSTRAINT") != 1 {
+		t.Fatal("external-identity-rebind migration does not make the one bounded audit action admissible")
 	}
 }
 
