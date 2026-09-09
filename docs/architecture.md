@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Draft constrained by PRD 0.6 |
+| Status | Draft constrained by PRD 0.7 |
 | Product | GOTTH Board |
 | Applies to | Version 1.0 unless noted |
 | Governing document | [Product requirements](prd.md) |
@@ -18,6 +18,9 @@
 - Use Tailwind CSS for a compiled, static stylesheet.
 - Use PostgreSQL as the only durable application store in version 1.0.
 - Use Authentik OIDC as the only authentication authority.
+- Keep registration policy, approval, local suspension, and Board sessions in
+  Board; use Authentik only to execute credential enrollment, email
+  verification, authentication, and exact Board-group eligibility.
 - Store opaque, revocable sessions server-side.
 - Model area visibility and posting mode as independent columns.
 - Model each non-root post as an immutable reply to one earlier post in the
@@ -41,6 +44,8 @@ flowchart LR
     C -->|HTTP on loopback| A[Go forum service]
     C -->|HTTP on loopback| I[Dedicated Authentik server]
     A -->|OIDC redirects and validation| I
+    I -->|fixed fail-closed enrollment admission and signed pending intake| A
+    A -->|restricted API: invitations, task status, exact group membership| I
     A -->|SQL| P[(Board PostgreSQL)]
     I -->|SQL and task coordination| IP[(Authentik PostgreSQL)]
     IW[Authentik worker] --> IP
@@ -110,6 +115,40 @@ Authorization is deliberately split:
 
 This avoids the classic failure where a topic page is protected but search,
 counts, or an HTMX fragment leaks the same topic.
+
+Registration uses the same ownership rule. Board stores the effective closed
+mode. Each dedicated Authentik enrollment flow binds an expression policy that
+performs one fixed HTTPS GET to the corresponding public Board admission path,
+with a two-second timeout, redirects disabled, and success defined only as an
+empty `204`. Board outage, database uncertainty, another status, a redirect,
+or malformed state denies the flow. The endpoint accepts no body, identity,
+URL, or object selector and returns no policy detail. This is a read-only
+availability dependency, not an administrative callback.
+
+Approval enrollment performs a second fixed HTTPS POST only after Authentik
+email verification. It carries one at-most-60-second JWT made by the dedicated
+Board OIDC provider and containing exact issuer, audience, purpose, flow,
+numeric Authentik user key, immutable user UUID, and bounded display/email
+claims. Board verifies the provider algorithm/key, issuer, audience, purpose,
+flow, expiry, and body size before an idempotent insert. Replays cannot reopen
+a rejected or completed registration. No unsigned identity input becomes a
+pending account.
+
+Board's outbound Authentik client reads one root-owned API-token secret and is
+hard-coded to the configured issuer origin and exact blueprint-provided object
+identities. It rejects redirects, cross-origin locations, oversized bodies,
+unknown JSON fields where the local projection requires closure, and ambiguous
+timeouts. The token belongs to a service account without admin-interface
+access. Global authority is limited to read-user, invitation create/view/delete,
+and task view; object authority is limited to view plus add/remove user on the
+exact accepted, pending, and suspended Board groups. The client exposes no
+generic method accepting a URL, HTTP verb, model name, or caller-owned object
+identifier.
+
+Cross-database access is forbidden. Board never connects to Authentik
+PostgreSQL, and Authentik never connects to Board PostgreSQL. The signed intake,
+read-only admission endpoint, and restricted HTTP API are the complete
+cross-system mechanisms.
 
 ### 3.5 Repository boundary
 
@@ -342,8 +381,16 @@ identity access, or content history.
 - `sessions`: hashed opaque token, user, issued/expiry/validation timestamps,
   revocation state, and minimal client audit fields.
 - `oidc_login_attempts`: short-lived, one-time state/nonce/PKCE records.
-- `site_settings`: one bounded presentation/rules singleton with an
-  administration revision.
+- `site_settings`: one bounded presentation/rules/control singleton with an
+  administration revision, registration and maintenance modes, publication
+  policy, and session-policy values constrained by deployment ceilings.
+- `pending_registrations`: bounded Authentik identity coordinates and closed
+  pending/approved/rejected state, with no password or token material.
+- `identity_reconciliations`: one current restrictive cross-system transition
+  state per affected identity; it is operational truth, not an audit substitute.
+- `email_test_attempts`: bounded idempotency/rate/status state for tests sent
+  only to the requesting administrator's current verified address; no address
+  or body is stored.
 - `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order,
   and administration revision.
 - `area_groups`: local groups allowed to view a group-restricted area.
@@ -443,6 +490,28 @@ silently break referential or audit integrity.
 - Report processing: lock the report, enforce self-claim and strict terminal
   transitions, then append the audit event in the same transaction as the
   assignment, note, resolution, or dismissal.
+- Registration-policy change: lock the settings singleton, validate the
+  deployment ceilings and positive revision, update the closed mode, and append
+  one audit event. Authentik flow admission reads that committed row directly;
+  there is no asynchronously copied permissive mode.
+- Approval: lock the pending row and actor, record a restrictive applying
+  state, add and verify exact Authentik accepted-group membership, then commit
+  approved state and one audit. Failure never fabricates approval. Rejection
+  commits terminal denial locally and removes pending/accepted group access
+  before it can be reported complete.
+- Suspension: commit the existing local suspension and all-session revocation
+  first; Authentik accepted-group removal follows as a recorded reconciliation.
+  Local denial remains authoritative during failure. Reinstatement reverses the
+  order: verified Authentik eligibility first, then the guarded local
+  reinstatement transaction.
+- Session revocation: lock and revalidate the administrator and selected local
+  session or target account, set finite revocation time, and append one audit in
+  the same Board transaction. A server-authenticated action handle, not a raw
+  cookie or hash, selects a single session.
+- Email test: reserve one idempotency/rate slot in Board before the external
+  call, queue through Authentik, and store only queued/observed/failed/unknown
+  state plus finite timestamps. Unknown delivery is never retried
+  automatically because SMTP may already have accepted the message.
 
 Report-detail reads prove current persisted staff authority in both the detail
 and notes queries. The notes query returns an explicit authorized empty

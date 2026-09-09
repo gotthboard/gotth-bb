@@ -83,3 +83,39 @@ method-denial behavior and must not reach an inner session, body, or database
 boundary when preflight rejects them. Future RSS, notification, related-topic,
 API, federation, media, and attachment routes do not exist in version 1.0 and
 are explicitly outside the applicable Beta leakage set.
+
+## B1-09 admitted route delta
+
+These are exact planned additions, deliberately kept out of the current
+machine-checked table until their production registrations exist. B1-09-03/04
+must add each route and its complete metadata to the table in the same commit
+as the implementation; route-inventory tests reject either an invented row or
+an unrecorded registration.
+
+- `GET /registration/admission/{mode}` — public fixed empty allow/deny; no
+  session; settings read only; no-store.
+- `POST /registration/intake/approval` — Authentik-signed JWT, not browser
+  authority and therefore not browser CSRF; bounded idempotent pending insert;
+  fixed empty response.
+- `GET /admin/control` and `POST /admin/control` — current/revalidated
+  administrator; settings read or revision-guarded audited update.
+- `GET /admin/registrations` plus
+  `POST /admin/registrations/{registrationID}/approve` and `/reject` — bounded
+  pending reads and one restrictive audited identity transition.
+- `GET /admin/invitations`, `POST /admin/invitations`, and
+  `POST /admin/invitations/{handle}/revoke` — bounded exact-flow invitation
+  read/create/revoke; mutation forms are CSRF protected and audited.
+- `GET /admin/accounts/{userID}/sessions`,
+  `POST /admin/sessions/{handle}/revoke`, and
+  `POST /admin/accounts/{userID}/sessions/revoke` — bounded non-secret local
+  session view and one/all audited revocation.
+- `POST /admin/accounts/{userID}/identity/reconcile` — retry one restrictive
+  Authentik group reconciliation; no generic remote selector.
+- `GET /admin/email` and `POST /admin/email/test` — bounded configured/task/test
+  status and one rate-limited self-addressed test.
+
+Every B1-09 administrator POST uses the existing current-session,
+revalidation, CSRF, bounded-body, request-ID, private/no-store, and audit rules.
+The signed intake route requires a narrowly amended inventory rule because its
+authority is an external signed assertion rather than a browser cookie; that
+exception must be exact and cannot weaken CSRF coverage for any browser POST.

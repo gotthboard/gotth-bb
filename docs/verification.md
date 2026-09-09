@@ -42,6 +42,7 @@ exists.
 | --- | --- | --- | --- |
 | ID-001–ID-005 | `auth`, identity store, local role/group stores | UT, DB, HTTP, E2E, SEC | Alpha.1 |
 | ID-006–ID-009 | session store/middleware, suspension policy | UT, DB, HTTP, SEC | Alpha.1 |
+| ID-014–ID-016 | registration modes, pending identity, restricted Authentik reconciliation | UT, DB, HTTP, E2E, SEC, OPS | B1-09 |
 | ACL-001–ACL-003 | area schema and policy types | UT, DB, REV | Alpha.1 |
 | ACL-004–ACL-006 | every area-owned query and route | DB, HTTP, E2E, SEC | Alpha.1 |
 | ACL-007–ACL-008 | admin/moderation transactions and audit | DB, HTTP, REV | Alpha.1 |
@@ -60,9 +61,11 @@ exists.
 | MOD-007–MOD-008 | audit transaction/store | DB, HTTP, REV | Alpha.1 |
 | ADMIN-001–ADMIN-003 | area/account/group administration | UT, DB, HTTP, E2E | Alpha.1 minimum; Beta complete |
 | ADMIN-004–ADMIN-005 | settings and authorized counts | DB, HTTP, E2E | Beta.1 |
+| ADMIN-006–ADMIN-009 | Board control settings, registrations, sessions, and email operations | UT, DB, HTTP, E2E, A11Y, SEC, OPS | B1-09 |
 | UX-001–UX-005 | Templ/HTMX/Tailwind UI | HTTP, E2E, A11Y | Beta.1 |
 | SEC-001–SEC-005 | middleware, rendering, logging, config | UT, HTTP, SEC, REV | Alpha.1, repeated at RC |
 | OPS-001–OPS-005 | migrations, health, logs, deployment | DB, OPS, REV | Alpha.1 minimum; Stable complete |
+| OPS-006 | standalone six-service deployment and dual-database recovery | E2E, SEC, OPS, REV | B1-08 |
 
 Every implementation issue narrows these grouped rows to the exact requirement
 IDs it changes.
@@ -1367,3 +1370,112 @@ HTTPS scheme upstream, and leaves unrelated host routes unchanged. Final live
 HTTPS browser, restart, backup, rollback-readiness,
 artifact-custody, two-CLEAN-review, guarded-delivery, and owner-confirmation
 rules remain mandatory.
+
+## 24. B1-09 Board administration control-plane evidence contract
+
+### 24.1 Schema, settings, and maintenance
+
+- Fresh and 000012-upgrade databases reach exact head 000013 with registration
+  closed, maintenance off, packaged policy values, positive revisions, exact
+  checks/defaults/indexes/foreign keys, and no rewritten content or identity.
+- Catalog and restricted-role tests prove the exact grant delta and reject
+  settings insert/delete/key update, pending/email-state deletion, token-hash
+  reads, Authentik database access, and every unlisted mutation.
+- Control mutation tests cover every closed value, malformed/duplicate field,
+  UTF-8/control/size edge, startup ceiling, cross-field rule, stale/no-op/
+  overflow revision, actor revocation, timeout, rollback, audit failure, and
+  unknown commit. Each successful request has one settings change and one
+  redacted audit.
+- Publication tests prove new database policy is used in the existing locked
+  counter transaction under concurrent old/new-account requests, restart, and
+  a simultaneous policy change. The immutable request limiter and blocked-link
+  policy do not drift.
+- Session authentication proves tightened idle/revalidation values apply on the
+  next protected request and can never exceed maximum-age/startup ceilings.
+- Maintenance tests cover visitor/member/moderator/administrator, every public
+  and protected route class, static/health/readiness, login/callback/
+  revalidation/logout/setup, registration denial, HTMX/full/no-script, and
+  administrator recovery. No response leaks private state or changes the
+  process/container lifecycle.
+
+### 24.2 Authentik admission and permission matrix
+
+A disposable pinned Authentik 2026.5.2 instance applies the blueprint twice.
+The gate records exact object identities and proves three flows/groups, one
+service account/role/token, no unrelated application/provider, and no drift on
+second apply. For each open, approval, invitation, closed, maintenance, Board
+outage, database outage, timeout, redirect, non-204, and oversized-response
+case, both `/register` and the direct `/if/flow/.../` URL produce the same
+admission result. Expression requests use fixed method/URL/timeout and emit no
+credential or profile data.
+
+The service-token matrix must positively prove only:
+
+- one exact user lookup and exact group read;
+- add/remove user on accepted, pending, and suspended groups;
+- create/read/delete one invitation bound to the invitation flow;
+- send that invitation to its one fixed recipient; and
+- aggregate task-status read.
+
+It must receive `403` or equivalent denial for admin-interface access,
+user create/change/delete/password/recovery, arbitrary group create/change/
+delete, membership on a non-Board group, flow/stage/policy/application/provider/
+role/token/secret mutation, task retry, event/log export, and impersonation.
+The control token, invitation UUID/link, email, user UUID/numeric key, and
+remote bodies are absent from retained commands, logs, screenshots, and Git.
+
+### 24.3 Registration, approval, invitation, and reconciliation
+
+- Signed-intake tests cover algorithm/key, issuer, audience, purpose, flow,
+  issued/expiry bounds, numeric ID, UUID, body/content-type/query, UTF-8/profile
+  limits, replay, terminal replay, concurrent first intake, and database
+  failure. Invalid cases perform no pending write and return the fixed class.
+- Real-browser journeys prove open enrollment verifies email and yields only a
+  local member; approval enrollment verifies into pending with no OIDC Board
+  access until approval; rejection never grants access; invitation mode rejects
+  missing/wrong/expired/reused/cross-flow tokens and accepts one valid
+  single-use invitation.
+- Approval/rejection tests inject failure before/after every Authentik call,
+  membership readback, Board state transition, audit, and commit. Concurrent
+  approve/reject/retry requests converge to one terminal state without granting
+  a rejected identity.
+- Suspension tests prove local denial and all-session revocation commit before
+  Authentik removal; an Authentik outage cannot restore Board access.
+  Reinstatement cannot clear local denial until accepted-group membership is
+  verified. Reconciliation is idempotent and operates on only one identity.
+- Invitation tests cover email/name/expiry bounds, exact flow/single-use/fixed
+  data, 51-row continuation, one-time link display, signed revoke handles,
+  remote mismatch, send failure/unknown, revocation, audit redaction, and no
+  arbitrary-recipient test-mail path.
+
+### 24.4 Sessions, email, UI, and integrated delivery
+
+- Session queries prove administrator authorization occurs before target/session
+  relations, return at most 51 rows, and never select or render token hash,
+  cookie, IP prefix, or user-agent hash. Handle tamper/expiry/cross-actor/
+  cross-user/action tests fail before mutation. One/all revocation covers zero,
+  current-session cookie clearing, concurrency, audit failure, and unknown
+  commit.
+- Email tests cover disabled/malformed configuration, STARTTLS and implicit TLS
+  with hostname verification, authentication failure, timeout before DATA,
+  disconnect after DATA, accepted result, per-admin rate/idempotency, absent
+  verified address, and fixed self-addressed content. Board persists/logs no
+  recipient, SMTP transcript, or message body. Authentik task aggregation
+  discards all task/log detail and fails closed on API error.
+- Every added page passes exact route/query/body/CSRF/revalidation/cache/status
+  tests, ordinary HTML and HTMX parity, base paths empty and `/bb`, JavaScript
+  absent, keyboard order/focus/status/error semantics, automated accessibility,
+  320-pixel reflow, 200% zoom, and bounded allocation/query/pool behavior.
+- Exact-candidate gates include deterministic generation, format, vet, full and
+  race suites on the development host, relevant coverage with explicit gaps,
+  PostgreSQL 17.10, Authentik 2026.5.2, SMTP, Caddy/Chromium, permission
+  negatives, logs/secrets, package/SBOM/reproducibility, and repository
+  integrity. Separate Board/Auth backups restore cleanly and the restored stack
+  repeats mode, approval, session, maintenance, email, OIDC, restart, rollback,
+  and forward-recovery smoke.
+
+Two fresh independent cold reviews must both return CLEAN on the exact final
+commit/tree. Guarded merge/mirror, annotated successor Beta tag, package/image,
+live deployment, smoke, rollback proof, and owner physical acceptance remain
+separate explicit gates. B1-09 cannot bypass unresolved Beta.1.5 acceptance and
+does not admit B1-10 or RC.1.

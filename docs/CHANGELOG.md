@@ -5,6 +5,27 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Admit the B1-09 Board administration control-plane contract
+
+Commit: current commit; hash assigned by Git after commit
+
+The version 1.0 contract now owns the four registration modes, verified pending
+approval, flow-bound invitations, restrictive suspension reconciliation,
+maintenance, publication/session policy, bounded local-session revocation, and
+email status/testing from Board. Direct Authentik enrollment consults a fixed
+read-only Board decision and fails closed. Cross-system mutations use one
+dedicated non-admin Authentik service account with an exact permission list and
+never use direct cross-database access.
+
+The admitted scope retains host control over secrets, SMTP transport values,
+pre-authentication request capacity, Caddy, containers, DNS/TLS, database
+operations, backup/restore, destructive recovery, and retention policy. B1-09
+is split into schema/settings, Authentik client/blueprint, registration and
+identity transitions, UI/session/email, and integrated delivery units. Runtime
+implementation may begin only after two fresh cold reviews of this complete
+contract are CLEAN, and delivery cannot bypass unresolved Beta.1.5 owner
+acceptance.
+
 ### 2026-09-09 — Repair Area administration form presentation
 
 Commit: current commit; hash assigned by Git after commit

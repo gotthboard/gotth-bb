@@ -6,7 +6,7 @@
 | --- | --- |
 | Product | GOTTH Board |
 | Status | Draft for owner review |
-| Document version | 0.6 |
+| Document version | 0.7 |
 | Initial development URL | `https://bb.alhstudios.com/` |
 | First delivery target | `1.0.0-alpha.1` |
 | First stable target | `1.0.0` |
@@ -107,8 +107,12 @@ claims never grant moderator, administrator, or area-access privileges.
   authentication remains valid.
 - **ID-008:** Disabling an identity in Authentik shall take effect no later than
   the configured maximum session-validation interval.
-- **ID-009:** The forum shall not store passwords, recovery codes, or Authentik
-  administrative credentials.
+- **ID-009:** The forum shall not store passwords, recovery codes, or a general
+  Authentik administrator credential. A dedicated deployment may supply one
+  host-managed Board-control API token only when its Authentik service account
+  cannot access the admin interface, cannot change users, flows, providers,
+  applications, roles, or secrets, and has only the exact B1-09 read,
+  invitation, task-status, and Board-group membership permissions.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
@@ -127,6 +131,25 @@ claims never grant moderator, administrator, or area-access privileges.
 - **ID-013:** Registration and first-run administration shall be independent.
   Enabling registration shall not grant, imply, or restore any forum-local
   role, group membership, area permission, or administrative authority.
+- **ID-014:** After first-administrator bootstrap, Board shall own one audited
+  registration mode chosen from `closed`, `verified_email_open`,
+  `administrator_approval`, and `invitation_only`. Board's registration page
+  and every applicable direct Authentik enrollment flow shall enforce the same
+  current mode. An unavailable or malformed policy decision shall deny
+  enrollment rather than reuse stale permissive state.
+- **ID-015:** Administrator-approval enrollment shall verify email in
+  Authentik but shall not grant Board application access until an administrator
+  approves the pending identity. Invitation-only enrollment shall require one
+  unexpired, flow-bound Authentik invitation. Approval, rejection, invitation
+  creation/revocation, and the resulting access-group transition shall be
+  explicit, bounded, and audited by Board.
+- **ID-016:** Local suspension remains immediately authoritative even if
+  Authentik is unavailable. Board shall reconcile accepted, pending, and
+  suspended identities through dedicated Authentik groups without changing
+  passwords or user records. Reinstatement shall restore Authentik application
+  eligibility before clearing the local suspension; any partial or uncertain
+  outcome shall retain the more restrictive state and expose a retryable
+  administrator-visible reconciliation result.
 
 ### 5.2 Area access model
 
@@ -244,6 +267,29 @@ Requirements:
   branding, and community rules.
 - **ADMIN-005:** Version 1.0 shall provide basic membership, activity, and
   moderation counts subject to authorization.
+- **ADMIN-006:** Administrators shall control the registration mode,
+  application maintenance state, bounded publication limits, and server-side
+  session idle/revalidation policy from Board. Security-sensitive startup
+  values remain hard ceilings; browser changes may tighten but shall not widen
+  those ceilings. Pre-authentication request capacity, secrets, container
+  lifecycle, DNS/TLS, backup/restore, and destructive recovery remain operator
+  controls.
+- **ADMIN-007:** Administrators shall receive a bounded pending-registration
+  queue and bounded invitation list, approve or reject one identity, and create
+  or revoke one invitation per request. Raw service credentials, password
+  material, recovery material, and unrestricted Authentik objects shall never
+  appear in Board responses, logs, or audit objects.
+- **ADMIN-008:** Administrators shall view bounded, non-secret local session
+  metadata and revoke one session or all sessions for one account. No token
+  hash, cookie value, IP address, user-agent value, OIDC token, or Authentik
+  session shall be exposed. Session-policy changes and revocations shall take
+  effect on the next protected Board request and shall be audited.
+- **ADMIN-009:** Administrators shall see whether the shared Authentik email
+  path is configured and whether recent bounded email tasks succeeded or
+  failed, and may request one rate-limited test message to their own current
+  verified address. SMTP credentials, arbitrary-recipient relay, message body,
+  recipient address, and provider task logs shall not be exposed or persisted
+  by Board.
 
 ### 5.7 Experience and accessibility
 
@@ -721,7 +767,75 @@ RC.1 artifact/migration freeze. Feedback discovered after Beta.1 admission is
 corrected through reviewable Beta work before RC.1; feedback is not a circular
 prerequisite for opening the first Beta to testers.
 
-## 15. Stable 1.0 acceptance boundary
+## 15. B1-09 Board administration control-plane acceptance boundary
+
+B1-09 completes the owner-required browser control plane without turning Board
+into an identity provider or a host-management console:
+
+1. The four closed registration modes in `ID-014` are stored in PostgreSQL,
+   revision-guarded, and audited. Upgrade seeds `closed`; reopening is an
+   explicit administrator act. `/register` never redirects unless the matching
+   mode is effective. Each Authentik enrollment flow evaluates a fixed,
+   read-only Board admission endpoint before collecting credentials; timeout,
+   non-204, redirect, invalid mode, or Board outage denies the direct flow.
+2. Verified-email open enrollment creates an active Authentik identity in the
+   exact Board access group. Approval enrollment verifies the identity into a
+   pending group and sends one signed, short-lived, replay-safe intake to Board;
+   it does not grant application access. Invitation enrollment requires a
+   flow-bound, expiring, single-use Authentik invitation and grants ordinary
+   Board eligibility only. OIDC first login still creates only a local member.
+3. A dedicated Authentik service account is provisioned from a separate
+   root-owned secret. It has no admin-interface access and no permission to
+   create/change/delete users, groups, flows, stages, policies, applications,
+   providers, roles, tokens, or secrets. Its complete authority is global
+   read-user, invitation create/view/delete, task view, and object permissions
+   to view and add/remove users on the three exact Board identity groups.
+   Board hard-codes and verifies the issuer origin, flow and group identities,
+   rejects redirects and oversized responses, and never accepts caller-owned
+   Authentik URLs or object identifiers.
+4. Approval/rejection and local suspension/reinstatement use explicit
+   restrictive ordering. Granting access must succeed and be read back before
+   Board marks approval complete. Suspension commits local denial and session
+   revocation before attempting identity-group removal. Reinstatement restores
+   and verifies identity-group access before clearing local denial. A failed or
+   unknown cross-system step remains denied, records bounded reconciliation
+   state, and is safely retryable; no distributed-transaction claim is made.
+5. The control singleton extends existing site settings with registration,
+   maintenance, publication, and session-policy fields under one positive
+   revision. Browser-adjustable values cannot exceed deployment ceilings.
+   Maintenance blocks visitor/member application journeys with one bounded
+   no-store response while preserving static assets, health/readiness, OIDC
+   completion, logout, and current administrator access needed to recover.
+6. Session policy is evaluated from current database state on protected
+   requests. Administrators see only user display name and finite issued,
+   last-seen, last-validated, and expiry times plus a server-authenticated
+   action handle; they may revoke one or all local sessions. Client address,
+   user-agent data, token material, and Authentik sessions remain absent.
+7. Email administration exposes only configured/unconfigured state, bounded
+   aggregate Authentik task outcomes, and Board test results. A test is
+   addressed solely to the requesting administrator's current verified email,
+   uses the same host-managed SMTP transport configuration as Authentik, is
+   rate limited, and reports accepted/failed/unknown honestly. Board neither
+   accepts an arbitrary recipient nor displays task logs.
+8. Every B1-09 page and mutation requires a current, revalidated,
+   unsuspended local administrator; mutations require CSRF, an exact positive
+   revision where state can conflict, and a bounded audit reason. Responses are
+   private/no-store, base-path-safe, keyboard-accessible, mobile-first, and
+   usable without JavaScript. Public admission responses reveal only a fixed
+   allow/deny result and never private configuration.
+9. PostgreSQL and Authentik upgrades, clean install, mode-direct-URL denial,
+   invitation and approval journeys, cross-system failure/retry, suspension,
+   session revocation, maintenance recovery, email task behavior, permission
+   negatives, backup/restore, rollback, and exact live HTTPS/OIDC behavior pass
+   before owner acceptance. Two fresh cold reviews must be CLEAN on the exact
+   candidate before guarded delivery.
+
+B1-09 adds no local credential, user impersonation, arbitrary Authentik object
+browser, arbitrary-recipient mail relay, general task-log viewer, Docker socket,
+host command runner, DNS/TLS editor, secret editor, database console, backup or
+restore button, retention-policy decision, or RC.1/stable claim.
+
+## 16. Stable 1.0 acceptance boundary
 
 `1.0.0` requires:
 
@@ -735,7 +849,7 @@ prerequisite for opening the first Beta to testers.
 - Operator documentation sufficient for a new operator to deploy and recover
   the service without undocumented commands.
 
-## 16. Constraints and assumptions
+## 17. Constraints and assumptions
 
 - The forum remains one deployable Go service and one application PostgreSQL
   database in version 1.0. Its release stack also owns the required Caddy and
@@ -745,12 +859,14 @@ prerequisite for opening the first Beta to testers.
   Authentik hostnames to non-public upstreams.
 - The stack's dedicated Authentik exposes the configured OIDC issuer and the
   required identity claims.
-- SMTP, object storage, WebSockets, SCIM, and external search are not required
-  for version 1.0.
+- SMTP is required before any email-verifying or invitation-email registration
+  mode is enabled; a closed deployment may start without it and must report the
+  missing capability. Object storage, WebSockets, SCIM, and external search are
+  not required for version 1.0.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 
-## 17. Open owner decisions
+## 18. Open owner decisions
 
 These do not block document creation but must be resolved before the affected
 behavior changes:
@@ -774,7 +890,7 @@ The initial rate-limit profile and new-account period are resolved by the AN-05
 acceptance boundary. They remain operator configuration, not hard-coded product
 law.
 
-## 18. Change control
+## 19. Change control
 
 Requirement IDs are stable. A change that alters user-visible behavior,
 permissions, identity authority, data retention, or release scope must update

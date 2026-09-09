@@ -318,6 +318,9 @@ Required secrets include at minimum:
   previous key.
 - Any session-token hashing/pepper secret if the final implementation requires
   one beyond strong random opaque tokens and stored hashes.
+- B1-09's dedicated Authentik Board-control API token, distinct from the OIDC
+  client secret and from every administrator token.
+- The SMTP password when the shared Authentik/Board transport authenticates.
 
 Secret handling requirements:
 
@@ -338,6 +341,11 @@ Secret handling requirements:
   mounted at `/run/config/gotth-bb-abuse-rules`; only that container path is
   configured as `ABUSE_RULES_FILE`. Record its SHA-256 and the seven exact rate
   values without copying rule contents into deployment logs or evidence.
+- B1-09 mounts the Authentik control token and optional SMTP password as
+  separate Compose secrets. Its non-secret control-object JSON is a root-owned
+  read-only bind generated only after the blueprint's exact UUID/slug
+  attestation. Neither file is passed on a process argument, copied into an
+  image, or rendered by `docker compose config`.
 
 ### 8.1 AN-05 abuse-policy update
 
@@ -541,6 +549,13 @@ Every deployed prerelease verifies:
   update; fixed `Retry-After`; and absence of
   client/account/content/rule values from application logs. Restore the exact
   configured rules file and rate profile after the smoke test.
+- Once B1-09 is present, verify closed/open/approval/invitation mode agreement
+  at Board and direct Authentik URLs; one disposable pending approval and one
+  expiring invitation; restrictive suspension/reinstatement reconciliation;
+  tightened and restored session/publication policy; maintenance entry and
+  administrator recovery; bounded session view/revocation; aggregate email
+  status and one self-addressed test; permission negatives; audit redaction;
+  and restoration of the exact pre-smoke control settings.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
 
@@ -578,6 +593,13 @@ Decision order after failure:
    commit. Use current artifact/forward
    repair or restore the verified pre-000011 database backup; an older artifact
    must not publish without the counter.
+   B1-08 migration 000012 changes the external issuer/subject and audit contract;
+   rollback requires the paired prior Board/Auth state described by the
+   standalone procedure, never an older binary against the rebound identity.
+   B1-09 migration 000013 makes durable control/session/publication state part
+   of request authority. Use the current artifact/forward repair or restore the
+   verified paired pre-000013 Board and Authentik backups plus their matching
+   protected configuration. Beta.1.5 must not run at head 000013.
 3. If migration outcome is unknown, inspect migration and database state before
    any retry.
 4. If migration is incompatible but reversible without data loss, execute the
@@ -916,6 +938,56 @@ removal, supplies the canonical client identity to Board, and overwrites
 Replacing the host edge with the stack container on a multi-site host is
 forbidden because it would evict unrelated userspace.
 
+### 18.4 B1-09 Board administration control-plane successor
+
+B1-09 is a schema, permission, identity-flow, and application change. It is not
+an application-only corrective deploy. It may proceed to live mutation only
+after Beta.1.5 owner acceptance closes B1-08G and the exact B1-09 candidate has
+two fresh CLEAN final reviews.
+
+Proceed in this order:
+
+1. Resolve the exact running Beta.1.5 commit/tree/image, six container/image
+   identities, both database heads and mounts, blueprint objects, Caddy routes,
+   root-owned files, and current smoke. Verify B1-08 retained rollback state.
+2. Generate a new independent 256-bit control token into a root-owned mode-0600
+   file; prepare the non-secret SMTP values and optional separate password
+   secret. Never reuse the OIDC client, Authentik bootstrap, or superuser token.
+3. On a clean task-owned standalone stack, apply the B1-09 blueprint twice,
+   emit and validate the exact control-object JSON, run the complete permission
+   positive/negative matrix, and prove all registration and email journeys.
+4. Back up Board and Authentik databases separately plus protected Caddy/Auth
+   state/configuration inventories. Verify digests and clean matching-major
+   restores before any live schema or blueprint mutation.
+5. Stop the live Board writer. Apply migration 000013 and runtime grants while
+   registration remains closed. Apply the Authentik blueprint using the new
+   control token, validate exact objects/permissions, install the control-object
+   file, and render the complete Compose configuration without secret values.
+6. Start only the candidate Board application. Require readiness head 000013,
+   ceiling equality, control-object identity, Authentik API permission probes,
+   and closed registration before enabling any other mode.
+7. Run the B1-09 smoke matrix with disposable identities/content. Restore the
+   exact pre-smoke control settings and keep registration closed unless the
+   owner separately chooses another live mode. A test email goes only to the
+   current designated administrator's verified address.
+8. Restart the complete stack and repeat readiness, direct-flow denial, OIDC,
+   session, maintenance recovery, email status, identity reconciliation, and
+   data/permission checks. Then rehearse rollback from the verified paired
+   pre-000013 backups and forward recovery to the candidate. Never combine one
+   generation's Board database with another generation's Authentik identity
+   state.
+9. Guarded fast-forward/mirror, successor Beta tag, reproducible package/image,
+   live evidence, and owner physical acceptance bind to one exact commit. No
+   prior backup, secret, object file, image, or tag is removed before acceptance
+   and the later approved retention boundary.
+
+A failed blueprint or permission probe leaves registration closed and the old
+application untouched. After 000013 commits, Beta.1.5 cannot run against the
+new exact-head contract; rollback restores both verified databases and the
+complete prior protected configuration before starting the retained image.
+Unknown Board commit, Authentik API, SMTP, or backup outcomes are inspected and
+classified before retry. External email is never retried automatically.
+
 ## 19. Operational decisions
 
 The Beta.1.2 deployment resolved the following baseline before B1-08 without
@@ -940,6 +1012,13 @@ The owner's B1-08 instruction explicitly replaces the shared-Caddy/shared-
 Authentik topology with the standalone-stack contract. It does not alter the
 30-minute revalidation maximum, public-area policy, retention policy, or
 off-host backup boundary.
+
+B1-09 retains the deployed 24-hour maximum session age, eight-hour idle
+ceiling, 30-minute Authentik revalidation ceiling, and AN-05 rate ceilings.
+Board may tighten the admitted dynamic values but cannot widen those deployment
+ceilings. Migration 000013 seeds registration closed. Enabling open, approval,
+or invitation enrollment requires verified SMTP and is an explicit audited
+administrator action, not a release-script default.
 
 The following decisions remain open for their later affected behavior:
 

@@ -115,6 +115,10 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
+| `AUTHENTIK_CONTROL_TOKEN_FILE` | Yes after B1-09 | Absolute path to the dedicated non-admin Authentik API-token secret |
+| `AUTHENTIK_CONTROL_OBJECTS_FILE` | Yes after B1-09 | Absolute path to exact non-secret Board flow/group UUIDs and slugs emitted by blueprint admission |
+| `SMTP_PASSWORD_FILE` | When SMTP authentication is configured after B1-09 | Absolute path to the SMTP password shared with Authentik |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, `SMTP_TLS_MODE`, `SMTP_TIMEOUT` | Yes after B1-09 | Non-secret SMTP transport settings identical to Authentik's effective global email configuration; an exact disabled sentinel is allowed only while registration stays closed |
 | `ACTIVITY_CURSOR_KEYRING_FILE` | Yes after AN-02 | Absolute path to the read-only cursor-keyring secret |
 | `ABUSE_RULES_FILE` | Yes after AN-05 | Absolute path to the bounded read-only blocked-destination rules |
 | `REQUEST_RATE_LIMIT` | Yes after AN-05 | Positive requests allowed per client window; initial value `300` |
@@ -125,8 +129,8 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `PUBLISH_RATE_WINDOW` | Yes after AN-05 | Durable account publication window; initial value `10m` |
 | `NEW_ACCOUNT_PERIOD` | Yes after AN-05 | Age receiving the stricter publication limit; initial value `24h` |
 | `BOOTSTRAP_ADMIN_SUBJECT` | Yes | Exact verified OIDC subject allowed to claim first-run administration |
-| `REGISTRATION_URL` | Yes | Exact same-origin Authentik enrollment-flow URL |
-| `REGISTRATION_ENABLED` | Yes | Exact `true`/`false` operational gate for the public registration route and link |
+| `REGISTRATION_URL` | Before B1-09 only | Legacy exact Authentik enrollment-flow URL; removed from runtime authority at migration 000013 |
+| `REGISTRATION_ENABLED` | Before B1-09 only | Legacy startup gate; migration 000013 deliberately seeds the durable mode `closed` |
 | `SESSION_COOKIE_NAME` | No | Defaults to `gotth_bb_session` |
 | `SESSION_MAX_AGE` | Yes | Absolute authenticated-session lifetime |
 | `SESSION_IDLE_TIMEOUT` | Yes | Idle session expiry |
@@ -191,6 +195,24 @@ Rules:
   `false` until first-administrator setup, enrollment blueprint application,
   email delivery verification, and the sibling-application access audit all
   pass. While false, `/register` is not routed and no Register link is shown.
+- At head 000013, neither legacy registration setting is read. Registration
+  authority is the one database mode. The non-secret control-object file uses
+  strict JSON with exactly the admitted schema version, issuer origin, three
+  flow slugs/UUIDs, and accepted/pending/suspended group UUIDs. Duplicate keys,
+  unknown fields, symlinks, non-regular files, oversized input, issuer mismatch,
+  reused object identity, or invalid UUID/slug fails startup. It is opened with
+  the same descriptor-safe discipline as other deployment files.
+- `AUTHENTIK_CONTROL_TOKEN_FILE` follows the secret-file framing used by the
+  OIDC client secret: absolute clean path, `O_CLOEXEC|O_NOFOLLOW`, regular-file
+  `fstat`, maximum 4,096 bytes plus EOF, strict UTF-8, exactly one nonblank
+  line, owned immutable memory, and no formatting/logging/template method.
+- SMTP disabled is one exact configuration state with no host, username,
+  password, or sender. Enabled SMTP requires a canonical DNS name or numeric
+  address, port 1–65535, bounded username/sender, timeout 1–30 seconds, and one
+  closed TLS mode: `starttls`, `implicit_tls`, or `plain`. Production forbids
+  `plain`. Password presence must match authenticated SMTP. Board and
+  Authentik receive the same host-managed values; Board never reads Authentik's
+  database or exposes these values.
 - OIDC claims never assign forum roles or local group membership.
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.
@@ -2883,7 +2905,250 @@ schema. Until owner confirmation, rollback is current Beta/forward repair or a
 verified pre-upgrade restore followed by the preserved Alpha.2 artifact. Only
 owner confirmation records the Beta commit/artifact as known-good.
 
-## 24. Definition of implementation complete
+## 24. B1-09 Board administration control plane
+
+### 24.1 Migration 000013 and runtime authority
+
+Migration `000013_board_control_plane.sql` is one stopped, ordinary migration.
+It extends `site_settings` with:
+
+- `registration_mode` constrained to `closed`, `verified_email_open`,
+  `administrator_approval`, or `invitation_only`, defaulting to `closed`;
+- `maintenance_enabled boolean` and a control-free, 0–280-rune
+  `maintenance_message`;
+- positive `publish_rate_limit`, `new_account_publish_rate_limit`,
+  `publish_window_seconds`, and `new_account_period_seconds`, with the new
+  account limit no greater than the established limit;
+- positive `session_idle_seconds` and `auth_revalidate_seconds`; and
+- the existing positive `administration_revision` as the single optimistic
+  revision for presentation and control changes.
+
+The static seed matches the packaged Beta profile except that registration is
+closed and maintenance is off. Runtime computes every adjustable value as the
+database value only after proving it does not exceed its immutable startup
+ceiling. A row above a ceiling is malformed and fails the affected protected
+operation closed; it is never silently clamped because that would hide drift.
+The maximum session age, request limiter, client-window capacity, blocked-link
+file, trusted proxy, and every secret remain immutable startup/operator state.
+
+The migration creates `pending_registrations` with immutable Authentik numeric
+user ID and UUID subject, bounded display name and verified email snapshot,
+closed `pending|approved|rejected` status, positive revision, finite intake and
+decision timestamps, nullable deciding administrator, and one current bounded
+reconciliation class. UUID subject and numeric ID are independently unique.
+The intake path may insert once or return the existing row; it may refresh the
+bounded profile only while status remains pending and may never reopen a
+terminal row.
+
+`users` gains one closed `authentik_sync_state` field (`unknown`, `accepted`,
+`removal_required`, `grant_required`, `suspended`) plus finite last-attempt time
+and a bounded non-sensitive failure class. No remote response body or exception
+text is persisted. `email_test_state` contains at most one row per local
+administrator with a server-generated idempotency UUID, closed status,
+finite request/completion times, and next-allowed time. It stores no address,
+subject, body, SMTP response, or task log.
+
+The audit action set adds `update_control_settings`, `approve_registration`,
+`reject_registration`, `create_invitation`, `revoke_invitation`,
+`reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`, and
+`test_email`. Audit objects contain closed modes, numeric policy values,
+digests or opaque action references, counts, and result classes only. Email,
+display name, Authentik user ID/UUID, invitation token, session identifier,
+remote body, and secret material are forbidden from audit JSON. Every
+administrator action requires the existing bounded reason.
+
+The runtime grant delta is exact column-level access for these relations. It
+adds no DELETE on users, pending registrations, email state, site settings, or
+audit; no INSERT on site settings; no access to token hashes; and no access to
+an Authentik relation. Readiness verifies head 000013, exact checks/defaults,
+cardinality, grant delta, settings ceilings, and closed values.
+
+### 24.2 Registration and pending intake
+
+The standalone blueprint owns three enrollment flows with distinct immutable
+slugs and UUIDs: open verified email, administrator approval, and invitation.
+All bind a first policy evaluation that calls the matching Board admission URL
+using the documented Authentik expression `requests` session. The source uses
+one fixed URL from blueprint environment, `GET`, `timeout=2`,
+`allow_redirects=False`, no caller headers/body, and returns true only for exact
+status 204 with empty body. Exceptions return false. Policy execution logging
+is disabled so no enrollment URL or decision becomes an unbounded event.
+
+The open flow writes the new external user into `gotth-bb-users`, verifies
+email, activates the user, and logs in. The approval flow writes into
+`gotth-bb-pending`, verifies and activates the Authentik identity, sends the
+signed intake, then redirects to Board's fixed pending page; it never joins the
+application access group. The invitation flow begins with an invitation stage
+whose `continue_flow_without_invitation` is false, accepts only invitations
+bound to that exact flow, writes into `gotth-bb-users`, verifies email, and
+logs in. All three create only external users under the fixed Board path.
+
+`GET /registration/admission/{mode}` accepts only the three exact canonical
+mode slugs and no query. It performs no session lookup, accepts no forwarded
+identity, reads only the settings singleton under a 500-millisecond deadline,
+and returns empty `204` only on exact current match with maintenance disabled
+and required SMTP configured. Every other result is empty `404` or `503`,
+`no-store`, and indistinguishable as to which check denied it.
+
+`POST /registration/intake/approval` accepts only `application/jwt`, no query,
+and at most 8 KiB. It is exempt from browser CSRF but not from the outer request
+limiter. Verification pins the Board provider algorithm and key, exact issuer,
+client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID, expiry
+no more than 60 seconds ahead, nonfuture issued time, positive Authentik user
+ID, canonical UUID subject, and bounded strict-UTF-8 profile claims. One
+timeout-bounded transaction inserts or idempotently observes the pending row.
+It returns a fixed empty status and never reveals whether an identity was new,
+duplicate, terminal, or malformed.
+
+`GET /register` reads the current mode. Closed and invitation-only render a
+bounded explanation; open and approval render one exact Authentik flow link.
+No browser input supplies the flow, authority, or return location. The
+invitation link contains the Authentik invitation UUID and is generated only by
+the administrator workflow.
+
+### 24.3 Restricted Authentik client and identity transitions
+
+The blueprint creates a non-superuser `service_account` excluded from every
+Board application group, a role, and one non-expiring API token whose key comes
+from the separately mounted control-token secret. The role has exactly global
+`authentik_core.view_user`, `authentik_stages_invitation.add_invitation`,
+`view_invitation`, `delete_invitation`, and `authentik_tasks.view_task`.
+Object permissions grant only `view_group`, `add_user_to_group`, and
+`remove_user_from_group` on the exact accepted, pending, and suspended groups.
+It lacks `access_admin_interface` and every user/group/flow/stage/policy/
+provider/application/role/token change/delete/add permission not listed above.
+
+The Go client has concrete methods only for: retrieve a user by the pinned UUID
+filter; retrieve the three pinned groups; add/remove that exact user on one
+pinned group; create/list/retrieve/delete invitations forced to the invitation
+flow; send one invitation to its fixed recipient; and load aggregate task
+status. It uses a dedicated `http.Client` with two-second total timeout, no
+redirects, system TLS validation, fixed issuer-derived API origin, bounded JSON
+decoding, and response close/drain limits. Authorization is never logged.
+
+Approval locks the pending row and actor, rejects stale revision or nonpending
+state, records `grant_required`, calls add-user on accepted, reads back exact
+membership, removes pending, and only then commits `approved` plus audit. If
+remote work fails, the row remains pending/grant-required. If Board commit is
+unknown after a verified grant, the next retry reads both systems and completes
+idempotently without a second semantic grant.
+
+Rejection first removes accepted and pending membership and verifies absence,
+then commits rejected plus audit. If remote denial cannot be verified, the row
+remains pending with a restrictive error and `/register` does not imply
+acceptance. No path deletes or deactivates the Authentik user.
+
+Suspension uses the existing local transaction first, including complete local
+session revocation and audit, and sets `removal_required`. A synchronous
+best-effort exact-group removal follows and may advance the sync state to
+`suspended`; local authorization remains denied regardless. Reinstatement
+requires successful accepted-group grant and readback before the existing
+governance-serialized local reinstatement commits. A failed or ambiguous grant
+leaves the user locally suspended. Reconciliation is one explicit POST using
+the same restrictive ordering, never an unbounded background loop.
+
+Invitations accept one validated email, expiry from 15 minutes through seven
+days, one optional bounded display name, and one reason. Board creates an exact
+flow-bound, single-use Authentik invitation with fixed prompt data, verifies the
+returned flow and fields, then optionally asks Authentik to email that one
+recipient. The page lists at most 51 current Board-flow invitations and exposes
+only name, expiry, sent/not-requested state, and a server-authenticated revoke
+handle. UUID tokens and raw links are shown exactly once after creation over a
+private no-store response and never logged or audited. Revocation deletes only
+the exact flow-bound invitation after a readback check.
+
+### 24.4 Control settings, maintenance, and publication policy
+
+`GET /admin/control` uses one administrator-authorized settings projection.
+`POST /admin/control` accepts exactly CSRF, positive revision, the closed
+registration mode, maintenance flag/message, publication counts/durations,
+session idle/revalidation durations, and reason. It validates strict UTF-8,
+closed values, cross-field rules, and every immutable ceiling before opening a
+transaction. The transaction revalidates the administrator, locks the
+singleton, rejects stale/no-op/overflow, updates all control fields, increments
+the shared revision, and appends one audit.
+
+Dynamic publication values replace only the four corresponding AN-05 values
+inside the already-atomic publication transaction. The process-local request
+limiter and blocked-destination matcher remain immutable. Dynamic session idle
+and revalidation values are read in the active-session query so a tightened
+value applies on the next protected request. Session maximum age and cookie
+expiry remain immutable deployment ceilings.
+
+Maintenance is enforced after exact route grammar and session resolution but
+before ordinary domain/database work. Visitors and non-administrators receive
+one bounded `503`, `Retry-After: 60`, private/no-store page without site counts
+or cause detail. Static assets, liveness, readiness, registration admission,
+OIDC begin/callback/revalidation, logout, setup, and current-administrator
+routes remain reachable. Registration admission always denies while
+maintenance is enabled. An administrator can disable maintenance through the
+ordinary no-JavaScript form; maintenance never stops containers or claims to
+drain in-flight work.
+
+### 24.5 Local sessions and email operations
+
+The session page selects at most 51 active local sessions ordered by ID for one
+authorized account page. It projects display name and finite issued, last-seen,
+last-validated, and expiry times only. It never selects token hash, IP prefix,
+or user-agent hash. Each row receives a short-lived HMAC action handle bound to
+administrator user ID, target session ID, current target user ID, action, and
+expiry. The MAC is derived with a distinct domain from the current opaque
+administrator session credential using the same one-way construction as the
+existing session-derived CSRF token; raw IDs are not rendered and the handle
+cannot authenticate a session.
+
+Single and all-session revocation revalidate actor/target, verify the handle or
+positive target/revision, update only currently active sessions at one database
+time, and append one audit with a count. Revoking the request's current session
+clears its cookie after commit. Zero-row and unknown-commit results are
+reported honestly and never retried automatically.
+
+Email configuration is loaded once from the shared host values and exposed as
+only `configured` or `disabled`. Authentik aggregate task status is projected
+to counts by closed state; task identity, actor, relation, description, logs,
+and messages are discarded before the view model. Failure or missing API
+authority renders status unavailable without exposing the token or response.
+
+An email test has no recipient field. It uses the requesting administrator's
+current verified local email snapshot, a server-generated idempotency UUID, and
+one-per-five-minute per-administrator reservation in `email_test_state`.
+The fixed text message contains no link, credential, account detail, or user
+content. SMTP uses the configured TLS mode, validates certificates and server
+name, applies the configured timeout, and never logs protocol exchange. A
+successful SMTP acceptance records `accepted`; definite pre-accept failure
+records `failed`; timeout or disconnect after DATA begins records `unknown`.
+Unknown is not automatically retried. The audit contains only the closed result
+and idempotency digest.
+
+### 24.6 Routes, resources, evidence, and rollback
+
+B1-09 adds the exact public admission/intake routes and administrator control,
+registrations, invitations, sessions, email, and reconciliation routes recorded
+in `beta1-routes.md`. All administrator pages are private/no-store and share the
+existing full-page/HTMX, CSRF, revalidation, method-denial, body-limit,
+base-path, shell, focus, and error rules. Tables paginate or collapse into
+labeled cards at 320 CSS pixels. No JavaScript is required.
+
+Unit and PostgreSQL 17 tests cover every parser, transition, ceiling, revision,
+idempotency, concurrency, restrictive order, unknown outcome, maintenance
+exemption, session projection, email result class, and audit redaction. A fake
+TLS Authentik server proves exact paths, JSON, headers, redirects, timeouts,
+body limits, token redaction, object pinning, and permissions failures. A real
+disposable Authentik 2026.5.2 stack proves all modes by both Board and direct
+flow URLs, verified pending intake, approval/rejection/invitation, suspension/
+reinstatement, token negative permissions, task status, SMTP test, restart,
+dual-database backup/restore, and rollback/forward recovery.
+
+Migration 000013 has no down path. Before it commits, rollback is the exact
+Beta.1.5 artifact and both verified databases. After it commits, older binaries
+fail exact-head readiness; recovery is current artifact/forward repair or a
+verified dual-database pre-000013 restore. The control token and object file are
+backed up as protected configuration but never enter Git or evidence. B1-09
+requires two fresh CLEAN reviews on one exact commit before guarded merge,
+package, tag, deployment, smoke, and owner physical acceptance. It stops before
+B1-10 and RC.1.
+
+## 25. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

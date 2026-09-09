@@ -24,6 +24,9 @@ table and rejects omission, duplication, or invention in either direction.
 | `ID-011` | controlled Authentik enrollment redirect | registration handler/config tests and deployment blueprint validation | implemented |
 | `ID-012` | fail-closed registration activation gate | registration handler tests and deployed `REGISTRATION_ENABLED=false` state | implemented |
 | `ID-013` | independent setup and registration routes/state | setup/registration HTTP tests | implemented |
+| `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | B1-09-01/03 PostgreSQL, HTTP, and Authentik evidence | blocked |
+| `ID-015` | B1-09 verified pending approval and flow-bound invitation lifecycle | B1-09-02/03 real Authentik and transition evidence | blocked |
+| `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry and live OIDC evidence | blocked |
 | `ACL-001` | closed visibility/posting policy types and constraints | policy tests and migration schema tests | implemented |
 | `ACL-002` | area-owned authorization predicates in topic/post paths | database access and HTTP leakage tests | implemented |
 | `ACL-003` | no topic-level visibility model | schema and route inventory | implemented |
@@ -64,6 +67,10 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-003` | local roles/groups/memberships | AN-04 integrated evidence | implemented |
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
+| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | B1-09-01/04 database, HTTP, and browser evidence | blocked |
+| `ADMIN-007` | B1-09 pending-registration and invitation administration | B1-09-03 Authentik/HTTP/browser evidence | blocked |
+| `ADMIN-008` | B1-09 bounded local-session views and revocation | B1-09-04 database/HTTP/security evidence | blocked |
+| `ADMIN-009` | B1-09 email capability, task status, and self-addressed test | B1-09-04 SMTP/Auth task/HTTP evidence | blocked |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
 | `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |
@@ -94,6 +101,7 @@ table and rejects omission, duplication, or invention in either direction.
 - AN-05: `docs/evidence/an05-04-integrated-1abbeab.txt`.
 - B1-01: `docs/evidence/beta1-01-security-f91a6fb.txt`.
 - B1-08 candidate: `docs/evidence/beta1-08-standalone-stack-eef7c48.txt`.
+- B1-09 contract: pending B1-09-00 admission and implementation.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence

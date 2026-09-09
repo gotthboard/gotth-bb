@@ -940,6 +940,60 @@ gap. Scheduled/off-host backup retention, alert routing, final dependency and
 license review, migration freeze, production deployment, and stable operator
 handoff remain later gates unless a Beta defect requires an upstream change.
 
+### B1-09: Board administration control plane
+
+B1-09 depends on owner acceptance and closure of B1-08G/Beta.1.5. Contract and
+isolated implementation work may proceed while that physical acceptance is
+pending, but B1-09 cannot be merged, tagged, or deployed around an unresolved
+predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
+`ADMIN-001`–`ADMIN-009` through six serial units in the
+`feature/beta-1-admin-control-plane` worktree:
+
+1. **B1-09-00 — contract, Authentik mechanism, and permission admission.**
+   Reconcile PRD, architecture, implementation specification, routes,
+   verification, operations, traceability, and changelog. Pin Authentik 2026.5.2
+   API/source behavior for expression-policy requests, flow bindings,
+   invitations, group membership, API tokens, tasks, and object permissions.
+   Define exact database ownership, cross-system restrictive ordering,
+   configuration ceilings, failure classes, migration/rollback, and route
+   inventory. Two fresh cold reviews must be CLEAN before runtime work.
+2. **B1-09-01 — schema and control settings.** Add migration 000013, exact
+   runtime grants/readiness, typed registration/maintenance/publication/session
+   settings, revision/audit transitions, dynamic publication/session reads,
+   maintenance recovery behavior, and focused PostgreSQL/concurrency tests.
+3. **B1-09-02 — Authentik enrollment and restricted client.** Extend the
+   deterministic blueprint with three guarded flows, pending/accepted/suspended
+   groups, signed approval intake, the non-admin service account/token, and the
+   exact permission set. Add descriptor-safe token/object configuration and the
+   fixed-origin, fixed-operation bounded Go API client. Prove all positive and
+   forbidden API operations against a disposable Authentik 2026.5.2 instance.
+4. **B1-09-03 — registration, approval, invitation, and suspension
+   reconciliation.** Add public admission/intake endpoints, mode-aware
+   registration, bounded pending/invitation pages, approve/reject/create/revoke
+   operations, restrictive cross-system state machines, integration with local
+   suspension/reinstatement, idempotency, audit redaction, and failure/retry
+   evidence.
+5. **B1-09-04 — sessions, email, and complete administrator UI.** Add bounded
+   session projections and one/all revocation, aggregate Authentik task status,
+   same-transport self-addressed email testing, complete settings/navigation,
+   ordinary HTML/HTMX parity, no-JavaScript operation, responsive 320-pixel
+   layout, keyboard/focus/status/error behavior, and fixed resource bounds.
+6. **B1-09-05 — integrated admission and guarded Beta delivery.** Run
+   deterministic generation, formatting, vet, full/race/relevant coverage,
+   PostgreSQL 17, real Authentik 2026.5.2, SMTP, permission-negative,
+   cross-system failure, accessibility, representative-resource, dual-database
+   backup/restore, package-reproducibility, and rollback/forward-recovery gates.
+   Retain exact evidence, obtain two fresh CLEAN final reviews, then use the
+   guarded fast-forward/mirror, annotated Beta tag, package/image, live
+   deployment, smoke, rollback, and owner physical-acceptance workflow.
+
+The unit owns no B1-10 Discussion-area hierarchy, gotth-* stable-product
+inventory, RC.1 freeze work, host-management UI, Docker socket, arbitrary
+Authentik browser, local password, arbitrary mail relay, or retention-policy
+decision. Workers do not create PRs, merge, push, tag, release, or deploy
+without the already established gated delivery authority and predecessor
+closure.
+
 ## 7. Milestone `1.0.0-rc.1`
 
 Release candidate means no known product-scope gap.
