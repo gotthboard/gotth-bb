@@ -16,6 +16,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/registration"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -39,6 +40,12 @@ type AdministrationHTTPServices struct {
 	CreateArea        func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
 	UpdateArea        func(context.Context, auth.AccessContext, int64, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
 	ChangeAreaGroup   func(context.Context, auth.AccessContext, int64, int64, bool, string, int64, pgtype.UUID) (administration.AreaCompletionResult, error)
+	Registrations     *RegistrationAdministrationHTTPServices
+}
+
+type RegistrationAdministrationHTTPServices struct {
+	List   func(context.Context, auth.AccessContext, int64) (registration.PendingPage, error)
+	Decide func(context.Context, auth.AccessContext, registration.DecisionInput) (registration.DecisionResult, error)
 }
 
 type administrationDashboardView struct {
@@ -78,8 +85,17 @@ type administrationAreaView struct {
 	Groups                                                                                                        []administrationMembershipView
 }
 
+type administrationRegistrationView struct {
+	ID, DisplayName, VerifiedEmail, Status, Revision, IntakeAt, Failure, ApproveURL, RejectURL string
+}
+type administrationRegistrationsView struct {
+	Registrations      []administrationRegistrationView
+	CSRFToken, NextURL string
+}
+
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
-	return services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
+	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil
+	return registrationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
 		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
 }
@@ -111,6 +127,7 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		{key: "groups", title: "Groups", segments: []string{"admin", "groups"}},
 		{key: "areas", title: "Areas", segments: []string{"admin", "areas"}},
 		{key: "area", title: "Area"},
+		{key: "registrations", title: "Pending registrations", segments: []string{"admin", "registrations"}},
 	} {
 		view, viewErr := newPageView(builder, definition.title, definition.segments...)
 		if viewErr != nil {
@@ -120,6 +137,16 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			view.CanonicalURL = ""
 		}
 		views[definition.key] = view
+	}
+	if services.Registrations != nil {
+		registrationsURL, buildErr := builder.Path("admin", "registrations")
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		for key, view := range views {
+			view.RegistrationsURL = registrationsURL
+			views[key] = view
+		}
 	}
 	authorized := func(response http.ResponseWriter, request *http.Request) (auth.AccessContext, bool) {
 		response.Header().Set("Cache-Control", "private, no-store")
@@ -182,6 +209,69 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		}
 		render(response, request, views["accounts"], administrationAccountsBody(presentation))
 	})
+	if services.Registrations != nil {
+		router.Get("/admin/registrations", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			after, _ := parseAdministrationCursor(request.URL.Query(), "after")
+			page, loadErr := services.Registrations.List(request.Context(), actor, after)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["registrations"], loadErr)
+				return
+			}
+			presentation := administrationRegistrationsView{Registrations: make([]administrationRegistrationView, len(page.Registrations)), CSRFToken: csrfTokenFromContext(request.Context())}
+			for index, pending := range page.Registrations {
+				id := strconv.FormatInt(pending.ID, 10)
+				approveURL, _ := builder.Path("admin", "registrations", id, "approve")
+				rejectURL, _ := builder.Path("admin", "registrations", id, "reject")
+				presentation.Registrations[index] = administrationRegistrationView{
+					ID: id, DisplayName: pending.DisplayName, VerifiedEmail: pending.VerifiedEmail,
+					Status: pending.Status, Revision: strconv.FormatInt(pending.Revision, 10),
+					IntakeAt: pending.IntakeAt.Format(time.RFC3339), Failure: pending.ReconciliationClass,
+					ApproveURL: approveURL, RejectURL: rejectURL,
+				}
+			}
+			if page.NextAfter > 0 {
+				presentation.NextURL, _ = builder.PathWithQuery([]string{"admin", "registrations"}, url.Values{"after": {strconv.FormatInt(page.NextAfter, 10)}})
+			}
+			render(response, request, views["registrations"], administrationRegistrationsBody(presentation))
+		})
+		decide := func(decision registration.Decision) http.HandlerFunc {
+			return func(response http.ResponseWriter, request *http.Request) {
+				actor, ok := authorized(response, request)
+				if !ok {
+					return
+				}
+				registrationID, _ := parseCanonicalPositiveID(chi.URLParam(request, "registrationID"))
+				form, ok := parseAdministrationForm(response, request, views["registrations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason", "revision"})
+				if !ok {
+					return
+				}
+				revision, parseErr := parsePositiveFormID(form.Get("revision"))
+				requestID, requestErr := moderationRequestUUID(request.Context())
+				if parseErr != nil || requestErr != nil {
+					renderAdministrationError(response, request, views["registrations"], http.StatusBadRequest, "Invalid form", "Reload pending registrations and try again.")
+					return
+				}
+				result, decisionErr := services.Registrations.Decide(request.Context(), actor, registration.DecisionInput{RegistrationID: registrationID, Revision: revision, Decision: decision, Reason: form.Get("reason"), RequestID: requestID})
+				if decisionErr != nil {
+					serveAdministrationMutationError(response, request, views["registrations"], decisionErr)
+					return
+				}
+				terminal := decision == registration.Approve && result.Status == "approved" || decision == registration.Reject && result.Status == "rejected"
+				if !terminal || result.Revision <= revision || result.AuditID < 0 {
+					serveAdministrationServiceError(response, request, views["registrations"], errors.New("invalid registration decision result"))
+					return
+				}
+				destination, _ := builder.Path("admin", "registrations")
+				serveMutationNavigation(response, request, destination)
+			}
+		}
+		router.Post("/admin/registrations/{registrationID}/approve", decide(registration.Approve))
+		router.Post("/admin/registrations/{registrationID}/reject", decide(registration.Reject))
+	}
 	router.Get("/admin/accounts/{userID}", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
 		if !ok {
@@ -669,7 +759,7 @@ func renderAdministrationError(response http.ResponseWriter, request *http.Reque
 }
 func serveAdministrationServiceError(response http.ResponseWriter, request *http.Request, view pageView, err error) {
 	switch {
-	case errors.Is(err, administration.ErrAdministrationDenied), errors.Is(err, administration.ErrAccountAdministrationDenied):
+	case errors.Is(err, administration.ErrAdministrationDenied), errors.Is(err, administration.ErrAccountAdministrationDenied), errors.Is(err, registration.ErrDenied):
 		renderAdministrationError(response, request, view, 403, "Administration denied", "Your current account cannot administer this board.")
 	case errors.Is(err, administration.ErrAdministrationNotFound), errors.Is(err, administration.ErrAccountAdministrationNotFound):
 		renderAdministrationError(response, request, view, 404, "Page not found", "The requested administration target does not exist.")
@@ -679,9 +769,9 @@ func serveAdministrationServiceError(response http.ResponseWriter, request *http
 }
 func serveAdministrationMutationError(response http.ResponseWriter, request *http.Request, view pageView, err error) {
 	switch {
-	case errors.Is(err, administration.ErrAdministrationInput), errors.Is(err, administration.ErrAccountAdministrationInput):
+	case errors.Is(err, administration.ErrAdministrationInput), errors.Is(err, administration.ErrAccountAdministrationInput), errors.Is(err, registration.ErrInput):
 		renderAdministrationError(response, request, view, 422, "Invalid change", "Check every field and try again.")
-	case errors.Is(err, administration.ErrAdministrationConflict), errors.Is(err, administration.ErrAccountAdministrationConflict), errors.Is(err, administration.ErrAccountAdministratorContinuity):
+	case errors.Is(err, administration.ErrAdministrationConflict), errors.Is(err, administration.ErrAccountAdministrationConflict), errors.Is(err, administration.ErrAccountAdministratorContinuity), errors.Is(err, registration.ErrConflict):
 		renderAdministrationError(response, request, view, 409, "Change conflict", "The target changed, the change was a no-op, or administrator continuity would be lost. Reload and try again.")
 	default:
 		serveAdministrationServiceError(response, request, view, err)
@@ -701,7 +791,7 @@ func administrationRouteValid(request *http.Request) bool {
 	if path == "/admin" {
 		return method == http.MethodGet && len(query) == 0
 	}
-	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" {
+	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" || path == "/admin/registrations" {
 		if method == http.MethodGet {
 			if path == "/admin/areas" {
 				_, _, err := parseAdministrationAreaCursor(query)
@@ -710,13 +800,13 @@ func administrationRouteValid(request *http.Request) bool {
 			_, err := parseAdministrationCursor(query, "after")
 			return err == nil
 		}
-		return method == http.MethodPost && len(query) == 0
+		return path != "/admin/registrations" && method == http.MethodPost && len(query) == 0
 	}
 	parts := strings.Split(strings.TrimPrefix(path, "/admin/"), "/")
 	if len(parts) < 2 || len(parts) > 4 {
 		return false
 	}
-	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" {
+	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" {
 		return false
 	}
 	if _, err := parseCanonicalPositiveID(parts[1]); err != nil {
@@ -732,7 +822,7 @@ func administrationRouteValid(request *http.Request) bool {
 		return parts[0] == "groups" || parts[0] == "areas"
 	}
 	if len(parts) == 3 {
-		return parts[0] == "accounts" && parts[2] == "role"
+		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject")
 	}
 	if parts[2] != "groups" || (parts[0] != "accounts" && parts[0] != "areas") {
 		return false

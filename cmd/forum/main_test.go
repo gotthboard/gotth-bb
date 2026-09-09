@@ -373,9 +373,17 @@ func validAuthenticationFactory() authenticationFactory {
 	}
 }
 
-func validAuthentikObjectsFactory(string, string) (authentikcontrol.Objects, error) {
-	return authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{Approval: authentikcontrol.Object{UUID: "8d29e230-3485-4ee6-a741-ec089e510002"}}}, nil
+func validAuthentikObjectsFactory(string, string, string, string) (registrationControlRuntime, error) {
+	return registrationControlRuntime{
+		Objects: authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{Approval: authentikcontrol.Object{UUID: "8d29e230-3485-4ee6-a741-ec089e510002"}}},
+		Gateway: fakeRegistrationGateway{}, ReferenceKey: [32]byte{1}, Close: func() {},
+	}, nil
 }
+
+type fakeRegistrationGateway struct{}
+
+func (fakeRegistrationGateway) AddUser(context.Context, string, string) error    { return nil }
+func (fakeRegistrationGateway) RemoveUser(context.Context, string, string) error { return nil }
 
 type fakeAuthenticationService struct{}
 

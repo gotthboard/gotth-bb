@@ -40,6 +40,48 @@ SELECT COALESCE(
     )
 )::boolean AS accepted;
 
+-- name: ListPendingRegistrationsForAdministration :many
+WITH actor AS MATERIALIZED (
+    SELECT forum_user.id
+    FROM public.users AS forum_user
+    WHERE forum_user.id = sqlc.arg(actor_user_id)
+      AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
+          OR forum_user.suspended_until <= sqlc.arg(observed_at)::timestamptz
+      )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= sqlc.arg(observed_at)::timestamptz)
+), candidate AS MATERIALIZED (
+    SELECT registration.id, registration.display_name,
+           registration.verified_email, registration.status,
+           registration.administration_revision, registration.intake_at,
+           registration.reconciliation_class
+    FROM actor
+    JOIN LATERAL (
+        SELECT pending.id, pending.display_name, pending.verified_email,
+               pending.status, pending.administration_revision,
+               pending.intake_at, pending.reconciliation_class
+        FROM public.pending_registrations AS pending
+        WHERE pending.status IN ('pending', 'approval_required', 'rejection_required')
+          AND pending.id > sqlc.arg(after_registration_id)
+        ORDER BY pending.id
+        LIMIT sqlc.arg(page_limit)
+    ) AS registration ON true
+)
+SELECT (candidate.id IS NOT NULL)::boolean AS registration_present,
+       COALESCE(candidate.id, 0)::bigint AS id,
+       COALESCE(candidate.display_name, '')::text AS display_name,
+       COALESCE(candidate.verified_email, '')::text AS verified_email,
+       COALESCE(candidate.status, '')::text AS status,
+       COALESCE(candidate.administration_revision, 0)::bigint AS administration_revision,
+       candidate.intake_at,
+       candidate.reconciliation_class
+FROM actor
+LEFT JOIN candidate ON true
+ORDER BY candidate.id NULLS LAST;
+
 -- name: LockPendingRegistration :one
 SELECT id, authentik_user_id, authentik_subject, status,
        administration_revision, transition_request_id,

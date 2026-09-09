@@ -18,6 +18,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/app"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
+	"github.com/gotthboard/gotth-bb/internal/authentikgateway"
 	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/control"
@@ -51,10 +52,32 @@ type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
 type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
 type abuseFactory func(config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error)
-type authentikObjectsFactory func(string, string) (authentikcontrol.Objects, error)
+type registrationControlRuntime struct {
+	Objects      authentikcontrol.Objects
+	Gateway      registrationservice.Gateway
+	ReferenceKey [32]byte
+	Close        func()
+}
+type registrationControlFactory func(string, string, string, string) (registrationControlRuntime, error)
 
 type approvalIntakeVerifier interface {
 	VerifyApprovalIntake(context.Context, string, string) (registrationservice.Intake, error)
+}
+
+func loadRegistrationControl(objectsPath, issuer, socketPath, fingerprintKeyPath string) (registrationControlRuntime, error) {
+	objects, err := authentikcontrol.LoadObjects(objectsPath, issuer)
+	if err != nil {
+		return registrationControlRuntime{}, fmt.Errorf("load control objects")
+	}
+	key, err := registrationservice.LoadFingerprintKey(fingerprintKeyPath)
+	if err != nil {
+		return registrationControlRuntime{}, fmt.Errorf("load fingerprint key")
+	}
+	client, err := authentikgateway.NewClient(socketPath)
+	if err != nil {
+		return registrationControlRuntime{}, fmt.Errorf("construct control gateway client")
+	}
+	return registrationControlRuntime{Objects: objects, Gateway: client, ReferenceKey: key, Close: client.Close}, nil
 }
 
 // newLoggedInitialAdministratorClaimer preserves the exact claim result while
@@ -120,7 +143,7 @@ func main() {
 		}
 		limiter, err := policy.NewRequestLimiter(rand.Reader, time.Now)
 		return policy, limiter, err
-	}, authentikcontrol.LoadObjects, net.Listen); err != nil {
+	}, loadRegistrationControl, net.Listen); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb: %v\n", err)
 		os.Exit(1)
 	}
@@ -145,7 +168,7 @@ func run(
 	newAuthentication authenticationFactory,
 	loadCursorKeyring cursorKeyringFactory,
 	loadAbuse abuseFactory,
-	loadAuthentikObjects authentikObjectsFactory,
+	loadRegistrationControl registrationControlFactory,
 	listen func(string, string) (net.Listener, error),
 ) error {
 	if ctx == nil {
@@ -166,8 +189,8 @@ func run(
 	if loadAbuse == nil {
 		return fmt.Errorf("abuse policy factory is required")
 	}
-	if loadAuthentikObjects == nil {
-		return fmt.Errorf("Authentik object loader is required")
+	if loadRegistrationControl == nil {
+		return fmt.Errorf("registration control loader is required")
 	}
 	if listen == nil {
 		return fmt.Errorf("service listener factory is required")
@@ -248,10 +271,15 @@ func run(
 	if !ok {
 		return fmt.Errorf("construct approval-intake verifier failed")
 	}
-	authentikObjects, err := loadAuthentikObjects(configured.AuthentikControlObjectsFile, configured.OIDCIssuerURL.String())
+	registrationControl, err := loadRegistrationControl(configured.AuthentikControlObjectsFile, configured.OIDCIssuerURL.String(), configured.AuthentikControlSocket, configured.InvitationFingerprintKeyFile)
 	if err != nil {
-		return fmt.Errorf("load Authentik control objects failed")
+		return fmt.Errorf("load registration control runtime failed")
 	}
+	if registrationControl.Gateway == nil || registrationControl.ReferenceKey == ([32]byte{}) || registrationControl.Close == nil {
+		return fmt.Errorf("load registration control runtime returned an invalid runtime")
+	}
+	defer registrationControl.Close()
+	authentikObjects := registrationControl.Objects
 	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
 		return fmt.Errorf("construct migration release verifier: %w", err)
@@ -416,6 +444,14 @@ func run(
 				},
 				ChangeAreaGroup: func(adminContext context.Context, access auth.AccessContext, areaID, groupID int64, grant bool, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AreaCompletionResult, error) {
 					return administrationservice.ChangeAreaGroup(adminContext, pool, time.Now, access, areaID, groupID, grant, reason, revision, requestID)
+				},
+				Registrations: &httpui.RegistrationAdministrationHTTPServices{
+					List: func(adminContext context.Context, access auth.AccessContext, after int64) (registrationservice.PendingPage, error) {
+						return registrationservice.ListPending(adminContext, queries, access, time.Now(), after)
+					},
+					Decide: func(adminContext context.Context, access auth.AccessContext, input registrationservice.DecisionInput) (registrationservice.DecisionResult, error) {
+						return registrationservice.Decide(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
+					},
 				},
 			},
 		},

@@ -19,6 +19,7 @@ type pageView struct {
 	RegisterURL          string
 	LogoutURL            string
 	AdminURL             string
+	RegistrationsURL     string
 	ReportsURL           string
 	SearchURL            string
 	ActivityURL          string

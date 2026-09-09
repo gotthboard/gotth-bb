@@ -164,6 +164,101 @@ func (q *Queries) CompletePendingRegistrationDecision(ctx context.Context, arg C
 	return i, err
 }
 
+const listPendingRegistrationsForAdministration = `-- name: ListPendingRegistrationsForAdministration :many
+WITH actor AS MATERIALIZED (
+    SELECT forum_user.id
+    FROM public.users AS forum_user
+    WHERE forum_user.id = $1
+      AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > $2::timestamptz
+          OR forum_user.suspended_until <= $2::timestamptz
+      )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
+), candidate AS MATERIALIZED (
+    SELECT registration.id, registration.display_name,
+           registration.verified_email, registration.status,
+           registration.administration_revision, registration.intake_at,
+           registration.reconciliation_class
+    FROM actor
+    JOIN LATERAL (
+        SELECT pending.id, pending.display_name, pending.verified_email,
+               pending.status, pending.administration_revision,
+               pending.intake_at, pending.reconciliation_class
+        FROM public.pending_registrations AS pending
+        WHERE pending.status IN ('pending', 'approval_required', 'rejection_required')
+          AND pending.id > $3
+        ORDER BY pending.id
+        LIMIT $4
+    ) AS registration ON true
+)
+SELECT (candidate.id IS NOT NULL)::boolean AS registration_present,
+       COALESCE(candidate.id, 0)::bigint AS id,
+       COALESCE(candidate.display_name, '')::text AS display_name,
+       COALESCE(candidate.verified_email, '')::text AS verified_email,
+       COALESCE(candidate.status, '')::text AS status,
+       COALESCE(candidate.administration_revision, 0)::bigint AS administration_revision,
+       candidate.intake_at,
+       candidate.reconciliation_class
+FROM actor
+LEFT JOIN candidate ON true
+ORDER BY candidate.id NULLS LAST
+`
+
+type ListPendingRegistrationsForAdministrationParams struct {
+	ActorUserID         int64
+	ObservedAt          pgtype.Timestamptz
+	AfterRegistrationID int64
+	PageLimit           int32
+}
+
+type ListPendingRegistrationsForAdministrationRow struct {
+	RegistrationPresent    bool
+	ID                     int64
+	DisplayName            string
+	VerifiedEmail          string
+	Status                 string
+	AdministrationRevision int64
+	IntakeAt               pgtype.Timestamptz
+	ReconciliationClass    pgtype.Text
+}
+
+func (q *Queries) ListPendingRegistrationsForAdministration(ctx context.Context, arg ListPendingRegistrationsForAdministrationParams) ([]ListPendingRegistrationsForAdministrationRow, error) {
+	rows, err := q.db.Query(ctx, listPendingRegistrationsForAdministration,
+		arg.ActorUserID,
+		arg.ObservedAt,
+		arg.AfterRegistrationID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingRegistrationsForAdministrationRow{}
+	for rows.Next() {
+		var i ListPendingRegistrationsForAdministrationRow
+		if err := rows.Scan(
+			&i.RegistrationPresent,
+			&i.ID,
+			&i.DisplayName,
+			&i.VerifiedEmail,
+			&i.Status,
+			&i.AdministrationRevision,
+			&i.IntakeAt,
+			&i.ReconciliationClass,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockPendingRegistration = `-- name: LockPendingRegistration :one
 SELECT id, authentik_user_id, authentik_subject, status,
        administration_revision, transition_request_id,

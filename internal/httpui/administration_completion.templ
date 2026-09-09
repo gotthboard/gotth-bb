@@ -13,10 +13,51 @@ templ administrationContent(view pageView, body templ.Component) {
 			<a href={ view.AdminURL + "/accounts" } hx-get={ view.AdminURL + "/accounts" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Accounts</a>
 			<a href={ view.AdminURL + "/groups" } hx-get={ view.AdminURL + "/groups" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Groups</a>
 			<a href={ view.AdminURL + "/areas" } hx-get={ view.AdminURL + "/areas" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Areas</a>
+			if view.RegistrationsURL != "" {
+				<a href={ view.RegistrationsURL } hx-get={ view.RegistrationsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Registrations</a>
+			}
 			<a href={ view.AdminURL + "/settings" } hx-get={ view.AdminURL + "/settings" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Settings</a>
 		</nav>
 		@body
 	</main>
+}
+
+templ administrationRegistrationsBody(page administrationRegistrationsView) {
+	<section aria-labelledby="registrations-title">
+		<h1 id="registrations-title" class="text-3xl font-bold text-white">Pending registrations</h1>
+		<p class="mt-3 max-w-3xl text-slate-300">Approve or reject verified identities waiting for Board access. Every decision requires an audit reason.</p>
+		if len(page.Registrations) == 0 {
+			<p class="mt-8 rounded-lg border border-slate-800 bg-slate-900 p-5 text-slate-300">No registrations are waiting.</p>
+		}
+		<ul class="mt-6 grid gap-4">
+			for _, pending := range page.Registrations {
+				<li class="min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:p-5">
+					<h2 class="break-words text-lg font-semibold text-white">{ pending.DisplayName }</h2>
+					<p class="mt-1 break-all text-sm text-slate-300">{ pending.VerifiedEmail }</p>
+					<p class="mt-2 text-sm text-slate-400">{ pending.Status } · received { pending.IntakeAt }</p>
+					if pending.Failure != "" {
+						<p class="mt-2 text-sm text-amber-200">Last reconciliation: { pending.Failure }</p>
+					}
+					<div class="mt-5 grid gap-4 lg:grid-cols-2">
+						@administrationRegistrationDecisionForm(pending.ApproveURL, "Approve", pending.Revision, page.CSRFToken, "bg-cyan-300 text-slate-950")
+						@administrationRegistrationDecisionForm(pending.RejectURL, "Reject", pending.Revision, page.CSRFToken, "border border-rose-700 text-rose-100")
+					</div>
+				</li>
+			}
+		</ul>
+		if page.NextURL != "" {
+			<a class="mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200" href={ page.NextURL } hx-get={ page.NextURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">Next registrations</a>
+		}
+	</section>
+}
+
+templ administrationRegistrationDecisionForm(action, label, revision, csrf, buttonClass string) {
+	<form method="post" action={ action } hx-post={ action } class="grid min-w-0 gap-3 rounded-md border border-slate-700 p-4">
+		<input type="hidden" name="_csrf" value={ csrf }/>
+		<input type="hidden" name="revision" value={ revision }/>
+		<label class="grid min-w-0 gap-2 text-sm font-semibold text-slate-200">Audit reason<input required name="reason" maxlength="2000" autocomplete="off" class="min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"/></label>
+		<button class={ "min-h-11 w-fit rounded-md px-4 py-2 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 " + buttonClass }>{ label }</button>
+	</form>
 }
 
 templ administrationDashboardBody(page administrationDashboardView) {

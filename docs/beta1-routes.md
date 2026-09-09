@@ -68,6 +68,9 @@ state and read markers are explicit mutations but are not moderation audits.
 | `GET` | `/admin/settings` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
 | `POST` | `/admin/settings` | current/revalidated administrator | yes | `private, no-store` | yes / settings / yes | fixed `403`/conflict/field error |
 | `GET` | `/admin/accounts` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `GET` | `/admin/registrations` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/registrations/{registrationID}/approve` | current/revalidated administrator | yes | `private, no-store` | yes / restrictive identity transition / yes | fixed `403`/conflict/remote error |
+| `POST` | `/admin/registrations/{registrationID}/reject` | current/revalidated administrator | yes | `private, no-store` | yes / restrictive identity transition / yes | fixed `403`/conflict/remote error |
 | `GET` | `/admin/accounts/{userID}` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
 | `POST` | `/admin/accounts/{userID}/role` | current/revalidated administrator | yes | `private, no-store` | yes / role, sessions / yes | equivalent `404`/continuity/conflict |
 | `POST` | `/admin/accounts/{userID}/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / membership / yes | equivalent `404`/conflict/error |
@@ -97,9 +100,6 @@ into the table above because their production dispatch now exists.
 
 - `GET /admin/control` and `POST /admin/control` — current/revalidated
   administrator; settings read or revision-guarded audited update.
-- `GET /admin/registrations` plus
-  `POST /admin/registrations/{registrationID}/approve` and `/reject` — bounded
-  pending reads and one restrictive audited identity transition.
 - `POST /admin/registrations/{handle}/adopt` — re-fetch and adopt one exact
   signed-handle Authentik pending-group orphan; no grant or generic selector.
 - `GET /admin/invitations`, `POST /admin/invitations`, and

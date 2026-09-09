@@ -85,6 +85,10 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 
 	approveSubject := "11111111-1111-4111-8111-111111111111"
 	approveID := insertPendingRegistration(t, ctx, connection, 101, approveSubject, "Approve Me", "approve@example.test")
+	page, err := ListPending(ctx, db.New(connection), actor, baseTime, 0)
+	if err != nil || len(page.Registrations) != 1 || page.Registrations[0].ID != approveID || page.Registrations[0].DisplayName != "Approve Me" || page.Registrations[0].VerifiedEmail != "approve@example.test" || page.Registrations[0].Status != "pending" || page.Registrations[0].Revision != 1 {
+		t.Fatalf("pending list = (%+v, %v)", page, err)
+	}
 	approveRequest := pgtype.UUID{Bytes: [16]byte{0xa1}, Valid: true}
 	gateway := &recordingGateway{}
 	approved, err := Decide(ctx, connection, gateway, clock, actor, DecisionInput{
