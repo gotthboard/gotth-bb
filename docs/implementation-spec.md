@@ -3194,9 +3194,12 @@ strict address-only UTF-8 email of at most 320 bytes, and optional display name
 of at most 80 characters and 320 bytes. Responses are closed local projections rather than raw
 Authentik JSON and are capped at 256 KiB. Success is `200` for reads, `201` for
 invitation create, and empty `204` for health/membership/delete. Failures use
-only `400 invalid_request`, `404 absent`, `409 remote_conflict`,
-`502 remote_invalid`, or `503 remote_unavailable`; no Authentik body, URL,
-numeric key, token, exception, or profile value appears in an error. Board's
+only the exact status/body pairs `400 {"error":"invalid_request"}`,
+`404 {"error":"absent"}`, `409 {"error":"remote_conflict"}`,
+`502 {"error":"remote_invalid"}`, or
+`503 {"error":"remote_unavailable"}`, each as one newline-terminated JSON
+object; no Authentik body, URL, numeric key, token, exception, or profile value
+appears in an error. Board's
 Unix client has a 2.5-second total timeout, never follows redirects, and never
 retries a mutation. The gateway admits at most eight concurrent Authentik
 calls; excess work receives `503` without an outbound call.

@@ -802,9 +802,9 @@ into an identity provider or a host-management console:
    providers, roles, tokens, or secrets. Its explicit permission grants are
    global read-user and invitation create, per-object view/delete permission
    assigned only to invitations that account creates, and object permissions
-   to view and add/remove users on the three exact Board identity groups. Its
-   effective authority additionally includes the inseparable action below. Authentik
-   2026.5.2 incorrectly permits its invitation `send_email` action to any
+   to view and add/remove users on the three exact Board identity groups.
+   Effective authority additionally includes the inseparable action below:
+   Authentik 2026.5.2 permits its invitation `send_email` action to any
    principal that can view that invitation; there is no separate permission to
    revoke. The gateway contains that upstream excess authority: it listens on
    no TCP socket, authenticates the Board peer from Unix credentials, hard-codes

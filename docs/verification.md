@@ -1425,15 +1425,17 @@ Tests inject false allow, true deny, caught network failure, and uncaught policy
 engine failure at every guard and prove `stage_invalid` cancels the plan without
 skipping forward into any critical stage.
 
-The raw service-token capability matrix must positively prove exactly the
-authority Authentik can enforce:
+The raw service-token capability matrix must positively prove both the explicit
+grants and the effective authority Authentik enforces:
 
 - global user read and model-level invitation create, the two explicitly
   admitted coarse permissions;
 - exact accepted/pending/suspended group read;
 - add/remove user on accepted, pending, and suspended groups;
 - create/read/delete one invitation bound to the invitation flow through the
-  creator-scoped initial object permissions.
+  creator-scoped initial object permissions; and
+- successful `send_email` on that creator-owned invitation as the documented
+  inherited excess, while the same action on a non-owned invitation is denied.
 
 A separate Go-client contract test proves callers cannot supply an arbitrary
 user query, group, flow, invitation, origin, path, method, or redirect. It
@@ -1502,8 +1504,6 @@ container's mounts, environment, and open descriptors.
   Reinstatement cannot clear local denial until accepted-group membership is
   verified. Every protected authorization query denies non-accepted sync state.
   Reconciliation is idempotent and operates on only one identity.
-  Reinstatement and explicit reconciliation retain a request audit when remote
-  or completion work fails and append exactly one result audit on completion.
   Reinstatement and explicit reconciliation retain a request audit when remote
   or completion work fails and append exactly one result audit on completion.
 - Finite-expiry tests cover migration backfill, startup/60-second ticks,
