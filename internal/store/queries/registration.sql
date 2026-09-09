@@ -236,6 +236,47 @@ UNION ALL
 SELECT * FROM existing
 LIMIT 1;
 
+-- name: ListRegistrationInvitationsForAdministration :many
+WITH actor AS MATERIALIZED (
+    SELECT forum_user.id
+    FROM public.users AS forum_user
+    WHERE forum_user.id = sqlc.arg(actor_user_id)
+      AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
+          OR forum_user.suspended_until <= sqlc.arg(observed_at)::timestamptz
+      )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= sqlc.arg(observed_at)::timestamptz)
+), candidate AS MATERIALIZED (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.transition_state, invitation.delivery_state,
+           invitation.expires_at, invitation.created_at,
+           invitation.administration_revision, invitation.failure_class
+    FROM actor
+    CROSS JOIN LATERAL (
+        SELECT i.idempotency_key, i.authentik_invitation_name,
+               i.transition_state, i.delivery_state, i.expires_at,
+               i.created_at, i.administration_revision, i.failure_class
+        FROM public.registration_invitations AS i
+        ORDER BY i.created_at DESC, i.idempotency_key DESC
+        LIMIT 51
+    ) AS invitation
+)
+SELECT EXISTS (SELECT 1 FROM actor)::boolean AS actor_present,
+       (candidate.idempotency_key IS NOT NULL)::boolean AS invitation_present,
+       candidate.idempotency_key,
+       COALESCE(candidate.authentik_invitation_name, '')::text AS invitation_name,
+       COALESCE(candidate.transition_state, '')::text AS transition_state,
+       COALESCE(candidate.delivery_state, '')::text AS delivery_state,
+       candidate.expires_at, candidate.created_at,
+       COALESCE(candidate.administration_revision, 0)::bigint AS administration_revision,
+       candidate.failure_class
+FROM (SELECT 1) AS seed
+LEFT JOIN candidate ON true
+ORDER BY candidate.created_at DESC NULLS LAST, candidate.idempotency_key DESC NULLS LAST;
+
 -- name: RecordRegistrationInvitationRequest :one
 INSERT INTO public.moderation_actions (
     actor_kind, actor_user_id, target_type, target_site, action_type,
@@ -273,6 +314,97 @@ WITH changed AS (
            pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'active'::text, 'administration_revision', changed.administration_revision, 'delivery', sqlc.arg(delivery_state)::text, 'result', sqlc.arg(result_class)::text),
            sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
     FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true;
+
+-- name: BeginRegistrationInvitationRevocation :one
+WITH candidate AS MATERIALIZED (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.expires_at, invitation.transition_state,
+           invitation.administration_revision
+    FROM public.registration_invitations AS invitation
+    WHERE invitation.idempotency_key = sqlc.arg(idempotency_key)
+      AND (
+          (invitation.administration_revision = sqlc.arg(expected_revision)
+           AND invitation.transition_state IN ('creating', 'active', 'unknown', 'revoke_required', 'revoked', 'absent'))
+          OR (invitation.administration_revision = sqlc.arg(expected_revision) + 1
+              AND invitation.transition_state = 'revoke_required')
+          OR (invitation.administration_revision = sqlc.arg(expected_revision) + 2
+              AND invitation.transition_state IN ('revoked', 'absent'))
+      )
+    FOR UPDATE
+), changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'revoke_required',
+        transitioned_at = sqlc.arg(observed_at),
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = NULL
+    FROM candidate
+    WHERE invitation.idempotency_key = candidate.idempotency_key
+      AND candidate.administration_revision = sqlc.arg(expected_revision)
+      AND candidate.transition_state IN ('creating', 'active', 'unknown')
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.idempotency_key, invitation.authentik_invitation_name,
+              invitation.expires_at, invitation.transition_state,
+              invitation.administration_revision,
+              candidate.transition_state AS previous_state
+), selected AS (
+    SELECT changed.idempotency_key, changed.authentik_invitation_name,
+           changed.expires_at, changed.transition_state,
+           changed.administration_revision, changed.previous_state,
+           true::boolean AS inserted
+    FROM changed
+    UNION ALL
+    SELECT candidate.idempotency_key, candidate.authentik_invitation_name,
+           candidate.expires_at, candidate.transition_state,
+           candidate.administration_revision, candidate.transition_state,
+           false::boolean
+    FROM candidate
+    WHERE NOT EXISTS (SELECT 1 FROM changed)
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', sqlc.arg(actor_user_id), 'site', true,
+           'request_revoke_invitation', sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', selected.previous_state, 'administration_revision', sqlc.arg(expected_revision)::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'revoke_required'::text, 'administration_revision', selected.administration_revision),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM selected
+    WHERE selected.inserted
+    RETURNING id
+)
+SELECT selected.authentik_invitation_name, selected.expires_at,
+       selected.transition_state, selected.administration_revision,
+       selected.inserted, COALESCE((SELECT audit.id FROM audit), 0)::bigint AS audit_id
+FROM selected;
+
+-- name: CompleteRegistrationInvitationRevocation :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = sqlc.arg(resulting_state),
+        transitioned_at = sqlc.arg(observed_at),
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = sqlc.narg(failure_class)
+    WHERE invitation.idempotency_key = sqlc.arg(idempotency_key)
+      AND invitation.transition_state = 'revoke_required'
+      AND invitation.administration_revision = sqlc.arg(expected_revision)
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', sqlc.arg(actor_user_id), 'site', true,
+           sqlc.arg(action_type), sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'revoke_required'::text, 'administration_revision', sqlc.arg(expected_revision)::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', sqlc.arg(resulting_state)::text, 'administration_revision', changed.administration_revision, 'result', sqlc.arg(result_class)::text),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM changed
+    RETURNING id
 )
 SELECT changed.administration_revision, audit.id AS audit_id
 FROM changed JOIN audit ON true;

@@ -377,8 +377,9 @@ func validAuthenticationFactory() authenticationFactory {
 func validAuthentikObjectsFactory(string, string, string, string) (registrationControlRuntime, error) {
 	return registrationControlRuntime{
 		Objects: authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{
-			Open:     authentikcontrol.Object{Slug: "gotth-bb-open", UUID: "8d29e230-3485-4ee6-a741-ec089e510001"},
-			Approval: authentikcontrol.Object{Slug: "gotth-bb-approval", UUID: "8d29e230-3485-4ee6-a741-ec089e510002"},
+			Open:       authentikcontrol.Object{Slug: "gotth-bb-open", UUID: "8d29e230-3485-4ee6-a741-ec089e510001"},
+			Approval:   authentikcontrol.Object{Slug: "gotth-bb-approval", UUID: "8d29e230-3485-4ee6-a741-ec089e510002"},
+			Invitation: authentikcontrol.Object{Slug: "gotth-bb-invitation", UUID: "8d29e230-3485-4ee6-a741-ec089e510003"},
 		}},
 		Gateway: fakeRegistrationGateway{}, ReferenceKey: [32]byte{1}, Close: func() {},
 	}, nil
@@ -828,7 +829,7 @@ func validEnvironment(listenAddress string) map[string]string {
 		"PUBLIC_BASE_URL":                 "http://127.0.0.1:8080/bb",
 		"BASE_PATH":                       "/bb",
 		"DATABASE_URL":                    "postgres://gotth:database-password@127.0.0.1/gotth_bb",
-		"OIDC_ISSUER_URL":                 "http://127.0.0.1:9000/application/o/gotth-bb/",
+		"OIDC_ISSUER_URL":                 "https://auth.example.test/application/o/gotth-bb/",
 		"OIDC_CLIENT_ID":                  "gotth-bb",
 		"AUTHENTIK_CONTROL_OBJECTS_FILE":  "/run/config/authentik-control-objects.json",
 		"AUTHENTIK_CONTROL_SOCKET":        "/run/gotth-bb-control/authentik-control.sock",
@@ -840,7 +841,7 @@ func validEnvironment(listenAddress string) map[string]string {
 		"SMTP_TLS_MODE":                   "",
 		"SMTP_TIMEOUT":                    "",
 		"BOOTSTRAP_ADMIN_SUBJECT":         "subject-1",
-		"REGISTRATION_URL":                "http://127.0.0.1:9000/if/flow/gotth-bb-enrollment/",
+		"REGISTRATION_URL":                "https://auth.example.test/if/flow/gotth-bb-enrollment/",
 		"REGISTRATION_ENABLED":            "false",
 		"SESSION_MAX_AGE":                 "24h",
 		"SESSION_IDLE_TIMEOUT":            "30m",

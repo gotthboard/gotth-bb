@@ -85,6 +85,111 @@ func (q *Queries) BeginPendingRegistrationDecision(ctx context.Context, arg Begi
 	return i, err
 }
 
+const beginRegistrationInvitationRevocation = `-- name: BeginRegistrationInvitationRevocation :one
+WITH candidate AS MATERIALIZED (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.expires_at, invitation.transition_state,
+           invitation.administration_revision
+    FROM public.registration_invitations AS invitation
+    WHERE invitation.idempotency_key = $1
+      AND (
+          (invitation.administration_revision = $2
+           AND invitation.transition_state IN ('creating', 'active', 'unknown', 'revoke_required', 'revoked', 'absent'))
+          OR (invitation.administration_revision = $2 + 1
+              AND invitation.transition_state = 'revoke_required')
+          OR (invitation.administration_revision = $2 + 2
+              AND invitation.transition_state IN ('revoked', 'absent'))
+      )
+    FOR UPDATE
+), changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'revoke_required',
+        transitioned_at = $3,
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = NULL
+    FROM candidate
+    WHERE invitation.idempotency_key = candidate.idempotency_key
+      AND candidate.administration_revision = $2
+      AND candidate.transition_state IN ('creating', 'active', 'unknown')
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.idempotency_key, invitation.authentik_invitation_name,
+              invitation.expires_at, invitation.transition_state,
+              invitation.administration_revision,
+              candidate.transition_state AS previous_state
+), selected AS (
+    SELECT changed.idempotency_key, changed.authentik_invitation_name,
+           changed.expires_at, changed.transition_state,
+           changed.administration_revision, changed.previous_state,
+           true::boolean AS inserted
+    FROM changed
+    UNION ALL
+    SELECT candidate.idempotency_key, candidate.authentik_invitation_name,
+           candidate.expires_at, candidate.transition_state,
+           candidate.administration_revision, candidate.transition_state,
+           false::boolean
+    FROM candidate
+    WHERE NOT EXISTS (SELECT 1 FROM changed)
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', $4, 'site', true,
+           'request_revoke_invitation', $5,
+           pg_catalog.jsonb_build_object('invitation_ref', $6::text, 'status', selected.previous_state, 'administration_revision', $2::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', $6::text, 'status', 'revoke_required'::text, 'administration_revision', selected.administration_revision),
+           $7, $3::timestamptz
+    FROM selected
+    WHERE selected.inserted
+    RETURNING id
+)
+SELECT selected.authentik_invitation_name, selected.expires_at,
+       selected.transition_state, selected.administration_revision,
+       selected.inserted, COALESCE((SELECT audit.id FROM audit), 0)::bigint AS audit_id
+FROM selected
+`
+
+type BeginRegistrationInvitationRevocationParams struct {
+	IdempotencyKey   pgtype.UUID
+	ExpectedRevision int64
+	ObservedAt       pgtype.Timestamptz
+	ActorUserID      pgtype.Int8
+	Reason           pgtype.Text
+	InvitationRef    string
+	RequestID        pgtype.UUID
+}
+
+type BeginRegistrationInvitationRevocationRow struct {
+	AuthentikInvitationName string
+	ExpiresAt               pgtype.Timestamptz
+	TransitionState         string
+	AdministrationRevision  int64
+	Inserted                bool
+	AuditID                 int64
+}
+
+func (q *Queries) BeginRegistrationInvitationRevocation(ctx context.Context, arg BeginRegistrationInvitationRevocationParams) (BeginRegistrationInvitationRevocationRow, error) {
+	row := q.db.QueryRow(ctx, beginRegistrationInvitationRevocation,
+		arg.IdempotencyKey,
+		arg.ExpectedRevision,
+		arg.ObservedAt,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.InvitationRef,
+		arg.RequestID,
+	)
+	var i BeginRegistrationInvitationRevocationRow
+	err := row.Scan(
+		&i.AuthentikInvitationName,
+		&i.ExpiresAt,
+		&i.TransitionState,
+		&i.AdministrationRevision,
+		&i.Inserted,
+		&i.AuditID,
+	)
+	return i, err
+}
+
 const completePendingRegistrationDecision = `-- name: CompletePendingRegistrationDecision :one
 WITH changed AS (
     UPDATE public.pending_registrations AS registration
@@ -229,6 +334,73 @@ func (q *Queries) CompleteRegistrationInvitation(ctx context.Context, arg Comple
 	return i, err
 }
 
+const completeRegistrationInvitationRevocation = `-- name: CompleteRegistrationInvitationRevocation :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = $1,
+        transitioned_at = $2,
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = $3
+    WHERE invitation.idempotency_key = $4
+      AND invitation.transition_state = 'revoke_required'
+      AND invitation.administration_revision = $5
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', $6, 'site', true,
+           $7, $8,
+           pg_catalog.jsonb_build_object('invitation_ref', $9::text, 'status', 'revoke_required'::text, 'administration_revision', $5::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', $9::text, 'status', $1::text, 'administration_revision', changed.administration_revision, 'result', $10::text),
+           $11, $2::timestamptz
+    FROM changed
+    RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true
+`
+
+type CompleteRegistrationInvitationRevocationParams struct {
+	ResultingState   string
+	ObservedAt       pgtype.Timestamptz
+	FailureClass     pgtype.Text
+	IdempotencyKey   pgtype.UUID
+	ExpectedRevision int64
+	ActorUserID      pgtype.Int8
+	ActionType       string
+	Reason           pgtype.Text
+	InvitationRef    string
+	ResultClass      string
+	RequestID        pgtype.UUID
+}
+
+type CompleteRegistrationInvitationRevocationRow struct {
+	AdministrationRevision int64
+	AuditID                int64
+}
+
+func (q *Queries) CompleteRegistrationInvitationRevocation(ctx context.Context, arg CompleteRegistrationInvitationRevocationParams) (CompleteRegistrationInvitationRevocationRow, error) {
+	row := q.db.QueryRow(ctx, completeRegistrationInvitationRevocation,
+		arg.ResultingState,
+		arg.ObservedAt,
+		arg.FailureClass,
+		arg.IdempotencyKey,
+		arg.ExpectedRevision,
+		arg.ActorUserID,
+		arg.ActionType,
+		arg.Reason,
+		arg.InvitationRef,
+		arg.ResultClass,
+		arg.RequestID,
+	)
+	var i CompleteRegistrationInvitationRevocationRow
+	err := row.Scan(&i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
 const insertOrLoadPendingRegistrationAdoption = `-- name: InsertOrLoadPendingRegistrationAdoption :one
 WITH inserted AS (
     INSERT INTO public.pending_registrations (
@@ -365,6 +537,97 @@ func (q *Queries) ListPendingRegistrationsForAdministration(ctx context.Context,
 			&i.AdministrationRevision,
 			&i.IntakeAt,
 			&i.ReconciliationClass,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRegistrationInvitationsForAdministration = `-- name: ListRegistrationInvitationsForAdministration :many
+WITH actor AS MATERIALIZED (
+    SELECT forum_user.id
+    FROM public.users AS forum_user
+    WHERE forum_user.id = $1
+      AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > $2::timestamptz
+          OR forum_user.suspended_until <= $2::timestamptz
+      )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
+), candidate AS MATERIALIZED (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.transition_state, invitation.delivery_state,
+           invitation.expires_at, invitation.created_at,
+           invitation.administration_revision, invitation.failure_class
+    FROM actor
+    CROSS JOIN LATERAL (
+        SELECT i.idempotency_key, i.authentik_invitation_name,
+               i.transition_state, i.delivery_state, i.expires_at,
+               i.created_at, i.administration_revision, i.failure_class
+        FROM public.registration_invitations AS i
+        ORDER BY i.created_at DESC, i.idempotency_key DESC
+        LIMIT 51
+    ) AS invitation
+)
+SELECT EXISTS (SELECT 1 FROM actor)::boolean AS actor_present,
+       (candidate.idempotency_key IS NOT NULL)::boolean AS invitation_present,
+       candidate.idempotency_key,
+       COALESCE(candidate.authentik_invitation_name, '')::text AS invitation_name,
+       COALESCE(candidate.transition_state, '')::text AS transition_state,
+       COALESCE(candidate.delivery_state, '')::text AS delivery_state,
+       candidate.expires_at, candidate.created_at,
+       COALESCE(candidate.administration_revision, 0)::bigint AS administration_revision,
+       candidate.failure_class
+FROM (SELECT 1) AS seed
+LEFT JOIN candidate ON true
+ORDER BY candidate.created_at DESC NULLS LAST, candidate.idempotency_key DESC NULLS LAST
+`
+
+type ListRegistrationInvitationsForAdministrationParams struct {
+	ActorUserID int64
+	ObservedAt  pgtype.Timestamptz
+}
+
+type ListRegistrationInvitationsForAdministrationRow struct {
+	ActorPresent           bool
+	InvitationPresent      bool
+	IdempotencyKey         pgtype.UUID
+	InvitationName         string
+	TransitionState        string
+	DeliveryState          string
+	ExpiresAt              pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	AdministrationRevision int64
+	FailureClass           pgtype.Text
+}
+
+func (q *Queries) ListRegistrationInvitationsForAdministration(ctx context.Context, arg ListRegistrationInvitationsForAdministrationParams) ([]ListRegistrationInvitationsForAdministrationRow, error) {
+	rows, err := q.db.Query(ctx, listRegistrationInvitationsForAdministration, arg.ActorUserID, arg.ObservedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRegistrationInvitationsForAdministrationRow{}
+	for rows.Next() {
+		var i ListRegistrationInvitationsForAdministrationRow
+		if err := rows.Scan(
+			&i.ActorPresent,
+			&i.InvitationPresent,
+			&i.IdempotencyKey,
+			&i.InvitationName,
+			&i.TransitionState,
+			&i.DeliveryState,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+			&i.AdministrationRevision,
+			&i.FailureClass,
 		); err != nil {
 			return nil, err
 		}

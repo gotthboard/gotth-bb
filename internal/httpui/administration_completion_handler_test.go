@@ -156,6 +156,66 @@ func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T
 	}
 }
 
+func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T) {
+	t.Parallel()
+	services := administrationCompletionTestServices()
+	now := time.Date(2026, 9, 9, 20, 0, 0, 0, time.UTC)
+	handle := strings.Repeat("A", 87)
+	listCalls, createCalls, revokeCalls := 0, 0, 0
+	services.Invitations = &InvitationAdministrationHTTPServices{
+		List: func(_ context.Context, actor auth.AccessContext) (registration.InvitationPage, error) {
+			listCalls++
+			if actor.UserID != 1 {
+				t.Fatalf("list actor = %+v", actor)
+			}
+			return registration.InvitationPage{Invitations: []registration.InvitationSummary{{Name: "gotth-bb-invitation", Status: "active", Delivery: "not_requested", ExpiresAt: now.Add(time.Hour), CreatedAt: now, Revision: 2, Handle: handle}}}, nil
+		},
+		Create: func(_ context.Context, actor auth.AccessContext, input registration.InvitationInput) (registration.InvitationResult, error) {
+			createCalls++
+			if actor.UserID != 1 || input.Email != "invitee@example.test" || input.DisplayName != "Invited Member" || input.Reason != "Invite participant" || input.ExpiresAt != now.Add(time.Hour) || input.Deliver || !input.RequestID.Valid {
+				t.Fatalf("create args = (%+v, %+v)", actor, input)
+			}
+			return registration.InvitationResult{Status: "active", TokenUUID: "66666666-6666-4666-8666-666666666666", Revision: 2, AuditID: 3}, nil
+		},
+		Revoke: func(_ context.Context, actor auth.AccessContext, input registration.InvitationRevocationInput) (registration.InvitationRevocationResult, error) {
+			revokeCalls++
+			if actor.UserID != 1 || input.Handle != handle || input.Reason != "Withdraw invitation" || !input.RequestID.Valid {
+				t.Fatalf("revoke args = (%+v, %+v)", actor, input)
+			}
+			return registration.InvitationRevocationResult{Status: "revoked", Result: "confirmed", Revision: 4, AuditID: 5, Completed: true}, nil
+		},
+		Clock: func() time.Time { return now }, Issuer: url.URL{Scheme: "https", Host: "auth.example.test"}, FlowSlug: "gotth-bb-invitation", SMTPConfigured: true,
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	getResponse := httptest.NewRecorder()
+	handler.ServeHTTP(getResponse, areaAdministrationTestRequest(http.MethodGet, "/admin/invitations", nil, admin))
+	for _, want := range []string{"Invitations", "gotth-bb-invitation", "/bb/admin/invitations/" + handle + "/revoke", `name="idempotency_key"`} {
+		if getResponse.Code != http.StatusOK || !strings.Contains(getResponse.Body.String(), want) {
+			t.Fatalf("invitation page missing %q: (%d, %q)", want, getResponse.Code, getResponse.Body.String())
+		}
+	}
+	createForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "email": {"invitee@example.test"}, "display_name": {"Invited Member"}, "expires_minutes": {"60"}, "delivery": {"none"}, "reason": {"Invite participant"}, "idempotency_key": {strings.Repeat("11", 16)}}
+	createResponse := httptest.NewRecorder()
+	handler.ServeHTTP(createResponse, areaAdministrationTestRequest(http.MethodPost, "/admin/invitations", createForm, admin))
+	wantLink := "https://auth.example.test/if/flow/gotth-bb-invitation/?itoken=66666666-6666-4666-8666-666666666666"
+	if createResponse.Code != http.StatusOK || !strings.Contains(createResponse.Body.String(), wantLink) || createCalls != 1 || listCalls != 2 {
+		t.Fatalf("create invitation = (%d, create %d, list %d, %q)", createResponse.Code, createCalls, listCalls, createResponse.Body.String())
+	}
+	revokeForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Withdraw invitation"}}
+	revokeRequest := areaAdministrationTestRequest(http.MethodPost, "/admin/invitations/"+handle+"/revoke", revokeForm, admin)
+	revokeRequest.Header.Set("HX-Request", "true")
+	revokeResponse := httptest.NewRecorder()
+	handler.ServeHTTP(revokeResponse, revokeRequest)
+	if revokeResponse.Code != http.StatusNoContent || revokeResponse.Header().Get("HX-Location") != `{"path":"/bb/admin/invitations","target":"#main-content","swap":"outerHTML"}` || revokeCalls != 1 {
+		t.Fatalf("revoke invitation = (%d, %q, %d, %q)", revokeResponse.Code, revokeResponse.Header().Get("HX-Location"), revokeCalls, revokeResponse.Body.String())
+	}
+}
+
 func TestAdministrationCompletionTargetsMembershipOnlyFromCanonicalPath(t *testing.T) {
 	t.Parallel()
 	services := administrationCompletionTestServices()

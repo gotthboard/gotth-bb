@@ -16,10 +16,63 @@ templ administrationContent(view pageView, body templ.Component) {
 			if view.RegistrationsURL != "" {
 				<a href={ view.RegistrationsURL } hx-get={ view.RegistrationsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Registrations</a>
 			}
+			if view.InvitationsURL != "" {
+				<a href={ view.InvitationsURL } hx-get={ view.InvitationsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Invitations</a>
+			}
 			<a href={ view.AdminURL + "/settings" } hx-get={ view.AdminURL + "/settings" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Settings</a>
 		</nav>
 		@body
 	</main>
+}
+
+templ administrationInvitationsBody(page administrationInvitationsView) {
+	<section aria-labelledby="invitations-title">
+		<h1 id="invitations-title" class="text-3xl font-bold text-white">Invitations</h1>
+		<p class="mt-3 max-w-3xl text-slate-300">Create one single-use invitation. The private link is shown once and is never stored by Board.</p>
+		if page.OneTimeURL != "" {
+			<div role="status" class="mt-6 rounded-lg border border-cyan-800 bg-cyan-950/30 p-4"><p class="font-semibold text-cyan-100">Copy this link now. It will not be shown again.</p><a class="mt-2 block break-all text-cyan-200 underline" href={ page.OneTimeURL }>{ page.OneTimeURL }</a></div>
+		}
+		<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-8 grid min-w-0 gap-5 rounded-xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
+			<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+			<input type="hidden" name="idempotency_key" value={ page.IdempotencyKey }/>
+			<label class="grid gap-2 text-sm font-semibold">Email<input required type="email" name="email" maxlength="320" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid gap-2 text-sm font-semibold">Display name <span class="text-xs font-normal text-slate-400">Optional</span><input name="display_name" maxlength="80" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid gap-2 text-sm font-semibold">Expires in minutes<input required type="number" min="15" max="10080" value="1440" name="expires_minutes" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid gap-2 text-sm font-semibold">
+				Delivery
+				<select name="delivery" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
+					<option value="none">Show link only</option>
+					if page.SMTPConfigured {
+						<option value="email">Email link</option>
+					}
+				</select>
+			</label>
+			<label class="grid gap-2 text-sm font-semibold">Audit reason<input required name="reason" maxlength="2000" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<button class="min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Create invitation</button>
+		</form>
+		<h2 class="mt-10 text-2xl font-bold text-white">Recent invitation operations</h2>
+		<ul class="mt-5 grid gap-4">
+			for _, invitation := range page.Invitations {
+				<li class="rounded-lg border border-slate-800 bg-slate-900 p-4">
+					<h3 class="font-semibold text-white">{ invitation.Name }</h3>
+					<p class="mt-1 text-sm text-slate-300">{ invitation.Status } · delivery { invitation.Delivery } · expires { invitation.ExpiresAt }</p>
+					if invitation.Failure != "" {
+						<p class="mt-2 text-sm text-amber-200">{ invitation.Failure }</p>
+					}
+					if invitation.RevokeURL != "" {
+						<form method="post" action={ invitation.RevokeURL } hx-post={ invitation.RevokeURL } class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+							<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+							<label class="grid gap-2 text-sm font-semibold">Revocation reason<input required name="reason" maxlength="2000" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+							<button class="min-h-11 rounded-md border border-rose-700 px-4 py-2 font-semibold text-rose-200">Revoke</button>
+						</form>
+					}
+				</li>
+			}
+		</ul>
+		if page.More {
+			<p class="mt-4 text-sm text-amber-200">More invitation operations exist than this bounded page can show.</p>
+		}
+	</section>
 }
 
 templ administrationRegistrationsBody(page administrationRegistrationsView) {

@@ -72,6 +72,9 @@ state and read markers are explicit mutations but are not moderation audits.
 | `POST` | `/admin/registrations/{registrationID}/approve` | current/revalidated administrator | yes | `private, no-store` | yes / restrictive identity transition / yes | fixed `403`/conflict/remote error |
 | `POST` | `/admin/registrations/{registrationID}/reject` | current/revalidated administrator | yes | `private, no-store` | yes / restrictive identity transition / yes | fixed `403`/conflict/remote error |
 | `POST` | `/admin/registrations/{handle}/adopt` | current/revalidated administrator plus expiring signed handle | yes | `private, no-store` | yes / pending row / yes | fixed `403`/conflict/remote error |
+| `GET` | `/admin/invitations` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/invitations` | current/revalidated administrator | yes | `private, no-store` | yes / invitation transition / yes | fixed `403`/conflict/remote or SMTP result |
+| `POST` | `/admin/invitations/{handle}/revoke` | current/revalidated administrator plus expiring signed handle | yes | `private, no-store` | yes / invitation transition / yes | fixed `403`/conflict/remote result |
 | `GET` | `/admin/accounts/{userID}` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
 | `POST` | `/admin/accounts/{userID}/role` | current/revalidated administrator | yes | `private, no-store` | yes / role, sessions / yes | equivalent `404`/continuity/conflict |
 | `POST` | `/admin/accounts/{userID}/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / membership / yes | equivalent `404`/conflict/error |
@@ -101,9 +104,6 @@ into the table above because their production dispatch now exists.
 
 - `GET /admin/control` and `POST /admin/control` — current/revalidated
   administrator; settings read or revision-guarded audited update.
-- `GET /admin/invitations`, `POST /admin/invitations`, and
-  `POST /admin/invitations/{handle}/revoke` — bounded exact-flow invitation
-  read/create/revoke; mutation forms are CSRF protected and audited.
 - `GET /admin/accounts/{userID}/sessions`,
   `POST /admin/sessions/{handle}/revoke`, and
   `POST /admin/accounts/{userID}/sessions/revoke` — bounded non-secret local

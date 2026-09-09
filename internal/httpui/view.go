@@ -20,6 +20,7 @@ type pageView struct {
 	LogoutURL            string
 	AdminURL             string
 	RegistrationsURL     string
+	InvitationsURL       string
 	ReportsURL           string
 	SearchURL            string
 	ActivityURL          string

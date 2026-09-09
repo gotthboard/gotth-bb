@@ -32,6 +32,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/readiness"
 	registrationservice "github.com/gotthboard/gotth-bb/internal/registration"
 	siteservice "github.com/gotthboard/gotth-bb/internal/site"
+	"github.com/gotthboard/gotth-bb/internal/smtpdelivery"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -280,6 +281,19 @@ func run(
 	}
 	defer registrationControl.Close()
 	authentikObjects := registrationControl.Objects
+	var invitationMailer registrationservice.InvitationMailer
+	if configured.SMTP.Configured() {
+		mailer, mailerErr := smtpdelivery.New(smtpdelivery.Settings{
+			Host: configured.SMTP.Host, Port: configured.SMTP.Port, Username: configured.SMTP.Username,
+			From: configured.SMTP.From, PasswordFile: configured.SMTP.PasswordFile,
+			TLSMode: configured.SMTP.TLSMode, Timeout: configured.SMTP.Timeout,
+		}, configured.OIDCIssuerURL, authentikObjects.Flows.Invitation.Slug)
+		if mailerErr != nil {
+			return fmt.Errorf("construct invitation mailer failed")
+		}
+		defer mailer.Close()
+		invitationMailer = mailer
+	}
 	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
 		return fmt.Errorf("construct migration release verifier: %w", err)
@@ -462,6 +476,18 @@ func run(
 					Adopt: func(adminContext context.Context, access auth.AccessContext, input registrationservice.AdoptionInput) (registrationservice.AdoptionResult, error) {
 						return registrationservice.Adopt(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
 					},
+				},
+				Invitations: &httpui.InvitationAdministrationHTTPServices{
+					List: func(adminContext context.Context, access auth.AccessContext) (registrationservice.InvitationPage, error) {
+						return registrationservice.ListInvitations(adminContext, queries, registrationControl.Gateway, access, time.Now(), registrationControl.ReferenceKey)
+					},
+					Create: func(adminContext context.Context, access auth.AccessContext, input registrationservice.InvitationInput) (registrationservice.InvitationResult, error) {
+						return registrationservice.CreateInvitation(adminContext, pool, registrationControl.Gateway, invitationMailer, time.Now, access, input, registrationControl.ReferenceKey, authentikObjects.Flows.Invitation.UUID)
+					},
+					Revoke: func(adminContext context.Context, access auth.AccessContext, input registrationservice.InvitationRevocationInput) (registrationservice.InvitationRevocationResult, error) {
+						return registrationservice.RevokeInvitation(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
+					},
+					Clock: time.Now, Issuer: configured.OIDCIssuerURL, FlowSlug: authentikObjects.Flows.Invitation.Slug, SMTPConfigured: configured.SMTP.Configured(),
 				},
 			},
 		},

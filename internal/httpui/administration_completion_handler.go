@@ -42,12 +42,23 @@ type AdministrationHTTPServices struct {
 	UpdateArea        func(context.Context, auth.AccessContext, int64, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
 	ChangeAreaGroup   func(context.Context, auth.AccessContext, int64, int64, bool, string, int64, pgtype.UUID) (administration.AreaCompletionResult, error)
 	Registrations     *RegistrationAdministrationHTTPServices
+	Invitations       *InvitationAdministrationHTTPServices
 }
 
 type RegistrationAdministrationHTTPServices struct {
 	List   func(context.Context, auth.AccessContext, int64) (registration.PendingPage, error)
 	Decide func(context.Context, auth.AccessContext, registration.DecisionInput) (registration.DecisionResult, error)
 	Adopt  func(context.Context, auth.AccessContext, registration.AdoptionInput) (registration.AdoptionResult, error)
+}
+
+type InvitationAdministrationHTTPServices struct {
+	List           func(context.Context, auth.AccessContext) (registration.InvitationPage, error)
+	Create         func(context.Context, auth.AccessContext, registration.InvitationInput) (registration.InvitationResult, error)
+	Revoke         func(context.Context, auth.AccessContext, registration.InvitationRevocationInput) (registration.InvitationRevocationResult, error)
+	Clock          func() time.Time
+	Issuer         url.URL
+	FlowSlug       string
+	SMTPConfigured bool
 }
 
 type administrationDashboardView struct {
@@ -99,12 +110,22 @@ type administrationRegistrationsView struct {
 type administrationRegistrationOrphanView struct {
 	DisplayName, VerifiedEmail, AdoptURL string
 }
+type administrationInvitationView struct {
+	Name, Status, Delivery, Failure, ExpiresAt, RevokeURL string
+}
+type administrationInvitationsView struct {
+	Invitations                                      []administrationInvitationView
+	ActionURL, CSRFToken, IdempotencyKey, OneTimeURL string
+	More                                             bool
+	SMTPConfigured                                   bool
+}
 
 var administrationAdoptionHandle = regexp.MustCompile(`^[A-Za-z0-9_-]{87}$`)
 
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
 	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil && services.Registrations.Adopt != nil
-	return registrationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
+	invitationsValid := services.Invitations == nil || services.Invitations.List != nil && services.Invitations.Create != nil && services.Invitations.Revoke != nil && services.Invitations.Clock != nil && services.Invitations.Issuer.Scheme == "https" && services.Invitations.Issuer.Host != "" && registrationFlowSlug.MatchString(services.Invitations.FlowSlug)
+	return registrationsValid && invitationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
 		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
 }
@@ -137,6 +158,7 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		{key: "areas", title: "Areas", segments: []string{"admin", "areas"}},
 		{key: "area", title: "Area"},
 		{key: "registrations", title: "Pending registrations", segments: []string{"admin", "registrations"}},
+		{key: "invitations", title: "Invitations", segments: []string{"admin", "invitations"}},
 	} {
 		view, viewErr := newPageView(builder, definition.title, definition.segments...)
 		if viewErr != nil {
@@ -154,6 +176,16 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		}
 		for key, view := range views {
 			view.RegistrationsURL = registrationsURL
+			views[key] = view
+		}
+	}
+	if services.Invitations != nil {
+		invitationsURL, buildErr := builder.Path("admin", "invitations")
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		for key, view := range views {
+			view.InvitationsURL = invitationsURL
 			views[key] = view
 		}
 	}
@@ -312,6 +344,99 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 				return
 			}
 			destination, _ := builder.Path("admin", "registrations")
+			serveMutationNavigation(response, request, destination)
+		})
+	}
+	if services.Invitations != nil {
+		invitationPage := func(response http.ResponseWriter, request *http.Request, oneTimeURL string) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			page, loadErr := services.Invitations.List(request.Context(), actor)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["invitations"], loadErr)
+				return
+			}
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if requestErr != nil {
+				serveAdministrationServiceError(response, request, views["invitations"], requestErr)
+				return
+			}
+			presentation := administrationInvitationsView{Invitations: make([]administrationInvitationView, len(page.Invitations)), ActionURL: views["invitations"].CanonicalURL, CSRFToken: csrfTokenFromContext(request.Context()), IdempotencyKey: fmt.Sprintf("%x", requestID.Bytes), OneTimeURL: oneTimeURL, More: page.More, SMTPConfigured: services.Invitations.SMTPConfigured}
+			for index, invitation := range page.Invitations {
+				revokeURL := ""
+				if invitation.Handle != "" {
+					revokeURL, requestErr = builder.Path("admin", "invitations", invitation.Handle, "revoke")
+					if requestErr != nil {
+						serveAdministrationServiceError(response, request, views["invitations"], requestErr)
+						return
+					}
+				}
+				presentation.Invitations[index] = administrationInvitationView{Name: invitation.Name, Status: invitation.Status, Delivery: invitation.Delivery, Failure: invitation.Failure, ExpiresAt: invitation.ExpiresAt.Format(time.RFC3339), RevokeURL: revokeURL}
+			}
+			render(response, request, views["invitations"], administrationInvitationsBody(presentation))
+		}
+		router.Get("/admin/invitations", func(response http.ResponseWriter, request *http.Request) {
+			invitationPage(response, request, "")
+		})
+		router.Post("/admin/invitations", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["invitations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "email", "display_name", "expires_minutes", "delivery", "reason", "idempotency_key"})
+			if !ok {
+				return
+			}
+			requestID, parseErr := decodeModerationRequestID(form.Get("idempotency_key"))
+			minutes, minutesErr := strconv.ParseInt(form.Get("expires_minutes"), 10, 32)
+			deliver := form.Get("delivery") == "email"
+			if parseErr != nil || minutesErr != nil || minutes < 15 || minutes > 7*24*60 || strconv.FormatInt(minutes, 10) != form.Get("expires_minutes") || (!deliver && form.Get("delivery") != "none") || deliver && !services.Invitations.SMTPConfigured {
+				renderAdministrationError(response, request, views["invitations"], http.StatusBadRequest, "Invalid form", "Check the invitation fields and try again.")
+				return
+			}
+			now := services.Invitations.Clock().UTC().Truncate(time.Second)
+			if now.IsZero() {
+				serveAdministrationServiceError(response, request, views["invitations"], errors.New("invalid invitation clock"))
+				return
+			}
+			result, createErr := services.Invitations.Create(request.Context(), actor, registration.InvitationInput{Email: form.Get("email"), DisplayName: form.Get("display_name"), Reason: form.Get("reason"), ExpiresAt: now.Add(time.Duration(minutes) * time.Minute), Deliver: deliver, RequestID: requestID})
+			if createErr != nil {
+				serveAdministrationMutationError(response, request, views["invitations"], createErr)
+				return
+			}
+			oneTimeURL := ""
+			if result.TokenUUID != "" {
+				target := url.URL{Scheme: services.Invitations.Issuer.Scheme, Host: services.Invitations.Issuer.Host, Path: "/if/flow/" + services.Invitations.FlowSlug + "/", RawQuery: url.Values{"itoken": {result.TokenUUID}}.Encode()}
+				oneTimeURL = target.String()
+			}
+			invitationPage(response, request, oneTimeURL)
+		})
+		router.Post("/admin/invitations/{handle}/revoke", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			handle := chi.URLParam(request, "handle")
+			if !administrationAdoptionHandle.MatchString(handle) {
+				renderAdministrationError(response, request, views["invitations"], http.StatusNotFound, "Invitation not found", "The requested invitation does not exist.")
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["invitations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason"})
+			if !ok {
+				return
+			}
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if requestErr != nil {
+				serveAdministrationServiceError(response, request, views["invitations"], requestErr)
+				return
+			}
+			if _, revokeErr := services.Invitations.Revoke(request.Context(), actor, registration.InvitationRevocationInput{Handle: handle, Reason: form.Get("reason"), RequestID: requestID}); revokeErr != nil {
+				serveAdministrationMutationError(response, request, views["invitations"], revokeErr)
+				return
+			}
+			destination, _ := builder.Path("admin", "invitations")
 			serveMutationNavigation(response, request, destination)
 		})
 	}
@@ -834,7 +959,7 @@ func administrationRouteValid(request *http.Request) bool {
 	if path == "/admin" {
 		return method == http.MethodGet && len(query) == 0
 	}
-	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" || path == "/admin/registrations" {
+	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" || path == "/admin/registrations" || path == "/admin/invitations" {
 		if method == http.MethodGet {
 			if path == "/admin/areas" {
 				_, _, err := parseAdministrationAreaCursor(query)
@@ -849,11 +974,12 @@ func administrationRouteValid(request *http.Request) bool {
 	if len(parts) < 2 || len(parts) > 4 {
 		return false
 	}
-	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" {
+	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" && parts[0] != "invitations" {
 		return false
 	}
 	adoption := parts[0] == "registrations" && len(parts) == 3 && parts[2] == "adopt"
-	if adoption {
+	revocation := parts[0] == "invitations" && len(parts) == 3 && parts[2] == "revoke"
+	if adoption || revocation {
 		if !administrationAdoptionHandle.MatchString(parts[1]) {
 			return false
 		}
@@ -870,7 +996,7 @@ func administrationRouteValid(request *http.Request) bool {
 		return parts[0] == "groups" || parts[0] == "areas"
 	}
 	if len(parts) == 3 {
-		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt")
+		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt") || revocation
 	}
 	if parts[2] != "groups" || (parts[0] != "accounts" && parts[0] != "areas") {
 		return false

@@ -27,7 +27,9 @@ type recordingGateway struct {
 	pending     []authentikgateway.User
 	state       authentikgateway.UserState
 	invitation  authentikgateway.Invitation
+	invitations []authentikgateway.Invitation
 	createCalls int
+	deleteCalls int
 }
 
 func (gateway *recordingGateway) AddUser(_ context.Context, group, subject string) error {
@@ -60,13 +62,31 @@ func (gateway *recordingGateway) CreateInvitation(_ context.Context, name, expir
 	return result, gateway.takeFailure()
 }
 func (gateway *recordingGateway) Invitations(context.Context) ([]authentikgateway.Invitation, bool, error) {
-	return nil, false, gateway.takeFailure()
+	return gateway.invitations, false, gateway.takeFailure()
 }
-func (gateway *recordingGateway) Invitation(context.Context, string) (authentikgateway.Invitation, error) {
-	return authentikgateway.Invitation{}, gateway.takeFailure()
+func (gateway *recordingGateway) Invitation(_ context.Context, uuid string) (authentikgateway.Invitation, error) {
+	if err := gateway.takeFailure(); err != nil {
+		return authentikgateway.Invitation{}, err
+	}
+	for _, invitation := range gateway.invitations {
+		if invitation.UUID == uuid {
+			return invitation, nil
+		}
+	}
+	return authentikgateway.Invitation{}, authentikgateway.ErrAbsentObject
 }
-func (gateway *recordingGateway) DeleteInvitation(context.Context, string) error {
-	return gateway.takeFailure()
+func (gateway *recordingGateway) DeleteInvitation(_ context.Context, uuid string) error {
+	if err := gateway.takeFailure(); err != nil {
+		return err
+	}
+	for index, invitation := range gateway.invitations {
+		if invitation.UUID == uuid {
+			gateway.invitations = append(gateway.invitations[:index], gateway.invitations[index+1:]...)
+			gateway.deleteCalls++
+			return nil
+		}
+	}
+	return authentikgateway.ErrAbsentObject
 }
 
 func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
@@ -99,6 +119,20 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	}, key, "99999999-9999-4999-8999-999999999999")
 	if err != nil || !replayedInvitation.Completed || replayedInvitation.Status != "active" || replayedInvitation.TokenUUID != "" || gateway.createCalls != 1 {
 		t.Fatalf("invitation replay = (%+v, %v, calls %d)", replayedInvitation, err, gateway.createCalls)
+	}
+	gateway.invitations = []authentikgateway.Invitation{{UUID: gateway.invitation.UUID, Name: invitationName(invitationRequest), Expires: invitationExpiry.Format(time.RFC3339), Email: "invitee@example.test", DisplayName: "Invited Member", SingleUse: true}}
+	invitationPage, err := ListInvitations(ctx, db.New(connection), gateway, actor, baseTime, key)
+	if err != nil || len(invitationPage.Invitations) != 1 || invitationPage.Invitations[0].Status != "active" || invitationPage.Invitations[0].Handle == "" {
+		t.Fatalf("invitation page = (%+v, %v)", invitationPage, err)
+	}
+	revokeRequest := pgtype.UUID{Bytes: [16]byte{0xc7}, Valid: true}
+	revoked, err := RevokeInvitation(ctx, connection, gateway, clock, actor, InvitationRevocationInput{Handle: invitationPage.Invitations[0].Handle, Reason: "Withdraw invitation", RequestID: revokeRequest}, key)
+	if err != nil || revoked.Status != "revoked" || revoked.Result != "confirmed" || !revoked.Completed || revoked.Revision != 4 || revoked.AuditID <= 0 || gateway.deleteCalls != 1 {
+		t.Fatalf("invitation revocation = (%+v, %v, deletes %d)", revoked, err, gateway.deleteCalls)
+	}
+	replayedRevocation, err := RevokeInvitation(ctx, connection, gateway, clock, actor, InvitationRevocationInput{Handle: invitationPage.Invitations[0].Handle, Reason: "Withdraw invitation", RequestID: revokeRequest}, key)
+	if err != nil || replayedRevocation.Status != "revoked" || !replayedRevocation.Completed || gateway.deleteCalls != 1 {
+		t.Fatalf("invitation revocation replay = (%+v, %v, deletes %d)", replayedRevocation, err, gateway.deleteCalls)
 	}
 	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
 	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
