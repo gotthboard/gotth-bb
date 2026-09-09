@@ -2230,9 +2230,11 @@ title, masthead, and home navigation; changing it must not relabel or retarget
 software attribution. Fragment rendering performs no footer work.
 
 Area administration uses explicit field-class literals within
-`administration_completion.templ`: every interactive control is `w-full` and
+`administration_completion.templ`: every data-entry control is `w-full` and
 `min-w-0`, has a visible border/background/foreground, and receives an
-unambiguous focus-visible ring. Labels are grid containers with stable gaps.
+unambiguous focus-visible ring. Action buttons keep content width, a 44-pixel
+minimum height, a visible boundary, and the same focus treatment. Labels are
+grid containers with stable gaps.
 Slug/name and numeric/policy controls stack at the base width and enter two-
 or three-column grids only at `sm`; description remains full-width. The create
 surface alone exposes the optional initial-group identifier. The detail
