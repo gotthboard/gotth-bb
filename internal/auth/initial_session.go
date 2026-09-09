@@ -24,6 +24,8 @@ type createdInitialSession struct {
 	expiresAt time.Time
 }
 
+var ErrRegistrationNotApproved = errors.New("registration is not approved")
+
 // createInitialSession generates one opaque browser credential, serializes the
 // verified external identity, creates or profile-refreshes its local user, and
 // inserts the session in one transaction. Local authorization fields are never
@@ -91,6 +93,13 @@ func createInitialSession(
 		}
 		if !locked {
 			return fmt.Errorf("external identity lock returned false")
+		}
+		registrationState, stateErr := queries.GetPendingRegistrationLoginState(ctx, claims.subject)
+		if stateErr == nil && registrationState != "approved" {
+			return ErrRegistrationNotApproved
+		}
+		if stateErr != nil && !errors.Is(stateErr, pgx.ErrNoRows) {
+			return fmt.Errorf("load pending registration state: %w", stateErr)
 		}
 		user, err := queries.GetUserByExternalIdentity(ctx, db.GetUserByExternalIdentityParams(lockParams))
 		switch {

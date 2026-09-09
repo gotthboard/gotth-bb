@@ -292,6 +292,19 @@ func (q *Queries) GetActiveSessionForRotation(ctx context.Context, arg GetActive
 	return i, err
 }
 
+const getPendingRegistrationLoginState = `-- name: GetPendingRegistrationLoginState :one
+SELECT status
+FROM public.pending_registrations
+WHERE authentik_subject::text = $1::text
+`
+
+func (q *Queries) GetPendingRegistrationLoginState(ctx context.Context, subjectText string) (string, error) {
+	row := q.db.QueryRow(ctx, getPendingRegistrationLoginState, subjectText)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
 const getUserByExternalIdentity = `-- name: GetUserByExternalIdentity :one
 SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at, u.administration_revision, u.publication_window_started_at, u.publication_count, u.authentik_sync_state, u.authentik_sync_last_attempt_at, u.authentik_sync_next_attempt_at, u.authentik_sync_failure_class
 FROM public.users AS u

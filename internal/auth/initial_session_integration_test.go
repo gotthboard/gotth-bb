@@ -67,6 +67,27 @@ func TestCreateInitialSessionOnPostgreSQL17(t *testing.T) {
 		t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	}
 
+	pendingSubject := "99999999-9999-4999-8999-999999999999"
+	if _, err := connections[0].Exec(ctx, `INSERT INTO public.pending_registrations
+		(authentik_user_id, authentik_subject, display_name, verified_email)
+		VALUES (99, $1, 'Pending Member', 'pending@example.test')`, pendingSubject); err != nil {
+		t.Fatalf("insert pending registration: %v", err)
+	}
+	pendingClaims := verifiedIdentityClaims{
+		issuer: "https://auth.example.test/application/o/forum/", subject: pendingSubject,
+		displayName: "Pending Member",
+	}
+	blocked, err := createInitialSession(ctx, connections[0], bytes.NewReader(bytes.Repeat([]byte{0x09}, sessionTokenBytes)),
+		func() time.Time { return time.Date(2026, time.September, 1, 16, 30, 0, 0, time.UTC) }, 24*time.Hour, pendingClaims)
+	if !errors.Is(err, ErrRegistrationNotApproved) || blocked != (createdInitialSession{}) {
+		t.Fatalf("pending registration login = (%+v, %v), want zero/denied", blocked, err)
+	}
+	var pendingUsers, pendingSessions int
+	if err := connections[0].QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM public.users), (SELECT count(*) FROM public.sessions)`).Scan(&pendingUsers, &pendingSessions); err != nil || pendingUsers != 0 || pendingSessions != 0 {
+		t.Fatalf("pending login state = (%d users, %d sessions, %v)", pendingUsers, pendingSessions, err)
+	}
+
 	email := "member@example.test"
 	avatar := "https://auth.example.test/avatar.png"
 	claims := verifiedIdentityClaims{

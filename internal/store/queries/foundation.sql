@@ -5,6 +5,11 @@ JOIN public.external_identities AS identity ON identity.user_id = u.id
 WHERE identity.issuer = sqlc.arg(issuer)
   AND identity.subject = sqlc.arg(subject);
 
+-- name: GetPendingRegistrationLoginState :one
+SELECT status
+FROM public.pending_registrations
+WHERE authentik_subject::text = sqlc.arg(subject_text)::text;
+
 -- name: InsertUser :one
 INSERT INTO public.users (
     display_name, email, avatar_url, created_at, updated_at, last_login_at,
