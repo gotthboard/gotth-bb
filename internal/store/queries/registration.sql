@@ -204,6 +204,107 @@ SELECT changed.status, changed.administration_revision, audit.id AS audit_id
 FROM changed
 JOIN audit ON true;
 
+-- name: ReserveRegistrationInvitation :one
+WITH inserted AS (
+    INSERT INTO public.registration_invitations (
+        idempotency_key, authentik_invitation_name, transition_state,
+        delivery_state, flow_identity, expires_at, created_at, created_by,
+        administration_revision, request_fingerprint
+    ) VALUES (
+        sqlc.arg(idempotency_key), sqlc.arg(invitation_name), 'creating',
+        'not_requested', sqlc.arg(flow_identity), sqlc.arg(expires_at),
+        sqlc.arg(observed_at), sqlc.arg(actor_user_id), 1,
+        sqlc.arg(request_fingerprint)
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING idempotency_key, authentik_invitation_name, transition_state,
+              delivery_state, flow_identity, expires_at,
+              administration_revision, request_fingerprint, true AS inserted
+), existing AS (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.transition_state, invitation.delivery_state,
+           invitation.flow_identity, invitation.expires_at,
+           invitation.administration_revision, invitation.request_fingerprint,
+           false AS inserted
+    FROM public.registration_invitations AS invitation
+    WHERE invitation.idempotency_key = sqlc.arg(idempotency_key)
+      AND NOT EXISTS (SELECT 1 FROM inserted)
+    FOR UPDATE OF invitation
+)
+SELECT * FROM inserted
+UNION ALL
+SELECT * FROM existing
+LIMIT 1;
+
+-- name: RecordRegistrationInvitationRequest :one
+INSERT INTO public.moderation_actions (
+    actor_kind, actor_user_id, target_type, target_site, action_type,
+    reason, previous_state, resulting_state, request_id, created_at
+) VALUES (
+    'forum_user', sqlc.arg(actor_user_id), 'site', true,
+    'request_create_invitation', sqlc.arg(reason),
+    pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'absent'::text),
+    pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'creating'::text, 'administration_revision', 1::bigint),
+    sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+)
+RETURNING id;
+
+-- name: CompleteRegistrationInvitation :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'active',
+        delivery_state = sqlc.arg(delivery_state),
+        transitioned_at = sqlc.arg(observed_at),
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = NULL
+    WHERE invitation.idempotency_key = sqlc.arg(idempotency_key)
+      AND invitation.transition_state IN ('creating', 'unknown')
+      AND invitation.administration_revision = sqlc.arg(expected_revision)
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', sqlc.arg(actor_user_id), 'site', true,
+           'create_invitation', sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', sqlc.arg(previous_state)::text, 'administration_revision', sqlc.arg(expected_revision)::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'active'::text, 'administration_revision', changed.administration_revision, 'delivery', sqlc.arg(delivery_state)::text, 'result', sqlc.arg(result_class)::text),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true;
+
+-- name: RecordRegistrationInvitationFailure :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'unknown',
+        delivery_state = sqlc.arg(delivery_state),
+        transitioned_at = sqlc.arg(observed_at),
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = sqlc.arg(failure_class)
+    WHERE invitation.idempotency_key = sqlc.arg(idempotency_key)
+      AND invitation.transition_state IN ('creating', 'unknown')
+      AND invitation.administration_revision = sqlc.arg(expected_revision)
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', sqlc.arg(actor_user_id), 'site', true,
+           'record_invitation_result', sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', sqlc.arg(previous_state)::text, 'administration_revision', sqlc.arg(expected_revision)::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', sqlc.arg(invitation_ref)::text, 'status', 'unknown'::text, 'administration_revision', changed.administration_revision, 'delivery', sqlc.arg(delivery_state)::text, 'result', sqlc.arg(failure_class)::text),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true;
+
 -- name: CompletePendingRegistrationDecision :one
 WITH changed AS (
     UPDATE public.pending_registrations AS registration

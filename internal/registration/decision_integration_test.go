@@ -22,10 +22,12 @@ import (
 const decisionTestDatabase = "gotth_bb_beta109_registration_test"
 
 type recordingGateway struct {
-	operations []string
-	failNext   error
-	pending    []authentikgateway.User
-	state      authentikgateway.UserState
+	operations  []string
+	failNext    error
+	pending     []authentikgateway.User
+	state       authentikgateway.UserState
+	invitation  authentikgateway.Invitation
+	createCalls int
 }
 
 func (gateway *recordingGateway) AddUser(_ context.Context, group, subject string) error {
@@ -51,6 +53,21 @@ func (gateway *recordingGateway) PendingUsers(context.Context) ([]authentikgatew
 func (gateway *recordingGateway) User(context.Context, string) (authentikgateway.UserState, error) {
 	return gateway.state, gateway.takeFailure()
 }
+func (gateway *recordingGateway) CreateInvitation(_ context.Context, name, expires, email, displayName string) (authentikgateway.Invitation, error) {
+	gateway.createCalls++
+	result := gateway.invitation
+	result.Name, result.Expires, result.Email, result.DisplayName, result.SingleUse = name, expires, email, displayName, true
+	return result, gateway.takeFailure()
+}
+func (gateway *recordingGateway) Invitations(context.Context) ([]authentikgateway.Invitation, bool, error) {
+	return nil, false, gateway.takeFailure()
+}
+func (gateway *recordingGateway) Invitation(context.Context, string) (authentikgateway.Invitation, error) {
+	return authentikgateway.Invitation{}, gateway.takeFailure()
+}
+func (gateway *recordingGateway) DeleteInvitation(context.Context, string) error {
+	return gateway.takeFailure()
+}
 
 func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -67,6 +84,22 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	baseTime := time.Date(2026, time.September, 9, 18, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return baseTime }
 	gateway := &recordingGateway{}
+	invitationRequest := pgtype.UUID{Bytes: [16]byte{0xe5}, Valid: true}
+	invitationExpiry := baseTime.Add(time.Hour)
+	gateway.invitation = authentikgateway.Invitation{UUID: "66666666-6666-4666-8666-666666666666"}
+	invitation, err := CreateInvitation(ctx, connection, gateway, nil, clock, actor, InvitationInput{
+		Email: "invitee@example.test", DisplayName: "Invited Member", Reason: "Invite a verified participant",
+		ExpiresAt: invitationExpiry, RequestID: invitationRequest,
+	}, key, "99999999-9999-4999-8999-999999999999")
+	if err != nil || invitation.Status != "active" || invitation.Delivery != "not_requested" || invitation.Revision != 2 || invitation.AuditID <= 0 || invitation.TokenUUID != gateway.invitation.UUID || gateway.createCalls != 1 {
+		t.Fatalf("invitation creation = (%+v, %v, calls %d)", invitation, err, gateway.createCalls)
+	}
+	replayedInvitation, err := CreateInvitation(ctx, connection, gateway, nil, clock, actor, InvitationInput{
+		Email: "changed@example.test", Reason: "Replay completed request", ExpiresAt: invitationExpiry, RequestID: invitationRequest,
+	}, key, "99999999-9999-4999-8999-999999999999")
+	if err != nil || !replayedInvitation.Completed || replayedInvitation.Status != "active" || replayedInvitation.TokenUUID != "" || gateway.createCalls != 1 {
+		t.Fatalf("invitation replay = (%+v, %v, calls %d)", replayedInvitation, err, gateway.createCalls)
+	}
 	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
 	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
 	adoptionHandle, err := issueAdoptionHandle(baseTime, key, adoptionUser.ID, adoptionUser.UUID)

@@ -164,6 +164,71 @@ func (q *Queries) CompletePendingRegistrationDecision(ctx context.Context, arg C
 	return i, err
 }
 
+const completeRegistrationInvitation = `-- name: CompleteRegistrationInvitation :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'active',
+        delivery_state = $1,
+        transitioned_at = $2,
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = NULL
+    WHERE invitation.idempotency_key = $3
+      AND invitation.transition_state IN ('creating', 'unknown')
+      AND invitation.administration_revision = $4
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', $5, 'site', true,
+           'create_invitation', $6,
+           pg_catalog.jsonb_build_object('invitation_ref', $7::text, 'status', $8::text, 'administration_revision', $4::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', $7::text, 'status', 'active'::text, 'administration_revision', changed.administration_revision, 'delivery', $1::text, 'result', $9::text),
+           $10, $2::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true
+`
+
+type CompleteRegistrationInvitationParams struct {
+	DeliveryState    string
+	ObservedAt       pgtype.Timestamptz
+	IdempotencyKey   pgtype.UUID
+	ExpectedRevision int64
+	ActorUserID      pgtype.Int8
+	Reason           pgtype.Text
+	InvitationRef    string
+	PreviousState    string
+	ResultClass      string
+	RequestID        pgtype.UUID
+}
+
+type CompleteRegistrationInvitationRow struct {
+	AdministrationRevision int64
+	AuditID                int64
+}
+
+func (q *Queries) CompleteRegistrationInvitation(ctx context.Context, arg CompleteRegistrationInvitationParams) (CompleteRegistrationInvitationRow, error) {
+	row := q.db.QueryRow(ctx, completeRegistrationInvitation,
+		arg.DeliveryState,
+		arg.ObservedAt,
+		arg.IdempotencyKey,
+		arg.ExpectedRevision,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.InvitationRef,
+		arg.PreviousState,
+		arg.ResultClass,
+		arg.RequestID,
+	)
+	var i CompleteRegistrationInvitationRow
+	err := row.Scan(&i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
 const insertOrLoadPendingRegistrationAdoption = `-- name: InsertOrLoadPendingRegistrationAdoption :one
 WITH inserted AS (
     INSERT INTO public.pending_registrations (
@@ -565,6 +630,186 @@ func (q *Queries) RecordPendingRegistrationDecisionFailure(ctx context.Context, 
 	)
 	var i RecordPendingRegistrationDecisionFailureRow
 	err := row.Scan(&i.Status, &i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
+const recordRegistrationInvitationFailure = `-- name: RecordRegistrationInvitationFailure :one
+WITH changed AS (
+    UPDATE public.registration_invitations AS invitation
+    SET transition_state = 'unknown',
+        delivery_state = $1,
+        transitioned_at = $2,
+        administration_revision = invitation.administration_revision + 1,
+        failure_class = $3
+    WHERE invitation.idempotency_key = $4
+      AND invitation.transition_state IN ('creating', 'unknown')
+      AND invitation.administration_revision = $5
+      AND invitation.administration_revision < 9223372036854775807
+    RETURNING invitation.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_site, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', $6, 'site', true,
+           'record_invitation_result', $7,
+           pg_catalog.jsonb_build_object('invitation_ref', $8::text, 'status', $9::text, 'administration_revision', $5::bigint),
+           pg_catalog.jsonb_build_object('invitation_ref', $8::text, 'status', 'unknown'::text, 'administration_revision', changed.administration_revision, 'delivery', $1::text, 'result', $3::text),
+           $10, $2::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true
+`
+
+type RecordRegistrationInvitationFailureParams struct {
+	DeliveryState    string
+	ObservedAt       pgtype.Timestamptz
+	FailureClass     pgtype.Text
+	IdempotencyKey   pgtype.UUID
+	ExpectedRevision int64
+	ActorUserID      pgtype.Int8
+	Reason           pgtype.Text
+	InvitationRef    string
+	PreviousState    string
+	RequestID        pgtype.UUID
+}
+
+type RecordRegistrationInvitationFailureRow struct {
+	AdministrationRevision int64
+	AuditID                int64
+}
+
+func (q *Queries) RecordRegistrationInvitationFailure(ctx context.Context, arg RecordRegistrationInvitationFailureParams) (RecordRegistrationInvitationFailureRow, error) {
+	row := q.db.QueryRow(ctx, recordRegistrationInvitationFailure,
+		arg.DeliveryState,
+		arg.ObservedAt,
+		arg.FailureClass,
+		arg.IdempotencyKey,
+		arg.ExpectedRevision,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.InvitationRef,
+		arg.PreviousState,
+		arg.RequestID,
+	)
+	var i RecordRegistrationInvitationFailureRow
+	err := row.Scan(&i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
+const recordRegistrationInvitationRequest = `-- name: RecordRegistrationInvitationRequest :one
+INSERT INTO public.moderation_actions (
+    actor_kind, actor_user_id, target_type, target_site, action_type,
+    reason, previous_state, resulting_state, request_id, created_at
+) VALUES (
+    'forum_user', $1, 'site', true,
+    'request_create_invitation', $2,
+    pg_catalog.jsonb_build_object('invitation_ref', $3::text, 'status', 'absent'::text),
+    pg_catalog.jsonb_build_object('invitation_ref', $3::text, 'status', 'creating'::text, 'administration_revision', 1::bigint),
+    $4, $5::timestamptz
+)
+RETURNING id
+`
+
+type RecordRegistrationInvitationRequestParams struct {
+	ActorUserID   pgtype.Int8
+	Reason        pgtype.Text
+	InvitationRef string
+	RequestID     pgtype.UUID
+	ObservedAt    pgtype.Timestamptz
+}
+
+func (q *Queries) RecordRegistrationInvitationRequest(ctx context.Context, arg RecordRegistrationInvitationRequestParams) (int64, error) {
+	row := q.db.QueryRow(ctx, recordRegistrationInvitationRequest,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.InvitationRef,
+		arg.RequestID,
+		arg.ObservedAt,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const reserveRegistrationInvitation = `-- name: ReserveRegistrationInvitation :one
+WITH inserted AS (
+    INSERT INTO public.registration_invitations (
+        idempotency_key, authentik_invitation_name, transition_state,
+        delivery_state, flow_identity, expires_at, created_at, created_by,
+        administration_revision, request_fingerprint
+    ) VALUES (
+        $1, $2, 'creating',
+        'not_requested', $3, $4,
+        $5, $6, 1,
+        $7
+    )
+    ON CONFLICT (idempotency_key) DO NOTHING
+    RETURNING idempotency_key, authentik_invitation_name, transition_state,
+              delivery_state, flow_identity, expires_at,
+              administration_revision, request_fingerprint, true AS inserted
+), existing AS (
+    SELECT invitation.idempotency_key, invitation.authentik_invitation_name,
+           invitation.transition_state, invitation.delivery_state,
+           invitation.flow_identity, invitation.expires_at,
+           invitation.administration_revision, invitation.request_fingerprint,
+           false AS inserted
+    FROM public.registration_invitations AS invitation
+    WHERE invitation.idempotency_key = $1
+      AND NOT EXISTS (SELECT 1 FROM inserted)
+    FOR UPDATE OF invitation
+)
+SELECT idempotency_key, authentik_invitation_name, transition_state, delivery_state, flow_identity, expires_at, administration_revision, request_fingerprint, inserted FROM inserted
+UNION ALL
+SELECT idempotency_key, authentik_invitation_name, transition_state, delivery_state, flow_identity, expires_at, administration_revision, request_fingerprint, inserted FROM existing
+LIMIT 1
+`
+
+type ReserveRegistrationInvitationParams struct {
+	IdempotencyKey     pgtype.UUID
+	InvitationName     string
+	FlowIdentity       string
+	ExpiresAt          pgtype.Timestamptz
+	ObservedAt         pgtype.Timestamptz
+	ActorUserID        int64
+	RequestFingerprint []byte
+}
+
+type ReserveRegistrationInvitationRow struct {
+	IdempotencyKey          pgtype.UUID
+	AuthentikInvitationName string
+	TransitionState         string
+	DeliveryState           string
+	FlowIdentity            string
+	ExpiresAt               pgtype.Timestamptz
+	AdministrationRevision  int64
+	RequestFingerprint      []byte
+	Inserted                bool
+}
+
+func (q *Queries) ReserveRegistrationInvitation(ctx context.Context, arg ReserveRegistrationInvitationParams) (ReserveRegistrationInvitationRow, error) {
+	row := q.db.QueryRow(ctx, reserveRegistrationInvitation,
+		arg.IdempotencyKey,
+		arg.InvitationName,
+		arg.FlowIdentity,
+		arg.ExpiresAt,
+		arg.ObservedAt,
+		arg.ActorUserID,
+		arg.RequestFingerprint,
+	)
+	var i ReserveRegistrationInvitationRow
+	err := row.Scan(
+		&i.IdempotencyKey,
+		&i.AuthentikInvitationName,
+		&i.TransitionState,
+		&i.DeliveryState,
+		&i.FlowIdentity,
+		&i.ExpiresAt,
+		&i.AdministrationRevision,
+		&i.RequestFingerprint,
+		&i.Inserted,
+	)
 	return i, err
 }
 

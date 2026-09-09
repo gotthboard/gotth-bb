@@ -394,6 +394,16 @@ func (fakeRegistrationGateway) PendingUsers(context.Context) ([]authentikgateway
 func (fakeRegistrationGateway) User(context.Context, string) (authentikgateway.UserState, error) {
 	return authentikgateway.UserState{}, nil
 }
+func (fakeRegistrationGateway) CreateInvitation(context.Context, string, string, string, string) (authentikgateway.Invitation, error) {
+	return authentikgateway.Invitation{}, nil
+}
+func (fakeRegistrationGateway) Invitations(context.Context) ([]authentikgateway.Invitation, bool, error) {
+	return nil, false, nil
+}
+func (fakeRegistrationGateway) Invitation(context.Context, string) (authentikgateway.Invitation, error) {
+	return authentikgateway.Invitation{}, nil
+}
+func (fakeRegistrationGateway) DeleteInvitation(context.Context, string) error { return nil }
 
 type fakeAuthenticationService struct{}
 

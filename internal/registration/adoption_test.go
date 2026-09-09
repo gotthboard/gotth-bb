@@ -26,6 +26,16 @@ func (stub *adoptionGatewayStub) User(context.Context, string) (authentikgateway
 }
 func (*adoptionGatewayStub) AddUser(context.Context, string, string) error    { return nil }
 func (*adoptionGatewayStub) RemoveUser(context.Context, string, string) error { return nil }
+func (*adoptionGatewayStub) CreateInvitation(context.Context, string, string, string, string) (authentikgateway.Invitation, error) {
+	return authentikgateway.Invitation{}, nil
+}
+func (*adoptionGatewayStub) Invitations(context.Context) ([]authentikgateway.Invitation, bool, error) {
+	return nil, false, nil
+}
+func (*adoptionGatewayStub) Invitation(context.Context, string) (authentikgateway.Invitation, error) {
+	return authentikgateway.Invitation{}, nil
+}
+func (*adoptionGatewayStub) DeleteInvitation(context.Context, string) error { return nil }
 
 func TestPendingAdministrationIssuesOnlyUnmatchedAdoptionHandles(t *testing.T) {
 	now := time.Date(2026, 9, 9, 20, 0, 0, 0, time.UTC)

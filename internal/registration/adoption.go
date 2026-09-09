@@ -26,6 +26,10 @@ type ControlGateway interface {
 	Gateway
 	PendingUsers(context.Context) ([]authentikgateway.User, bool, error)
 	User(context.Context, string) (authentikgateway.UserState, error)
+	CreateInvitation(context.Context, string, string, string, string) (authentikgateway.Invitation, error)
+	Invitations(context.Context) ([]authentikgateway.Invitation, bool, error)
+	Invitation(context.Context, string) (authentikgateway.Invitation, error)
+	DeleteInvitation(context.Context, string) error
 }
 
 type Orphan struct {
