@@ -132,8 +132,9 @@ Approval enrollment performs a second fixed HTTPS POST only after Authentik
 email verification. It carries one at-most-60-second JWT made by the dedicated
 Board OIDC provider and containing exact issuer, audience, purpose, flow,
 numeric Authentik user key, immutable user UUID, and bounded display/email
-claims plus a unique `jti`. Board verifies the provider algorithm/key, issuer,
-audience, purpose, flow, `jti`, expiry, and body size before an idempotent insert. Replays cannot reopen
+claims. Board verifies the provider algorithm/key, issuer, audience, purpose,
+flow, expiry, and body size before an idempotent insert keyed by the immutable
+user coordinates. Replays cannot reopen
 a rejected or completed registration. No unsigned identity input becomes a
 pending account.
 

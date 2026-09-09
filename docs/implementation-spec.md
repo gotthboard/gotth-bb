@@ -2939,8 +2939,9 @@ The migration creates `pending_registrations` with immutable Authentik numeric
 user ID and UUID subject, bounded display name and verified email snapshot,
 closed `pending|approval_required|rejection_required|approved|rejected` status,
 positive revision, finite intake and decision timestamps, nullable deciding
-administrator, one idempotency UUID, and one current bounded reconciliation
-class. UUID subject and numeric ID are independently unique.
+administrator, one nullable transition-request UUID, and one current bounded
+reconciliation class. UUID subject and numeric ID are independently unique and
+are the intake idempotency keys.
 The intake path may insert once or return the existing row; it may refresh the
 bounded profile only while status remains pending and may never reopen a
 terminal row.
@@ -2976,8 +2977,9 @@ The audit action set adds `update_control_settings`,
 `request_create_invitation`, `create_invitation`,
 `request_revoke_invitation`, `revoke_invitation`,
 `record_invitation_absent`,
-`reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`, and
-`test_email`. Audit objects contain closed modes, numeric policy values,
+`request_identity_reinstatement`, `request_identity_reconciliation`,
+`reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`,
+`request_test_email`, and `test_email`. Audit objects contain closed modes, numeric policy values,
 digests or opaque action references, counts, and result classes only. Email,
 display name, Authentik user ID/UUID, invitation token, session identifier,
 remote body, and secret material are forbidden from audit JSON. Every
@@ -3001,7 +3003,8 @@ The runtime grant delta is exact column-level access for these relations. It
 adds no DELETE on users, pending registrations, email state, site settings, or
 audit; no INSERT on site settings; no access to token hashes; and no access to
 an Authentik relation. Readiness verifies head 000013, exact checks/defaults,
-cardinality, grant delta, settings ceilings, and closed values.
+cardinality, grant delta, settings ceilings, and closed values. It fails when
+persisted registration is non-closed but effective SMTP is unavailable.
 
 ### 24.2 Registration and pending intake
 
@@ -3062,15 +3065,17 @@ Expression logging is disabled.
 mode slugs and no query. It performs no session lookup, accepts no forwarded
 identity, reads only the settings singleton under a 500-millisecond deadline,
 and returns empty `204` only on exact current match with maintenance disabled
-and required SMTP configured. Every other result is empty `404` or `503`,
-`no-store`, and indistinguishable as to which check denied it.
+and required SMTP configured. Mode mismatch, maintenance, unavailable SMTP, or
+an unknown slug returns empty `404`; database timeout/failure or malformed
+persisted state returns empty `503`. All carry `no-store`, and no response
+distinguishes one policy-denial reason from another.
 
 `POST /registration/intake/approval` accepts only `application/jwt`, no query,
 and at most 8 KiB. It is exempt from browser CSRF but not from the outer request
 limiter. Verification pins the Board provider algorithm and key, exact issuer,
-client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID,
-canonical UUID `jti`, expiry no more than 60 seconds ahead, nonfuture issued
-time, positive Authentik user ID, canonical UUID subject, and bounded
+client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID, expiry
+no more than 60 seconds ahead, positive Authentik user ID, canonical UUID
+subject, and bounded
 strict-UTF-8 profile claims including exact `email_verified=true`. One
 timeout-bounded transaction inserts or idempotently observes the pending row.
 Every structurally bounded request returns empty `202` after local JWT handling
@@ -3158,11 +3163,14 @@ best-effort remote phase removes accepted/pending membership, adds suspended
 membership, verifies the three exact groups, then advances local sync state to
 `suspended` in a separate short transaction; local authorization remains denied
 regardless. Reinstatement records `grant_required` while retaining local
-suspension, then removes suspended/pending membership, grants and verifies
+suspension and appends `request_identity_reinstatement`, then removes
+suspended/pending membership, grants and verifies
 accepted membership, and only afterward runs the existing governance-serialized
 local reinstatement/audit transaction. A failed or ambiguous grant leaves the
 user locally suspended. Reconciliation is one explicit POST using the same
-restrictive ordering, never a transaction held open around HTTP.
+restrictive ordering: its first short transaction appends
+`request_identity_reconciliation`, and a later result transaction appends
+`reconcile_identity_access`. It never holds a transaction open around HTTP.
 
 Every protected Board authorization query requires
 `authentik_sync_state='accepted'` in addition to the existing suspension and
@@ -3173,7 +3181,8 @@ has expired and whose sync state is `suspended`, `removal_required`, or
 and commits before HTTP. Per identity it removes suspended/pending membership,
 adds and verifies accepted membership, then commits `accepted` plus one bounded
 `reconcile_identity_access` result. Failure retains denial and advances a
-bounded backoff no longer than 30 minutes. Process restart, concurrent manual
+bounded backoff no longer than 30 minutes in a short transaction with the same
+closed result audit. Process restart, concurrent manual
 reinstatement, and duplicate ticks converge through state/revision checks; no
 network call holds the advisory lock or a PostgreSQL transaction.
 
@@ -3224,7 +3233,8 @@ commits `unknown`. No PostgreSQL lock spans the remote call.
 registration mode, maintenance flag/message, publication counts/durations,
 session idle/revalidation durations, and reason. It validates strict UTF-8,
 closed values, cross-field rules, and every immutable ceiling before opening a
-transaction. The transaction revalidates the administrator, locks the
+transaction. A non-closed registration mode is rejected while SMTP is disabled
+or malformed. The transaction revalidates the administrator, locks the
 singleton, rejects stale/no-op/overflow, updates all control fields, increments
 the shared revision, and appends one audit.
 
@@ -3247,8 +3257,10 @@ drain in-flight work.
 
 ### 24.5 Local sessions and email operations
 
-The session page selects at most 51 active local sessions ordered by ID for one
-authorized account page. It projects display name and finite issued, last-seen,
+The session page selects at most 51 active local sessions ordered by ID
+descending for one authorized account page, renders 50, and uses row 51 only as
+an overflow sentinel with the all-sessions action still available. It projects
+display name and finite issued, last-seen,
 last-validated, and expiry times only. It never selects token hash, IP prefix,
 or user-agent hash. Each row receives a short-lived HMAC action handle bound to
 administrator user ID, target session ID, current target user ID, action, and
@@ -3275,6 +3287,10 @@ the browser control plane.
 An email test has no recipient field. It uses the requesting administrator's
 current verified local email snapshot, a server-generated idempotency UUID, and
 one-per-five-minute per-administrator reservation in `email_test_state`.
+The reservation transaction appends `request_test_email` and commits before
+SMTP. A separate completion
+transaction revalidates that UUID, records the closed result, and appends the
+`test_email` result audit; no database transaction or row lock spans network I/O.
 The fixed text message contains no link, credential, account detail, or user
 content. SMTP uses the configured TLS mode, validates certificates and server
 name, applies the configured timeout, and never logs protocol exchange. A

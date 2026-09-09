@@ -1388,7 +1388,8 @@ rules remain mandatory.
   UTF-8/control/size edge, startup ceiling, cross-field rule, stale/no-op/
   overflow revision, actor revocation, timeout, rollback, audit failure, and
   unknown commit. Each successful request has one settings change and one
-  redacted audit.
+  redacted audit. Non-closed registration with disabled/malformed SMTP is
+  rejected by mutation and fails readiness if introduced out of band.
 - Publication tests prove new database policy is used in the existing locked
   counter transaction under concurrent old/new-account requests, restart, and
   a simultaneous policy change. The immutable request limiter and blocked-link
@@ -1412,7 +1413,9 @@ second apply. For each open, approval, invitation, closed, maintenance, Board
 outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
 admission result. Expression requests use fixed method/URL/timeout and emit no
-credential or profile data. Mode changes before user creation/invitation
+credential or profile data. Admission responses prove exact empty `204` allow,
+empty `404` policy denial, and empty `503` database/malformed-state denial.
+Mode changes before user creation/invitation
 consumption or before post-email Board-group assignment execute the conditional
 Deny stage; no result is reused. Blueprint/source evidence pins the guard's
 deny-predicate return values and `evaluate_on_plan=false`,
@@ -1450,8 +1453,9 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
 ### 24.3 Registration, approval, invitation, and reconciliation
 
 - Signed-intake tests cover algorithm/key, issuer, audience, purpose, flow,
-  `jti`, issued/expiry bounds, numeric ID, UUID, body/content-type/query,
-  `email_verified=true`, UTF-8/profile limits, replay, terminal replay,
+  expiry bounds, numeric ID, UUID, body/content-type/query,
+  `email_verified=true`, UTF-8/profile limits, same-token and newly signed
+  same-identity replay, terminal replay,
   concurrent first intake, and database
   failure. Invalid cases perform no pending write and return the same empty
   `202` as accepted/duplicate/terminal assertions; database unavailability is
@@ -1479,6 +1483,8 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
   Reinstatement cannot clear local denial until accepted-group membership is
   verified. Every protected authorization query denies non-accepted sync state.
   Reconciliation is idempotent and operates on only one identity.
+  Reinstatement and explicit reconciliation retain a request audit when remote
+  or completion work fails and append exactly one result audit on completion.
 - Finite-expiry tests cover migration backfill, startup/60-second ticks,
   five-identity bounds, advisory-lock exclusion, next-attempt/backoff ceilings,
   no database lock across HTTP, Authentik outage, process restart, and races
@@ -1507,7 +1513,8 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
 - Email tests cover disabled/malformed configuration, STARTTLS and implicit TLS
   with hostname verification, authentication failure, timeout before DATA,
   disconnect after DATA, accepted result, per-admin rate/idempotency, absent
-  verified address, and fixed self-addressed content. Board persists/logs no
+  verified address, reservation/completion failures, no database lock across
+  SMTP, request/result audit pairing, unknown completion, and fixed self-addressed content. Board persists/logs no
   recipient, SMTP transcript, or message body. Board never requests Authentik
   task or event data; disposable-stack and deployment smoke prove the actual
   Authentik enrollment-email worker path outside the browser control plane.
