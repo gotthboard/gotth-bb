@@ -50,7 +50,9 @@ line `AUTHENTIK_BOARD_BLUEPRINT_APPLIED` both times. The import uses the mounted
 OIDC secret in memory and does not write a secret-bearing blueprint.
 Production uses the default `gotth-bb-standalone` Compose project. A concurrent
 isolated rehearsal may pass its explicit lowercase project name as the helper's
-only argument; the helper never guesses a running project.
+only argument; the helper never guesses a running project. The app, Authentik,
+PostgreSQL, and Caddy-admin loopback ports can likewise be assigned distinct
+rehearsal values without weakening the production default bindings.
 
 Complete Authentik's initial-setup flow through the dedicated Authentik origin,
 then create or approve only the designated Board users and add them to

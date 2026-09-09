@@ -57,6 +57,7 @@ services:
       GOTTH_BB_BOARD_HOST: ${GOTTH_BB_BOARD_HOST:?GOTTH_BB_BOARD_HOST is required}
       GOTTH_BB_AUTH_HOST: ${GOTTH_BB_AUTH_HOST:?GOTTH_BB_AUTH_HOST is required}
       GOTTH_BB_AUTH_HTTP_PORT: ${GOTTH_BB_AUTH_HTTP_PORT:-19000}
+      GOTTH_BB_APP_HTTP_PORT: ${GOTTH_BB_APP_HTTP_PORT:-18082}
       GOTTH_BB_CADDY_ADMIN: ${GOTTH_BB_CADDY_ADMIN:-127.0.0.1:2019}
     volumes:
       - type: bind
@@ -101,7 +102,7 @@ services:
     env_file:
       - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
     environment:
-      LISTEN_ADDR: 127.0.0.1:18082
+      LISTEN_ADDR: 127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}
       DATABASE_URL_FILE: /run/secrets/database_runtime_url
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
@@ -131,7 +132,7 @@ services:
       caddy:
         condition: service_started
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18082/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}/health/live"]
       interval: 10s
       timeout: 3s
       retries: 3

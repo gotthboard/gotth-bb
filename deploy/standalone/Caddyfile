@@ -7,7 +7,7 @@
 }
 
 {$GOTTH_BB_BOARD_HOST} {
-	reverse_proxy 127.0.0.1:18082 {
+	reverse_proxy 127.0.0.1:{$GOTTH_BB_APP_HTTP_PORT} {
 		header_up X-Forwarded-For {remote_host}
 		header_up -Forwarded
 		header_up -X-Real-IP

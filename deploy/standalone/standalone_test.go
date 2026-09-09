@@ -18,6 +18,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 		"postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777",
 		"127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000",
 		"127.0.0.1:${GOTTH_BB_POSTGRES_PORT:-55435}:5432",
+		"LISTEN_ADDR: 127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}",
 		`entrypoint: ["/bootstrap/entrypoint.sh"]`,
 		"group_add:", `- "999"`, `- "65532"`,
 		"/docker-entrypoint-initdb.d/10-gotth-bb-runtime.sh",
@@ -63,7 +64,7 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 	for _, required := range []string{
 		"admin {$GOTTH_BB_CADDY_ADMIN}", "{$GOTTH_BB_AUTH_HOST}",
 		"reverse_proxy 127.0.0.1:{$GOTTH_BB_AUTH_HTTP_PORT}",
-		"{$GOTTH_BB_BOARD_HOST}", "reverse_proxy 127.0.0.1:18082",
+		"{$GOTTH_BB_BOARD_HOST}", "reverse_proxy 127.0.0.1:{$GOTTH_BB_APP_HTTP_PORT}",
 		"header_up X-Forwarded-For {remote_host}", "header_up -Forwarded", "header_up -X-Real-IP",
 	} {
 		if !strings.Contains(caddy, required) {
@@ -117,6 +118,7 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		`public URL and Board Caddy host differ`,
 		`OIDC redirect URI differs from the Board callback`,
 		`Board and Authentik public origins must differ`,
+		`loopback service ports overlap`,
 		`durable and secret paths overlap`,
 		`contains NUL, CR, or LF framing`,
 		`app OIDC issuer differs from dedicated Authentik`,

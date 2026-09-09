@@ -37,6 +37,22 @@ esac
 [ "$GOTTH_BB_OIDC_REDIRECT_URI" = "$board_base/auth/callback" ] || fail "OIDC redirect URI differs from the Board callback"
 [ "$board_base" != "$auth_base" ] || fail "Board and Authentik public origins must differ"
 
+GOTTH_BB_APP_HTTP_PORT=${GOTTH_BB_APP_HTTP_PORT:-18082}
+GOTTH_BB_AUTH_HTTP_PORT=${GOTTH_BB_AUTH_HTTP_PORT:-19000}
+GOTTH_BB_POSTGRES_PORT=${GOTTH_BB_POSTGRES_PORT:-55435}
+GOTTH_BB_CADDY_ADMIN=${GOTTH_BB_CADDY_ADMIN:-127.0.0.1:2019}
+case "$GOTTH_BB_CADDY_ADMIN" in 127.0.0.1:*) caddy_admin_port=${GOTTH_BB_CADDY_ADMIN##*:} ;; *) fail "Caddy admin binding is not loopback" ;; esac
+for binding in "$GOTTH_BB_APP_HTTP_PORT" "$GOTTH_BB_AUTH_HTTP_PORT" "$GOTTH_BB_POSTGRES_PORT" "$caddy_admin_port"; do
+	case "$binding" in '' | *[!0-9]*) fail "loopback service port is invalid" ;; esac
+	[ "$binding" -ge 1024 ] && [ "$binding" -le 65535 ] || fail "loopback service port is outside 1024..65535"
+done
+[ "$GOTTH_BB_APP_HTTP_PORT" != "$GOTTH_BB_AUTH_HTTP_PORT" ] &&
+	[ "$GOTTH_BB_APP_HTTP_PORT" != "$GOTTH_BB_POSTGRES_PORT" ] &&
+	[ "$GOTTH_BB_AUTH_HTTP_PORT" != "$GOTTH_BB_POSTGRES_PORT" ] &&
+	[ "$caddy_admin_port" != "$GOTTH_BB_APP_HTTP_PORT" ] &&
+	[ "$caddy_admin_port" != "$GOTTH_BB_AUTH_HTTP_PORT" ] &&
+	[ "$caddy_admin_port" != "$GOTTH_BB_POSTGRES_PORT" ] || fail "loopback service ports overlap"
+
 case "$GOTTH_BB_IMAGE" in
 	gotth-bb:*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
 	*) fail "Board image must carry a release and commit identity" ;;
