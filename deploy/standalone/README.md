@@ -60,15 +60,19 @@ PostgreSQL, and Caddy-admin loopback ports can likewise be assigned distinct
 rehearsal values without weakening the production default bindings.
 
 The direct deployment tuple uses public HTTPS origins, bare hostname Caddy
-addresses, `GOTTH_BB_CADDY_BIND=0.0.0.0`, and
-`GOTTH_BB_CADDY_CLIENT_ADDRESS={remote_host}`. A shared-host deployment uses
+addresses, `GOTTH_BB_CADDY_BIND=0.0.0.0`,
+`GOTTH_BB_CADDY_CLIENT_ADDRESS={remote_host}`, and
+`GOTTH_BB_CADDY_UPSTREAM_SCHEME=https`. A shared-host deployment uses
 the same public HTTPS origins, `http://HOST:PORT` Caddy addresses,
 `GOTTH_BB_CADDY_BIND=127.0.0.1`, and
-`GOTTH_BB_CADDY_CLIENT_ADDRESS={http.request.header.X-Forwarded-For}`. The
+`GOTTH_BB_CADDY_CLIENT_ADDRESS={http.request.header.X-Forwarded-For}`, and
+`GOTTH_BB_CADDY_UPSTREAM_SCHEME=https`. The
 outer TLS edge must overwrite `X-Forwarded-For` with exactly `{remote_host}`
 and remove `Forwarded` and `X-Real-IP`; it must preserve the original `Host`.
 The inner Caddy repeats alternate-header removal and supplies the one canonical
-address to Board. Arbitrary proxy chains are not admitted.
+address and explicit HTTPS scheme to Board and Authentik. The loopback-only
+HTTP rehearsal instead requires `GOTTH_BB_CADDY_UPSTREAM_SCHEME=http`.
+Arbitrary proxy chains are not admitted.
 
 Complete Authentik's initial-setup flow through the dedicated Authentik origin,
 then create or approve only the designated Board users and add them to

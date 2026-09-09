@@ -147,6 +147,8 @@ Rules:
   loopback-bound behind an existing multi-site TLS edge, consumes the single
   canonical `X-Forwarded-For` value that edge overwrites. Both proxy layers
   delete `Forwarded` and `X-Real-IP`; no arbitrary proxy chain is trusted.
+  Stack Caddy overwrites `X-Forwarded-Proto` with the deployment mode's exact
+  public scheme so an edge-fed HTTPS request is not mislabeled as inner HTTP.
 - The configuration loader requires a nonempty `DATABASE_URL` without parsing
   or logging it. A1-02 passes it directly to pgx's documented configuration
   parser; driver rejection aborts startup before readiness or request serving.

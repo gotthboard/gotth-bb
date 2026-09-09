@@ -914,8 +914,11 @@ On a multi-site host it binds only dedicated loopback ports behind the existing
 TLS edge so unrelated sites are not displaced. The outer edge overwrites one
 canonical client address and removes alternate forwarding headers; the
 loopback-only stack Caddy consumes that value, removes alternates again, and
-passes exactly one address to Board. The worker has no Docker socket because
-this deployment owns no Authentik outpost.
+passes exactly one address to Board. Because TLS has already terminated, stack
+Caddy also overwrites the upstream scheme with the configured public HTTPS
+scheme for both Board and Authentik; it does not report its inner HTTP hop as
+the browser scheme. The worker has no Docker socket because this deployment
+owns no Authentik outpost.
 
 All images are content-pinned. The application runs nonroot with a read-only
 root filesystem, no Linux capabilities, and `no-new-privileges`. Configuration

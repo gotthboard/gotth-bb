@@ -1353,7 +1353,8 @@ restores. Caddy/Auth non-database state and required secret references are
 inventoried separately. Direct-host evidence proves stack Caddy derives the
 client from its peer. Shared-host evidence proves the retained TLS edge
 overwrites a single canonical address and stack Caddy is loopback-only, trusts
-only that value, removes alternate identity headers, and leaves unrelated host
-routes unchanged. Final live HTTPS browser, restart, backup, rollback-readiness,
+only that value, removes alternate identity headers, supplies the exact public
+HTTPS scheme upstream, and leaves unrelated host routes unchanged. Final live
+HTTPS browser, restart, backup, rollback-readiness,
 artifact-custody, two-CLEAN-review, guarded-delivery, and owner-confirmation
 rules remain mandatory.

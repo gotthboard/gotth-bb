@@ -19,6 +19,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 		"127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000",
 		"127.0.0.1:${GOTTH_BB_POSTGRES_PORT:-55435}:5432",
 		"LISTEN_ADDR: 127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}",
+		"GOTTH_BB_CADDY_UPSTREAM_SCHEME:",
 		`entrypoint: ["/bootstrap/entrypoint.sh"]`,
 		"group_add:", `- "999"`, `- "65532"`,
 		"/docker-entrypoint-initdb.d/10-gotth-bb-runtime.sh",
@@ -66,12 +67,14 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 		"reverse_proxy 127.0.0.1:{$GOTTH_BB_AUTH_HTTP_PORT}",
 		"{$GOTTH_BB_BOARD_HOST}", "reverse_proxy 127.0.0.1:{$GOTTH_BB_APP_HTTP_PORT}",
 		"header_up X-Forwarded-For {$GOTTH_BB_CADDY_CLIENT_ADDRESS}", "header_up -Forwarded", "header_up -X-Real-IP",
+		"header_up X-Forwarded-Proto {$GOTTH_BB_CADDY_UPSTREAM_SCHEME}",
 	} {
 		if !strings.Contains(caddy, required) {
 			t.Errorf("Caddyfile lacks %q", required)
 		}
 	}
 	if strings.Count(caddy, "header_up X-Forwarded-For {$GOTTH_BB_CADDY_CLIENT_ADDRESS}") != 2 ||
+		strings.Count(caddy, "header_up X-Forwarded-Proto {$GOTTH_BB_CADDY_UPSTREAM_SCHEME}") != 2 ||
 		strings.Count(caddy, "header_up -Forwarded") != 2 || strings.Count(caddy, "header_up -X-Real-IP") != 2 {
 		t.Fatal("Caddy does not canonicalize client identity for both Board and Authentik")
 	}
@@ -123,11 +126,13 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		`direct Board Caddy address differs from its public origin`,
 		`edge-fed $label Caddy address differs from its public origin`,
 		`edge-fed Caddy must consume the edge canonical client identity`,
+		`edge-fed Caddy must report the public HTTPS scheme upstream`,
 		`OIDC redirect URI differs from the Board callback`,
 		`Board and Authentik public origins must differ`,
 		`loopback service ports overlap`,
 		`Board image identity differs from the release package`,
 		`durable and secret paths overlap`,
+		`case "$canonical/" in "$previous/"*`,
 		`contains NUL, CR, or LF framing`,
 		`app OIDC issuer differs from dedicated Authentik`,
 		`docker compose --env-file "$deployment_env"`,

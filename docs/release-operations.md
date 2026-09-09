@@ -898,9 +898,10 @@ configuration terminates TLS, preserves the original `Host`, overwrites
 `X-Forwarded-For` with exactly its remote peer, removes `Forwarded` and
 `X-Real-IP`, and proxies the two exact hosts to stack-Caddy loopback ports.
 Stack Caddy owns the Board/Auth split and upstreams, repeats alternate-header
-removal, and supplies the canonical client identity to Board. Replacing the
-host edge with the stack container on a multi-site host is forbidden because
-it would evict unrelated userspace.
+removal, supplies the canonical client identity to Board, and overwrites
+`X-Forwarded-Proto` with the exact public HTTPS scheme for both upstreams.
+Replacing the host edge with the stack container on a multi-site host is
+forbidden because it would evict unrelated userspace.
 
 ## 19. Operational decisions
 
