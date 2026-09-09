@@ -88,6 +88,7 @@ func TestFooterLoadTimesHandlerRendersImmutableProductAttribution(t *testing.T) 
 	if strings.Count(body, "Powered by ") != 1 ||
 		strings.Count(body, `href="https://github.com/gotthboard"`) != 1 ||
 		!strings.Contains(body, `Powered by <a href="https://github.com/gotthboard"`) ||
+		strings.Count(body, `>GOTTH Board</a></span>`) != 1 ||
 		strings.Contains(body, `Powered by <a href="https://forum.example.test"`) ||
 		strings.Contains(body, `>Ddz</a></span>`) {
 		t.Fatalf("footer attribution followed tenant presentation: %q", body)
