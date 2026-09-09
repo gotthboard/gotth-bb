@@ -79,7 +79,7 @@ try:
         raise RuntimeError("Board control service account membership differs")
     if token.user_id != service.pk or token.intent != "api" or token.expiring or token.key != control_secret:
         raise RuntimeError("Board control token differs")
-    if Token.objects.filter(user=service).exclude(pk=token.pk).exists():
+    if Token.objects.including_expired().filter(user=service).exclude(pk=token.pk).exists():
         raise RuntimeError("Unexpected Board control service token exists")
     managed_role = service.get_managed_role()
     if managed_role is not None:

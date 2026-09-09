@@ -178,8 +178,9 @@ control account, then requires exactly view/delete on every such live
 invitation. Group and unrelated RBAC rows are never swept. Stale or out-of-scope
 invitation permission rows are inert, but unbounded accumulation and false
 idempotence are not accepted.
-Bootstrap also rejects every unexpected token owned by the control account. It
-removes that account's detached, principal-free Authentik-managed role only when
+Bootstrap also rejects every unexpected token, including expired rows, owned
+by the control account. It removes that account's detached, principal-free
+Authentik-managed role only when
 no such token exists; an attached or repurposed role is a blocking drift, not
 cleanup.
 

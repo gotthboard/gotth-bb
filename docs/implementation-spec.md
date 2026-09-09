@@ -3143,7 +3143,8 @@ single-use semantics. This cleanup never touches group or unrelated role
 permissions.
 
 Bootstrap requires the named control token to be the service account's only
-token. After that check, it may delete the account's Authentik-managed role only
+token row, including expired tokens. After that check, it may delete the
+account's Authentik-managed role only
 when the role is detached from every user/group; any extra token, attachment,
 or noncanonical managed identity blocks. This removes inert self-token test
 residue without concealing an active replacement credential.

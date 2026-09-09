@@ -1411,8 +1411,8 @@ The gate records exact object identities and proves three flows/groups, one
 service account/role/token/initial-permission rule, no unrelated application/provider, and no drift on
 second apply. After invitation create/delete fixtures, a third apply must
 remove only stale control-role invitation object permissions, preserve exact
-group permissions, reject an unexpected live service token, remove only a
-detached principal-free service-account managed role, and remain byte-identical
+group permissions, reject unexpected live and expired service tokens, remove
+only a detached principal-free service-account managed role, and remain byte-identical
 in its emitted descriptor. For each open, approval, invitation, closed, maintenance,
 Board
 outage, database outage, timeout, redirect, non-204, and oversized-response

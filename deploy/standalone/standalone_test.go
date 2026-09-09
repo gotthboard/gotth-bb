@@ -159,7 +159,7 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 	if !strings.Contains(apply, `os.environ.pop("GOTTH_BB_OIDC_CLIENT_SECRET", None)`) ||
 		!strings.Contains(apply, `os.environ.pop("GOTTH_BB_AUTHENTIK_CONTROL_TOKEN", None)`) ||
 		!strings.Contains(apply, `provider.client_secret != oidc_secret`) ||
-		!strings.Contains(apply, `Token.objects.filter(user=service).exclude(pk=token.pk).exists()`) ||
+		!strings.Contains(apply, `Token.objects.including_expired().filter(user=service).exclude(pk=token.pk).exists()`) ||
 		!strings.Contains(apply, `managed_role.managed != managed_role.name`) ||
 		!strings.Contains(apply, `Invitation.objects.filter(created_by=service)`) ||
 		!strings.Contains(apply, `exclude(object_pk__in=live_invitation_pks).delete()`) ||
