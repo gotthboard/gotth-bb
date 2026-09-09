@@ -21,8 +21,9 @@ despite lacking explicit token model permissions. The isolated gateway exposes
 no token route, so Board cannot exercise that raw authority or receive a token
 key.
 
-The raw token is mounted only into Authentik's authoritative bootstrap process
-and a separate gateway binary. Board uses a closed HTTP/1.1 protocol over a
+The raw token is mounted only into the authoritative Authentik server container,
+where operator-invoked bootstrap executes, and a separate gateway binary. Board
+uses a closed HTTP/1.1 protocol over a
 gateway-owned Unix socket protected by dedicated token/control groups and Linux
 peer credentials. The gateway pins every Authentik origin, group, flow, method,
 path, body, timeout, response, and concurrency bound and exposes no email or

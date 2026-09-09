@@ -342,7 +342,8 @@ Secret handling requirements:
   configured as `ABUSE_RULES_FILE`. Record its SHA-256 and the seven exact rate
   values without copying rule contents into deployment logs or evidence.
 - B1-09 mounts the Authentik control token only into the isolated control
-  gateway and authoritative Authentik bootstrap process, never Board. The
+  gateway and authoritative Authentik server container where operator-invoked
+  bootstrap executes, never Board. The
   optional SMTP password and independent invitation-fingerprint key are
   separate Compose secrets. Its non-secret control-object JSON is a root-owned
   read-only bind shared by Board and the gateway only after exact UUID/slug

@@ -212,9 +212,11 @@ Rules:
   mount table, environment, memory, diagnostics, or backup of Board-local
   configuration. `INVITATION_FINGERPRINT_KEY_FILE` uses the same descriptor
   discipline, requires exactly 32 raw bytes, and is mounted only into Board.
-  The host token file is `root:65530` mode `0440`; only the gateway and
-  authoritative Authentik bootstrap process receive supplemental token GID
-  `65530`. The object descriptor is `root:65531` mode `0440`, and the Board-only
+  The host token file is `root:65530` mode `0440`; only the gateway and the
+  authoritative Authentik server container in which operator bootstrap runs
+  receive supplemental token GID `65530`. The server process can read that
+  mounted file for the life of the container; this is not misreported as a
+  subprocess-only mount. The object descriptor is `root:65531` mode `0440`, and the Board-only
   fingerprint key is `root:65532` mode `0440`.
 - `AUTHENTIK_CONTROL_SOCKET` is an absolute clean path ending in
   `authentik-control.sock`. Its parent is a root-created bind directory owned
@@ -3124,8 +3126,8 @@ the administrator workflow.
 The blueprint creates a non-superuser `service_account` excluded from every
 Board application group, a role, and one non-expiring API token whose key comes
 from the separately mounted control-token secret. That secret is mounted only
-into the authoritative Authentik bootstrap process and the isolated control
-gateway, never the Board application. The role has exactly global
+into the authoritative Authentik server container where operator bootstrap
+runs and the isolated control gateway, never the Board application. The role has exactly global
 `authentik_core.view_user` and
 `authentik_stages_invitation.add_invitation`. One Authentik
 `InitialPermissions` object assigns `view_invitation` and `delete_invitation`

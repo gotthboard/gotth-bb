@@ -799,8 +799,9 @@ into an identity provider or a host-management console:
    or incorrectly permissive.
 3. A dedicated Authentik service account is provisioned from a separate
    root-owned secret mounted only into an isolated control gateway and the
-   authoritative Authentik bootstrap process. Board receives neither the raw
-   token nor a generic HTTP proxy. The service account has no admin-interface access and no permission to
+   authoritative Authentik server container where operator-invoked bootstrap
+   executes. Board receives neither the raw token nor a generic HTTP proxy. The
+   service account has no admin-interface access and no permission to
    create/change/delete users, groups, flows, stages, policies, applications,
    providers, roles, or secrets. Its explicit permission grants are
    global read-user and invitation create, per-object view/delete permission
