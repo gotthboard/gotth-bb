@@ -40,4 +40,10 @@ if ! grep -Fxq AUTHENTIK_BOARD_BLUEPRINT_APPLIED "$output_file"; then
 	exit 1
 fi
 
+descriptor=$(sed -n 's/^AUTHENTIK_CONTROL_OBJECTS_JSON=//p' "$output_file")
+[ -n "$descriptor" ] && [ "$(grep -c '^AUTHENTIK_CONTROL_OBJECTS_JSON=' "$output_file")" -eq 1 ] || {
+	echo "Authentik bootstrap did not emit one control-object descriptor" >&2
+	exit 1
+}
+printf 'AUTHENTIK_CONTROL_OBJECTS_JSON=%s\n' "$descriptor"
 echo AUTHENTIK_BOARD_BLUEPRINT_APPLIED

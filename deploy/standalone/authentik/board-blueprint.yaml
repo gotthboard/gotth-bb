@@ -35,20 +35,190 @@ entries:
       provider: !KeyOf oidc-provider
       meta_launch_url: !Env GOTTH_BB_PUBLIC_BASE_URL
 
+  - identifiers: {name: gotth-bb-control}
+    id: control-role
+    model: authentik_rbac.role
+    attrs:
+      permissions:
+        - authentik_core.view_user
+        - authentik_stages_invitation.add_invitation
+  - identifiers: {username: gotth-bb-control}
+    id: control-user
+    model: authentik_core.user
+    attrs:
+      name: GOTTH Board control
+      is_active: true
+      type: service_account
+      path: goauthentik.io/service-accounts
+      groups: []
+      roles: [!KeyOf control-role]
+  - identifiers: {identifier: gotth-bb-control}
+    id: control-token
+    model: authentik_core.token
+    attrs:
+      intent: api
+      user: !KeyOf control-user
+      description: Restricted GOTTH Board control token
+      expiring: false
+      expires: null
+      key: !Env GOTTH_BB_AUTHENTIK_CONTROL_TOKEN
+  - identifiers: {name: gotth-bb-control-created-invitations}
+    id: invitation-initial-permissions
+    model: authentik_rbac.initialpermissions
+    attrs:
+      role: !KeyOf control-role
+      permissions:
+        - !Find [auth.permission, [codename, view_invitation], [content_type__app_label, authentik_stages_invitation]]
+        - !Find [auth.permission, [codename, delete_invitation], [content_type__app_label, authentik_stages_invitation]]
+
   - identifiers: {name: gotth-bb-users}
-    id: access-group
+    id: accepted-group
     model: authentik_core.group
     attrs: {is_superuser: false}
+    permissions:
+      - {permission: authentik_core.view_group, role: !KeyOf control-role}
+      - {permission: authentik_core.add_user_to_group, role: !KeyOf control-role}
+      - {permission: authentik_core.remove_user_from_group, role: !KeyOf control-role}
+  - identifiers: {name: gotth-bb-pending}
+    id: pending-group
+    model: authentik_core.group
+    attrs: {is_superuser: false}
+    permissions:
+      - {permission: authentik_core.view_group, role: !KeyOf control-role}
+      - {permission: authentik_core.add_user_to_group, role: !KeyOf control-role}
+      - {permission: authentik_core.remove_user_from_group, role: !KeyOf control-role}
+  - identifiers: {name: gotth-bb-suspended}
+    id: suspended-group
+    model: authentik_core.group
+    attrs: {is_superuser: false}
+    permissions:
+      - {permission: authentik_core.view_group, role: !KeyOf control-role}
+      - {permission: authentik_core.add_user_to_group, role: !KeyOf control-role}
+      - {permission: authentik_core.remove_user_from_group, role: !KeyOf control-role}
 
-  - identifiers: {slug: gotth-bb-enrollment}
-    id: enrollment-flow
+  - identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510001}
+    id: open-flow
     model: authentik_flows.flow
     attrs:
-      name: GOTTH Board enrollment
+      slug: gotth-bb-open
+      name: GOTTH Board verified-email enrollment
       title: Register for GOTTH Board
       designation: enrollment
       authentication: require_unauthenticated
+  - identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510002}
+    id: approval-flow
+    model: authentik_flows.flow
+    attrs:
+      slug: gotth-bb-approval
+      name: GOTTH Board approval enrollment
+      title: Request GOTTH Board membership
+      designation: enrollment
+      authentication: require_unauthenticated
+  - identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510003}
+    id: invitation-flow
+    model: authentik_flows.flow
+    attrs:
+      slug: gotth-bb-invitation
+      name: GOTTH Board invitation enrollment
+      title: Accept a GOTTH Board invitation
+      designation: enrollment
+      authentication: require_unauthenticated
 
+  - identifiers: {name: gotth-bb-open-admission}
+    id: open-admission
+    model: authentik_policies_expression.expressionpolicy
+    attrs:
+      execution_logging: false
+      expression: !Format
+        - |
+          try:
+              response = requests.get(
+                  "%s/registration/admission/verified_email_open",
+                  timeout=2,
+                  allow_redirects=False,
+              )
+              return not (response.status_code == 204 and response.content == b"")
+          except Exception:
+              return True
+        - !Env GOTTH_BB_PUBLIC_BASE_URL
+  - identifiers: {name: gotth-bb-approval-admission}
+    id: approval-admission
+    model: authentik_policies_expression.expressionpolicy
+    attrs:
+      execution_logging: false
+      expression: !Format
+        - |
+          try:
+              response = requests.get(
+                  "%s/registration/admission/administrator_approval",
+                  timeout=2,
+                  allow_redirects=False,
+              )
+              return not (response.status_code == 204 and response.content == b"")
+          except Exception:
+              return True
+        - !Env GOTTH_BB_PUBLIC_BASE_URL
+  - identifiers: {name: gotth-bb-invitation-admission}
+    id: invitation-admission
+    model: authentik_policies_expression.expressionpolicy
+    attrs:
+      execution_logging: false
+      expression: !Format
+        - |
+          try:
+              response = requests.get(
+                  "%s/registration/admission/invitation_only",
+                  timeout=2,
+                  allow_redirects=False,
+              )
+              return not (response.status_code == 204 and response.content == b"")
+          except Exception:
+              return True
+        - !Env GOTTH_BB_PUBLIC_BASE_URL
+  - identifiers: {name: gotth-bb-approval-intake}
+    id: approval-intake
+    model: authentik_policies_expression.expressionpolicy
+    attrs:
+      execution_logging: false
+      expression: !Format
+        - |
+          try:
+              plan = request.context.get("flow_plan")
+              user = plan.context.get("pending_user") if plan else None
+              if not user or not user.pk or not user.uuid or not user.email:
+                  return True
+              assertion = ak_create_jwt_raw(
+                  "GOTTH Board",
+                  validity="seconds=60",
+                  iss="%s",
+                  purpose="gotth-bb-approval-intake",
+                  flow_uuid="8d29e230-3485-4ee6-a741-ec089e510002",
+                  sub=str(user.uuid),
+                  user_id=user.pk,
+                  preferred_username=user.username,
+                  name=user.name,
+                  email=user.email,
+                  email_verified=True,
+              )
+              response = requests.post(
+                  "%s/registration/intake/approval",
+                  data=assertion.encode("ascii"),
+                  headers={"Content-Type": "application/jwt"},
+                  cookies={},
+                  timeout=2,
+                  allow_redirects=False,
+              )
+              return not (response.status_code == 202 and response.content == b"")
+          except Exception:
+              return True
+        - !Env GOTTH_BB_OIDC_ISSUER_URL
+        - !Env GOTTH_BB_PUBLIC_BASE_URL
+
+  - identifiers: {name: gotth-bb-registration-denied}
+    id: deny
+    model: authentik_stages_deny.denystage
+    attrs:
+      deny_message: Registration is unavailable. Return to GOTTH Board and try again later.
   - identifiers: {name: gotth-bb-enrollment-username}
     id: username
     model: authentik_stages_prompt.prompt
@@ -69,12 +239,25 @@ entries:
     id: email
     model: authentik_stages_prompt.prompt
     attrs: {field_key: email, label: Email, type: email, required: true, order: 4}
-
+  - identifiers: {name: gotth-bb-invitation-email}
+    id: invitation-email
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: email, label: Invited email, type: text_read_only, required: true, order: 4}
   - identifiers: {name: gotth-bb-enrollment-prompts}
-    id: prompts
+    id: enrollment-prompts
     model: authentik_stages_prompt.promptstage
     attrs:
       fields: [!KeyOf username, !KeyOf password, !KeyOf password-repeat, !KeyOf display-name, !KeyOf email]
+  - identifiers: {name: gotth-bb-invitation-credentials}
+    id: invitation-credentials
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields: [!KeyOf username, !KeyOf password, !KeyOf password-repeat]
+  - identifiers: {name: gotth-bb-invitation-details}
+    id: invitation-details
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields: [!KeyOf display-name, !KeyOf invitation-email]
   - identifiers: {name: gotth-bb-enrollment-user-write}
     id: user-write
     model: authentik_stages_user_write.userwritestage
@@ -83,7 +266,22 @@ entries:
       user_creation_mode: always_create
       user_type: external
       user_path_template: users/gotth-bb
-      create_users_group: !KeyOf access-group
+  - identifiers: {name: gotth-bb-accepted-group-write}
+    id: accepted-write
+    model: authentik_stages_user_write.userwritestage
+    attrs:
+      user_creation_mode: never_create
+      user_type: external
+      user_path_template: users/gotth-bb
+      create_users_group: !KeyOf accepted-group
+  - identifiers: {name: gotth-bb-pending-group-write}
+    id: pending-write
+    model: authentik_stages_user_write.userwritestage
+    attrs:
+      user_creation_mode: never_create
+      user_type: external
+      user_path_template: users/gotth-bb
+      create_users_group: !KeyOf pending-group
   - identifiers: {name: gotth-bb-enrollment-email-verification}
     id: email-verification
     model: authentik_stages_email.emailstage
@@ -91,22 +289,135 @@ entries:
       use_global_settings: true
       template: email/account_confirmation.html
       activate_user_on_success: true
+  - identifiers: {name: gotth-bb-invitation-consume}
+    id: invitation-consume
+    model: authentik_stages_invitation.invitationstage
+    attrs: {continue_flow_without_invitation: false}
   - identifiers: {name: gotth-bb-enrollment-login}
     id: login
     model: authentik_stages_user_login.userloginstage
+  - identifiers: {name: gotth-bb-approval-pending-redirect}
+    id: pending-redirect
+    model: authentik_stages_redirect.redirectstage
+    attrs:
+      keep_context: false
+      mode: static
+      target_static: !Format ["%s/registration/pending", !Env GOTTH_BB_PUBLIC_BASE_URL]
 
-  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf prompts, order: 10}
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf deny, order: 1}
+    id: open-entry
     model: authentik_flows.flowstagebinding
-  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf user-write, order: 20}
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf open-entry, policy: !KeyOf open-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf enrollment-prompts, order: 10}
     model: authentik_flows.flowstagebinding
-  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf email-verification, order: 30}
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf deny, order: 15}
+    id: open-pre-write
     model: authentik_flows.flowstagebinding
-  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf login, order: 100}
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf open-pre-write, policy: !KeyOf open-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf user-write, order: 20}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf email-verification, order: 30}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf deny, order: 35}
+    id: open-post-email
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf open-post-email, policy: !KeyOf open-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf accepted-write, order: 40}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf open-flow, stage: !KeyOf login, order: 100}
+    model: authentik_flows.flowstagebinding
+
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf deny, order: 1}
+    id: approval-entry
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf approval-entry, policy: !KeyOf approval-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf enrollment-prompts, order: 10}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf deny, order: 15}
+    id: approval-pre-write
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf approval-pre-write, policy: !KeyOf approval-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf user-write, order: 20}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf email-verification, order: 30}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf deny, order: 35}
+    id: approval-post-email
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf approval-post-email, policy: !KeyOf approval-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf pending-write, order: 40}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf deny, order: 50}
+    id: approval-intake-stage
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf approval-intake-stage, policy: !KeyOf approval-intake, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf approval-flow, stage: !KeyOf pending-redirect, order: 100}
+    model: authentik_flows.flowstagebinding
+
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf deny, order: 1}
+    id: invitation-entry
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf invitation-entry, policy: !KeyOf invitation-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf invitation-credentials, order: 10}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf deny, order: 15}
+    id: invitation-pre-consume
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf invitation-pre-consume, policy: !KeyOf invitation-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf invitation-consume, order: 20}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf invitation-details, order: 25}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf user-write, order: 30}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf email-verification, order: 40}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf deny, order: 45}
+    id: invitation-post-email
+    model: authentik_flows.flowstagebinding
+    attrs: {evaluate_on_plan: false, re_evaluate_policies: true}
+  - identifiers: {target: !KeyOf invitation-post-email, policy: !KeyOf invitation-admission, order: 10}
+    model: authentik_policies.policybinding
+    attrs: {negate: false, failure_result: true}
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf accepted-write, order: 50}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf invitation-flow, stage: !KeyOf login, order: 100}
     model: authentik_flows.flowstagebinding
 
   - identifiers:
       target: !KeyOf application
-      group: !KeyOf access-group
+      group: !KeyOf accepted-group
       order: 20
     model: authentik_policies.policybinding
     attrs: {enabled: true, negate: false, failure_result: false}
+
+  - identifiers: {slug: gotth-bb-enrollment}
+    model: authentik_flows.flow
+    state: absent

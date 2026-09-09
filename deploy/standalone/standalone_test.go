@@ -22,7 +22,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 	}
 	for _, required := range []string{
 		"caddy:", "app:", "board-postgresql:", "authentik-postgresql:",
-		"authentik-server:", "authentik-worker:",
+		"authentik-server:", "authentik-worker:", "authentik-control-gateway:",
 		"caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
 		"ghcr.io/goauthentik/server@sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581",
 		"postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d",
@@ -36,6 +36,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 		"group_add:", `- "999"`, `- "65532"`,
 		"/docker-entrypoint-initdb.d/10-gotth-bb-runtime.sh",
 		"board_postgres_runtime_password",
+		"authentik_control_token", "AUTHENTIK_CONTROL_TOKEN_FILE:", "AUTHENTIK_CONTROL_OBJECTS_FILE:",
 		"network_mode: host", "internal: true", "create_host_path: false",
 	} {
 		if !strings.Contains(compose, required) {
@@ -49,6 +50,49 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 	} {
 		if strings.Contains(compose, forbidden) {
 			t.Errorf("compose.yml contains forbidden %q", forbidden)
+		}
+	}
+}
+
+func TestControlGatewayKeepsRawTokenOutOfBoard(t *testing.T) {
+	t.Parallel()
+	compose := readContractFile(t, "compose.yml")
+	appStart := strings.Index(compose, "\n  app:")
+	gatewayStart := strings.Index(compose, "\n  authentik-control-gateway:")
+	boardDatabaseStart := strings.Index(compose, "\n  board-postgresql:")
+	if appStart < 0 || gatewayStart <= appStart || boardDatabaseStart <= gatewayStart {
+		t.Fatal("compose control service ordering is unavailable")
+	}
+	app := compose[appStart:gatewayStart]
+	gateway := compose[gatewayStart:boardDatabaseStart]
+	for _, required := range []string{
+		"group_add:\n      - \"65531\"",
+		"AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock",
+		"INVITATION_FINGERPRINT_KEY_FILE: /run/secrets/invitation_fingerprint_key",
+		"invitation_fingerprint_key",
+		"condition: service_healthy",
+	} {
+		if !strings.Contains(app, required) {
+			t.Errorf("app control boundary lacks %q", required)
+		}
+	}
+	if strings.Contains(app, "authentik_control_token") || strings.Contains(app, "AUTHENTIK_CONTROL_TOKEN_FILE") {
+		t.Fatal("Board app receives the raw Authentik control token")
+	}
+	for _, required := range []string{
+		`user: "65533:65531"`, `- "65530"`,
+		`command: ["/usr/local/bin/gotth-bb-authentik-gateway"]`,
+		"AUTHENTIK_CONTROL_TOKEN_FILE: /run/secrets/authentik_control_token",
+		"AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock",
+		`test: ["CMD", "test", "-S", "/run/gotth-bb-control/authentik-control.sock"]`,
+	} {
+		if !strings.Contains(gateway, required) {
+			t.Errorf("gateway boundary lacks %q", required)
+		}
+	}
+	for _, forbidden := range []string{"database_runtime_url", "oidc_client_secret", "SMTP_", "DATABASE_URL"} {
+		if strings.Contains(gateway, forbidden) {
+			t.Errorf("gateway receives forbidden %q", forbidden)
 		}
 	}
 }
@@ -95,7 +139,15 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 		"client_secret: !Env GOTTH_BB_OIDC_CLIENT_SECRET",
 		"sub_mode: user_uuid", "url: !Env GOTTH_BB_OIDC_REDIRECT_URI",
 		"meta_launch_url: !Env GOTTH_BB_PUBLIC_BASE_URL",
-		"create_users_as_inactive: true", "group: !KeyOf access-group",
+		"create_users_as_inactive: true", "group: !KeyOf accepted-group",
+		"gotth-bb-open", "gotth-bb-approval", "gotth-bb-invitation",
+		"authentik_core.view_user", "authentik_stages_invitation.add_invitation",
+		"evaluate_on_plan: false", "re_evaluate_policies: true",
+		"allow_redirects=False", "timeout=2", "execution_logging: false",
+		"/registration/admission/verified_email_open",
+		"/registration/admission/administrator_approval",
+		"/registration/admission/invitation_only",
+		"continue_flow_without_invitation: false", "type: text_read_only",
 	} {
 		if !strings.Contains(blueprint, required) {
 			t.Errorf("Board blueprint lacks %q", required)
@@ -105,7 +157,8 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 		t.Fatal("Board blueprint couples subjects to the Authentik instance secret")
 	}
 	if !strings.Contains(apply, `os.environ.pop("GOTTH_BB_OIDC_CLIENT_SECRET", None)`) ||
-		!strings.Contains(apply, `provider.client_secret != secret`) ||
+		!strings.Contains(apply, `os.environ.pop("GOTTH_BB_AUTHENTIK_CONTROL_TOKEN", None)`) ||
+		!strings.Contains(apply, `provider.client_secret != oidc_secret`) ||
 		!strings.Contains(apply, `b"\x00" in raw`) || !strings.Contains(apply, `b"\n" in raw`) {
 		t.Fatal("blueprint apply does not clear and verify the mounted provider secret")
 	}
@@ -147,6 +200,9 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		`durable and secret paths overlap`,
 		`case "$canonical/" in "$previous/"*`,
 		`contains NUL, CR, or LF framing`,
+		`app must not receive an Authentik control token path`,
+		`invitation fingerprint key must contain exactly 32 bytes`,
+		`65533:65531:750 directory`,
 		`app OIDC issuer differs from dedicated Authentik`,
 		`docker compose --env-file "$deployment_env"`,
 		`echo STANDALONE_PREFLIGHT_OK`,

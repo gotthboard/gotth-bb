@@ -29,7 +29,7 @@ case "$version" in 1.0.0-beta.1 | 1.0.0-beta.1.*) ;; *) fail "release version is
 [ "${#commit}" -eq 40 ] || fail "release commit is invalid"
 case "$commit" in *[!0-9a-f]*) fail "release commit is invalid" ;; esac
 
-for binary in gotth-bb gotth-bb-migrate gotth-bb-operator; do
+for binary in gotth-bb gotth-bb-migrate gotth-bb-operator gotth-bb-authentik-gateway; do
 	[ -f "$package_root/$binary" ] && [ ! -L "$package_root/$binary" ] && [ -x "$package_root/$binary" ] || fail "$binary is unavailable"
 done
 if docker image inspect "$image_reference" >/dev/null 2>&1; then
@@ -45,13 +45,13 @@ docker build --no-cache --network=none \
 	--tag "$image_reference" \
 	--file deploy/container/Containerfile - <"$context" || fail "image build failed"
 
-for binary in gotth-bb gotth-bb-migrate gotth-bb-operator; do
+for binary in gotth-bb gotth-bb-migrate gotth-bb-operator gotth-bb-authentik-gateway; do
 	package_digest=$(sha256sum "$package_root/$binary" | cut -d ' ' -f 1)
 	image_digest=$(docker run --rm --entrypoint sha256sum "$image_reference" "/usr/local/bin/$binary" | cut -d ' ' -f 1)
 	[ "$package_digest" = "$image_digest" ] || fail "$binary differs between package and image"
 done
 expected="gotth-bb version=$version commit=$commit"
-for binary in gotth-bb-migrate gotth-bb-operator; do
+for binary in gotth-bb-migrate gotth-bb-operator gotth-bb-authentik-gateway; do
 	identity=$(docker run --rm --entrypoint "/usr/local/bin/$binary" "$image_reference" version)
 	[ "$identity" = "$expected" ] || fail "$binary identity differs from RELEASE.txt"
 done

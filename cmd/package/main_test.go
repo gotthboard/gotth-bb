@@ -153,7 +153,7 @@ func packageRunner() releaseartifact.Runner {
 				return nil, errors.New("missing output")
 			}
 			return nil, os.WriteFile(args[outputIndex+1], []byte("binary\n"), 0o755)
-		case filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator":
+		case filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" || filepath.Base(name) == "gotth-bb-authentik-gateway":
 			return []byte("gotth-bb version=1.0.0-alpha.1 commit=" + packageTestCommit + "\n"), nil
 		default:
 			return nil, errors.New("unexpected command")

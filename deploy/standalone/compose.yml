@@ -9,6 +9,7 @@ x-authentik-environment: &authentik-environment
   AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
   GOTTH_BB_PUBLIC_BASE_URL: ${GOTTH_BB_PUBLIC_BASE_URL:?GOTTH_BB_PUBLIC_BASE_URL is required}
   GOTTH_BB_OIDC_REDIRECT_URI: ${GOTTH_BB_OIDC_REDIRECT_URI:?GOTTH_BB_OIDC_REDIRECT_URI is required}
+  GOTTH_BB_OIDC_ISSUER_URL: ${GOTTH_BB_AUTH_PUBLIC_BASE_URL:?GOTTH_BB_AUTH_PUBLIC_BASE_URL is required}/application/o/gotth-bb/
 
 x-authentik-common: &authentik-common
   image: ghcr.io/goauthentik/server@sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581
@@ -107,23 +108,41 @@ services:
     pull_policy: never
     restart: unless-stopped
     user: "65532:65532"
+    group_add:
+      - "65531"
     env_file:
       - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
     environment:
       LISTEN_ADDR: 127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}
       DATABASE_URL_FILE: /run/secrets/database_runtime_url
       OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      AUTHENTIK_CONTROL_OBJECTS_FILE: /run/config/authentik-control-objects.json
+      AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock
+      INVITATION_FINGERPRINT_KEY_FILE: /run/secrets/invitation_fingerprint_key
       ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
       ABUSE_RULES_FILE: /run/config/gotth-bb-abuse-rules
     network_mode: host
     secrets:
       - database_runtime_url
       - oidc_client_secret
+      - invitation_fingerprint_key
       - activity_cursor_keyring
     volumes:
       - type: bind
         source: ${GOTTH_BB_ABUSE_RULES_FILE:?GOTTH_BB_ABUSE_RULES_FILE is required}
         target: /run/config/gotth-bb-abuse-rules
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE:?GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE is required}
+        target: /run/config/authentik-control-objects.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR:?GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR is required}
+        target: /run/gotth-bb-control
         read_only: true
         bind:
           create_host_path: false
@@ -139,6 +158,8 @@ services:
         condition: service_healthy
       caddy:
         condition: service_started
+      authentik-control-gateway:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}/health/live"]
       interval: 10s
@@ -150,6 +171,56 @@ services:
       options:
         tag: gotth-bb-app
     stop_grace_period: 20s
+
+  authentik-control-gateway:
+    image: ${GOTTH_BB_IMAGE:?GOTTH_BB_IMAGE is required}
+    pull_policy: never
+    restart: unless-stopped
+    user: "65533:65531"
+    group_add:
+      - "65530"
+    command: ["/usr/local/bin/gotth-bb-authentik-gateway"]
+    environment:
+      OIDC_ISSUER_URL: ${GOTTH_BB_AUTH_PUBLIC_BASE_URL:?GOTTH_BB_AUTH_PUBLIC_BASE_URL is required}/application/o/gotth-bb/
+      AUTHENTIK_CONTROL_TOKEN_FILE: /run/secrets/authentik_control_token
+      AUTHENTIK_CONTROL_OBJECTS_FILE: /run/config/authentik-control-objects.json
+      AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock
+    network_mode: host
+    secrets:
+      - authentik_control_token
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE:?GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE is required}
+        target: /run/config/authentik-control-objects.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR:?GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR is required}
+        target: /run/gotth-bb-control
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-S", "/run/gotth-bb-control/authentik-control.sock"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-authentik-control-gateway
+    stop_grace_period: 10s
 
   board-postgresql:
     image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
@@ -222,10 +293,12 @@ services:
     group_add:
       - "999"
       - "65532"
+      - "65530"
     secrets:
       - authentik_postgres_password
       - authentik_secret_key
       - oidc_client_secret
+      - authentik_control_token
     ports:
       - "127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000"
     healthcheck:
@@ -281,6 +354,10 @@ secrets:
     file: ${GOTTH_BB_DATABASE_URL_FILE:?GOTTH_BB_DATABASE_URL_FILE is required}
   oidc_client_secret:
     file: ${GOTTH_BB_OIDC_CLIENT_SECRET_FILE:?GOTTH_BB_OIDC_CLIENT_SECRET_FILE is required}
+  authentik_control_token:
+    file: ${GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE:?GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE is required}
+  invitation_fingerprint_key:
+    file: ${GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE:?GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE is required}
   activity_cursor_keyring:
     file: ${GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE:?GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE is required}
   authentik_postgres_password:

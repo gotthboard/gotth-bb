@@ -77,6 +77,7 @@ func TestContainerAndComposeContractsRemainHardened(t *testing.T) {
 	for _, required := range []string{
 		"FROM alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659",
 		"USER 65532:65532",
+		"COPY --chmod=0755 gotth-bb-authentik-gateway /usr/local/bin/gotth-bb-authentik-gateway",
 		"HEALTHCHECK",
 		`ENTRYPOINT ["/usr/local/bin/gotth-bb-entrypoint"]`,
 	} {
@@ -132,7 +133,7 @@ func TestImageBuilderStreamsExactPackageAndVerifiesExecutables(t *testing.T) {
 		`docker build --no-cache --network=none`,
 		`package_digest=$(sha256sum`,
 		`image_digest=$(docker run --rm --entrypoint sha256sum`,
-		`gotth-bb-migrate gotth-bb-operator`,
+		`gotth-bb-migrate gotth-bb-operator gotth-bb-authentik-gateway`,
 		`image labels differ from RELEASE.txt`,
 		`image reference already exists`,
 	} {
@@ -157,7 +158,7 @@ func TestImageBuilderCommitIdentityBoundary(t *testing.T) {
 	if err := os.WriteFile(scriptPath, script, 0o755); err != nil {
 		t.Fatalf("write build-image.sh: %v", err)
 	}
-	for _, binary := range []string{"gotth-bb", "gotth-bb-migrate", "gotth-bb-operator"} {
+	for _, binary := range []string{"gotth-bb", "gotth-bb-migrate", "gotth-bb-operator", "gotth-bb-authentik-gateway"} {
 		if err := os.WriteFile(filepath.Join(root, binary), []byte("fixture\n"), 0o755); err != nil {
 			t.Fatalf("write %s: %v", binary, err)
 		}

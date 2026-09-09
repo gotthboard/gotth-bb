@@ -15,24 +15,27 @@ type LookupEnv func(string) (string, bool)
 // Config is the loaded immutable startup contract. The PostgreSQL driver must
 // still validate the opaque database connection string before serving.
 type Config struct {
-	Environment               Environment
-	ListenAddr                netip.AddrPort
-	PublicBaseURL             url.URL
-	BasePath                  string
-	databaseURL               secret
-	OIDCIssuerURL             url.URL
-	OIDCClientID              string
-	oidcClientSecret          secret
-	BootstrapAdminSubject     string
-	RegistrationURL           url.URL
-	RegistrationEnabled       bool
-	SessionCookieName         string
-	SessionMaxAge             time.Duration
-	SessionIdleTimeout        time.Duration
-	AuthRevalidateInterval    time.Duration
-	ActivityCursorKeyringFile string
-	Abuse                     AbuseConfig
-	LogLevel                  slog.Level
+	Environment                  Environment
+	ListenAddr                   netip.AddrPort
+	PublicBaseURL                url.URL
+	BasePath                     string
+	databaseURL                  secret
+	OIDCIssuerURL                url.URL
+	OIDCClientID                 string
+	oidcClientSecret             secret
+	AuthentikControlObjectsFile  string
+	AuthentikControlSocket       string
+	InvitationFingerprintKeyFile string
+	BootstrapAdminSubject        string
+	RegistrationURL              url.URL
+	RegistrationEnabled          bool
+	SessionCookieName            string
+	SessionMaxAge                time.Duration
+	SessionIdleTimeout           time.Duration
+	AuthRevalidateInterval       time.Duration
+	ActivityCursorKeyringFile    string
+	Abuse                        AbuseConfig
+	LogLevel                     slog.Level
 }
 
 // Format prevents recursive fmt traversal from exposing unexported secret
@@ -130,6 +133,33 @@ func Load(lookup LookupEnv) (Config, error) {
 	if environment == EnvironmentProduction && (!secretPresent || oidcClientSecret == "") {
 		return Config{}, fmt.Errorf("OIDC_CLIENT_SECRET is required in production")
 	}
+	authentikControlObjectsRaw, err := required("AUTHENTIK_CONTROL_OBJECTS_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	authentikControlObjectsFile, err := ParseAuthentikControlFile("AUTHENTIK_CONTROL_OBJECTS_FILE", authentikControlObjectsRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	authentikControlSocketRaw, err := required("AUTHENTIK_CONTROL_SOCKET")
+	if err != nil {
+		return Config{}, err
+	}
+	authentikControlSocket, err := ParseAuthentikControlSocket(authentikControlSocketRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	invitationFingerprintKeyRaw, err := required("INVITATION_FINGERPRINT_KEY_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	invitationFingerprintKeyFile, err := ParseAuthentikControlFile("INVITATION_FINGERPRINT_KEY_FILE", invitationFingerprintKeyRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	if authentikControlObjectsFile == invitationFingerprintKeyFile {
+		return Config{}, fmt.Errorf("Authentik control objects and invitation fingerprint key files must differ")
+	}
 	bootstrapAdminSubjectRaw, err := required("BOOTSTRAP_ADMIN_SUBJECT")
 	if err != nil {
 		return Config{}, err
@@ -214,23 +244,26 @@ func Load(lookup LookupEnv) (Config, error) {
 	}
 
 	return Config{
-		Environment:               environment,
-		ListenAddr:                listenAddr,
-		PublicBaseURL:             publicBaseURL,
-		BasePath:                  basePath,
-		databaseURL:               secret{value: databaseURL},
-		OIDCIssuerURL:             oidcIssuerURL,
-		OIDCClientID:              oidcClientID,
-		oidcClientSecret:          secret{value: oidcClientSecret},
-		BootstrapAdminSubject:     bootstrapAdminSubject,
-		RegistrationURL:           registrationURL,
-		RegistrationEnabled:       registrationEnabled,
-		SessionCookieName:         sessionCookieName,
-		SessionMaxAge:             sessionMaxAge,
-		SessionIdleTimeout:        sessionIdleTimeout,
-		AuthRevalidateInterval:    authRevalidateInterval,
-		ActivityCursorKeyringFile: activityCursorKeyringFile,
-		Abuse:                     abuseConfig,
-		LogLevel:                  logLevel,
+		Environment:                  environment,
+		ListenAddr:                   listenAddr,
+		PublicBaseURL:                publicBaseURL,
+		BasePath:                     basePath,
+		databaseURL:                  secret{value: databaseURL},
+		OIDCIssuerURL:                oidcIssuerURL,
+		OIDCClientID:                 oidcClientID,
+		oidcClientSecret:             secret{value: oidcClientSecret},
+		AuthentikControlObjectsFile:  authentikControlObjectsFile,
+		AuthentikControlSocket:       authentikControlSocket,
+		InvitationFingerprintKeyFile: invitationFingerprintKeyFile,
+		BootstrapAdminSubject:        bootstrapAdminSubject,
+		RegistrationURL:              registrationURL,
+		RegistrationEnabled:          registrationEnabled,
+		SessionCookieName:            sessionCookieName,
+		SessionMaxAge:                sessionMaxAge,
+		SessionIdleTimeout:           sessionIdleTimeout,
+		AuthRevalidateInterval:       authRevalidateInterval,
+		ActivityCursorKeyringFile:    activityCursorKeyringFile,
+		Abuse:                        abuseConfig,
+		LogLevel:                     logLevel,
 	}, nil
 }

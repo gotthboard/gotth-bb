@@ -5,6 +5,23 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Add the isolated Authentik control gateway
+
+Commit: current commit; hash assigned by Git after commit
+
+B1-09-02 adds the three fail-closed Authentik enrollment flows, exact
+accepted/pending/suspended groups, signed approval intake, non-admin control
+identity, creator-scoped invitation permissions, and the disposable raw-token
+permission matrix. The guard URLs use the exact persisted Board mode names.
+
+The raw token is mounted only into Authentik's authoritative bootstrap process
+and a separate gateway binary. Board uses a closed HTTP/1.1 protocol over a
+gateway-owned Unix socket protected by dedicated token/control groups and Linux
+peer credentials. The gateway pins every Authentik origin, group, flow, method,
+path, body, timeout, response, and concurrency bound and exposes no email or
+generic proxy operation. Packaging and standalone Compose include the gateway;
+the live Beta.1.5 deployment remains unchanged.
+
 ### 2026-09-09 — Contain Authentik's invitation email permission defect
 
 Commit: current commit; hash assigned by Git after commit

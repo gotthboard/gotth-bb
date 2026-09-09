@@ -45,6 +45,7 @@ var testDeploymentFiles = map[string]struct {
 	"deploy/standalone/apply-authentik.sh":             {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
 	"deploy/standalone/authentik/apply.py":             {data: "print('applied')\n", mode: 0o644},
 	"deploy/standalone/authentik/board-blueprint.yaml": {data: "version: 1\n", mode: 0o644},
+	"deploy/standalone/authentik/permission_matrix.py": {data: "print('verified')\n", mode: 0o644},
 	"deploy/standalone/authentik/entrypoint.sh":        {data: "#!/bin/sh\nexec \"$@\"\n", mode: 0o755},
 	"deploy/standalone/compose.yml":                    {data: "name: gotth-bb-standalone\nservices: {}\n", mode: 0o644},
 	"deploy/standalone/deployment.env.example":         {data: "GOTTH_BB_IMAGE=example\n", mode: 0o644},
@@ -130,11 +131,13 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/deploy/standalone/authentik/apply.py",
 		root + "/deploy/standalone/authentik/board-blueprint.yaml",
 		root + "/deploy/standalone/authentik/entrypoint.sh",
+		root + "/deploy/standalone/authentik/permission_matrix.py",
 		root + "/deploy/standalone/compose.yml",
 		root + "/deploy/standalone/deployment.env.example",
 		root + "/deploy/standalone/postgresql/init-runtime.sh",
 		root + "/deploy/standalone/preflight.sh",
 		root + "/gotth-bb",
+		root + "/gotth-bb-authentik-gateway",
 		root + "/gotth-bb-migrate",
 		root + "/gotth-bb-operator",
 	}
@@ -161,6 +164,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"git show " + testCommit + ":deploy/standalone/apply-authentik.sh",
 		"git show " + testCommit + ":deploy/standalone/authentik/apply.py",
 		"git show " + testCommit + ":deploy/standalone/authentik/board-blueprint.yaml",
+		"git show " + testCommit + ":deploy/standalone/authentik/permission_matrix.py",
 		"git show " + testCommit + ":deploy/standalone/authentik/entrypoint.sh",
 		"git show " + testCommit + ":deploy/standalone/compose.yml",
 		"git show " + testCommit + ":deploy/standalone/deployment.env.example",
@@ -169,8 +173,10 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb ./cmd/forum",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-migrate ./cmd/migrate",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-operator ./cmd/operator",
+		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-authentik-gateway ./cmd/authentik-gateway",
 		"<build>/gotth-bb-migrate version",
 		"<build>/gotth-bb-operator version",
+		"<build>/gotth-bb-authentik-gateway version",
 		"git rev-parse --verify HEAD",
 		"git status --porcelain=v1 --untracked-files=normal",
 	}
@@ -257,6 +263,7 @@ func TestBuildRejectsRepositoryAndToolFailures(t *testing.T) {
 		{name: "forum build", run: failBuild("./cmd/forum"), want: "build gotth-bb"},
 		{name: "migration build", run: failBuild("./cmd/migrate"), want: "build gotth-bb-migrate"},
 		{name: "operator build", run: failBuild("./cmd/operator"), want: "build gotth-bb-operator"},
+		{name: "gateway build", run: failBuild("./cmd/authentik-gateway"), want: "build gotth-bb-authentik-gateway"},
 		{name: "identity command", run: failIdentity(), want: "verify gotth-bb-migrate release identity"},
 		{name: "wrong identity", run: replaceIdentity([]byte("wrong\n")), want: "identity does not match"},
 	}
@@ -568,7 +575,7 @@ func successfulRunner(t *testing.T, calls *[]string) Runner {
 			return []byte(fixture.data), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			return nil, nil
-		case (filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator") && reflect.DeepEqual(args, []string{"version"}):
+		case (filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" || filepath.Base(name) == "gotth-bb-authentik-gateway") && reflect.DeepEqual(args, []string{"version"}):
 			return []byte("gotth-bb version=1.0.0-alpha.1 commit=" + testCommit + "\n"), nil
 		default:
 			t.Fatalf("unexpected command: %s %q", name, args)
@@ -731,7 +738,7 @@ func failBuild(target string) Runner {
 func failIdentity() Runner {
 	base := successfulRunnerForOverride()
 	return func(ctx context.Context, directory string, environment []string, name string, args ...string) ([]byte, error) {
-		if filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" {
+		if filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" || filepath.Base(name) == "gotth-bb-authentik-gateway" {
 			return nil, errors.New("identity failed")
 		}
 		return base(ctx, directory, environment, name, args...)
@@ -741,7 +748,7 @@ func failIdentity() Runner {
 func replaceIdentity(output []byte) Runner {
 	base := successfulRunnerForOverride()
 	return func(ctx context.Context, directory string, environment []string, name string, args ...string) ([]byte, error) {
-		if filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" {
+		if filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" || filepath.Base(name) == "gotth-bb-authentik-gateway" {
 			return output, nil
 		}
 		return base(ctx, directory, environment, name, args...)
@@ -778,7 +785,7 @@ func successfulRunnerForOverride() Runner {
 				return nil, errors.New("missing build output")
 			}
 			return nil, os.WriteFile(args[outputIndex+1], []byte("binary\n"), 0o755)
-		case filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator":
+		case filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator" || filepath.Base(name) == "gotth-bb-authentik-gateway":
 			return []byte("gotth-bb version=1.0.0-alpha.1 commit=" + testCommit + "\n"), nil
 		default:
 			return nil, errors.New("unexpected command")

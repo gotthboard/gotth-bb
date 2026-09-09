@@ -152,6 +152,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{path: "deploy/standalone/apply-authentik.sh", mode: 0o755},
 		{path: "deploy/standalone/authentik/apply.py", mode: 0o644},
 		{path: "deploy/standalone/authentik/board-blueprint.yaml", mode: 0o644},
+		{path: "deploy/standalone/authentik/permission_matrix.py", mode: 0o644},
 		{path: "deploy/standalone/authentik/entrypoint.sh", mode: 0o755},
 		{path: "deploy/standalone/compose.yml", mode: 0o644},
 		{path: "deploy/standalone/deployment.env.example", mode: 0o644},
@@ -193,6 +194,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{name: "gotth-bb", command: "./cmd/forum"},
 		{name: "gotth-bb-migrate", command: "./cmd/migrate"},
 		{name: "gotth-bb-operator", command: "./cmd/operator"},
+		{name: "gotth-bb-authentik-gateway", command: "./cmd/authentik-gateway"},
 	}
 	entries := make([]archiveEntry, 0, len(binaries)+3+len(deploymentFiles))
 	root := fmt.Sprintf("gotth-bb-%s-%s-%s", release.Version, configured.GOOS, configured.GOARCH)
@@ -207,7 +209,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		entries = append(entries, archiveEntry{name: root + "/" + binary.name, mode: 0o755, sourcePath: output})
 	}
 	expectedIdentity := fmt.Sprintf("gotth-bb version=%s commit=%s\n", release.Version, release.Commit)
-	for _, binary := range []string{"gotth-bb-migrate", "gotth-bb-operator"} {
+	for _, binary := range []string{"gotth-bb-migrate", "gotth-bb-operator", "gotth-bb-authentik-gateway"} {
 		identity, err := run(ctx, configured.RepositoryDirectory, nil, filepath.Join(buildDirectory, binary), "version")
 		if err != nil {
 			return Result{}, fmt.Errorf("verify %s release identity: %w", binary, err)

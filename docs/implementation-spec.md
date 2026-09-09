@@ -212,6 +212,10 @@ Rules:
   mount table, environment, memory, diagnostics, or backup of Board-local
   configuration. `INVITATION_FINGERPRINT_KEY_FILE` uses the same descriptor
   discipline, requires exactly 32 raw bytes, and is mounted only into Board.
+  The host token file is `root:65530` mode `0440`; only the gateway and
+  authoritative Authentik bootstrap process receive supplemental token GID
+  `65530`. The object descriptor is `root:65531` mode `0440`, and the Board-only
+  fingerprint key is `root:65532` mode `0440`.
 - `AUTHENTIK_CONTROL_SOCKET` is an absolute clean path ending in
   `authentik-control.sock`. Its parent is a root-created bind directory owned
   `65533:65531` mode `0750`. The gateway runs as `65533:65531`, creates the socket
@@ -1579,8 +1583,9 @@ operator logs.
   release binaries already admitted into that archive; it does not rebuild
   source with an ambient toolchain.
 - The application runtime base is Alpine 3.23.3 pinned by manifest digest. The
-  image carries the forum, migration, and operator binaries, exact version and
-  commit labels, and no secret or deployment-specific configuration.
+  image carries the forum, migration, operator, and isolated Authentik-gateway
+  binaries, exact version and commit labels, and no secret or
+  deployment-specific configuration.
 - The entrypoint reads the database URL and OIDC client secret only from
   Compose secret files named by non-secret environment variables, exports them
   to the child process, and replaces itself with the selected release binary.

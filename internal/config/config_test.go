@@ -93,6 +93,25 @@ func TestLoadAdmitsBetaThirtyMinuteRevalidationInterval(t *testing.T) {
 	}
 }
 
+func TestParseAuthentikControlSocketRejectsUnsafePaths(t *testing.T) {
+	t.Parallel()
+	for _, value := range []string{
+		"authentik-control.sock",
+		"/",
+		"/run/../run/authentik-control.sock",
+		"/run/other.sock",
+		"/run/control\nauthentik-control.sock",
+		"/" + strings.Repeat("a", 100) + "/authentik-control.sock",
+	} {
+		if _, err := ParseAuthentikControlSocket(value); err == nil {
+			t.Fatalf("ParseAuthentikControlSocket(%q) accepted unsafe path", value)
+		}
+	}
+	if got, err := ParseAuthentikControlSocket("/run/gotth-bb-control/authentik-control.sock"); err != nil || got == "" {
+		t.Fatalf("valid control socket = %q, %v", got, err)
+	}
+}
+
 func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 	t.Parallel()
 
@@ -105,6 +124,9 @@ func TestLoadRejectsMissingRequiredSettings(t *testing.T) {
 		"OIDC_ISSUER_URL",
 		"OIDC_CLIENT_ID",
 		"OIDC_CLIENT_SECRET",
+		"AUTHENTIK_CONTROL_OBJECTS_FILE",
+		"AUTHENTIK_CONTROL_SOCKET",
+		"INVITATION_FINGERPRINT_KEY_FILE",
 		"BOOTSTRAP_ADMIN_SUBJECT",
 		"REGISTRATION_URL",
 		"REGISTRATION_ENABLED",
@@ -223,31 +245,34 @@ func TestLoadRedactsMalformedSetting(t *testing.T) {
 
 func validConfigEnvironment() map[string]string {
 	return map[string]string{
-		"APP_ENV":                        "production",
-		"LISTEN_ADDR":                    "127.0.0.1:8080",
-		"PUBLIC_BASE_URL":                "https://alhstudios.com/bb",
-		"BASE_PATH":                      "/bb",
-		"DATABASE_URL":                   "postgres://gotth:database-password@127.0.0.1/gotth_bb",
-		"OIDC_ISSUER_URL":                "https://auth.example.com/application/o/gotth-bb/",
-		"OIDC_CLIENT_ID":                 "gotth-bb",
-		"OIDC_CLIENT_SECRET":             "oidc-client-secret",
-		"BOOTSTRAP_ADMIN_SUBJECT":        "fixed-opaque-subject",
-		"REGISTRATION_URL":               "https://auth.example.com/if/flow/gotth-bb-enrollment/",
-		"REGISTRATION_ENABLED":           "true",
-		"SESSION_COOKIE_NAME":            "",
-		"SESSION_MAX_AGE":                "24h",
-		"SESSION_IDLE_TIMEOUT":           "30m",
-		"AUTH_REVALIDATE_INTERVAL":       "15m",
-		"ACTIVITY_CURSOR_KEYRING_FILE":   "/run/secrets/activity-cursor-keyring",
-		"ABUSE_RULES_FILE":               "/run/config/gotth-bb-abuse-rules",
-		"REQUEST_RATE_LIMIT":             "300",
-		"REQUEST_RATE_WINDOW":            "60s",
-		"REQUEST_RATE_CLIENT_CAPACITY":   "4096",
-		"PUBLISH_RATE_LIMIT":             "10",
-		"NEW_ACCOUNT_PUBLISH_RATE_LIMIT": "3",
-		"PUBLISH_RATE_WINDOW":            "10m",
-		"NEW_ACCOUNT_PERIOD":             "24h",
-		"LOG_LEVEL":                      "debug",
+		"APP_ENV":                         "production",
+		"LISTEN_ADDR":                     "127.0.0.1:8080",
+		"PUBLIC_BASE_URL":                 "https://alhstudios.com/bb",
+		"BASE_PATH":                       "/bb",
+		"DATABASE_URL":                    "postgres://gotth:database-password@127.0.0.1/gotth_bb",
+		"OIDC_ISSUER_URL":                 "https://auth.example.com/application/o/gotth-bb/",
+		"OIDC_CLIENT_ID":                  "gotth-bb",
+		"OIDC_CLIENT_SECRET":              "oidc-client-secret",
+		"AUTHENTIK_CONTROL_OBJECTS_FILE":  "/run/config/authentik-control-objects.json",
+		"AUTHENTIK_CONTROL_SOCKET":        "/run/gotth-bb-control/authentik-control.sock",
+		"INVITATION_FINGERPRINT_KEY_FILE": "/run/secrets/invitation-fingerprint-key",
+		"BOOTSTRAP_ADMIN_SUBJECT":         "fixed-opaque-subject",
+		"REGISTRATION_URL":                "https://auth.example.com/if/flow/gotth-bb-enrollment/",
+		"REGISTRATION_ENABLED":            "true",
+		"SESSION_COOKIE_NAME":             "",
+		"SESSION_MAX_AGE":                 "24h",
+		"SESSION_IDLE_TIMEOUT":            "30m",
+		"AUTH_REVALIDATE_INTERVAL":        "15m",
+		"ACTIVITY_CURSOR_KEYRING_FILE":    "/run/secrets/activity-cursor-keyring",
+		"ABUSE_RULES_FILE":                "/run/config/gotth-bb-abuse-rules",
+		"REQUEST_RATE_LIMIT":              "300",
+		"REQUEST_RATE_WINDOW":             "60s",
+		"REQUEST_RATE_CLIENT_CAPACITY":    "4096",
+		"PUBLISH_RATE_LIMIT":              "10",
+		"NEW_ACCOUNT_PUBLISH_RATE_LIMIT":  "3",
+		"PUBLISH_RATE_WINDOW":             "10m",
+		"NEW_ACCOUNT_PERIOD":              "24h",
+		"LOG_LEVEL":                       "debug",
 	}
 }
 

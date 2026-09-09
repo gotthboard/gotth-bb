@@ -348,6 +348,10 @@ Secret handling requirements:
   read-only bind shared by Board and the gateway only after exact UUID/slug
   attestation. No secret is passed on a process argument, copied into an image,
   rendered by `docker compose config`, or exposed in the Board container.
+  The token file is `root:65530` mode `0440`, the attested object descriptor is
+  `root:65531` mode `0440`, and the Board-only fingerprint key is
+  `root:65532` mode `0440`; these service groups are exact and are not reused as
+  ordinary runtime groups.
 - The application derives invitation request fingerprints from the independent
   256-bit Board-only fingerprint key under a fixed HMAC domain. Control-token
   rotation is blocked

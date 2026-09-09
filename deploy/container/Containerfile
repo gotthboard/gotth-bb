@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.title="GOTTH Board" \
 COPY --chmod=0755 gotth-bb /usr/local/bin/gotth-bb
 COPY --chmod=0755 gotth-bb-migrate /usr/local/bin/gotth-bb-migrate
 COPY --chmod=0755 gotth-bb-operator /usr/local/bin/gotth-bb-operator
+COPY --chmod=0755 gotth-bb-authentik-gateway /usr/local/bin/gotth-bb-authentik-gateway
 COPY --chmod=0755 deploy/container/entrypoint.sh /usr/local/bin/gotth-bb-entrypoint
 
 USER 65532:65532
