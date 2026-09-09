@@ -13,6 +13,7 @@ x-authentik-environment: &authentik-environment
 x-authentik-common: &authentik-common
   image: ghcr.io/goauthentik/server@sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581
   restart: unless-stopped
+  user: "1000:1000"
   entrypoint: ["/bootstrap/entrypoint.sh"]
   environment: *authentik-environment
   group_add:
@@ -233,7 +234,6 @@ services:
   authentik-worker:
     <<: *authentik-common
     command: worker
-    user: root
     volumes:
       - type: bind
         source: ${GOTTH_BB_AUTHENTIK_DATA_DIR:?GOTTH_BB_AUTHENTIK_DATA_DIR is required}

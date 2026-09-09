@@ -21,6 +21,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 		"LISTEN_ADDR: 127.0.0.1:${GOTTH_BB_APP_HTTP_PORT:-18082}",
 		"GOTTH_BB_CADDY_UPSTREAM_SCHEME:",
 		`entrypoint: ["/bootstrap/entrypoint.sh"]`,
+		`user: "1000:1000"`,
 		"group_add:", `- "999"`, `- "65532"`,
 		"/docker-entrypoint-initdb.d/10-gotth-bb-runtime.sh",
 		"board_postgres_runtime_password",
@@ -33,6 +34,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 	for _, forbidden := range []string{
 		"/var/run/docker.sock", "container_name:", "latest", "POSTGRES_PASSWORD:",
 		"AUTHENTIK_POSTGRESQL__PASSWORD:", "AUTHENTIK_SECRET_KEY:",
+		"user: root",
 	} {
 		if strings.Contains(compose, forbidden) {
 			t.Errorf("compose.yml contains forbidden %q", forbidden)
