@@ -132,14 +132,9 @@ func packageRunner() releaseartifact.Runner {
 			return []byte(packageTestCommit + "\n"), nil
 		case name == "git" && len(args) > 0 && args[0] == "status":
 			return nil, nil
-		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/postgresql/runtime-grants.sql"):
-			return os.ReadFile("../../deploy/postgresql/runtime-grants.sql")
-		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/container/Containerfile"):
-			return []byte("FROM alpine@sha256:fake\n"), nil
-		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/container/compose.yml"):
-			return []byte("name: gotth-bb\nservices: {}\n"), nil
-		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasSuffix(args[1], ":deploy/container/entrypoint.sh"):
-			return []byte("#!/bin/sh\nexec \"$@\"\n"), nil
+		case name == "git" && len(args) == 2 && args[0] == "show" && strings.Contains(args[1], ":deploy/"):
+			path := args[1][strings.Index(args[1], ":deploy/")+1:]
+			return os.ReadFile(filepath.Join("../..", filepath.FromSlash(path)))
 		case name == "go" && len(args) > 0 && args[0] == "env":
 			return []byte("go1.26.6-test\n"), nil
 		case name == "go" && len(args) > 4 && args[0] == "list" && args[3] == "-f":
