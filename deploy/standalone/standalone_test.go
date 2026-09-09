@@ -9,6 +9,17 @@ import (
 func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 	t.Parallel()
 	compose := readContractFile(t, "compose.yml")
+	commonStart := strings.Index(compose, "x-authentik-common:")
+	servicesStart := strings.Index(compose, "\nservices:")
+	if commonStart < 0 || servicesStart <= commonStart {
+		t.Fatal("compose.yml lacks the Authentik common service boundary")
+	}
+	authentikCommon := compose[commonStart:servicesStart]
+	for _, required := range []string{"cap_drop:\n    - ALL", "security_opt:\n    - no-new-privileges:true"} {
+		if !strings.Contains(authentikCommon, required) {
+			t.Errorf("Authentik common service contract lacks %q", required)
+		}
+	}
 	for _, required := range []string{
 		"caddy:", "app:", "board-postgresql:", "authentik-postgresql:",
 		"authentik-server:", "authentik-worker:",

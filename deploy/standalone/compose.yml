@@ -46,6 +46,10 @@ x-authentik-common: &authentik-common
     - authentik-egress
   logging:
     driver: journald
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
   stop_grace_period: 30s
 
 services:

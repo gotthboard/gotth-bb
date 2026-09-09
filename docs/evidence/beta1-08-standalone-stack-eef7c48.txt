@@ -250,11 +250,30 @@ unchanged recovery origin. Production proxy/header behavior remains covered by
 the production-mode browser/configuration gates and must be repeated over the
 live HTTPS edge after admission.
 
+Second cold-review privilege correction
+---------------------------------------
+
+A later independent cold pass rejected a remaining Authentik privilege path.
+Although both processes ran as UID/GID 1000 with no effective capabilities,
+Docker reported `NoNewPrivs: 0`, retained the default capability bounding set,
+and the pinned image contained setuid/setgid tools including `su`, `mount`, and
+`passwd`. The common Authentik service contract now drops every capability and
+sets `no-new-privileges:true`; a focused regression test binds both controls to
+the shared server/worker anchor.
+
+The pinned server and worker were recreated against the retained recovery
+state. Both reached health, reported `Config.User=1000:1000`, `CapEff=0`,
+`NoNewPrivs=1`, and Docker `CapDrop=[ALL]`. The blueprint returned its exact
+success marker and Chromium completed the dedicated OIDC journey. No writable
+path, secret group, network, identity, or user-facing behavior changed. This
+finding resets the CLEAN-review counter again.
+
 Admission limits and remaining release work
 -------------------------------------------
 
 - Candidate implementation, package, image, fresh-stack, recovery, restart,
-  browser OIDC, Authentik-outage, and corrected exact-tree gates are complete.
+  browser OIDC, and Authentik-outage gates are complete. The final privilege
+  correction still requires an exact-tree rerun before review can resume.
 - Two fresh independent cold reviews on the final repository state remain
   mandatory. Any real finding resets the count.
 - Guarded merge/mirror, annotated immutable 1.0.0-beta.1.3 tag, tagged package
