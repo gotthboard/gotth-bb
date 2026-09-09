@@ -26,10 +26,8 @@ release_value() {
 version=$(release_value version)
 commit=$(release_value commit)
 case "$version" in 1.0.0-beta.1 | 1.0.0-beta.1.*) ;; *) fail "release version is not Beta.1" ;; esac
-case "$commit" in
-	[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
-	*) fail "release commit is invalid" ;;
-esac
+[ "${#commit}" -eq 40 ] || fail "release commit is invalid"
+case "$commit" in *[!0-9a-f]*) fail "release commit is invalid" ;; esac
 
 for binary in gotth-bb gotth-bb-migrate gotth-bb-operator; do
 	[ -f "$package_root/$binary" ] && [ ! -L "$package_root/$binary" ] && [ -x "$package_root/$binary" ] || fail "$binary is unavailable"

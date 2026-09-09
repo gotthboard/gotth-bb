@@ -141,3 +141,51 @@ func TestImageBuilderStreamsExactPackageAndVerifiesExecutables(t *testing.T) {
 		}
 	}
 }
+
+func TestImageBuilderCommitIdentityBoundary(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	containerDirectory := filepath.Join(root, "deploy", "container")
+	if err := os.MkdirAll(containerDirectory, 0o755); err != nil {
+		t.Fatalf("create container fixture: %v", err)
+	}
+	script, err := os.ReadFile("build-image.sh")
+	if err != nil {
+		t.Fatalf("read build-image.sh: %v", err)
+	}
+	scriptPath := filepath.Join(containerDirectory, "build-image.sh")
+	if err := os.WriteFile(scriptPath, script, 0o755); err != nil {
+		t.Fatalf("write build-image.sh: %v", err)
+	}
+	for _, binary := range []string{"gotth-bb", "gotth-bb-migrate", "gotth-bb-operator"} {
+		if err := os.WriteFile(filepath.Join(root, binary), []byte("fixture\n"), 0o755); err != nil {
+			t.Fatalf("write %s: %v", binary, err)
+		}
+	}
+	bin := filepath.Join(root, "test-bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatalf("create test bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake docker: %v", err)
+	}
+	run := func(commit string) string {
+		t.Helper()
+		release := "version=1.0.0-beta.1.3\ncommit=" + commit + "\n"
+		if err := os.WriteFile(filepath.Join(root, "RELEASE.txt"), []byte(release), 0o644); err != nil {
+			t.Fatalf("write RELEASE.txt: %v", err)
+		}
+		command := exec.Command("/bin/sh", scriptPath, "gotth-bb:test")
+		command.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"))
+		output, _ := command.CombinedOutput()
+		return string(output)
+	}
+	if output := run(strings.Repeat("a", 40)); !strings.Contains(output, "image reference already exists") {
+		t.Fatalf("valid 40-character commit did not reach the next boundary: %q", output)
+	}
+	for _, invalid := range []string{strings.Repeat("a", 39), strings.Repeat("a", 41), strings.Repeat("a", 39) + "G"} {
+		if output := run(invalid); !strings.Contains(output, "release commit is invalid") {
+			t.Fatalf("invalid commit %q output = %q", invalid, output)
+		}
+	}
+}
