@@ -17,6 +17,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestReadinessCatalogIncludesExternalIdentityRebindAction(t *testing.T) {
+	t.Parallel()
+	for index, name := range expectedConstraintNames {
+		if name == "moderation_actions_action_type_closed" {
+			if !strings.Contains(expectedConstraintDefinitions[index], "'rebind_external_identity'::text") {
+				t.Fatal("readiness action catalog omits migration 000012 external-identity rebind")
+			}
+			return
+		}
+	}
+	t.Fatal("readiness action constraint is absent")
+}
+
 var testObservedAt = time.Date(2026, time.September, 8, 12, 0, 0, 123456000, time.UTC)
 var testDestinationPolicy = abuse.NewEmptyDestinationPolicy()
 

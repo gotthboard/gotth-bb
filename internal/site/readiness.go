@@ -48,7 +48,7 @@ var expectedConstraintNames = []string{
 var expectedConstraintDefinitions = []string{
 	"CHECK ((administration_revision > 0))",
 	"CHECK ((administration_revision > 0))",
-	"CHECK ((action_type = ANY (ARRAY['bootstrap_administrator'::text, 'change_role'::text, 'grant_group_membership'::text, 'revoke_group_membership'::text, 'create_group'::text, 'rename_group'::text, 'create_area'::text, 'update_area'::text, 'change_area_visibility'::text, 'change_area_posting_mode'::text, 'grant_area_group'::text, 'revoke_area_group'::text, 'lock_topic'::text, 'unlock_topic'::text, 'hide_topic'::text, 'restore_topic'::text, 'pin_topic'::text, 'unpin_topic'::text, 'move_topic'::text, 'archive_topic'::text, 'hide_post'::text, 'restore_post'::text, 'redact_post'::text, 'warn_user'::text, 'mute_user'::text, 'suspend_user'::text, 'reinstate_user'::text, 'assign_report'::text, 'note_report'::text, 'resolve_report'::text, 'dismiss_report'::text, 'update_site_settings'::text])))",
+	"CHECK ((action_type = ANY (ARRAY['bootstrap_administrator'::text, 'rebind_external_identity'::text, 'change_role'::text, 'grant_group_membership'::text, 'revoke_group_membership'::text, 'create_group'::text, 'rename_group'::text, 'create_area'::text, 'update_area'::text, 'change_area_visibility'::text, 'change_area_posting_mode'::text, 'grant_area_group'::text, 'revoke_area_group'::text, 'lock_topic'::text, 'unlock_topic'::text, 'hide_topic'::text, 'restore_topic'::text, 'pin_topic'::text, 'unpin_topic'::text, 'move_topic'::text, 'archive_topic'::text, 'hide_post'::text, 'restore_post'::text, 'redact_post'::text, 'warn_user'::text, 'mute_user'::text, 'suspend_user'::text, 'reinstate_user'::text, 'assign_report'::text, 'note_report'::text, 'resolve_report'::text, 'dismiss_report'::text, 'update_site_settings'::text])))",
 	"CHECK (((reason IS NULL) OR ((octet_length(reason) >= 1) AND (octet_length(reason) <= 2000) AND (reason !~ '[[:cntrl:]]'::text) AND (reason = btrim(reason, ' '::text)))))",
 	"CHECK (((action_type <> ALL (ARRAY['change_role'::text, 'grant_group_membership'::text, 'revoke_group_membership'::text, 'create_group'::text, 'rename_group'::text, 'create_area'::text, 'update_area'::text, 'grant_area_group'::text, 'revoke_area_group'::text, 'move_topic'::text, 'hide_topic'::text, 'archive_topic'::text, 'hide_post'::text, 'redact_post'::text, 'warn_user'::text, 'mute_user'::text, 'suspend_user'::text, 'reinstate_user'::text, 'resolve_report'::text, 'dismiss_report'::text, 'update_site_settings'::text])) OR (reason IS NOT NULL)))",
 	"CHECK (((num_nonnulls(target_user_id, target_group_id, target_area_id, target_topic_id, target_post_id, target_report_id, target_site) = 1) AND ((target_type <> 'user'::text) OR (target_user_id IS NOT NULL)) AND ((target_type <> 'group'::text) OR (target_group_id IS NOT NULL)) AND ((target_type <> 'area'::text) OR (target_area_id IS NOT NULL)) AND ((target_type <> 'topic'::text) OR (target_topic_id IS NOT NULL)) AND ((target_type <> 'post'::text) OR (target_post_id IS NOT NULL)) AND ((target_type <> 'report'::text) OR (target_report_id IS NOT NULL)) AND ((target_type <> 'site'::text) OR (target_site IS NOT NULL))))",
@@ -182,8 +182,9 @@ SELECT NOT owners.current_user_owns_an04_relation
    AND NOT has_table_privilege(current_user, 'public.area_groups', 'UPDATE')
 FROM owners`
 
-// Ready attests migration 000010's exact catalog, singleton contents, current
-// renderer output, and the connected runtime role's narrow privilege delta.
+// Ready attests the administration catalog as amended through migration 000012,
+// singleton contents, current renderer output, and the connected runtime role's
+// narrow privilege delta.
 func Ready(ctx context.Context, database readinessDatabase) error {
 	if ctx == nil || database == nil {
 		return fmt.Errorf("site settings readiness boundary is incomplete")
