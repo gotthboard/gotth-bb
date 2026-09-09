@@ -505,6 +505,9 @@ Every deployed prerelease verifies:
 - `/` serves the public index through the dedicated Caddy site.
 - Complete pages show the validated release version and bounded page/template
   render durations; HTMX fragments do not duplicate the page footer.
+- Complete pages show exactly `Powered by GOTTH Board` linked to
+  `https://github.com/gotthboard`, even when the configured site name and home
+  URL differ; no tenant name or deployment home target enters attribution.
 - Public index behavior matches site policy.
 - Authentik login begins with the correct callback and returns successfully.
 - Eligible member local provisioning succeeds.

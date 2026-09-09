@@ -5,6 +5,39 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Separate product attribution from the configurable site name
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- canonical product, architecture, implementation, feature, verification,
+  operation, and traceability contracts
+- complete-page footer template and generated Templ output
+- focused immutable-attribution regression coverage
+
+Explanation:
+
+Physical Beta.1.3 inspection proved that changing the tenant site name to
+`Ddz` also changed the software footer to `Powered by Ddz` and linked it back
+to the Board home page. That conflates tenant identity with product identity.
+Complete pages instead retain the exact product attribution
+`Powered by GOTTH Board` linked to `https://github.com/gotthboard`; tenant
+branding still controls the document title, masthead, and home navigation.
+
+Verification:
+
+- a non-product configured name and home URL are explicit negative controls
+- complete-page label/target, footer cardinality, and HTMX absence are checked
+- focused, full, generation-drift, package, deployed HTTPS, and two fresh
+  review gates are required before admission
+
+Risks / non-goals:
+
+- no database, identity, Caddy, secret, site-setting, or hierarchy change
+- rollback is application-only to the retained Beta.1.3 image
+- no B1-09, B1-10 hierarchy, RC.1, or stable claim
+
 ### 2026-09-08 — Package an isolated Board deployment stack
 
 Commit: current commit; hash assigned by Git after commit

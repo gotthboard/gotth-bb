@@ -318,6 +318,9 @@ Coverage gaps require:
 - Accessibility core-flow review complete.
 - Upgrade and initial backup/restore rehearsal pass.
 - Known limitations are published.
+- Complete pages retain exact `Powered by GOTTH Board` attribution and the
+  `https://github.com/gotthboard` target under a non-product configured site
+  name/home URL; HTMX fragments remain footer-free.
 
 ### RC.1
 

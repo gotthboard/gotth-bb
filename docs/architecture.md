@@ -625,6 +625,13 @@ small bounded query per full document instead of copying up to 262 KiB of rules
 HTML through every shell or hiding cross-process staleness behind a clever
 cache.
 
+Tenant presentation and product identity are separate boundaries. The
+configurable site name remains the document/header identity, but the complete-
+page software footer uses the compile-time text `GOTTH Board` and the fixed
+public project target `https://github.com/gotthboard`. It does not read those
+values from site settings or derive them from the deployment home URL. HTMX
+fragments still omit the complete-page footer.
+
 A failed shell read makes an otherwise-successful document unavailable. It does
 not overwrite an already-established authorization/domain status: that response
 keeps its status and uses bounded unbranded text, preserving fixed terminal

@@ -886,6 +886,29 @@ entry gate for the first test-user build.
   rejected topology candidate. Corrective work uses
   `feature/beta-1-standalone-stack` and stops before RC.1.
 
+### B1-08F: immutable footer-attribution corrective successor
+
+- **Problem and outcome:** physical Beta.1.3 inspection proved that AN-04 site
+  naming relabeled and retargeted the product footer. Restore the original
+  product boundary without changing tenant branding anywhere else.
+- **Requirements:** `UX-006` and the complete-page portion of `UX-001`–`UX-004`.
+- **In scope:** one static `GOTTH Board` footer label, one exact
+  `https://github.com/gotthboard` target, generated Templ output, a regression
+  test using a non-product site name/home URL, release evidence, guarded
+  application-only deployment, and owner confirmation.
+- **Out of scope:** discussion-area hierarchy, site-setting behavior, database
+  migration, Authentik/Caddy/PostgreSQL replacement, footer redesign, or RC.1.
+- **Acceptance:** a complete page branded `Ddz` still has document/header/home
+  identity `Ddz` while exposing exactly one `Powered by GOTTH Board` link to
+  the public organization; no `Powered by Ddz` link or deployment-home target
+  remains. HTMX fragments remain footer-free. Focused, full, generated-drift,
+  package, deployed HTTPS, and two fresh review gates pass.
+- **Rollback/recovery:** application-only rollback to the exact retained
+  Beta.1.3 image and configuration. The change has no database, identity,
+  Caddy, or secret mutation.
+- **Dependency/worktree:** B1-08 produced immutable Beta.1.3. Corrective work
+  uses `feature/beta-1-footer-attribution-repair` and stops before B1-09/RC.1.
+
 B1-08 proceeds serially as: contract/topology admission; standalone stack and
 blueprint; audited identity rebind; recovery/integration admission; then
 guarded release and live cutover. Each boundary reaches HANDOFF and review

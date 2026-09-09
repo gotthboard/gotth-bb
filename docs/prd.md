@@ -256,6 +256,10 @@ Requirements:
   rules or validation depend on client-side code.
 - **UX-005:** A failed HTMX request shall remain diagnosable and shall not leave
   the page displaying a success state.
+- **UX-006:** Every complete page footer shall attribute the immutable product
+  as `Powered by GOTTH Board` linking to `https://github.com/gotthboard`.
+  Configurable site name, description, theme, base URL, or home URL shall not
+  alter that product name or target. HTMX fragments remain footer-free.
 
 ### 5.8 Security and operation
 

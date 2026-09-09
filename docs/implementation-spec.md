@@ -2222,6 +2222,13 @@ This preserves branded validation/domain errors without moving private queries
 ahead of authority. Static assets, health, readiness, and fixed plain settings-
 unavailable responses do not perform this query.
 
+The complete-document footer renders the literal accessible link
+`Powered by GOTTH Board` with exact `href="https://github.com/gotthboard"`.
+Neither `SiteShellPresentation.Name` nor `pageView.HomeURL` participates in
+that link. The configurable site identity continues to drive the document
+title, masthead, and home navigation; changing it must not relabel or retarget
+software attribution. Fragment rendering performs no footer work.
+
 If shell loading fails for an otherwise-successful full document, the handler
 returns fixed bounded unbranded `503`. If authorization or domain work already
 established a non-2xx status, shell failure preserves that status and replaces
