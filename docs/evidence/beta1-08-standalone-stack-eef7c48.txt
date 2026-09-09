@@ -1,0 +1,210 @@
+Beta.1 B1-08 standalone-stack candidate evidence
+================================================
+
+Candidate
+---------
+
+- implementation and recovery-methodology commit:
+  eef7c484e28f9a806cba5e404c2588815f5b596d
+- tree: dbc075ac3e1a9837a8895176ea72a9c0ce8a7344
+- branch: feature/beta-1-standalone-stack
+- prior deployed candidate: 93b33945c80d45dbd64291e109801ad5e0659f8d
+  (1.0.0-beta.1.2)
+- release under test: 1.0.0-beta.1.3
+- evidence host: development, Debian 13, amd64
+
+Scope and topology
+------------------
+
+The candidate packages one Compose project with six long-running services:
+stack Caddy, Board, Board PostgreSQL 17, Authentik server, Authentik worker,
+and Authentik PostgreSQL 16. Caddy and Board use host networking only for
+explicit loopback/public bindings. Authentik and its database use private
+networks; Board and Authentik databases use separate durable paths. All four
+third-party images are content-pinned. The Board image is immutable by both
+release tag and exact local image ID. No service receives the Docker socket.
+
+The direct-host, shared-host edge, and loopback-test tuples are closed by the
+packaged preflight. Shared-host mode leaves the existing multi-site TLS Caddy
+in place, binds stack Caddy only to the two exact loopback listeners, preserves
+the public Host and HTTPS scheme, overwrites caller forwarding headers at the
+outer edge, and repeats alternate-header removal at the stack edge.
+
+Repository and security gates
+-----------------------------
+
+The exact candidate was transferred to the evidence host as a verified Git
+bundle. Bundle SHA-256:
+
+  38edd0d26da17e58fa0ed3ccf55a8b4694dd9264784b8e0316a73eeefd8636b5
+
+With Go 1.26.6, Node.js 26.7.0, npm 12.0.2, PostgreSQL 17.10, Chromium
+151.0.7922.71, and the repository-pinned generators/tools:
+
+  GOMAXPROCS=8 make verify
+  GOTTH_BB_TEST_DATABASE_URL=<protected task database URL> \
+    GOMAXPROCS=8 go test -mod=readonly -tags=integration -race ./...
+  gitleaks git --no-banner --redact .
+  gitleaks dir --no-banner --redact .
+  govulncheck ./...
+
+Results:
+
+- repository verification: PASS
+- complete PostgreSQL integration/race suite: PASS
+- Git-history leak scan: CLEAN (458 commits)
+- candidate-tree leak scan: CLEAN
+- Go vulnerability scan: no vulnerabilities found
+
+Artifact reproducibility and custody
+------------------------------------
+
+Two independent release-package builds from the exact commit produced
+byte-identical archives:
+
+  gotth-bb-1.0.0-beta.1.3-linux-amd64.tar.gz
+  SHA-256 2ee32b23e2caac16382441da1824db6e321d4b0addaec61ddb0c245b4b64c77a
+
+The packaged executable was copied into the candidate image by the packaged
+image builder. The resulting image identity and labels were inspected and the
+container executable was compared to the package:
+
+  tag: gotth-bb:1.0.0-beta.1.3-eef7c48
+  image ID:
+    sha256:5e26fb04069ed88a9c24f49c1f6728b80ef584525df2cea5748460a56ecffa12
+  version label: 1.0.0-beta.1.3
+  revision label: eef7c484e28f9a806cba5e404c2588815f5b596d
+
+Result: PASS. The preflight rejected mutable or mismatched image identities in
+negative controls and accepted only the exact package/image pair.
+
+Standalone start, blueprint, and identity gate
+----------------------------------------------
+
+The stack was started in a task-owned loopback namespace with independent
+secret files and empty durable paths. The packaged preflight returned exactly:
+
+  STANDALONE_PREFLIGHT_OK
+
+The packaged Authentik blueprint was applied twice against the explicitly
+named rehearsal project. Both applications returned exactly:
+
+  AUTHENTIK_BOARD_BLUEPRINT_APPLIED
+
+The resulting dedicated provider uses `user_uuid` subject mode and the exact
+Board application, provider, access group, launch URL, redirect URI, and
+enrollment boundary. No unrelated non-built-in application/provider was
+created. The provider secret remained mounted and did not appear in retained
+Compose, image, command, or log evidence.
+
+The governed rebind tests and PostgreSQL integration suite prove exact
+old/new issuer and subject selection, complete active-session and pending-login
+revocation, one immutable operator audit row, and no user, role, group,
+membership, ownership, or content mutation. Missing, ambiguous, suspended,
+already-bound, audit-failure, transaction-failure, and concurrent attempts
+fail without an admitted second result.
+
+Backup and exact-origin clean recovery
+--------------------------------------
+
+With Board, Caddy, Authentik server, and Authentik worker stopped, separate
+logical archives and non-database state archives were captured under a
+root-owned mode-0700 directory. Every archive and sidecar is root-owned mode
+0600. Filesystem archives use numeric ownership and preserve ACLs and extended
+attributes. Caddy/Auth state capture occurred only while its writers were
+stopped. An interrupted unchecksummed archive was treated as contaminated,
+removed, and recaptured rather than reused.
+
+Database archive identities:
+
+  board.dump
+    SHA-256 f80500e901d3e14889c237f299f368e08521eb8a3b5f44434dcc8ba402ea7c51
+    bytes 98341
+  authentik.dump
+    SHA-256 93f99f5c4d3f38b93d88cfd56aa0be5e8d522938a2222efa7592dc5044fef06e
+    bytes 3088570
+
+Each archive digest and listing was verified. Both databases were initialized
+and restored into empty matching-major task-owned services. Caddy data/config,
+Authentik data/templates/certificates, and required secret references were
+restored into empty paths. The packaged runtime grants were reapplied. Recovery
+used the original Board and Authentik origins; no substitute issuer was used.
+
+Before capture, Board state was:
+
+  users=1 external_identities=1 sessions=9 areas=0 topics=0 posts=0
+
+The recovered identity initially retained user ID 1, role `member`, issuer
+`http://127.0.0.1:28181/application/o/gotth-bb/`, and subject
+`71c60e60-99f4-477f-821c-5b4bc5312de8`. Readiness correctly returned 503
+because no administrator existed. The packaged one-time operator command was
+then run against that exact existing identity with operator identifier
+`b1-08-recovery-gate`. It committed user ID 1/audit ID 1. Database inspection
+proved exactly:
+
+  1|administrator|71c60e60-99f4-477f-821c-5b4bc5312de8
+  1|bootstrap_administrator|operator|b1-08-recovery-gate
+
+Direct and Caddy readiness then returned `200 ok`. No readiness condition or
+role-from-claim policy was weakened.
+
+Browser, restart, and outage gates
+----------------------------------
+
+Chromium completed the dedicated Authentik username/password authorization,
+Board callback, and server-session flow against the recovered exact image.
+The test asserted the expected Board session cookie without retaining its
+value. Result: PASS.
+
+All six services were stopped and restarted without deleting or recreating
+durable paths. Both blueprint reruns returned the required exact marker,
+container health passed, Caddy readiness returned 200, and a second Chromium
+OIDC journey passed. Board/Auth identity remained unchanged.
+
+For the fail-closed outage gate, only Authentik server/worker were stopped.
+A fresh Board login returned 303 to the exact dedicated provider; its stack
+edge returned 502 while the upstream was absent. Board session count remained
+exactly 11 before and after the failed attempt. After Authentik recovery,
+Board readiness remained 200, Chromium OIDC passed again, and the expected
+successful session count became 12.
+
+Rollback boundary and retained live identity
+--------------------------------------------
+
+The untouched live Beta.1.2 deployment was inspected read-only before
+admission:
+
+  image: gotth-bb:1.0.0-beta.1.2-93b3394
+  image ID:
+    sha256:cf32bc0785075392569a8a07955efea2eef5ed5f2d38198ba7be4ba22afea8c2
+  issuer: https://auth.dannyhunn.com/application/o/gotth-bb/
+  subject: 95c2860e6cf2ab5cc1480191f470d2859fc2a341698f716489cb49d1c240a376
+  user ID/role: 1/administrator
+  sessions: 23
+
+This is the retained old-issuer identity and artifact boundary. Live mutation
+is deliberately forbidden before exact-tree admission. Deployment therefore
+must still take and verify a fresh stopped Board backup, retain the old app,
+configuration, provider, database paths, and image, perform the exact audited
+rebind, exercise rollback by restoring that stopped old-issuer backup and
+starting Beta.1.2, then restore the candidate Board/Auth pair and prove forward
+recovery. Old and new issuer bindings must never be mixed.
+
+Admission limits and remaining release work
+-------------------------------------------
+
+- Candidate implementation, package, image, fresh-stack, recovery, restart,
+  browser OIDC, and Authentik-outage gates are complete.
+- Two fresh independent cold reviews on the final repository state remain
+  mandatory. Any real finding resets the count.
+- Guarded merge/mirror, annotated immutable 1.0.0-beta.1.3 tag, tagged package
+  reproducibility, live shared-host HTTPS/OIDC cutover, stopped live backup,
+  rollback/forward-recovery exercise, and live smoke remain release-phase work.
+- Beta.1.2, its shared Authentik provider, host-edge configuration, image,
+  database, and durable paths remain retained until owner acceptance plus the
+  documented retention period.
+- Same-host Beta backup evidence is not disaster recovery. Off-host schedule,
+  retention, alerting, RC.1, stable, public-registration, and production claims
+  are not admitted.
+- The successor cannot become known-good until live browser verification and
+  affirmative owner confirmation.

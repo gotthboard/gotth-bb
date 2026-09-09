@@ -74,12 +74,12 @@ table and rejects omission, duplication, or invention in either direction.
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |
 | `SEC-004` | escaped templates and boundary sanitizer | B1-01 fixed-parser/raw-tag regression plus template/render/XSS tests | implemented |
 | `SEC-005` | bounded structured redacted logs | observability and AN-02/AN-05 log evidence | implemented |
-| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000011 | implemented |
+| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000012 | implemented |
 | `OPS-002` | bounded public liveness/readiness | readiness and deployed health tests | implemented |
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
 | `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 packaged-helper, live-copy upgrade, Beta backup/clean-restore, readiness, and rollback rehearsal complete; live release record pending B1-05 | blocked |
 | `OPS-005` | fail-closed identity/session/access validation | auth/policy/readiness/failure tests | implemented |
-| `OPS-006` | standalone pinned Caddy/Auth/Board stack with separate databases | B1-08 Compose, identity-cutover, recovery, isolation, and live-deployment evidence | blocked |
+| `OPS-006` | standalone pinned Caddy/Auth/Board stack with separate databases | B1-08 exact candidate Compose, identity-cutover, recovery, isolation, restart, OIDC, and outage evidence complete; guarded delivery and live shared-host deployment evidence pending | blocked |
 
 ## Existing retained evidence
 
@@ -91,6 +91,7 @@ table and rejects omission, duplication, or invention in either direction.
 - AN-04: `docs/evidence/an04-04-integrated-1d1e100.txt`.
 - AN-05: `docs/evidence/an05-04-integrated-1abbeab.txt`.
 - B1-01: `docs/evidence/beta1-01-security-f91a6fb.txt`.
+- B1-08 candidate: `docs/evidence/beta1-08-standalone-stack-eef7c48.txt`.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence
