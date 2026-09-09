@@ -73,12 +73,34 @@ try:
         },
     )
     created_uuid = invitation_response.json()["pk"]
+    invitation_page = call(
+        "GET",
+        "/stages/invitation/invitations/"
+        "?flow__slug=gotth-bb-invitation&page_size=51",
+        {200},
+    ).json()
+    if invitation_page["pagination"]["next"] != 0 or not any(
+        item.get("pk") == created_uuid for item in invitation_page["results"]
+    ):
+        raise RuntimeError("pinned invitation list omitted creator-owned fixture")
 
     # Exact Board-group object permissions and atomic membership actions.
     for group_name in ("gotth-bb-users", "gotth-bb-pending", "gotth-bb-suspended"):
         group = Group.objects.get(name=group_name)
         call("GET", f"/core/groups/{group.pk}/?include_users=false", {200})
         call("POST", f"/core/groups/{group.pk}/add_user/", {204}, {"pk": test_user.pk})
+        if group_name == "gotth-bb-pending":
+            pending_page = call(
+                "GET",
+                f"/core/users/?groups_by_pk={group.pk}"
+                "&include_groups=false&include_roles=false&page_size=51",
+                {200},
+            ).json()
+            if pending_page["pagination"]["next"] != 0 or not any(
+                item.get("uuid") == str(test_user.uuid)
+                for item in pending_page["results"]
+            ):
+                raise RuntimeError("pinned pending-group query omitted fixture")
         call("POST", f"/core/groups/{group.pk}/remove_user/", {204}, {"pk": test_user.pk})
 
     # Creator-scoped initial permissions apply only to the invitation just created.
