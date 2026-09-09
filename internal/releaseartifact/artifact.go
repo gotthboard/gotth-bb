@@ -141,6 +141,7 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		data []byte
 	}{
 		{path: "deploy/container/Containerfile", mode: 0o644},
+		{path: "deploy/container/build-image.sh", mode: 0o755},
 		{path: "deploy/container/compose.yml", mode: 0o644},
 		{path: "deploy/container/entrypoint.sh", mode: 0o755},
 		{path: "deploy/postgresql/backup-logical.sh", mode: 0o755},

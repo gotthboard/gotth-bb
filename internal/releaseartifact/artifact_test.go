@@ -34,6 +34,7 @@ var testDeploymentFiles = map[string]struct {
 	mode int64
 }{
 	"deploy/container/Containerfile":                   {data: testContainerfile, mode: 0o644},
+	"deploy/container/build-image.sh":                  {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
 	"deploy/container/compose.yml":                     {data: testCompose, mode: 0o644},
 	"deploy/container/entrypoint.sh":                   {data: testEntrypoint, mode: 0o755},
 	"deploy/postgresql/backup-logical.sh":              {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
@@ -116,6 +117,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/DEPENDENCIES.txt",
 		root + "/RELEASE.txt",
 		root + "/deploy/container/Containerfile",
+		root + "/deploy/container/build-image.sh",
 		root + "/deploy/container/compose.yml",
 		root + "/deploy/container/entrypoint.sh",
 		root + "/deploy/postgresql/backup-logical.sh",
@@ -148,6 +150,7 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"go list -mod=readonly -m all",
 		"git show " + testCommit + ":deploy/postgresql/runtime-grants.sql",
 		"git show " + testCommit + ":deploy/container/Containerfile",
+		"git show " + testCommit + ":deploy/container/build-image.sh",
 		"git show " + testCommit + ":deploy/container/compose.yml",
 		"git show " + testCommit + ":deploy/container/entrypoint.sh",
 		"git show " + testCommit + ":deploy/postgresql/backup-logical.sh",

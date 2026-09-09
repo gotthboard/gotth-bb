@@ -115,3 +115,29 @@ func TestContainerAndComposeContractsRemainHardened(t *testing.T) {
 		t.Error("compose.yml retains the rejected bridge-port mapping")
 	}
 }
+
+func TestImageBuilderStreamsExactPackageAndVerifiesExecutables(t *testing.T) {
+	t.Parallel()
+	command := exec.Command("/bin/sh", "-n", "build-image.sh")
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("sh -n build-image.sh: %v\n%s", err, output)
+	}
+	body, err := os.ReadFile("build-image.sh")
+	if err != nil {
+		t.Fatalf("read build-image.sh: %v", err)
+	}
+	text := string(body)
+	for _, required := range []string{
+		`tar -C "$package_root" -cf "$context" .`,
+		`docker build --no-cache --network=none`,
+		`package_digest=$(sha256sum`,
+		`image_digest=$(docker run --rm --entrypoint sha256sum`,
+		`gotth-bb-migrate gotth-bb-operator`,
+		`image labels differ from RELEASE.txt`,
+		`image reference already exists`,
+	} {
+		if !strings.Contains(text, required) {
+			t.Errorf("build-image.sh lacks %q", required)
+		}
+	}
+}
