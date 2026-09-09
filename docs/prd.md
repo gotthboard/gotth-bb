@@ -149,7 +149,9 @@ claims never grant moderator, administrator, or area-access privileges.
   passwords or user records. Reinstatement shall restore Authentik application
   eligibility before clearing the local suspension; any partial or uncertain
   outcome shall retain the more restrictive state and expose a retryable
-  administrator-visible reconciliation result.
+  administrator-visible reconciliation result. Finite suspensions shall still
+  expire automatically through bounded reconciliation; an identity shall not
+  regain Board access until remote eligibility has been restored and verified.
 
 ### 5.2 Area access model
 
@@ -791,8 +793,9 @@ into an identity provider or a host-management console:
    root-owned secret. It has no admin-interface access and no permission to
    create/change/delete users, groups, flows, stages, policies, applications,
    providers, roles, tokens, or secrets. Its complete authority is global
-   read-user, invitation create/view/delete, and object permissions
-   to view and add/remove users on the three exact Board identity groups.
+   read-user and invitation create, per-object view/delete permission assigned
+   only to invitations that account creates, and object permissions to view
+   and add/remove users on the three exact Board identity groups.
    Board hard-codes and verifies the issuer origin, flow and group identities,
    rejects redirects and oversized responses, and never accepts caller-owned
    Authentik URLs or object identifiers.
@@ -803,6 +806,9 @@ into an identity provider or a host-management console:
    and verifies identity-group access before clearing local denial. A failed or
    unknown cross-system step remains denied, records bounded reconciliation
    state, and is safely retryable; no distributed-transaction claim is made.
+   Protected Board authorization also requires accepted identity-sync state.
+   A single bounded reconciler restores expired finite suspensions without
+   changing the existing automatic-expiry promise.
    The pending page detects a bounded Authentik pending-group identity whose
    signed intake was lost and permits only a one-identity, revalidated,
    audited adoption into the local queue.

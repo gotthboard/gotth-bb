@@ -346,6 +346,11 @@ Secret handling requirements:
   read-only bind generated only after the blueprint's exact UUID/slug
   attestation. Neither file is passed on a process argument, copied into an
   image, or rendered by `docker compose config`.
+- The application derives invitation request fingerprints from the control
+  token under a fixed separate HMAC domain. Control-token rotation is blocked
+  while any invitation create operation remains `creating` or `unknown`;
+  reconcile it to a terminal/active state first, then rotate the Authentik token
+  and application secret as one stopped-writer change.
 
 ### 8.1 AN-05 abuse-policy update
 
@@ -553,8 +558,8 @@ Every deployed prerelease verifies:
   at Board and direct Authentik URLs; one disposable pending approval and one
   expiring invitation; restrictive suspension/reinstatement reconciliation;
   tightened and restored session/publication policy; maintenance entry and
-  administrator recovery; bounded session view/revocation; aggregate email
-  status and one self-addressed test; permission negatives; audit redaction;
+  administrator recovery; bounded session view/revocation; configured email
+  status and one self-addressed test result; permission negatives; audit redaction;
   and restoration of the exact pre-smoke control settings.
 - Logout revokes the local session.
 - Liveness/readiness and structured request IDs are observable to operators.
@@ -950,6 +955,9 @@ Proceed in this order:
 1. Resolve the exact running Beta.1.5 commit/tree/image, six container/image
    identities, both database heads and mounts, blueprint objects, Caddy routes,
    root-owned files, and current smoke. Verify B1-08 retained rollback state.
+   Before migration, prove every existing local external identity is represented
+   in the dedicated accepted group; any mismatch blocks rather than poisoning
+   the sync-state backfill.
 2. Generate a new independent 256-bit control token into a root-owned mode-0600
    file; prepare the non-secret SMTP values and optional separate password
    secret. Never reuse the OIDC client, Authentik bootstrap, or superuser token.
@@ -976,6 +984,11 @@ Proceed in this order:
    pre-000013 backups and forward recovery to the candidate. Never combine one
    generation's Board database with another generation's Authentik identity
    state.
+   Maintenance recovery must prove both the ordinary current-administrator form
+   and the packaged stopped-writer, migration-owner database command. The latter
+   is the explicit fallback when Authentik outage or expired revalidation makes
+   browser recovery impossible; maintenance never bypasses normal identity
+   revalidation.
 9. Guarded fast-forward/mirror, successor Beta tag, reproducible package/image,
    live evidence, and owner physical acceptance bind to one exact commit. No
    prior backup, secret, object file, image, or tag is removed before acceptance

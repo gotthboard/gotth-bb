@@ -118,7 +118,8 @@ counts, or an HTMX fragment leaks the same topic.
 
 Registration uses the same ownership rule. Board stores the effective closed
 mode. Each dedicated Authentik enrollment flow evaluates the matching policy at
-entry and again immediately before its first irreversible stage. Each
+entry, immediately before its first irreversible stage, and after email
+verification is resumed but before activation/group assignment. Each
 evaluation performs one fixed HTTPS GET to the corresponding public Board
 admission path, with a two-second timeout, redirects disabled, and success
 defined only as an empty `204`. Board outage, database uncertainty, another
@@ -140,9 +141,10 @@ hard-coded to the configured issuer origin and exact blueprint-provided object
 identities. It rejects redirects, cross-origin locations, oversized bodies,
 unknown JSON fields where the local projection requires closure, and ambiguous
 timeouts. The token belongs to a service account without admin-interface
-access. Global authority is limited to read-user and invitation
-create/view/delete; object authority is limited to view plus add/remove user on the
-exact accepted, pending, and suspended Board groups. The client exposes no
+access. Global authority is limited to read-user and invitation create.
+Authentik initial-permission rules assign view/delete only on invitations that
+service account creates; group object authority is limited to view plus
+add/remove user on the exact accepted, pending, and suspended Board groups. The client exposes no
 generic method accepting a URL, HTTP verb, model name, or caller-owned object
 identifier.
 
@@ -521,14 +523,21 @@ silently break referential or audit integrity.
   Local denial remains authoritative during failure. Reinstatement reverses the
   order: verified Authentik eligibility first, then the guarded local
   reinstatement transaction.
+- Finite-suspension expiry: one advisory-lock-serialized worker tick claims at
+  most five due identities without retaining a database lock, restores and
+  verifies Authentik accepted membership, then marks local sync accepted in a
+  second transaction. Until that completion, the ordinary authorization query
+  denies non-accepted sync state even after the wall-clock suspension expires.
 - Session revocation: lock and revalidate the administrator and selected local
   session or target account, set finite revocation time, and append one audit in
   the same Board transaction. A server-authenticated action handle, not a raw
   cookie or hash, selects a single session.
 - Invitation create/revoke uses the same local-intent, remote-call, local-
   completion phases and a unique non-secret remote object name. Retry adopts
-  only an exact matching remote object; a mismatch blocks. The invitation UUID
+  only an exact request-fingerprint and remote-object match; a mismatch blocks. The invitation UUID
   and link remain ephemeral bearer material rather than Board database state.
+  A missing single-use object is recorded only as absent/consumed-or-removed;
+  only Board's confirmed delete is called revoked.
 - Email test: reserve one idempotency/rate slot in Board before the external
   call, send through the same host-managed SMTP transport as Authentik, and
   store only accepted/failed/unknown state plus finite timestamps. Unknown is

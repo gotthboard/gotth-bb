@@ -2910,7 +2910,11 @@ owner confirmation records the Beta commit/artifact as known-good.
 ### 24.1 Migration 000013 and runtime authority
 
 Migration `000013_board_control_plane.sql` is one stopped, ordinary migration.
-It extends `site_settings` with:
+Its `ALTER TABLE` operations take brief `ACCESS EXCLUSIVE` locks; the identity
+sync backfill writes every existing `users` row, and replacing audit checks
+scans `moderation_actions`. Release evidence measures row counts, WAL growth,
+lock time, and total migration time on the representative restored population;
+there is no online-migration claim. It extends `site_settings` with:
 
 - `registration_mode` constrained to `closed`, `verified_email_open`,
   `administrator_approval`, or `invitation_only`, defaulting to `closed`;
@@ -2942,20 +2946,26 @@ bounded profile only while status remains pending and may never reopen a
 terminal row.
 
 `users` gains one closed `authentik_sync_state` field (`unknown`, `accepted`,
-`removal_required`, `grant_required`, `suspended`) plus finite last-attempt time
-and a bounded non-sensitive failure class. No remote response body or exception
-text is persisted. `email_test_state` contains at most one row per local
+`removal_required`, `grant_required`, `suspended`) plus finite last/next-attempt
+times and a bounded non-sensitive failure class. Migration preflight proves
+every current external identity against the dedicated accepted group. The
+migration backfills effectively active users to `accepted` and users under a
+current finite or indefinite suspension to `removal_required`; future JIT
+inserts set the state explicitly rather than relying on the `unknown` default.
+No remote response body or exception text is persisted. `email_test_state` contains at most one row per local
 administrator with a server-generated idempotency UUID, closed status,
 finite request/completion times, and next-allowed time. It stores no address,
 subject, body, SMTP response, or task log.
 
 `registration_invitations` contains one local idempotency UUID and unique
 non-secret Authentik invitation name, closed
-`creating|active|revoke_required|revoked|unknown` transition state, closed
+`creating|active|revoke_required|revoked|absent|unknown` transition state, closed
 `not_requested|queued|failed|unknown` delivery state, fixed flow identity,
-finite expiry and transition times, creator, positive revision, and a bounded
-failure class. It stores no invitation UUID/link, recipient digest, or plain
-recipient. The remote UUID remains bearer material: the client holds it
+finite expiry and transition times, creator, positive revision, one HMAC
+request fingerprint, and a bounded failure class. The fingerprint covers the
+canonical recipient, expiry, display name, and delivery choice under the
+separate `gotth-bb/invitation-request/v1` domain derived from the control token.
+It stores no invitation UUID/link or plain recipient. The remote UUID remains bearer material: the client holds it
 only long enough to display the just-created link or perform the exact remote
 operation, then drops that buffer.
 
@@ -2965,12 +2975,27 @@ The audit action set adds `update_control_settings`,
 `adopt_pending_registration`,
 `request_create_invitation`, `create_invitation`,
 `request_revoke_invitation`, `revoke_invitation`,
+`record_invitation_absent`,
 `reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`, and
 `test_email`. Audit objects contain closed modes, numeric policy values,
 digests or opaque action references, counts, and result classes only. Email,
 display name, Authentik user ID/UUID, invitation token, session identifier,
 remote body, and secret material are forbidden from audit JSON. Every
 administrator action requires the existing bounded reason.
+
+The existing audit target grammar is not weakened. Control and invitation
+actions target the site singleton. Pending-registration actions also target the
+site singleton and carry only a domain-separated HMAC reference to the local
+registration row. Session and identity reconciliation target the affected
+local user; email test targets the requesting administrator. Browser actions
+use `actor_kind=forum_user`. The finite-expiry worker uses
+`actor_kind=operator` with the fixed non-secret identifier
+`gotth-bb-expiry-reconciler`; it never impersonates an administrator or invents
+an audit reason supplied by one.
+Migration 000013's audit reason check requires a bounded reason for every new
+`forum_user` action and permits it to be absent only for the fixed operator
+expiry-reconciliation action. Actor/target consistency remains database-
+enforced.
 
 The runtime grant delta is exact column-level access for these relations. It
 adds no DELETE on users, pending registrations, email state, site settings, or
@@ -2982,32 +3007,50 @@ cardinality, grant delta, settings ceilings, and closed values.
 
 The standalone blueprint owns three enrollment flows with distinct immutable
 slugs and UUIDs: open verified email, administrator approval, and invitation.
-All bind the matching Board admission policy both at flow entry and again
-immediately before the first irreversible user-write or invitation-consume
-stage. No permissive result is cached between bindings. Each evaluation calls
+All bind the matching Board admission policy at flow entry, immediately before
+the first irreversible user-write or invitation-consume stage, and on every
+email-stage execution, including a restored verification link, before that
+stage activates the user and before assignment to a Board group.
+No permissive result is cached between bindings. Each evaluation calls
 the Board admission URL using the documented Authentik expression `requests`
 session. The source uses one fixed URL from blueprint environment, `GET`, `timeout=2`,
 `allow_redirects=False`, no caller headers/body, and returns true only for exact
 status 204 with empty body. Exceptions return false. Policy execution logging
-is disabled so no enrollment URL or decision becomes an unbounded event.
+is disabled so no enrollment URL or decision becomes an unbounded event. The
+prompt, user-write/invitation, and email stage bindings set
+`evaluate_on_plan=true` and `re_evaluate_policies=true`; Authentik 2026.5.2
+therefore checks during planning and again when each marked stage is presented,
+including a restored email-verification request.
 
-The open flow writes the new external user into `gotth-bb-users` while
-inactive, verifies email, activates the user, and logs in. The approval flow
-writes into `gotth-bb-pending` while inactive, verifies and activates the
-Authentik identity, sends the signed intake, then redirects to Board's fixed
-pending page; it never joins the application access group. The invitation flow uses an invitation-specific
-prompt stage whose email field is read-only after fixed invitation data is
-applied. Its invitation stage has `continue_flow_without_invitation=false`,
+The open flow first creates an inactive external user with no Board group,
+rechecks admission when the email link resumes, verifies and activates the
+user, assigns `gotth-bb-users`, and logs in. The approval flow likewise creates
+an inactive ungrouped user, rechecks admission when email verification resumes,
+verifies/activates, assigns `gotth-bb-pending`, sends the signed intake, then redirects to Board's fixed pending
+page; it never joins the application access group. The invitation flow uses an
+invitation-specific prompt stage whose email field is read-only after fixed
+invitation data is applied. Its invitation stage has
+`continue_flow_without_invitation=false`,
 accepts only invitations bound to that exact flow, and uses Authentik's actual
 2026.5.2 single-use behavior: the invitation is deleted when that stage accepts
 it, before later user-write/email stages finish. The second admission guard and
 the stage therefore follow prompt validation, preventing a token from being
 burned merely because its link was opened or after Board has closed admission.
-The UI states that a token is consumed on valid form submission and
-that an abandoned later flow requires administrator inspection/recovery rather
-than pretending successful enrollment is the deletion boundary. It then writes
-into `gotth-bb-users`, verifies email, and logs in. All three create only
-external users under the fixed Board path.
+The UI states that a token is consumed on valid form submission and that an
+abandoned later flow requires administrator inspection/recovery rather than
+pretending successful enrollment is the deletion boundary. It creates the
+inactive ungrouped user, rechecks admission when email verification resumes,
+verifies/activates, then assigns `gotth-bb-users` and logs in. Thus accepted and pending membership
+always means the flow completed email verification; abandoned unverified
+identities remain ungrouped and cannot appear in Board's pending recovery list.
+All three create only external users under the fixed Board path.
+
+The approval intake expression uses Authentik's documented
+`ak_create_jwt_raw` with the fixed Board provider and supplies every required
+claim explicitly. It POSTs only to the fixed Board intake URL with exact
+`Content-Type: application/jwt`, a two-second timeout, redirects disabled, no
+cookies, and success only for empty `202`; every exception or other response
+halts that flow stage. Expression logging is disabled.
 
 `GET /registration/admission/{mode}` accepts only the three exact canonical
 mode slugs and no query. It performs no session lookup, accepts no forwarded
@@ -3022,10 +3065,14 @@ limiter. Verification pins the Board provider algorithm and key, exact issuer,
 client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID,
 canonical UUID `jti`, expiry no more than 60 seconds ahead, nonfuture issued
 time, positive Authentik user ID, canonical UUID subject, and bounded
-strict-UTF-8 profile claims. One
+strict-UTF-8 profile claims including exact `email_verified=true`. One
 timeout-bounded transaction inserts or idempotently observes the pending row.
-It returns a fixed empty status and never reveals whether an identity was new,
-duplicate, terminal, or malformed.
+Every structurally bounded request returns empty `202` after local JWT handling
+whether the assertion was accepted, duplicate, terminal, or cryptographically
+invalid. A database timeout/failure returns empty `503`; route, method,
+content-type, and body-limit failures keep their ordinary fixed grammar status.
+No response reveals whether an identity was new, duplicate, terminal, or
+malformed.
 
 `GET /register` reads the current mode. Closed and invitation-only render a
 bounded explanation; open and approval render one exact Authentik flow link.
@@ -3038,9 +3085,11 @@ the administrator workflow.
 The blueprint creates a non-superuser `service_account` excluded from every
 Board application group, a role, and one non-expiring API token whose key comes
 from the separately mounted control-token secret. The role has exactly global
-`authentik_core.view_user`, `authentik_stages_invitation.add_invitation`,
-`view_invitation`, and `delete_invitation`.
-Object permissions grant only `view_group`, `add_user_to_group`, and
+`authentik_core.view_user` and
+`authentik_stages_invitation.add_invitation`. One Authentik
+`InitialPermissions` object assigns `view_invitation` and `delete_invitation`
+to that role only on invitation objects created by its service account request.
+Group object permissions grant only `view_group`, `add_user_to_group`, and
 `remove_user_from_group` on the exact accepted, pending, and suspended groups.
 It lacks `access_admin_interface` and every user/group/flow/stage/policy/
 provider/application/role/token change/delete/add permission not listed above.
@@ -3052,6 +3101,10 @@ narrower in practice: group PATCH requires `change_group`, submits the complete
 membership set, and can lose a concurrent membership update. The dedicated
 identity tenant, fixed UUID lookup, concrete client methods, response bounds,
 and negative permission matrix contain this unavoidable read authority.
+`add_invitation` is likewise a model-level create permission and cannot be
+flow-scoped by Authentik. The Board-only identity tenant contains that create
+blast radius; the concrete client supplies only the pinned invitation flow, and
+creator-scoped initial permissions prevent global read/delete after creation.
 
 The Go client has concrete methods only for: retrieve a user by the pinned UUID
 filter; list at most 51 users through the fixed pending-group filter; retrieve
@@ -3103,13 +3156,26 @@ suspension, then removes suspended/pending membership, grants and verifies
 accepted membership, and only afterward runs the existing governance-serialized
 local reinstatement/audit transaction. A failed or ambiguous grant leaves the
 user locally suspended. Reconciliation is one explicit POST using the same
-restrictive ordering, never an unbounded background loop or a transaction held
-open around HTTP.
+restrictive ordering, never a transaction held open around HTTP.
+
+Every protected Board authorization query requires
+`authentik_sync_state='accepted'` in addition to the existing suspension and
+role checks. One process-local ticker runs at startup and every 60 seconds. An
+advisory-lock-serialized query claims at most five users whose finite suspension
+has expired and whose sync state is `suspended`, `removal_required`, or
+`grant_required`, moves them to `grant_required`, sets a finite next-attempt,
+and commits before HTTP. Per identity it removes suspended/pending membership,
+adds and verifies accepted membership, then commits `accepted` plus one bounded
+`reconcile_identity_access` result. Failure retains denial and advances a
+bounded backoff no longer than 30 minutes. Process restart, concurrent manual
+reinstatement, and duplicate ticks converge through state/revision checks; no
+network call holds the advisory lock or a PostgreSQL transaction.
 
 Invitations accept one validated email, expiry from 15 minutes through seven
 days, one optional bounded display name, one request idempotency key, and one
 reason. A short Board transaction reserves the unique invitation name in
-`creating` state and appends `request_create_invitation`, then closes before
+`creating` state, binds the HMAC request fingerprint, and appends
+`request_create_invitation`, then closes before
 the remote call. Board creates an exact flow-bound, single-use Authentik
 invitation with fixed prompt data and verifies the returned flow/fields. When
 delivery is requested, Board sends the fixed invitation template itself through
@@ -3119,12 +3185,16 @@ means `queued`, a definite pre-accept failure means `failed`, and an ambiguous
 post-DATA result means `unknown`; none is retried automatically. A second short
 transaction advances the local transition to `active`, stores only that closed
 delivery result, and appends `create_invitation` with the same redacted result.
-Creation failure/unknown leaves a reconcilable row. Retry with the same
-idempotency key and validated form values lists only the unique reserved name
+Creation failure/unknown leaves a reconcilable row. A retry of `creating` or
+`unknown` must match both the idempotency key and request fingerprint before it
+lists only the unique reserved name
 and adopts an exact remote match or refuses a mismatch; it never blindly
 creates a second invitation. Adoption of an already-existing remote object
 always records delivery `unknown` and never sends email, because the first
 request may already have crossed SMTP's acceptance boundary.
+An already-active or terminal idempotency key returns the fixed completed class
+without revalidating the obsolete fingerprint, redisplaying a link, or causing
+any side effect.
 
 The page lists at most 51 current local invitation operations, reconciled with
 at most 51 current Board-flow remote invitations, and exposes only name,
@@ -3134,9 +3204,12 @@ after the local `active` completion commits. An already-active retry never
 redisplays it; a crash may therefore lose the one response, but cannot turn
 Board into bearer-token storage. Links are never logged, audited, or persisted
 by Board. Revocation first commits `revoke_required` plus
-`request_revoke_invitation`, deletes only the exact-name/flow remote invitation
-and verifies absence, then commits `revoked` plus `revoke_invitation`. No
-PostgreSQL lock spans the remote call.
+`request_revoke_invitation`. If the exact-name/flow invitation is present, a
+confirmed delete and absence readback commits `revoked` plus
+`revoke_invitation`. If it was already absent, Board commits `absent` plus
+`record_invitation_absent` with an honest consumed-or-otherwise-removed result;
+it never claims the administrator prevented use. Ambiguous delete outcome
+commits `unknown`. No PostgreSQL lock spans the remote call.
 
 ### 24.4 Control settings, maintenance, and publication policy
 

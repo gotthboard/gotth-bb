@@ -1378,6 +1378,9 @@ rules remain mandatory.
 - Fresh and 000012-upgrade databases reach exact head 000013 with registration
   closed, maintenance off, packaged policy values, positive revisions, exact
   checks/defaults/indexes/foreign keys, and no rewritten content or identity.
+- Representative upgrade evidence records user/audit row counts, identity-sync
+  backfill updates, WAL growth, `ACCESS EXCLUSIVE` lock time, total duration,
+  and post-migration analyze state; no writer runs during that measurement.
 - Catalog and restricted-role tests prove the exact grant delta and reject
   settings insert/delete/key update, pending/email-state deletion, token-hash
   reads, Authentik database access, and every unlisted mutation.
@@ -1395,32 +1398,50 @@ rules remain mandatory.
 - Maintenance tests cover visitor/member/moderator/administrator, every public
   and protected route class, static/health/readiness, login/callback/
   revalidation/logout/setup, registration denial, HTMX/full/no-script, and
-  administrator recovery. No response leaks private state or changes the
-  process/container lifecycle.
+  administrator recovery. A stopped-writer rehearsal proves the packaged
+  migration-owner database fallback when Authentik revalidation is unavailable;
+  the browser path never bypasses revalidation. No response leaks private state
+  or changes the process/container lifecycle.
 
 ### 24.2 Authentik admission and permission matrix
 
 A disposable pinned Authentik 2026.5.2 instance applies the blueprint twice.
 The gate records exact object identities and proves three flows/groups, one
-service account/role/token, no unrelated application/provider, and no drift on
+service account/role/token/initial-permission rule, no unrelated application/provider, and no drift on
 second apply. For each open, approval, invitation, closed, maintenance, Board
 outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
 admission result. Expression requests use fixed method/URL/timeout and emit no
-credential or profile data. A mode change between flow entry and the first
-irreversible stage is denied by the second fresh policy evaluation.
+credential or profile data. Mode changes before user creation/invitation
+consumption or before a restored email stage activates the user and assigns a
+Board group are denied by a fresh policy evaluation; no result is reused.
+Blueprint/source evidence pins `evaluate_on_plan=true` and
+`re_evaluate_policies=true`, and a restored-flow test proves re-evaluation
+occurs rather than trusting the original plan result.
 
-The service-token matrix must positively prove only:
+The raw service-token capability matrix must positively prove exactly the
+authority Authentik can enforce:
 
-- one exact user lookup and exact group read;
+- global user read and model-level invitation create, the two explicitly
+  admitted coarse permissions;
+- exact accepted/pending/suspended group read;
 - add/remove user on accepted, pending, and suspended groups;
-- create/read/delete one invitation bound to the invitation flow.
+- create/read/delete one invitation bound to the invitation flow through the
+  creator-scoped initial object permissions.
+
+A separate Go-client contract test proves callers cannot supply an arbitrary
+user query, group, flow, invitation, origin, path, method, or redirect. It
+allows only exact UUID lookup, the fixed pending-group page, the three pinned
+groups, and the pinned invitation flow. The disposable-tenant test demonstrates
+that raw global user read and invitation create are broader than these client
+methods; that blast radius must not be hidden in a fake permission claim.
 
 It must receive `403` or equivalent denial for admin-interface access,
 user create/change/delete/password/recovery, arbitrary group create/change/
 delete, membership on a non-Board group, flow/stage/policy/application/provider/
-role/token/secret mutation, invitation `send_email`, task list/status/retry,
-event/log export, and impersonation.
+role/token/secret mutation, read/delete of a pre-existing or other-account
+invitation, invitation `send_email`, task list/status/retry, event/log export,
+and impersonation.
 The control token, invitation UUID/link, email, user UUID/numeric key, and
 remote bodies are absent from retained commands, logs, screenshots, and Git.
 
@@ -1428,13 +1449,18 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
 
 - Signed-intake tests cover algorithm/key, issuer, audience, purpose, flow,
   `jti`, issued/expiry bounds, numeric ID, UUID, body/content-type/query,
-  UTF-8/profile limits, replay, terminal replay, concurrent first intake, and database
-  failure. Invalid cases perform no pending write and return the fixed class.
+  `email_verified=true`, UTF-8/profile limits, replay, terminal replay,
+  concurrent first intake, and database
+  failure. Invalid cases perform no pending write and return the same empty
+  `202` as accepted/duplicate/terminal assertions; database unavailability is
+  the separate empty `503` retry class.
 - Real-browser journeys prove open enrollment verifies email and yields only a
   local member; approval enrollment verifies into pending with no OIDC Board
   access until approval; rejection never grants access; invitation mode rejects
   missing/wrong/expired/reused/cross-flow tokens and accepts one valid
-  single-use invitation.
+  single-use invitation. An abandoned pre-verification open/approval/invitation
+  identity remains inactive and in no Board group; pending-group orphan
+  adoption therefore cannot admit an unverified address.
 - Approval/rejection tests inject failure before/after every Authentik call,
   membership readback, Board state transition, audit, and commit. Concurrent
   approve/reject/retry requests converge to one terminal state without granting
@@ -1449,14 +1475,22 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
 - Suspension tests prove local denial and all-session revocation commit before
   Authentik removal; an Authentik outage cannot restore Board access.
   Reinstatement cannot clear local denial until accepted-group membership is
-  verified. Reconciliation is idempotent and operates on only one identity.
+  verified. Every protected authorization query denies non-accepted sync state.
+  Reconciliation is idempotent and operates on only one identity.
+- Finite-expiry tests cover migration backfill, startup/60-second ticks,
+  five-identity bounds, advisory-lock exclusion, next-attempt/backoff ceilings,
+  no database lock across HTTP, Authentik outage, process restart, and races
+  with manual reinstatement. Expiry cannot restore access before accepted-group
+  readback, and a healthy remote path restores it without administrator action.
 - Invitation tests cover email/name/expiry bounds, exact flow/single-use/fixed
   read-only email data, prompt-before-consume ordering, Authentik 2026.5.2's
   consumption-at-stage behavior, 51-row continuation, one-time link display,
   signed revoke handles, local-intent/remote/completion failures, exact-name
-  adoption using the retry's validated form values, remote mismatch, Board SMTP
+  and HMAC-fingerprint adoption using the retry's validated form values,
+  idempotency-key/fingerprint mismatch, control-token rotation refusal while a
+  create outcome is unresolved, remote mismatch, Board SMTP
   queued/failure/unknown results, no send while adopting an existing object,
-  no resend after ambiguity, revocation, audit
+  no resend after ambiguity, confirmed revocation, consumed/missing ambiguity, audit
   redaction, no PostgreSQL lock across HTTP, and no arbitrary-recipient
   test-mail path.
 
