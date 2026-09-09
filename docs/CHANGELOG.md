@@ -28,17 +28,23 @@ live, single-use, pinned-flow invitation created by the control account. A
 permission targeting a live foreign invitation blocks as active drift.
 Unrelated RBAC state is untouched.
 Bootstrap also rejects unexpected live or expired control-account tokens and
-removes only that account's detached managed-role residue after proving no replacement
-token exists.
+removes only that account's detached managed-role residue after proving no
+replacement token exists.
 
 The raw token is mounted only into the authoritative Authentik server container,
 where operator-invoked bootstrap executes, and a separate gateway binary. Board
-uses a closed HTTP/1.1 protocol over a
-gateway-owned Unix socket protected by dedicated token/control groups and Linux
+uses a closed HTTP/1.1 protocol over a gateway-owned Unix socket protected by
+dedicated token/control groups and Linux
 peer credentials. The gateway pins every Authentik origin, group, flow, method,
 path, body, timeout, response, and concurrency bound and exposes no email or
 generic proxy operation. Packaging and standalone Compose include the gateway;
 the live Beta.1.5 deployment remains unchanged.
+
+The implementation candidate was admitted from commit
+`d4c14b90ca48d7486a0be71ba26b1f4fc159375d` / tree
+`503901b937359df4212e812ad8443ca243ba06c6` after two fresh CLEAN reviews. The
+exact disposable-tenant, full/race, boundary, drift, and deterministic-package
+record is `docs/evidence/beta1-09-02-authentik-gateway.txt`.
 
 ### 2026-09-09 — Contain Authentik's invitation email permission defect
 

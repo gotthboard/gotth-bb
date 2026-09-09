@@ -1,0 +1,162 @@
+B1-09-02 Authentik enrollment and isolated gateway evidence
+=============================================================
+
+Candidate
+---------
+
+- reviewed implementation commit: d4c14b90ca48d7486a0be71ba26b1f4fc159375d
+- reviewed tree: 503901b937359df4212e812ad8443ca243ba06c6
+- corrective gateway contract base: 03f207a7eb2de4992d9e8788c6050b2a5d4657b2
+- B1-09-01 predecessor: afadcfd
+- branch: feature/beta-1-admin-control-plane
+- two fresh cold reviews of the reviewed commit/tree: CLEAN, CLEAN
+
+Environment
+-----------
+
+- local: Go 1.26.6-X:nodwarf5, Docker 29.7.2, Docker Compose 5.4.0,
+  Linux amd64
+- development evidence host: Go 1.26.5-X:nodwarf5, Docker 29.7.1,
+  Docker Compose 5.4.0, Linux amd64
+- disposable identity provider: Authentik 2026.5.2,
+  `ghcr.io/goauthentik/server@sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581`
+- disposable Compose project: `gotth-bb-b109-c1b9d9b`, using isolated
+  task-owned PostgreSQL storage, networks, loopback ports, files, and secrets
+- the live Beta.1.5 service, its Authentik tenant, both live databases, Caddy,
+  configuration, data, and retained rollback candidate were not changed
+
+Exact gates
+-----------
+
+1. Focused local gateway/config/package/deployment checks:
+
+     GOMAXPROCS=2 go test -mod=readonly -p=2 \
+       ./cmd/authentik-gateway ./internal/authentikcontrol \
+       ./internal/authentikgateway ./internal/config \
+       ./internal/releaseartifact ./cmd/package \
+       ./deploy/container ./deploy/standalone
+     GOMAXPROCS=2 go vet -mod=readonly \
+       ./cmd/authentik-gateway ./internal/authentikcontrol \
+       ./internal/authentikgateway
+     python3 -c 'compile(<apply.py>); compile(<permission_matrix.py>)'
+     git diff --check
+
+2. Complete development-host source and race gates on the exact source tree:
+
+     go test -mod=readonly -p=4 ./...
+     go test -mod=readonly -race -p=4 ./...
+
+3. Disposable Authentik gates:
+
+     apply-authentik.sh <task-project>
+     permission_matrix.py
+     apply-authentik.sh <task-project>
+     apply-authentik.sh <task-project>
+
+   The three apply outputs were descriptor-identical. The matrix emitted
+   `AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EXCESSES_OK`. A final
+   authoritative query proved all fixture users, groups, invitations, tokens,
+   managed-role residue, and fixture object permissions absent.
+
+4. Drift injection gates created only disposable fixtures and proved:
+
+   - an unexpected live control-account token blocks authoritative apply;
+   - an unexpected expired control-account token also blocks through
+     `including_expired()`;
+   - a control-role permission targeting a live foreign invitation blocks as
+     active drift;
+   - after each fixture target was explicitly removed, apply deleted only its
+     stale invitation-permission tombstone and returned to the identical
+     admitted descriptor.
+
+5. Rendered Compose and Unix-boundary gates proved:
+
+   - Board is `65532:65532` with supplemental GID `65531`, has the object file,
+     fingerprint key, and read-only socket directory, and has no raw-token
+     secret or token-path environment value;
+   - the gateway is `65533:65531` with supplemental token GID `65530`, has only
+     the raw-token secret and non-secret object/socket mounts, and has no Board
+     database or SMTP secret/configuration;
+   - the Authentik server container has the operator-bootstrap token mount,
+     while the worker does not;
+   - Board's ordinary UID/GID cannot traverse the socket directory, the
+     supplemental control GID can traverse but cannot write, and the gateway
+     identity can create there; and
+   - the Linux listener independently rejects a wrong peer UID and removes only
+     the inode it created.
+
+6. The exact reviewed commit produced two byte-identical scratch archives.
+   `SHA256SUMS` verified, the archive SHA-256 was
+   `574e3ebe479e4258f43b1128625caaccbef7cf223a866b75f93ef7d73169fd54`,
+   the packaged gateway reported commit
+   `d4c14b90ca48d7486a0be71ba26b1f4fc159375d`, and binary-string inspection
+   found no Authentik token or `send_email` API route. This scratch package was
+   not tagged, published, or deployed.
+
+Results
+-------
+
+- The raw Authentik token is absent from Board. Board can reach only the closed
+  HTTP/1.1-over-Unix gateway surface. The gateway accepts only the Board UID,
+  eight concurrent calls, fixed request/response bounds, fixed Host, fixed
+  issuer origin, three pinned groups, three pinned flows, UUID-filtered user
+  lookup, the bounded pending page, and flow-bound invitation
+  create/list/retrieve/delete. It has no TCP listener or generic proxy.
+- The real Authentik matrix positively exercised the exact user UUID filter,
+  pending-group filter, exact group reads and add/remove actions, pinned-flow
+  invitation create/list/retrieve/delete, creator-only visibility, and all
+  forbidden administrative operations.
+- Authentik 2026.5.2 has two documented raw-token excesses. Required
+  `view_invitation` also permits arbitrary-recipient `send_email`, while
+  removing view makes list/retrieve/delete unusable. Any authenticated
+  non-superuser can also create, retrieve, use, change, and delete its own API
+  tokens without explicit token model permission. The gateway implements no
+  email or token operation, so Board cannot exercise either excess.
+- Authentik leaves generic invitation object permissions and managed-role token
+  permissions behind after target deletion. Permission-matrix cleanup removes
+  only its own fixtures. Authoritative bootstrap rejects live foreign targets
+  and unexpected live or expired service tokens, removes only stale
+  control-role invitation tombstones, and removes only a detached,
+  principal-free service managed role after proving no replacement token
+  exists. Group and unrelated RBAC state remain untouched.
+- Token/object files use descriptor-safe `openat2`, regular-file and
+  immutability checks, strict framing, size bounds, and owned token-byte
+  clearing. The outbound client uses system TLS, a fixed issuer-derived origin,
+  no redirects, two-second total timeout, concrete operations, and bounded
+  responses. Neither raw token nor remote error bodies are logged or retained.
+- The deterministic blueprint creates the three guarded registration flows,
+  accepted/pending/suspended groups, service account, exact role/model/group
+  permissions, creator-scoped invitation permissions, and fixed control-object
+  descriptor. Direct flow guards use the exact persisted registration-mode
+  names and fail closed on Board denial or failure.
+
+Rejected intermediate work
+--------------------------
+
+- Authentik's invitation `send_email` action has no independent permission.
+  Pretending it was denied was false; this forced the owner-approved isolated
+  gateway correction before implementation continued.
+- An empty token-create request returned validation `400` before permission
+  evaluation and hid Authentik's non-superuser self-token rule. A valid request
+  proved the complete usable self-token lifecycle and the contract was
+  corrected instead of preserving a fake denial.
+- Repeated invitation tests exposed non-cascading guardian permission rows.
+  Treating every extra row alike would have silently erased active foreign
+  authority. The final mechanism deletes only absent-target tombstones and
+  blocks permissions whose foreign target still exists.
+- Authentik's default token manager hides expired rows. The first exact-token
+  check was therefore incomplete; the final check uses `including_expired()`
+  and a real expired-token fixture.
+- Compose keeps the control token mounted in the Authentik server container for
+  operator-invoked bootstrap. Earlier subprocess-only wording was false and was
+  replaced with the exact container-lifetime boundary.
+- The release contract still said three binaries after the gateway became the
+  fourth. Package comments and operations documentation now match the archive.
+
+Boundary
+--------
+
+This evidence admits only B1-09-02. B1-09-03 through B1-09-05 remain required.
+It does not claim B1-09 completion, Beta completion, RC.1 admission, owner
+acceptance, merge, tag, release, or deployment. Beta.1.5 remains untouched and
+still requires owner physical acceptance before any later live delivery.

@@ -113,7 +113,10 @@ table and rejects omission, duplication, or invention in either direction.
   contract was admitted from commit
   `03f207a7eb2de4992d9e8788c6050b2a5d4657b2` / tree
   `66eb25f09e94357e1d9094ff9a9b89b87d8f02ca` after two fresh CLEAN reviews;
-  gateway implementation evidence remains pending.
+  B1-09-02 implementation was admitted from commit
+  `d4c14b90ca48d7486a0be71ba26b1f4fc159375d` / tree
+  `503901b937359df4212e812ad8443ca243ba06c6` after two fresh CLEAN reviews,
+  with `docs/evidence/beta1-09-02-authentik-gateway.txt`.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence
