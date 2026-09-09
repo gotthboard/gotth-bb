@@ -143,6 +143,16 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{path: "deploy/container/Containerfile", mode: 0o644},
 		{path: "deploy/container/compose.yml", mode: 0o644},
 		{path: "deploy/container/entrypoint.sh", mode: 0o755},
+		{path: "deploy/standalone/Caddyfile", mode: 0o644},
+		{path: "deploy/standalone/README.md", mode: 0o644},
+		{path: "deploy/standalone/app.env.example", mode: 0o644},
+		{path: "deploy/standalone/apply-authentik.sh", mode: 0o755},
+		{path: "deploy/standalone/authentik/apply.py", mode: 0o644},
+		{path: "deploy/standalone/authentik/board-blueprint.yaml", mode: 0o644},
+		{path: "deploy/standalone/authentik/entrypoint.sh", mode: 0o755},
+		{path: "deploy/standalone/compose.yml", mode: 0o644},
+		{path: "deploy/standalone/deployment.env.example", mode: 0o644},
+		{path: "deploy/standalone/postgresql/init-runtime.sh", mode: 0o755},
 	}
 	for index := range deploymentFiles {
 		path := deploymentFiles[index].path

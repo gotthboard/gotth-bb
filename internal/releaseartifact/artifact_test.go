@@ -29,6 +29,25 @@ const (
 	testEntrypoint    = "#!/bin/sh\nexec \"$@\"\n"
 )
 
+var testDeploymentFiles = map[string]struct {
+	data string
+	mode int64
+}{
+	"deploy/container/Containerfile":                   {data: testContainerfile, mode: 0o644},
+	"deploy/container/compose.yml":                     {data: testCompose, mode: 0o644},
+	"deploy/container/entrypoint.sh":                   {data: testEntrypoint, mode: 0o755},
+	"deploy/standalone/Caddyfile":                      {data: "{\n\tadmin off\n}\n", mode: 0o644},
+	"deploy/standalone/README.md":                      {data: "# Standalone deployment\n", mode: 0o644},
+	"deploy/standalone/app.env.example":                {data: "APP_ENV=production\n", mode: 0o644},
+	"deploy/standalone/apply-authentik.sh":             {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
+	"deploy/standalone/authentik/apply.py":             {data: "print('applied')\n", mode: 0o644},
+	"deploy/standalone/authentik/board-blueprint.yaml": {data: "version: 1\n", mode: 0o644},
+	"deploy/standalone/authentik/entrypoint.sh":        {data: "#!/bin/sh\nexec \"$@\"\n", mode: 0o755},
+	"deploy/standalone/compose.yml":                    {data: "name: gotth-bb-standalone\nservices: {}\n", mode: 0o644},
+	"deploy/standalone/deployment.env.example":         {data: "GOTTH_BB_IMAGE=example\n", mode: 0o644},
+	"deploy/standalone/postgresql/init-runtime.sh":     {data: "#!/bin/sh\nexit 0\n", mode: 0o755},
+}
+
 type boundedFailWriter struct {
 	remaining int
 }
@@ -97,6 +116,16 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		root + "/deploy/container/compose.yml",
 		root + "/deploy/container/entrypoint.sh",
 		root + "/deploy/postgresql/runtime-grants.sql",
+		root + "/deploy/standalone/Caddyfile",
+		root + "/deploy/standalone/README.md",
+		root + "/deploy/standalone/app.env.example",
+		root + "/deploy/standalone/apply-authentik.sh",
+		root + "/deploy/standalone/authentik/apply.py",
+		root + "/deploy/standalone/authentik/board-blueprint.yaml",
+		root + "/deploy/standalone/authentik/entrypoint.sh",
+		root + "/deploy/standalone/compose.yml",
+		root + "/deploy/standalone/deployment.env.example",
+		root + "/deploy/standalone/postgresql/init-runtime.sh",
 		root + "/gotth-bb",
 		root + "/gotth-bb-migrate",
 		root + "/gotth-bb-operator",
@@ -115,6 +144,16 @@ func TestBuildProducesDeterministicAtomicArtifact(t *testing.T) {
 		"git show " + testCommit + ":deploy/container/Containerfile",
 		"git show " + testCommit + ":deploy/container/compose.yml",
 		"git show " + testCommit + ":deploy/container/entrypoint.sh",
+		"git show " + testCommit + ":deploy/standalone/Caddyfile",
+		"git show " + testCommit + ":deploy/standalone/README.md",
+		"git show " + testCommit + ":deploy/standalone/app.env.example",
+		"git show " + testCommit + ":deploy/standalone/apply-authentik.sh",
+		"git show " + testCommit + ":deploy/standalone/authentik/apply.py",
+		"git show " + testCommit + ":deploy/standalone/authentik/board-blueprint.yaml",
+		"git show " + testCommit + ":deploy/standalone/authentik/entrypoint.sh",
+		"git show " + testCommit + ":deploy/standalone/compose.yml",
+		"git show " + testCommit + ":deploy/standalone/deployment.env.example",
+		"git show " + testCommit + ":deploy/standalone/postgresql/init-runtime.sh",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb ./cmd/forum",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-migrate ./cmd/migrate",
 		"go build -mod=readonly -trimpath -buildvcs=false -ldflags -s -w -X=" + linkerPackage + ".version=1.0.0-alpha.1 -X=" + linkerPackage + ".commit=" + testCommit + " -o <build>/gotth-bb-operator ./cmd/operator",
@@ -201,6 +240,8 @@ func TestBuildRejectsRepositoryAndToolFailures(t *testing.T) {
 		{name: "malformed runtime grants", run: replaceCommand("git", "show", []byte("GRANT UPDATE;\x00\n")), want: "runtime grants are invalid"},
 		{name: "container file command", run: failGitShowPath("deploy/container/Containerfile"), want: "load release deployment file deploy/container/Containerfile"},
 		{name: "malformed container file", run: replaceGitShowPath("deploy/container/compose.yml", []byte("services: {}\r\n")), want: "release deployment file deploy/container/compose.yml is invalid"},
+		{name: "standalone file command", run: failGitShowPath("deploy/standalone/authentik/board-blueprint.yaml"), want: "load release deployment file deploy/standalone/authentik/board-blueprint.yaml"},
+		{name: "malformed standalone file", run: replaceGitShowPath("deploy/standalone/compose.yml", []byte("services: {}\x00\n")), want: "release deployment file deploy/standalone/compose.yml is invalid"},
 		{name: "forum build", run: failBuild("./cmd/forum"), want: "build gotth-bb"},
 		{name: "migration build", run: failBuild("./cmd/migrate"), want: "build gotth-bb-migrate"},
 		{name: "operator build", run: failBuild("./cmd/operator"), want: "build gotth-bb-operator"},
@@ -507,12 +548,12 @@ func successfulRunner(t *testing.T, calls *[]string) Runner {
 			return []byte("github.com/gotthboard/gotth-bb\nexample.invalid/dependency v1.2.3\n"), nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
 			return []byte(testRuntimeGrants), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/Containerfile"}):
-			return []byte(testContainerfile), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/compose.yml"}):
-			return []byte(testCompose), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/entrypoint.sh"}):
-			return []byte(testEntrypoint), nil
+		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasPrefix(args[1], testCommit+":"):
+			fixture, ok := testDeploymentFiles[strings.TrimPrefix(args[1], testCommit+":")]
+			if !ok {
+				t.Fatalf("unexpected deployment file: %q", args[1])
+			}
+			return []byte(fixture.data), nil
 		case name == "go" && len(args) > 0 && args[0] == "build":
 			return nil, nil
 		case (filepath.Base(name) == "gotth-bb-migrate" || filepath.Base(name) == "gotth-bb-operator") && reflect.DeepEqual(args, []string{"version"}):
@@ -557,20 +598,16 @@ func readArchive(t *testing.T, compressed []byte) []string {
 		if strings.HasSuffix(header.Name, "runtime-grants.sql") && string(content) != testRuntimeGrants {
 			t.Fatalf("runtime grants = %q, want %q", content, testRuntimeGrants)
 		}
-		if strings.HasSuffix(header.Name, "Containerfile") && string(content) != testContainerfile {
-			t.Fatalf("Containerfile = %q, want %q", content, testContainerfile)
-		}
-		if strings.HasSuffix(header.Name, "compose.yml") && string(content) != testCompose {
-			t.Fatalf("compose.yml = %q, want %q", content, testCompose)
-		}
-		if strings.HasSuffix(header.Name, "entrypoint.sh") && string(content) != testEntrypoint {
-			t.Fatalf("entrypoint.sh = %q, want %q", content, testEntrypoint)
-		}
-		if strings.HasSuffix(header.Name, "entrypoint.sh") && header.Mode != 0o755 {
-			t.Fatalf("entrypoint.sh mode = %#o, want %#o", header.Mode, int64(0o755))
-		}
-		if (strings.HasSuffix(header.Name, "Containerfile") || strings.HasSuffix(header.Name, "compose.yml")) && header.Mode != 0o644 {
-			t.Fatalf("deployment file mode = %#o, want %#o", header.Mode, int64(0o644))
+		if marker := strings.Index(header.Name, "/deploy/"); marker >= 0 {
+			relative := header.Name[marker+1:]
+			if fixture, ok := testDeploymentFiles[relative]; ok {
+				if string(content) != fixture.data {
+					t.Fatalf("%s = %q, want %q", relative, content, fixture.data)
+				}
+				if header.Mode != fixture.mode {
+					t.Fatalf("%s mode = %#o, want %#o", relative, header.Mode, fixture.mode)
+				}
+			}
 		}
 		names = append(names, header.Name)
 	}
@@ -711,12 +748,12 @@ func successfulRunnerForOverride() Runner {
 			return nil, nil
 		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/postgresql/runtime-grants.sql"}):
 			return []byte(testRuntimeGrants), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/Containerfile"}):
-			return []byte(testContainerfile), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/compose.yml"}):
-			return []byte(testCompose), nil
-		case name == "git" && reflect.DeepEqual(args, []string{"show", testCommit + ":deploy/container/entrypoint.sh"}):
-			return []byte(testEntrypoint), nil
+		case name == "git" && len(args) == 2 && args[0] == "show" && strings.HasPrefix(args[1], testCommit+":"):
+			fixture, ok := testDeploymentFiles[strings.TrimPrefix(args[1], testCommit+":")]
+			if !ok {
+				return nil, errors.New("unexpected deployment file")
+			}
+			return []byte(fixture.data), nil
 		case name == "go" && len(args) > 0 && args[0] == "env":
 			return []byte("go1.26.6-test\n"), nil
 		case name == "go" && reflect.DeepEqual(args, []string{"list", "-mod=readonly", "-m", "-f", "{{.GoVersion}}"}):
