@@ -57,6 +57,7 @@ type Handler struct {
 }
 
 type User struct {
+	ID       int64  `json:"id"`
 	UUID     string `json:"uuid"`
 	Username string `json:"username"`
 	Name     string `json:"name"`
@@ -235,7 +236,7 @@ func (handler *Handler) invitation(response http.ResponseWriter, request *http.R
 }
 
 func projectUser(user authentikcontrol.User) User {
-	return User{UUID: user.UUID, Username: user.Username, Name: user.Name, Email: user.Email, Active: user.Active}
+	return User{ID: user.PK, UUID: user.UUID, Username: user.Username, Name: user.Name, Email: user.Email, Active: user.Active}
 }
 
 func projectInvitation(invitation authentikcontrol.Invitation) Invitation {

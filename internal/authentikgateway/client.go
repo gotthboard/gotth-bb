@@ -256,7 +256,7 @@ func validLocalString(value string, maximumBytes, maximumRunes int) bool {
 }
 
 func validGatewayUser(user User) bool {
-	return canonicalUUID.MatchString(user.UUID) && user.Username != "" && validLocalString(user.Username, 150, 150) && validLocalString(user.Name, 320, 80) && validLocalString(user.Email, 320, 320)
+	return user.ID > 0 && canonicalUUID.MatchString(user.UUID) && user.Username != "" && validLocalString(user.Username, 150, 150) && validLocalString(user.Name, 320, 80) && validLocalString(user.Email, 320, 320)
 }
 
 func validGatewayGroup(group Group) bool {

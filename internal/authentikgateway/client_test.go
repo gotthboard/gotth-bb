@@ -54,3 +54,21 @@ func TestBoardClientRequiresUnixPathAndExactErrors(t *testing.T) {
 		t.Fatalf("noncanonical error = %v", err)
 	}
 }
+
+func TestBoardClientRequiresPositiveUserKey(t *testing.T) {
+	responseBody := `{"id":17,"uuid":"` + testUser + `","username":"member","name":"Member","email":"member@example.test","active":true}`
+	client := &Client{http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		headers := make(http.Header)
+		headers.Set("Content-Type", "application/json")
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBody)), Header: headers}, nil
+	})}}
+	user, err := client.User(context.Background(), testUser)
+	if err != nil || user.ID != 17 || user.UUID != testUser {
+		t.Fatalf("User() = (%+v, %v)", user, err)
+	}
+
+	responseBody = strings.Replace(responseBody, `"id":17`, `"id":0`, 1)
+	if _, err := client.User(context.Background(), testUser); err != ErrRemoteInvalid {
+		t.Fatalf("zero user key error = %v", err)
+	}
+}

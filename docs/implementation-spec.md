@@ -3217,10 +3217,13 @@ access and exposes no generic proxy. Its versioned HTTP-over-Unix route set is e
 - `GET /health/live` for Board-side readiness.
 
 Unknown paths, methods, names, fields, query parameters, oversized bodies, and
-noncanonical UUIDs fail before an Authentik call. The gateway resolves numeric
-user keys and every group/flow identity internally from the attested object
-file. Board has no raw token file descriptor, environment value, mount, or
-fallback TCP configuration.
+noncanonical UUIDs fail before an Authentik call. The gateway resolves
+caller-visible UUID selectors and every group/flow identity internally from
+the attested object file. Its closed user projection returns the positive
+immutable Authentik numeric key beside the UUID because pending-orphan adoption
+must persist both independently unique coordinates; no request accepts a
+numeric user-key selector. Board has no raw token file descriptor, environment
+value, mount, or fallback TCP configuration.
 
 The local protocol accepts HTTP/1.1 only with the fixed
 `Host: gotth-bb-authentik-control`. Requests carry no query, cookies, forwarded

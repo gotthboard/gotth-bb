@@ -166,6 +166,23 @@ func TestMembershipPinsGroupAndResolvesUser(t *testing.T) {
 	}
 }
 
+func TestUserProjectionCarriesImmutableNumericKey(t *testing.T) {
+	remote := &fakeRemote{}
+	handler, _ := NewHandler(remote, testObjects(), time.Now)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request(http.MethodGet, "/v1/users/"+testUser, ""))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":17`) ||
+		!strings.Contains(response.Body.String(), `"uuid":"`+testUser+`"`) {
+		t.Fatalf("unexpected user projection: %d %q", response.Code, response.Body.String())
+	}
+
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, request(http.MethodGet, "/v1/pending-users", ""))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":17`) {
+		t.Fatalf("unexpected pending projection: %d %q", response.Code, response.Body.String())
+	}
+}
+
 func TestInvitationBoundsAndErrorClasses(t *testing.T) {
 	now := time.Date(2026, 9, 9, 12, 0, 0, 0, time.UTC)
 	remote := &fakeRemote{}
