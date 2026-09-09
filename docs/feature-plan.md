@@ -909,6 +909,26 @@ entry gate for the first test-user build.
 - **Dependency/worktree:** B1-08 produced immutable Beta.1.3. Corrective work
   uses `feature/beta-1-footer-attribution-repair` and stops before B1-09/RC.1.
 
+### B1-08G: Area administration visual corrective successor
+
+- **Problem and outcome:** owner physical inspection of Beta.1.4 proved the
+  control-plane Area form rendered as an undifferentiated column whose native
+  controls disappeared into the dark background. Restore a visibly structured
+  responsive create/list/detail/group-access surface without changing policy.
+- **Requirement:** `UX-007`.
+- **In scope:** `/admin/areas` and `/admin/areas/{id}` Templ presentation,
+  generated output, exact rendered-markup regression coverage, 320-pixel and
+  desktop browser evidence, app-only delivery, rollback, and owner acceptance.
+- **Out of scope:** handler/service/database changes, area hierarchy, group
+  selection redesign, other administration pages, Caddy/Auth/PostgreSQL,
+  B1-09 completion, RC.1, or stable claims.
+- **Acceptance:** visible controls and focus states, no horizontal overflow,
+  mobile-first stacking, bounded desktop grouping, named group cards, preserved
+  field/route semantics, clean focused/full gates, two fresh reviews, guarded
+  Beta successor deployment, and affirmative owner physical acceptance.
+- **Rollback:** application-only rollback to retained Beta.1.4; no migration or
+  identity/configuration transition exists.
+
 B1-08 proceeds serially as: contract/topology admission; standalone stack and
 blueprint; audited identity rebind; recovery/integration admission; then
 guarded release and live cutover. Each boundary reaches HANDOFF and review

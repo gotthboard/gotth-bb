@@ -260,6 +260,11 @@ Requirements:
   as `Powered by GOTTH Board` linking to `https://github.com/gotthboard`.
   Configurable site name, description, theme, base URL, or home URL shall not
   alter that product name or target. HTMX fragments remain footer-free.
+- **UX-007:** Area administration create, edit, and group-access controls shall
+  remain visibly distinct, labeled, keyboard-focusable, and usable without
+  horizontal overflow from 320 CSS pixels through desktop widths. Text fields,
+  text areas, and selects shall not disappear into the page background; mobile
+  controls stack before bounded multi-column layouts are introduced.
 
 ### 5.8 Security and operation
 

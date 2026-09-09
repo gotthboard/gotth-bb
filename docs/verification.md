@@ -321,6 +321,10 @@ Coverage gaps require:
 - Complete pages retain exact `Powered by GOTTH Board` attribution and the
   `https://github.com/gotthboard` target under a non-product configured site
   name/home URL; HTMX fragments remain footer-free.
+- Area administration create/detail/group forms render explicit control
+  borders, padding, full-width/min-width constraints, labels, focus-visible
+  treatment, mobile stacking, and bounded desktop grids. Browser evidence at
+  320 CSS pixels and desktop width proves no horizontal overflow or overlap.
 
 ### RC.1
 

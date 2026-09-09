@@ -2229,6 +2229,16 @@ that link. The configurable site identity continues to drive the document
 title, masthead, and home navigation; changing it must not relabel or retarget
 software attribution. Fragment rendering performs no footer work.
 
+Area administration uses explicit field-class literals within
+`administration_completion.templ`: every interactive control is `w-full` and
+`min-w-0`, has a visible border/background/foreground, and receives an
+unambiguous focus-visible ring. Labels are grid containers with stable gaps.
+Slug/name and numeric/policy controls stack at the base width and enter two-
+or three-column grids only at `sm`; description remains full-width. The create
+surface alone exposes the optional initial-group identifier. The detail
+surface manages group assignment through its existing named group cards.
+Native field names, allowed values, byte limits, and POST routes do not change.
+
 If shell loading fails for an otherwise-successful full document, the handler
 returns fixed bounded unbranded `503`. If authorization or domain work already
 established a non-2xx status, shell failure preserves that status and replaces

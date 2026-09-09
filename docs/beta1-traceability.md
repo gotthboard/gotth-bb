@@ -70,6 +70,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `UX-004` | ordinary HTML with HTMX-equivalent enhancement | full/HTMX/no-script tests through AN-05 | implemented |
 | `UX-005` | diagnosable failed HTMX behavior | B1-02 failure/draft/focus/history plus focused handler/browser evidence | implemented |
 | `UX-006` | immutable GOTTH Board footer attribution | B1-08F exact-label/target, tenant-name negative control, fragment, package, and deployed HTTPS evidence | blocked |
+| `UX-007` | responsive visible Area administration controls | B1-08G rendered markup, 320px/desktop browser geometry, focus, package, and deployed HTTPS evidence | blocked |
 | `SEC-001` | CSRF validation on unsafe routes | CSRF middleware and every mutation's HTTP tests | implemented |
 | `SEC-002` | scoped Secure/HttpOnly/SameSite cookies | B1-01 exact cookie construction and two-base-path Caddy inspection; live deployment smoke remains B1-05 | implemented |
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |

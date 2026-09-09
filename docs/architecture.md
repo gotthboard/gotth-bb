@@ -632,6 +632,14 @@ public project target `https://github.com/gotthboard`. It does not read those
 values from site settings or derive them from the deployment home URL. HTMX
 fragments still omit the complete-page footer.
 
+The administration control plane owns responsive form presentation in its
+Templ source. Area create, core edit, and group-access controls use explicit
+border, foreground, background, width, spacing, and focus-visible classes;
+they do not depend on browser-default form styling. One-column mobile layout
+is the base contract, with bounded multi-column grouping applied only at
+larger breakpoints. This changes presentation only; field names, values,
+authorization, mutation, audit, and persistence boundaries remain unchanged.
+
 A failed shell read makes an otherwise-successful document unavailable. It does
 not overwrite an already-established authorization/domain status: that response
 keeps its status and uses bounded unbranded text, preserving fixed terminal

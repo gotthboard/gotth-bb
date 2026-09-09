@@ -508,6 +508,10 @@ Every deployed prerelease verifies:
 - Complete pages show exactly `Powered by GOTTH Board` linked to
   `https://github.com/gotthboard`, even when the configured site name and home
   URL differ; no tenant name or deployment home target enters attribution.
+- Authenticated administrator smoke covers `/admin/areas` and one area detail
+  at phone and desktop widths: controls remain visible and labeled, the mobile
+  form does not overflow horizontally, desktop grouping is bounded, and group
+  access cards remain operable. No form is submitted during visual smoke.
 - Public index behavior matches site policy.
 - Authentik login begins with the correct callback and returns successfully.
 - Eligible member local provisioning succeeds.

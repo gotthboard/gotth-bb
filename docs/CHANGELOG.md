@@ -5,6 +5,23 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Repair Area administration form presentation
+
+Commit: current commit; hash assigned by Git after commit
+
+Physical Beta.1.4 inspection proved that the new control-plane Area form used
+only a dark background class on native controls. Inputs, text areas, and
+selects therefore disappeared into the surrounding dark panel and the page
+lost useful grouping. Area create/list/detail/group-access presentation now
+uses explicit visible controls, mobile-first stacking, bounded desktop grids,
+and consistent keyboard focus treatment. Field names, routes, authorization,
+audit behavior, persistence, and area policy do not change.
+
+Verification requires exact rendered markup, focused and full gates, 320-pixel
+and desktop browser geometry, two fresh cold reviews, app-only rollback/smoke,
+and owner physical acceptance. No other administration page, hierarchy,
+database, Authentik, Caddy, secret, or configuration change is included.
+
 ### 2026-09-09 — Separate product attribution from the configurable site name
 
 Commit: current commit; hash assigned by Git after commit
