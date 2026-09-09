@@ -129,6 +129,20 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 	}
 }
 
+func TestAuthentikApplyUsesOneExplicitComposeProject(t *testing.T) {
+	t.Parallel()
+	apply := readContractFile(t, "apply-authentik.sh")
+	for _, required := range []string{
+		`project=${1:-gotth-bb-standalone}`,
+		`--project-name "$project"`,
+		`invalid Compose project name`,
+	} {
+		if !strings.Contains(apply, required) {
+			t.Errorf("apply-authentik.sh lacks %q", required)
+		}
+	}
+}
+
 func readContractFile(t *testing.T, path string) string {
 	t.Helper()
 	contents, err := os.ReadFile(path)

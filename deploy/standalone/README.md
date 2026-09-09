@@ -48,6 +48,9 @@ For a fresh install, start both PostgreSQL services and Authentik server/worker
 first. Wait for health, then run `apply-authentik.sh` twice and require the exact
 line `AUTHENTIK_BOARD_BLUEPRINT_APPLIED` both times. The import uses the mounted
 OIDC secret in memory and does not write a secret-bearing blueprint.
+Production uses the default `gotth-bb-standalone` Compose project. A concurrent
+isolated rehearsal may pass its explicit lowercase project name as the helper's
+only argument; the helper never guesses a running project.
 
 Complete Authentik's initial-setup flow through the dedicated Authentik origin,
 then create or approve only the designated Board users and add them to
