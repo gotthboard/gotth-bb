@@ -218,7 +218,10 @@ Rules:
   at startup with mode `0660`, fails closed if any entry already occupies the
   final path, removes only the exact inode it created on clean shutdown, and
   accepts only Linux `SO_PEERCRED` UID `65532`. Board mounts that directory
-  read-only, cannot replace the socket, and never falls back to TCP.
+  read-only, cannot replace the socket, and never falls back to TCP. After an
+  unclean exit, only the host operator may remove a stale socket, after proving
+  no gateway process owns it and that its device/inode still matches the
+  inspected path; startup never guesses that an occupant is stale.
 - SMTP disabled is one exact configuration state with no host, username,
   password, or sender. Enabled SMTP requires a canonical DNS name or numeric
   address, port 1–65535, bounded username/sender, timeout 1–30 seconds, and one
@@ -3180,13 +3183,15 @@ user keys and every group/flow identity internally from the attested object
 file. Board has no raw token file descriptor, environment value, mount, or
 fallback TCP configuration.
 
-The local protocol accepts HTTP/1.1 only. Requests carry no query, cookies,
-forwarded headers, caller authority, or caller-selected content type. Routes
+The local protocol accepts HTTP/1.1 only with the fixed
+`Host: gotth-bb-authentik-control`. Requests carry no query, cookies, forwarded
+headers, caller-selected authority, or caller-selected content type. Routes
 with a body require exact `application/json`, at most 8 KiB, one strict JSON
 object, no duplicate/unknown fields, and EOF. Membership carries only
-`user_uuid`; invitation create carries only the already-validated bounded
-`name`, RFC 3339 `expires`, canonical `email`, and optional bounded
-`display_name`. Responses are closed local projections rather than raw
+`user_uuid`; invitation create carries only the already-validated slug-format
+name of at most 150 bytes, RFC 3339 expiry 15 minutes through seven days ahead,
+strict address-only UTF-8 email of at most 320 bytes, and optional display name
+of at most 80 characters and 320 bytes. Responses are closed local projections rather than raw
 Authentik JSON and are capped at 256 KiB. Success is `200` for reads, `201` for
 invitation create, and empty `204` for health/membership/delete. Failures use
 only `400 invalid_request`, `404 absent`, `409 remote_conflict`,

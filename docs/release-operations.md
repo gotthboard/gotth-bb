@@ -987,6 +987,10 @@ Proceed in this order:
    start the candidate Board application. Require readiness head 000013,
    ceiling equality, control-object identity, gateway-only API probes, and
    closed registration before enabling any other mode.
+   If a prior gateway died without unlinking its socket, stop and prove no
+   process owns the socket, capture its device/inode, recheck the unchanged
+   device/inode immediately before removing that exact path, and then restart;
+   the container entrypoint never removes an incumbent path itself.
 7. Run the B1-09 smoke matrix with disposable identities/content. Restore the
    exact pre-smoke control settings and keep registration closed unless the
    owner separately chooses another live mode. A test email goes only to the

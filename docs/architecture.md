@@ -144,7 +144,9 @@ host-root-provisioned Unix socket. At accept time it verifies the peer UID is
 the dedicated Board runtime UID. The gateway owns the directory while the
 Board runtime group receives traverse/read but no write permission; Board
 therefore cannot replace the server socket. The socket mode independently
-denies other non-root processes. Its server routes are a closed versioned set for
+denies other non-root processes. A stale path after unclean exit requires
+host-operator inode-checked removal; gateway startup never unlinks it. Its
+server routes are a closed versioned set for
 one exact user UUID, one bounded pending-group page, the three named Board-group
 membership transitions, and flow-bound invitation create/list/retrieve/delete.
 There is no generic proxy, caller-provided origin, HTTP verb, Authentik path,
