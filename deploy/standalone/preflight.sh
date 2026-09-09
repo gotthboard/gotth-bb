@@ -19,23 +19,34 @@ set -a
 . "$deployment_env"
 set +a
 
-required_variables='GOTTH_BB_IMAGE GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE'
+required_variables='GOTTH_BB_IMAGE GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_AUTH_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_BIND GOTTH_BB_CADDY_CLIENT_ADDRESS GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE'
 for name in $required_variables; do
 	eval "value=\${$name-}"
 	[ -n "$value" ] || fail "$name is required"
 done
 
-case "$GOTTH_BB_BOARD_HOST" in
-	http://* | https://*) board_base=$GOTTH_BB_BOARD_HOST ;;
-	*) board_base=https://$GOTTH_BB_BOARD_HOST ;;
+[ "$GOTTH_BB_OIDC_REDIRECT_URI" = "$GOTTH_BB_PUBLIC_BASE_URL/auth/callback" ] || fail "OIDC redirect URI differs from the Board callback"
+[ "$GOTTH_BB_PUBLIC_BASE_URL" != "$GOTTH_BB_AUTH_PUBLIC_BASE_URL" ] || fail "Board and Authentik public origins must differ"
+
+case "$GOTTH_BB_CADDY_BIND" in 0.0.0.0 | 127.0.0.1) ;; *) fail "Caddy bind must be 0.0.0.0 or 127.0.0.1" ;; esac
+case "$GOTTH_BB_CADDY_BIND:$GOTTH_BB_PUBLIC_BASE_URL:$GOTTH_BB_AUTH_PUBLIC_BASE_URL" in
+	0.0.0.0:https://*:https://*)
+		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{remote_host}' ] || fail "direct Caddy must derive client identity from its peer"
+		[ "$GOTTH_BB_BOARD_HOST" = "${GOTTH_BB_PUBLIC_BASE_URL#https://}" ] || fail "direct Board Caddy address differs from its public origin"
+		[ "$GOTTH_BB_AUTH_HOST" = "${GOTTH_BB_AUTH_PUBLIC_BASE_URL#https://}" ] || fail "direct Authentik Caddy address differs from its public origin"
+		;;
+	127.0.0.1:https://*:https://*)
+		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{http.request.header.X-Forwarded-For}' ] || fail "edge-fed Caddy must consume the edge canonical client identity"
+		case "$GOTTH_BB_BOARD_HOST" in http://"${GOTTH_BB_PUBLIC_BASE_URL#https://}":[0-9]*) ;; *) fail "edge-fed Board Caddy address differs from its public origin" ;; esac
+		case "$GOTTH_BB_AUTH_HOST" in http://"${GOTTH_BB_AUTH_PUBLIC_BASE_URL#https://}":[0-9]*) ;; *) fail "edge-fed Authentik Caddy address differs from its public origin" ;; esac
+		;;
+	127.0.0.1:http://127.0.0.1:*:http://127.0.0.1:*)
+		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{remote_host}' ] || fail "loopback-test Caddy must derive client identity from its peer"
+		[ "$GOTTH_BB_BOARD_HOST" = "$GOTTH_BB_PUBLIC_BASE_URL" ] || fail "test Board Caddy address differs from its public origin"
+		[ "$GOTTH_BB_AUTH_HOST" = "$GOTTH_BB_AUTH_PUBLIC_BASE_URL" ] || fail "test Authentik Caddy address differs from its public origin"
+		;;
+	*) fail "Caddy bind and public origins are not an admitted direct, edge-fed, or loopback-test tuple" ;;
 esac
-case "$GOTTH_BB_AUTH_HOST" in
-	http://* | https://*) auth_base=$GOTTH_BB_AUTH_HOST ;;
-	*) auth_base=https://$GOTTH_BB_AUTH_HOST ;;
-esac
-[ "$GOTTH_BB_PUBLIC_BASE_URL" = "$board_base" ] || fail "public URL and Board Caddy host differ"
-[ "$GOTTH_BB_OIDC_REDIRECT_URI" = "$board_base/auth/callback" ] || fail "OIDC redirect URI differs from the Board callback"
-[ "$board_base" != "$auth_base" ] || fail "Board and Authentik public origins must differ"
 
 GOTTH_BB_APP_HTTP_PORT=${GOTTH_BB_APP_HTTP_PORT:-18082}
 GOTTH_BB_AUTH_HTTP_PORT=${GOTTH_BB_AUTH_HTTP_PORT:-19000}
@@ -137,8 +148,8 @@ done
 IFS=$old_ifs
 
 expected_public=$GOTTH_BB_PUBLIC_BASE_URL
-expected_issuer=$auth_base/application/o/gotth-bb/
-expected_registration=$auth_base/if/flow/gotth-bb-enrollment/
+expected_issuer=$GOTTH_BB_AUTH_PUBLIC_BASE_URL/application/o/gotth-bb/
+expected_registration=$GOTTH_BB_AUTH_PUBLIC_BASE_URL/if/flow/gotth-bb-enrollment/
 unset APP_ENV PUBLIC_BASE_URL BASE_PATH OIDC_ISSUER_URL OIDC_CLIENT_ID REGISTRATION_URL
 set -a
 . "$GOTTH_BB_ENV_FILE"

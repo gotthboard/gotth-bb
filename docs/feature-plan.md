@@ -847,8 +847,11 @@ entry gate for the first test-user build.
   Docker-socket access; Authentik outposts; horizontal replicas; public
   production; unrestricted enrollment; off-host backup scheduling/retention;
   RC.1; stable claims; or changing forum roles from identity claims.
-- **Trust and permission:** only Caddy is public. The application retains the
-  loopback proxy trust contract. Database and identity secrets never enter Git,
+- **Trust and permission:** on a single-purpose host only stack Caddy is public.
+  On the current multi-site host, the existing Caddy remains a thin TLS edge
+  for unrelated userspace and forwards the two exact hostnames to dedicated
+  stack-Caddy loopback listeners. The application retains the loopback proxy
+  trust contract. Database and identity secrets never enter Git,
   image metadata, Compose interpolation output retained as evidence, process
   arguments, or logs. Live DNS/edge and identity mutation wait for exact-tree
   admission and verified stopped backups.

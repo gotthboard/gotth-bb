@@ -839,7 +839,7 @@ Beta.1.2 remains immutable but is not known-good because its running package
 depends on a host Caddy and a shared Authentik tenant. Its successor must use
 the packaged standalone Compose model and the exact sequence below:
 
-1. Render and validate the complete Compose and Caddy configurations with
+1. Render and validate the complete Compose and stack-Caddy configurations with
    non-secret test values. Require six long-running services: Caddy, Board,
    Board PostgreSQL, Authentik server, Authentik worker, and Authentik
    PostgreSQL. Reject mutable image references, Docker-socket mounts, a public
@@ -855,7 +855,10 @@ the packaged standalone Compose model and the exact sequence below:
    run the operator identity rebind. Prove one exact identity changed, every
    prior session was revoked, one immutable operator audit row was appended,
    and user/role/group/content counts and ownership did not change.
-4. Start Board and Caddy. Prove only Caddy accepts non-loopback traffic; the
+4. Start Board and stack Caddy. On a single-purpose host prove only stack Caddy
+   accepts non-loopback traffic. On a multi-site host prove stack Caddy accepts
+   only the two dedicated loopback listeners and the retained TLS edge routes
+   only the exact Board/Auth hostnames without changing unrelated sites. The
    Board and Authentik hostnames route to their respective loopback upstreams;
    caller forwarding headers are overwritten; OIDC discovery, authorization,
    callback, revalidation, logout, and an Authentik outage fail-closed path work;
@@ -889,6 +892,15 @@ The dedicated Authentik hostname and issuer are deployment identity. They must
 resolve to the stack Caddy and appear in the blueprint, Board configuration,
 and release record exactly. Changing them after admission requires a new
 identity cutover; aliases and silent issuer normalization are forbidden.
+
+The multi-site edge is not the Board routing implementation. Its admitted
+configuration terminates TLS, preserves the original `Host`, overwrites
+`X-Forwarded-For` with exactly its remote peer, removes `Forwarded` and
+`X-Real-IP`, and proxies the two exact hosts to stack-Caddy loopback ports.
+Stack Caddy owns the Board/Auth split and upstreams, repeats alternate-header
+removal, and supplies the canonical client identity to Board. Replacing the
+host edge with the stack container on a multi-site host is forbidden because
+it would evict unrelated userspace.
 
 ## 19. Operational decisions
 

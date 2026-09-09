@@ -35,7 +35,9 @@
 
 ```mermaid
 flowchart LR
-    B[Browser] -->|HTTPS Board/Auth hosts| C[Stack-owned Caddy]
+    B[Browser] -->|single-purpose HTTPS| C[Stack-owned Caddy]
+    B -. shared-host HTTPS .-> E[Existing TLS edge]
+    E -->|two hosts; canonical client IP; loopback| C
     C -->|HTTP on loopback| A[Go forum service]
     C -->|HTTP on loopback| I[Dedicated Authentik server]
     A -->|OIDC redirects and validation| I
@@ -49,7 +51,11 @@ flowchart LR
     H -->|backup and restore| IP
 ```
 
-Caddy is the only public listener and owns TLS and routing for both hostnames.
+Caddy is the only application-specific proxy and owns routing for both
+hostnames. It is the public TLS listener on a single-purpose host. On a
+multi-site host, the existing public Caddy remains a thin TLS edge and forwards
+only these two hosts to dedicated loopback listeners; the stack Caddy retains
+its own configuration, state, and upstream policy.
 The Go and Authentik HTTP processes bind to host-loopback upstreams. Authentik
 is the identity authority but not the forum authorization authority. The Board
 and Authentik use distinct PostgreSQL services and durable directories.
@@ -903,8 +909,13 @@ production-enforced `127.0.0.1:18082` listener and accepts forwarded identity
 only from a loopback peer. Authentik uses a private Compose network; its HTTP
 port is published only on host loopback for Caddy, and its PostgreSQL service
 has no published port. The Board PostgreSQL maintenance port is host-loopback
-only. Thus only Caddy binds public ports 80/443. The worker has no Docker socket
-because this deployment owns no Authentik outpost.
+only. On a single-purpose host, stack Caddy alone binds public ports 80/443.
+On a multi-site host it binds only dedicated loopback ports behind the existing
+TLS edge so unrelated sites are not displaced. The outer edge overwrites one
+canonical client address and removes alternate forwarding headers; the
+loopback-only stack Caddy consumes that value, removes alternates again, and
+passes exactly one address to Board. The worker has no Docker socket because
+this deployment owns no Authentik outpost.
 
 All images are content-pinned. The application runs nonroot with a read-only
 root filesystem, no Linux capabilities, and `no-new-privileges`. Configuration

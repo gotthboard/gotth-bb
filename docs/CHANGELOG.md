@@ -5,6 +5,42 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-08 — Package an isolated Board deployment stack
+
+Commit: current commit; hash assigned by Git after commit
+
+Affected files:
+
+- pinned six-service Compose deployment and dedicated Authentik blueprint
+- audited external-identity rebind and migration 000012
+- dual-database logical recovery, release packaging, and image custody checks
+- direct-host and multi-site-edge Caddy identity contracts
+
+Explanation:
+
+The Beta successor no longer depends on a shared Authentik tenant or shared
+application Caddy configuration. One package owns Board, its PostgreSQL 17
+database, Authentik server/worker and PostgreSQL 16 database, and its Caddy
+state and routing. A governed operator transaction moves an existing forum
+identity to the verified dedicated issuer without changing its local account,
+content, or authorization state and revokes every old session.
+
+Verification:
+
+- clean six-service start, double blueprint import, dedicated Chromium OIDC
+  login, Authentik-outage failure, and full-project restart
+- separate Board/Auth logical backups and clean matching-major restores
+- exact package/image executable identity and deterministic release rebuilds
+- PostgreSQL 17 migration/rebind integration plus complete Beta regression gates
+
+Risks / non-goals:
+
+- a multi-site host retains its existing Caddy as a thin TLS edge so unrelated
+  sites are not displaced; the package Caddy remains isolated on loopback
+- same-host backup is restricted-Beta evidence, not disaster recovery
+- shared Authentik objects and the prior deployment remain until owner acceptance
+- no RC.1, stable, public-registration, or production-readiness claim is made
+
 ### 2026-09-08 — Prove the Alpha.2 upgrade and Beta logical recovery path
 
 Commit: current commit; hash assigned by Git after commit

@@ -1330,3 +1330,30 @@ pre-upgrade backup, failed-step recovery decision, tag, commit, tree, package,
 image, schema, and configuration identities. The candidate becomes known-good
 only after the owner confirms the real browser workflow. Beta.1 completion
 stops before RC.1; no migration or artifact freeze is implied.
+
+### 23.6 Standalone-stack corrective admission
+
+The Beta.1 standalone successor proves one six-service Compose project with
+content-pinned Caddy, Board, PostgreSQL 17, Authentik server/worker, and
+Authentik PostgreSQL 16 images. Static and rendered checks reject mutable
+images, Docker-socket access, shared durable paths, unexpected listeners,
+secret-bearing interpolation, ambiguous proxy chains, and any application or
+provider outside the exact Board blueprint.
+
+A clean-host rehearsal applies the blueprint twice, migrates Board through
+000012, provisions one dedicated Authentik UUID subject, completes a real
+Chromium OIDC authorization/callback/session journey, proves an Authentik
+outage creates no session, and restarts all six services without identity or
+data drift. The identity-rebind gate proves exact old/new issuer and subject
+selection, complete session and pending-attempt revocation, one audit row, and
+unchanged user, role, group, ownership, and content state.
+
+Both databases receive separate logical backups and clean matching-major
+restores. Caddy/Auth non-database state and required secret references are
+inventoried separately. Direct-host evidence proves stack Caddy derives the
+client from its peer. Shared-host evidence proves the retained TLS edge
+overwrites a single canonical address and stack Caddy is loopback-only, trusts
+only that value, removes alternate identity headers, and leaves unrelated host
+routes unchanged. Final live HTTPS browser, restart, backup, rollback-readiness,
+artifact-custody, two-CLEAN-review, guarded-delivery, and owner-confirmation
+rules remain mandatory.

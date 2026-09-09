@@ -2,7 +2,10 @@
 
 This directory is the version 1.0 six-service deployment boundary. It owns
 Caddy, GOTTH Board, Board PostgreSQL, Authentik server/worker, and Authentik
-PostgreSQL. It does not consume a host Caddy or a shared Authentik tenant.
+PostgreSQL. It never shares Caddy configuration/state or an Authentik tenant.
+On a single-purpose host its Caddy binds the public HTTPS endpoints directly.
+On a multi-site host, the existing TLS edge may forward only the two public
+hostnames to loopback listeners owned by this Caddy container.
 
 The examples contain no working secret. Copy both example environment files to
 root-owned deployment state outside the release directory, replace every
@@ -53,6 +56,17 @@ isolated rehearsal may pass its explicit lowercase project name as the helper's
 only argument; the helper never guesses a running project. The app, Authentik,
 PostgreSQL, and Caddy-admin loopback ports can likewise be assigned distinct
 rehearsal values without weakening the production default bindings.
+
+The direct deployment tuple uses public HTTPS origins, bare hostname Caddy
+addresses, `GOTTH_BB_CADDY_BIND=0.0.0.0`, and
+`GOTTH_BB_CADDY_CLIENT_ADDRESS={remote_host}`. A shared-host deployment uses
+the same public HTTPS origins, `http://HOST:PORT` Caddy addresses,
+`GOTTH_BB_CADDY_BIND=127.0.0.1`, and
+`GOTTH_BB_CADDY_CLIENT_ADDRESS={http.request.header.X-Forwarded-For}`. The
+outer TLS edge must overwrite `X-Forwarded-For` with exactly `{remote_host}`
+and remove `Forwarded` and `X-Real-IP`; it must preserve the original `Host`.
+The inner Caddy repeats alternate-header removal and supplies the one canonical
+address to Board. Arbitrary proxy chains are not admitted.
 
 Complete Authentik's initial-setup flow through the dedicated Authentik origin,
 then create or approve only the designated Board users and add them to

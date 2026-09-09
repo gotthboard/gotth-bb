@@ -62,14 +62,18 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 	blueprint := readContractFile(t, "authentik/board-blueprint.yaml")
 	apply := readContractFile(t, "authentik/apply.py")
 	for _, required := range []string{
-		"admin {$GOTTH_BB_CADDY_ADMIN}", "{$GOTTH_BB_AUTH_HOST}",
+		"admin {$GOTTH_BB_CADDY_ADMIN}", "{$GOTTH_BB_AUTH_HOST}", "bind {$GOTTH_BB_CADDY_BIND}",
 		"reverse_proxy 127.0.0.1:{$GOTTH_BB_AUTH_HTTP_PORT}",
 		"{$GOTTH_BB_BOARD_HOST}", "reverse_proxy 127.0.0.1:{$GOTTH_BB_APP_HTTP_PORT}",
-		"header_up X-Forwarded-For {remote_host}", "header_up -Forwarded", "header_up -X-Real-IP",
+		"header_up X-Forwarded-For {$GOTTH_BB_CADDY_CLIENT_ADDRESS}", "header_up -Forwarded", "header_up -X-Real-IP",
 	} {
 		if !strings.Contains(caddy, required) {
 			t.Errorf("Caddyfile lacks %q", required)
 		}
+	}
+	if strings.Count(caddy, "header_up X-Forwarded-For {$GOTTH_BB_CADDY_CLIENT_ADDRESS}") != 2 ||
+		strings.Count(caddy, "header_up -Forwarded") != 2 || strings.Count(caddy, "header_up -X-Real-IP") != 2 {
+		t.Fatal("Caddy does not canonicalize client identity for both Board and Authentik")
 	}
 	for _, required := range []string{
 		"client_secret: !Env GOTTH_BB_OIDC_CLIENT_SECRET",
@@ -115,7 +119,10 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 	for _, required := range []string{
 		`[ "$(id -u)" -eq 0 ]`,
 		`deployment.env must be root:root mode 0600`,
-		`public URL and Board Caddy host differ`,
+		`Caddy bind must be 0.0.0.0 or 127.0.0.1`,
+		`direct Board Caddy address differs from its public origin`,
+		`edge-fed Board Caddy address differs from its public origin`,
+		`edge-fed Caddy must consume the edge canonical client identity`,
 		`OIDC redirect URI differs from the Board callback`,
 		`Board and Authentik public origins must differ`,
 		`loopback service ports overlap`,
