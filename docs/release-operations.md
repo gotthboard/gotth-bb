@@ -981,7 +981,8 @@ Proceed in this order:
    control token, validate exact objects/permissions including the documented
    raw-token `send_email` excess, install the control-object file, and render the
    complete Compose configuration without secret values. Prove Board has no
-   control-token mount, environment value, or descriptor.
+   control-token mount, environment value, or descriptor, and prove the gateway
+   has no Board-database or SMTP credential/configuration/secret mount.
 6. Start the isolated gateway first and require its Unix socket owner, group,
    mode, gateway-owned non-Board-writable directory, peer-UID rejection, closed
    route surface, denial to Board's ordinary UID/GID without supplemental

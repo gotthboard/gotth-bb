@@ -3170,8 +3170,9 @@ Board runs as `65532:65532` with supplemental control GID `65531`, mounts the
 directory read-only, and has no permission to replace the server socket. An
 unrelated process that merely shares Board's ordinary numeric UID/GID lacks the
 control group and cannot reach the socket path.
-The gateway has no TCP listener, no Board database or SMTP access, and no
-generic proxy. Its versioned HTTP-over-Unix route set is exactly:
+The gateway has no TCP listener and receives no Board-database or SMTP
+credential, configuration, secret mount, or client code. It performs no such
+access and exposes no generic proxy. Its versioned HTTP-over-Unix route set is exactly:
 
 - `GET /v1/users/{canonical-uuid}`;
 - `GET /v1/pending-users`;

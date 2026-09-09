@@ -1457,7 +1457,9 @@ the gateway-owned directory is not writable by Board, the Board client rejects
 non-Unix configuration, and a process with Board's ordinary UID/GID but without
 supplemental control GID `65531` cannot traverse the socket directory. Local
 request/response/concurrency bounds hold, and no email/origin/path/generic
-Authentik operation exists.
+Authentik operation exists. Gateway image/config inspection proves no Board
+database or SMTP credential, configuration, secret mount, or client exists;
+this is not misreported as packet-level network isolation.
 
 It must receive `403` or equivalent denial for admin-interface access,
 user create/change/delete/password/recovery, arbitrary group create/change/
