@@ -977,7 +977,9 @@ Proceed in this order:
    purpose.
 3. On a clean task-owned standalone stack, apply the B1-09 blueprint twice,
    emit and validate the exact control-object JSON, run the complete permission
-   positive/negative matrix, and prove all registration and email journeys.
+   positive/negative matrix, reapply to prove bounded stale invitation-permission
+   cleanup without group/RBAC drift, and prove all registration and email
+   journeys.
 4. Back up Board and Authentik databases separately plus protected Caddy/Auth
    state/configuration inventories. Verify digests and clean matching-major
    restores before any live schema or blueprint mutation.

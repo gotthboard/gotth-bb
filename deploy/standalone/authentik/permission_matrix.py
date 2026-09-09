@@ -10,6 +10,7 @@ from authentik.core.models import Group, Token, User
 from authentik.flows.models import Flow
 from authentik.rbac.models import InitialPermissions
 from authentik.stages.invitation.models import Invitation
+from guardian.models import RoleObjectPermission
 
 
 ORIGIN = "http://127.0.0.1:9000/api/v3"
@@ -36,6 +37,10 @@ def call(method, path, expected, body=None, request_headers=None):
 def forbidden(method, path, body=None):
     return call(method, path, {403, 404}, body)
 
+flow = Flow.objects.get(slug="gotth-bb-invitation")
+control_user = User.objects.get(username="gotth-bb-control")
+if control_user.get_managed_role() is not None:
+    raise RuntimeError("permission fixture requires clean control managed-role state")
 
 test_user = User.objects.create(
     username=FIXTURE,
@@ -47,7 +52,6 @@ test_user = User.objects.create(
 test_user.set_unusable_password()
 test_user.save()
 outsider_group = Group.objects.create(name=FIXTURE, is_superuser=False)
-flow = Flow.objects.get(slug="gotth-bb-invitation")
 foreign_invitation = Invitation.objects.create(
     name=FIXTURE + "-foreign",
     flow=flow,
@@ -56,6 +60,7 @@ foreign_invitation = Invitation.objects.create(
     fixed_data={"email": "foreign@example.invalid"},
     expires=now() + timedelta(hours=1),
 )
+fixture_invitation_uuids = {str(foreign_invitation.pk)}
 created_uuid = None
 try:
     # The two admitted model-level capabilities.
@@ -73,6 +78,7 @@ try:
         },
     )
     created_uuid = invitation_response.json()["pk"]
+    fixture_invitation_uuids.add(created_uuid)
     invitation_page = call(
         "GET",
         "/stages/invitation/invitations/"
@@ -154,7 +160,6 @@ try:
         },
     )
     child_token = Token.objects.get(identifier=CHILD_TOKEN)
-    control_user = User.objects.get(username="gotth-bb-control")
     if child_token.user_id != control_user.pk or child_token.user_id == test_user.pk:
         raise RuntimeError("self-issued token was not forced to control service account")
     child_key = call("GET", f"/core/tokens/{CHILD_TOKEN}/view_key/", {200}).json()["key"]
@@ -214,6 +219,7 @@ try:
             },
         )
         delete_only_uuid = delete_only_response.json()["pk"]
+        fixture_invitation_uuids.add(delete_only_uuid)
         forbidden("GET", "/stages/invitation/invitations/?page_size=100")
         forbidden("GET", f"/stages/invitation/invitations/{delete_only_uuid}/")
         forbidden(
@@ -235,4 +241,13 @@ finally:
     outsider_group.delete()
     test_user.delete()
     Token.objects.filter(identifier=CHILD_TOKEN).delete()
+    RoleObjectPermission.objects.filter(
+        role__name="gotth-bb-control",
+        permission__content_type__app_label="authentik_stages_invitation",
+        permission__content_type__model="invitation",
+        object_pk__in=fixture_invitation_uuids,
+    ).delete()
+    managed_role = control_user.get_managed_role()
+    if managed_role is not None:
+        managed_role.delete()
     CONTROL_TOKEN = ""

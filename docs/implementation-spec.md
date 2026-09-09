@@ -3127,11 +3127,26 @@ The blueprint creates a non-superuser `service_account` excluded from every
 Board application group, a role, and one non-expiring API token whose key comes
 from the separately mounted control-token secret. That secret is mounted only
 into the authoritative Authentik server container where operator bootstrap
-runs and the isolated control gateway, never the Board application. The role has exactly global
+runs and the isolated control gateway, never the Board application. The role
+has exactly global
 `authentik_core.view_user` and
 `authentik_stages_invitation.add_invitation`. One Authentik
 `InitialPermissions` object assigns `view_invitation` and `delete_invitation`
 to that role only on invitation objects created by its service account request.
+Because Authentik does not cascade generic object permissions when the target
+invitation is deleted, operator bootstrap deletes only this role's invitation
+permission rows whose UUID no longer identifies a live invitation. It then
+requires exactly view/delete for every live invitation created by the service
+account and rejects any such invitation outside the pinned flow or without
+single-use semantics. This cleanup never touches group or unrelated role
+permissions.
+
+Bootstrap requires the named control token to be the service account's only
+token. After that check, it may delete the account's Authentik-managed role only
+when the role is detached from every user/group; any extra token, attachment,
+or noncanonical managed identity blocks. This removes inert self-token test
+residue without concealing an active replacement credential.
+
 Group object permissions grant only `view_group`, `add_user_to_group`, and
 `remove_user_from_group` on the exact accepted, pending, and suspended groups.
 It lacks `access_admin_interface` and every user/group/flow/stage/policy/

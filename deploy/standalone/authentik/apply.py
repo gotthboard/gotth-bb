@@ -8,6 +8,7 @@ from authentik.flows.models import Flow, FlowStageBinding
 from authentik.policies.models import PolicyBinding
 from authentik.providers.oauth2.models import OAuth2Provider
 from authentik.rbac.models import InitialPermissions, Role
+from authentik.stages.invitation.models import Invitation
 from guardian.models import RoleModelPermission, RoleObjectPermission
 
 
@@ -78,6 +79,17 @@ try:
         raise RuntimeError("Board control service account membership differs")
     if token.user_id != service.pk or token.intent != "api" or token.expiring or token.key != control_secret:
         raise RuntimeError("Board control token differs")
+    if Token.objects.filter(user=service).exclude(pk=token.pk).exists():
+        raise RuntimeError("Unexpected Board control service token exists")
+    managed_role = service.get_managed_role()
+    if managed_role is not None:
+        if (
+            managed_role.managed != managed_role.name
+            or managed_role.users.exists()
+            or managed_role.groups.exists()
+        ):
+            raise RuntimeError("Board control managed-role residue is unsafe")
+        managed_role.delete()
     initial_permission_names = set(
         initial.permissions.values_list("content_type__app_label", "codename")
     )
@@ -94,11 +106,29 @@ try:
     }:
         raise RuntimeError("Board control model permissions differ")
     object_permissions = RoleObjectPermission.objects.filter(role=role)
+    service_invitations = list(
+        Invitation.objects.filter(created_by=service).only("pk", "flow_id", "single_use")
+    )
+    if any(
+        invitation.flow_id != flows["invitation"].pk or not invitation.single_use
+        for invitation in service_invitations
+    ):
+        raise RuntimeError("Board control invitation scope differs")
+    live_invitation_pks = {str(invitation.pk) for invitation in service_invitations}
+    object_permissions.filter(
+        permission__content_type__app_label="authentik_stages_invitation",
+        permission__content_type__model="invitation",
+    ).exclude(object_pk__in=live_invitation_pks).delete()
     expected_object_permissions = {
         ("authentik_core", codename, str(group.pk))
         for group in groups.values()
         for codename in ("view_group", "add_user_to_group", "remove_user_from_group")
     }
+    expected_object_permissions.update(
+        ("authentik_stages_invitation", codename, invitation_pk)
+        for invitation_pk in live_invitation_pks
+        for codename in ("view_invitation", "delete_invitation")
+    )
     actual_object_permissions = {
         (app, codename, object_pk)
         for app, codename, object_pk in object_permissions.values_list(

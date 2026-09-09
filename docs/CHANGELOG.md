@@ -21,6 +21,14 @@ despite lacking explicit token model permissions. The isolated gateway exposes
 no token route, so Board cannot exercise that raw authority or receive a token
 key.
 
+Authentik also retains generic object-permission rows after their invitation is
+deleted. Operator bootstrap now removes only stale invitation permissions for
+the dedicated control role and verifies exact view/delete permissions for each
+live, single-use, pinned-flow invitation. Unrelated RBAC state is untouched.
+Bootstrap also rejects an unexpected live control-account token and removes
+only that account's detached managed-role residue after proving no replacement
+token exists.
+
 The raw token is mounted only into the authoritative Authentik server container,
 where operator-invoked bootstrap executes, and a separate gateway binary. Board
 uses a closed HTTP/1.1 protocol over a

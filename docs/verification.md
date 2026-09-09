@@ -1409,7 +1409,12 @@ rules remain mandatory.
 A disposable pinned Authentik 2026.5.2 instance applies the blueprint twice.
 The gate records exact object identities and proves three flows/groups, one
 service account/role/token/initial-permission rule, no unrelated application/provider, and no drift on
-second apply. For each open, approval, invitation, closed, maintenance, Board
+second apply. After invitation create/delete fixtures, a third apply must
+remove only stale control-role invitation object permissions, preserve exact
+group permissions, reject an unexpected live service token, remove only a
+detached empty service-account managed role, and remain byte-identical in its
+emitted descriptor. For each open, approval, invitation, closed, maintenance,
+Board
 outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
 admission result. Expression requests use fixed method/URL/timeout and emit no
