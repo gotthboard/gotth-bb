@@ -84,6 +84,51 @@ async function navigate(send, sessionId, url, condition) {
   await waitFor(send, sessionId, `document.readyState === 'complete' && (${condition})`);
 }
 
+async function auditAreaFormPresentation(send, sessionId, label, formSelector, gridSelectors) {
+  await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, sessionId);
+  await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
+  const narrow = await evaluate(send, sessionId, `(() => {
+    const form = document.querySelector(${JSON.stringify(formSelector)});
+    if (!form) throw new Error("area form is absent");
+    const controls = [...form.querySelectorAll("input:not([type=hidden]), textarea, select, button")];
+    const formBackground = getComputedStyle(form).backgroundColor;
+    return {
+      viewport: document.documentElement.clientWidth,
+      pageWidth: document.documentElement.scrollWidth,
+      controls: controls.map((control) => {
+        const style = getComputedStyle(control);
+        const rect = control.getBoundingClientRect();
+        return {
+          name: control.name || control.textContent.trim(),
+          tag: control.tagName,
+          left: rect.left,
+          right: rect.right,
+          width: rect.width,
+          height: rect.height,
+          border: style.borderTopWidth,
+          background: style.backgroundColor,
+          formBackground,
+        };
+      }),
+      columns: ${JSON.stringify(gridSelectors)}.map((selector) => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(" ").length),
+    };
+  })()`);
+  assert.ok(narrow.pageWidth <= narrow.viewport, `${label} overflows at 320px: ${JSON.stringify(narrow)}`);
+  assert.ok(narrow.controls.length >= 7, `${label} has too few visible controls: ${JSON.stringify(narrow.controls)}`);
+  for (const control of narrow.controls) {
+    assert.ok(control.left >= 0 && control.right <= narrow.viewport, `${label} control escapes viewport: ${JSON.stringify(control)}`);
+    assert.ok(control.width > 80 && control.height >= 44, `${label} control is not usable: ${JSON.stringify(control)}`);
+    if (control.tag !== "BUTTON") assert.notEqual(control.border, "0px", `${label} control has no visible border: ${JSON.stringify(control)}`);
+    assert.notEqual(control.background, control.formBackground, `${label} control disappears into form background: ${JSON.stringify(control)}`);
+  }
+  assert.deepEqual(narrow.columns, gridSelectors.map(() => 1), `${label} grids do not stack at 320px`);
+
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
+  const desktopColumns = await evaluate(send, sessionId, `${JSON.stringify(gridSelectors)}.map((selector) => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(" ").length)`);
+  assert.deepEqual(desktopColumns, gridSelectors.map((selector) => selector.includes("identity") ? 2 : 3), `${label} desktop grids are not bounded: ${JSON.stringify(desktopColumns)}`);
+  console.log(`AREA_UI label=${JSON.stringify(label)} mobile_controls=${narrow.controls.length} mobile_columns=${JSON.stringify(narrow.columns)} desktop_columns=${JSON.stringify(desktopColumns)} result=pass`);
+}
+
 async function submitForm(send, sessionId, selector, values) {
   const expression = `(() => {
     const form = document.querySelector(${JSON.stringify(selector)});
@@ -93,6 +138,10 @@ async function submitForm(send, sessionId, selector, values) {
       if (!field) throw new Error("field not found: " + name);
       field.value = value;
       field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (!form.checkValidity()) {
+      const invalid = [...form.elements].filter((field) => field.willValidate && !field.validity.valid).map((field) => ({ name: field.name, value: field.value, message: field.validationMessage }));
+      throw new Error("form is invalid: " + JSON.stringify(invalid));
     }
     form.requestSubmit();
     return true;
@@ -215,9 +264,17 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Restricted browser area')");
   await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Updated Member')");
 
+  await navigate(send, sessionId, `${target}/areas`, "document.body.textContent.includes('Create area') && document.querySelector('[data-area-identity-fields]')");
+  await auditAccessibility(send, sessionId, evaluate, "administration area create", false);
+  await auditAreaFormPresentation(send, sessionId, "administration area create", `form[action$="/admin/areas"]`, ["[data-area-identity-fields]", "[data-area-policy-fields]"]);
+  await auditReflow(send, sessionId, evaluate, "administration area create");
+
   await navigate(send, sessionId, `${target}/areas/3`, "document.body.textContent.includes('General') && document.body.textContent.includes('Group access')");
+  await auditAccessibility(send, sessionId, evaluate, "administration area detail", false);
+  await auditAreaFormPresentation(send, sessionId, "administration area detail", `form[action$="/admin/areas/3"]`, ["[data-area-policy-fields]"]);
+  await auditReflow(send, sessionId, evaluate, "administration area detail");
   const areaSelector = `form[action$="/admin/areas/3"]`;
-  const areaValues = { name: "General", description: "Browser area", display_order: "3", visibility: "groups", initial_group_id: "4", reason: "Change browser area" };
+  const areaValues = { name: "General", description: "Browser area", display_order: "3", visibility: "groups", reason: "Change browser area" };
   await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "archived" });
   await waitFor(send, sessionId, "document.querySelector('select[name=\"posting_mode\"]')?.value === 'archived' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '3'");
   await submitForm(send, sessionId, areaSelector, { ...areaValues, posting_mode: "normal" });

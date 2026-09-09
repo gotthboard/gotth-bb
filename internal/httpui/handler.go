@@ -78,6 +78,7 @@ func newHandler(
 	router.Get("/health/ready", readinessHandler(checkReadiness))
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)
 	previousStylesheet := staticAssetHandler("text/css; charset=utf-8", previousAppStylesheet)
+	olderStylesheet := staticAssetHandler("text/css; charset=utf-8", olderAppStylesheet)
 	legacyStylesheet := staticAssetHandler("text/css; charset=utf-8", legacyAppStylesheet)
 	htmx := staticAssetHandler("text/javascript; charset=utf-8", htmxScript)
 	discoveryResponse := staticAssetHandler("text/javascript; charset=utf-8", discoveryResponseScript)
@@ -85,6 +86,7 @@ func newHandler(
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		router.Method(method, "/static/"+appStylesheetFilename, stylesheet)
 		router.Method(method, "/static/"+previousAppStylesheetFilename, previousStylesheet)
+		router.Method(method, "/static/"+olderAppStylesheetFilename, olderStylesheet)
 		router.Method(method, "/static/"+legacyAppStylesheetFilename, legacyStylesheet)
 		router.Method(method, "/static/htmx-2.0.10.min.js", htmx)
 		router.Method(method, "/static/"+discoveryResponseFilename, discoveryResponse)

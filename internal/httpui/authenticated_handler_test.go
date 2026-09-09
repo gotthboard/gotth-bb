@@ -115,6 +115,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 		{target: "/health/live", wantStatus: http.StatusOK},
 		{target: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + previousAppStylesheetFilename, wantStatus: http.StatusOK},
+		{target: "/static/" + olderAppStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + legacyAppStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + discoveryResponseFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + markdownToolbarFilename, wantStatus: http.StatusOK},

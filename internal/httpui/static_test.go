@@ -12,13 +12,17 @@ import (
 func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	t.Parallel()
 
-	const stylesheetSHA256 = "d8e495881d927546f70f69915c1807efc8fb02c2bc22c9d2a98e87736a04e210"
+	const stylesheetSHA256 = "4237ef90067eac5c030813c0722cfd222a7419a85169782c672d4c96f8727893"
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
-	const previousStylesheetSHA256 = "3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251"
+	const previousStylesheetSHA256 = "d8e495881d927546f70f69915c1807efc8fb02c2bc22c9d2a98e87736a04e210"
 	if want := "app-" + previousStylesheetSHA256 + ".css"; previousAppStylesheetFilename != want {
 		t.Fatalf("previous stylesheet filename = %q, want content-addressed %q", previousAppStylesheetFilename, want)
+	}
+	const olderStylesheetSHA256 = "3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251"
+	if want := "app-" + olderStylesheetSHA256 + ".css"; olderAppStylesheetFilename != want {
+		t.Fatalf("older stylesheet filename = %q, want content-addressed %q", olderAppStylesheetFilename, want)
 	}
 	const legacyStylesheetSHA256 = "3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa"
 	if want := "app-" + legacyStylesheetSHA256 + ".css"; legacyAppStylesheetFilename != want {
@@ -39,8 +43,9 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 		wantSHA256 string
 		contains   string
 	}{
-		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".focus\\:not-sr-only"},
-		{name: "previous Tailwind CSS", content: previousAppStylesheet, wantSHA256: previousStylesheetSHA256, contains: ".sm\\:grid-cols-2"},
+		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".min-h-11"},
+		{name: "previous Tailwind CSS", content: previousAppStylesheet, wantSHA256: previousStylesheetSHA256, contains: ".focus\\:not-sr-only"},
+		{name: "older Tailwind CSS", content: olderAppStylesheet, wantSHA256: olderStylesheetSHA256, contains: ".sm\\:grid-cols-2"},
 		{name: "legacy Tailwind CSS", content: legacyAppStylesheet, wantSHA256: legacyStylesheetSHA256, contains: ".grid-cols-2"},
 		{name: "HTMX", content: htmxScript, wantSHA256: "71ea67185bfa8c98c39d31717c6fce5d852370fcdfd129db4543774d3145c0de", contains: "htmx"},
 		{name: "Discovery response", content: discoveryResponseScript, wantSHA256: discoveryResponseSHA256, contains: discoveryResponseHeader},

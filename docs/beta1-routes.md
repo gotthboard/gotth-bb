@@ -18,7 +18,8 @@ state and read markers are explicit mutations but are not moderation audits.
 | `GET` | `/topics/{topicID}` | optional session plus topic/area policy | no | visitor dynamic or `private, no-store` | yes / no / no | equivalent `404` |
 | `GET` | `/health/live` | public | no | `no-store` | no / no / no | fixed `200` while process serves |
 | `GET` | `/health/ready` | public bounded readiness | no | `no-store` | yes / no / no | fixed `503` without detail |
-| `GET, HEAD` | `/static/app-d8e495881d927546f70f69915c1807efc8fb02c2bc22c9d2a98e87736a04e210.css` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/app-4237ef90067eac5c030813c0722cfd222a7419a85169782c672d4c96f8727893.css` | public exact content address | no | one-year public immutable | no / no / no | `404` |
+| `GET, HEAD` | `/static/app-d8e495881d927546f70f69915c1807efc8fb02c2bc22c9d2a98e87736a04e210.css` | public retained Beta.1.4 content address | no | one-year public immutable | no / no / no | `404` |
 | `GET, HEAD` | `/static/app-3104ce3eede233f21f5a885d4fc547bcc33a24f8249e1d2757f0606a6d958251.css` | public retained Beta.1.1 content address | no | one-year public immutable | no / no / no | `404` |
 | `GET, HEAD` | `/static/app-3faf03facd9c7083d4d359467a15860e45effe7a5a6c94aeb7c98f756993a6fa.css` | public retained Beta.1 content address | no | one-year public immutable | no / no / no | `404` |
 | `GET, HEAD` | `/static/htmx-2.0.10.min.js` | public exact version | no | one-year public immutable | no / no / no | `404` |

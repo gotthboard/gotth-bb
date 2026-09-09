@@ -34,8 +34,8 @@ func TestAdministrationCompletionGETRoutesRenderBoundedPages(t *testing.T) {
 		{path: "/admin/accounts", wants: []string{"Accounts", "Local Member", "/bb/admin/accounts/2"}},
 		{path: "/admin/accounts/2", wants: []string{"Local Member", "Change role", "Members", "Group membership", "/bb/admin/accounts/2/groups/4"}, forbids: []string{`name="group_id"`}},
 		{path: "/admin/groups", wants: []string{"Groups", "Create group", "Members"}},
-		{path: "/admin/areas", wants: []string{"Areas", "Create area", "General", "/bb/admin/areas/3"}},
-		{path: "/admin/areas/3", wants: []string{"General", "Update area", "Group access", "Members", "/bb/admin/areas/3/groups/4"}, forbids: []string{`name="group_id"`, `name="slug"`}},
+		{path: "/admin/areas", wants: []string{"Areas", "Create area", "Existing areas", "General", "/bb/admin/areas/3", `sm:grid-cols-2`, `sm:grid-cols-3`, `w-full min-w-0 rounded-md border border-slate-700`, `focus-visible:outline-2`, `maxlength="4000"`, "Initial access group ID"}, forbids: []string{`class="bg-slate-950"`}},
+		{path: "/admin/areas/3", wants: []string{"General", "Area settings", "Update area", "Group access", "Members", "/bb/admin/areas/3/groups/4", `sm:grid-cols-3`, `sm:grid-cols-[minmax(0,1fr)_auto]`, `w-full min-w-0 rounded-md border border-slate-700`, `focus-visible:outline-2`, `type="hidden" name="initial_group_id" value=""`}, forbids: []string{`name="group_id"`, `name="slug"`, `class="bg-slate-950"`}},
 	} {
 		test := test
 		t.Run(test.path, func(t *testing.T) {
