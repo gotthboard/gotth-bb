@@ -165,8 +165,10 @@ authority is limited to view plus add/remove user on the exact accepted,
 pending, and suspended Board groups. Authentik 2026.5.2's invitation
 `send_email` action omits an independent permission check and therefore rides
 on `view_invitation`; pretending the raw token lacks that capability is false.
-The gateway never implements or forwards that action, so the Board process and
-its browser surface cannot exercise the upstream excess capability.
+Authentik's token view set also sets `rbac_allow_create_without_perm` and lets
+any authenticated non-superuser issue another API token for itself. The gateway
+implements or forwards neither action, so the Board process and its browser
+surface cannot exercise either upstream excess capability.
 
 The OIDC callback also consults Board's pending state before issuing a local
 session. Every non-approved pending state denies even if Authentik group state

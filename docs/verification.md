@@ -1435,7 +1435,11 @@ grants and the effective authority Authentik enforces:
 - create/read/delete one invitation bound to the invitation flow through the
   creator-scoped initial object permissions; and
 - successful `send_email` on that creator-owned invitation as the documented
-  inherited excess, while the same action on a non-owned invitation is denied.
+  inherited excess, while the same action on a non-owned invitation is denied;
+  and
+- successful creation of another API token forced to the same service account,
+  as the documented `rbac_allow_create_without_perm` excess, followed by
+  fixture cleanup through the disposable tenant's authoritative database.
 
 A separate Go-client contract test proves callers cannot supply an arbitrary
 user query, group, flow, invitation, origin, path, method, or redirect. It
@@ -1445,11 +1449,14 @@ that raw global user read and invitation create are broader than these client
 methods; that blast radius must not be hidden in a fake permission claim.
 
 The disposable-tenant matrix must also record Authentik 2026.5.2's actual
-excess capability: creator-scoped `view_invitation` permits `send_email` to an
+excess capabilities: creator-scoped `view_invitation` permits `send_email` to an
 arbitrary address because the action performs no separate permission check.
 This is an expected upstream `204`, not a fabricated denial. Removing view
 permission must prove that retrieve/list/delete become unusable, documenting
 why permission subtraction cannot satisfy the required reconciliation surface.
+It must also prove Authentik permits the service account to mint a replacement
+API token for itself without `add_token`. Neither upstream action may exist in
+the Board-to-gateway protocol.
 The Board-to-gateway contract test then proves the containment boundary: Board
 has no control-token mount or file descriptor, only the expected Board UID can
 connect, every route and method outside the closed Unix protocol is rejected,

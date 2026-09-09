@@ -6,8 +6,9 @@ from pathlib import Path
 import requests
 from django.utils.timezone import now
 
-from authentik.core.models import Group, User
+from authentik.core.models import Group, Token, User
 from authentik.flows.models import Flow
+from authentik.rbac.models import InitialPermissions
 from authentik.stages.invitation.models import Invitation
 
 
@@ -15,6 +16,7 @@ ORIGIN = "http://127.0.0.1:9000/api/v3"
 CONTROL_TOKEN = Path("/run/secrets/authentik_control_token").read_text(encoding="utf-8")
 HEADERS = {"Authorization": f"Bearer {CONTROL_TOKEN}", "Accept": "application/json"}
 FIXTURE = "gotth-bb-b109-permission-fixture"
+CHILD_TOKEN = FIXTURE + "-child-token"
 
 
 def call(method, path, expected, body=None):
@@ -116,17 +118,77 @@ try:
     forbidden("POST", "/core/applications/", {})
     forbidden("POST", "/providers/oauth2/", {})
     forbidden("POST", "/rbac/roles/", {})
-    forbidden("POST", "/core/tokens/", {})
+    # Authentik deliberately permits every authenticated non-superuser to
+    # issue another API token for itself (`rbac_allow_create_without_perm`).
+    # This is a second raw-token excess that only gateway isolation contains.
+    call(
+        "POST",
+        "/core/tokens/",
+        {201},
+        {
+            "identifier": CHILD_TOKEN,
+            "intent": "api",
+            "description": "disposable B1-09 permission fixture",
+        },
+    )
+    child_token = Token.objects.get(identifier=CHILD_TOKEN)
+    control_user = User.objects.get(username="gotth-bb-control")
+    if child_token.user_id != control_user.pk or child_token.user_id == test_user.pk:
+        raise RuntimeError("self-issued token was not forced to control service account")
     forbidden("GET", "/tasks/tasks/")
     forbidden("GET", "/events/events/export/")
 
     call("DELETE", f"/stages/invitation/invitations/{created_uuid}/", {204})
     created_uuid = None
-    print("AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EMAIL_EXCESS_OK")
+
+    # Prove permission subtraction cannot preserve reconciliation. With only
+    # delete_invitation assigned at create time, the object is absent from the
+    # list and retrieve/send/delete all fail because object resolution itself
+    # requires view permission.
+    initial = InitialPermissions.objects.get(
+        name="gotth-bb-control-created-invitations"
+    )
+    original_permissions = list(initial.permissions.all())
+    delete_permission = next(
+        permission
+        for permission in original_permissions
+        if permission.codename == "delete_invitation"
+    )
+    delete_only_uuid = None
+    initial.permissions.set([delete_permission])
+    try:
+        delete_only_response = call(
+            "POST",
+            "/stages/invitation/invitations/",
+            {201},
+            {
+                "name": FIXTURE + "-delete-only",
+                "flow": str(flow.pk),
+                "single_use": True,
+                "fixed_data": {"email": "delete-only@example.invalid"},
+                "expires": (now() + timedelta(hours=1)).isoformat(),
+            },
+        )
+        delete_only_uuid = delete_only_response.json()["pk"]
+        forbidden("GET", "/stages/invitation/invitations/?page_size=100")
+        forbidden("GET", f"/stages/invitation/invitations/{delete_only_uuid}/")
+        forbidden(
+            "POST",
+            f"/stages/invitation/invitations/{delete_only_uuid}/send_email/",
+            {"email_addresses": ["nobody@example.invalid"]},
+        )
+        forbidden("DELETE", f"/stages/invitation/invitations/{delete_only_uuid}/")
+    finally:
+        initial.permissions.set(original_permissions)
+        if delete_only_uuid:
+            Invitation.objects.filter(pk=delete_only_uuid).delete()
+
+    print("AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EXCESSES_OK")
 finally:
     if created_uuid:
         Invitation.objects.filter(pk=created_uuid).delete()
     Invitation.objects.filter(pk=foreign_invitation.pk).delete()
     outsider_group.delete()
     test_user.delete()
+    Token.objects.filter(identifier=CHILD_TOKEN).delete()
     CONTROL_TOKEN = ""

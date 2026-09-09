@@ -116,6 +116,9 @@ claims never grant moderator, administrator, or area-access privileges.
   the exact B1-09 user-read, invitation, and Board-group membership operations
   over a filesystem-protected Unix socket and rejects every generic or
   arbitrary-recipient email-send operation.
+  Authentik's unavoidable ability for any authenticated non-superuser to mint
+  another API token for itself remains confined behind that gateway; Board has
+  no token-creation operation.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
@@ -799,11 +802,14 @@ into an identity provider or a host-management console:
    authoritative Authentik bootstrap process. Board receives neither the raw
    token nor a generic HTTP proxy. The service account has no admin-interface access and no permission to
    create/change/delete users, groups, flows, stages, policies, applications,
-   providers, roles, tokens, or secrets. Its explicit permission grants are
+   providers, roles, or secrets. Its explicit permission grants are
    global read-user and invitation create, per-object view/delete permission
    assigned only to invitations that account creates, and object permissions
    to view and add/remove users on the three exact Board identity groups.
-   Effective authority additionally includes the inseparable action below:
+   Effective authority additionally includes two inseparable upstream
+   capabilities: Authentik permits every authenticated non-superuser to create
+   another API token for its own service account regardless of model create
+   permission, and
    Authentik 2026.5.2 permits its invitation `send_email` action to any
    principal that can view that invitation; there is no separate permission to
    revoke. The gateway contains that upstream excess authority: it listens on
@@ -811,6 +817,7 @@ into an identity provider or a host-management console:
    and verifies the issuer origin plus flow/group identities, rejects redirects
    and oversized responses, and implements no email, generic URL/method, or
    caller-selected Authentik-object operation beyond the admitted identities.
+   In particular, it exposes neither token creation nor email sending.
 4. Approval/rejection and local suspension/reinstatement use explicit
    restrictive ordering. Granting access must succeed and be read back before
    Board marks approval complete. Suspension commits local denial and session

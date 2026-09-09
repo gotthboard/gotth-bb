@@ -969,9 +969,9 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    alone holds the descriptor-safe token, verifies the Board peer UID, exposes
    only the closed Board protocol, and uses the fixed-origin, fixed-operation
    bounded Go API client. Prove all positive and forbidden API operations plus
-   the upstream invitation `send_email` excess against a disposable Authentik
-   2026.5.2 instance, then prove the gateway makes that excess unreachable from
-   Board.
+   the upstream invitation `send_email` and non-superuser self-token-creation
+   excesses against a disposable Authentik 2026.5.2 instance, then prove the
+   gateway makes both unreachable from Board.
 4. **B1-09-03 — registration, approval, invitation, and suspension
    reconciliation.** Add public admission/intake endpoints, mode-aware
    registration, bounded pending/invitation pages, approve/reject/create/revoke

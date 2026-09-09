@@ -3132,8 +3132,9 @@ gateway, never the Board application. The role has exactly global
 to that role only on invitation objects created by its service account request.
 Group object permissions grant only `view_group`, `add_user_to_group`, and
 `remove_user_from_group` on the exact accepted, pending, and suspended groups.
-It lacks `access_admin_interface` and every user/group/flow/stage/policy/
-provider/application/role/token change/delete/add permission not listed above.
+It lacks `access_admin_interface`, every user/group/flow/stage/policy/provider/
+application/role add/change/delete permission not listed above, and every token
+change/delete permission.
 
 Global `view_user` is the one deliberately coarse permission. Authentik
 2026.5.2's atomic group `add_user`/`remove_user` actions resolve the target
@@ -3151,10 +3152,18 @@ Authentik 2026.5.2 does not enforce a distinct permission on the invitation
 `send_email` action. Creator-scoped `view_invitation` is sufficient to send to
 an arbitrary address, while removing that view permission also removes the
 retrieve/list/delete operations needed for reconciliation. The raw service
-token therefore has one documented excess capability that Authentik cannot
+token therefore has a first documented excess capability that Authentik cannot
 remove. Board does not receive the token. A separate non-network-listening
 gateway holds it and exposes no email operation, so neither Board nor a browser
 request can exercise that upstream capability.
+
+Authentik's token API separately declares create permissible without model
+permission for every authenticated non-superuser and forces the new token to
+that requester's own account. The raw service token can therefore mint another
+service-account API token even though its role has no `add_token` permission.
+That is a second documented upstream excess, not an admissible Board feature:
+the gateway exposes no token route or generic proxy operation, never returns
+the raw token, and never returns the key of any other token.
 
 The gateway's outbound Go client has concrete methods only for: retrieve a user by the pinned UUID
 filter; list at most 51 users through the fixed pending-group filter; retrieve

@@ -983,7 +983,8 @@ Proceed in this order:
 5. Stop the live Board writer. Apply migration 000013 and runtime grants while
    registration remains closed. Apply the Authentik blueprint using the new
    control token, validate exact objects/permissions including the documented
-   raw-token `send_email` excess, install the control-object file, and render the
+   raw-token `send_email` and self-token-creation excesses, install the
+   control-object file, and render the
    complete Compose configuration without secret values. Prove Board has no
    control-token mount, environment value, or descriptor, and prove the gateway
    has no Board-database or SMTP credential/configuration/secret mount.

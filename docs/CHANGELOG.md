@@ -14,6 +14,12 @@ accepted/pending/suspended groups, signed approval intake, non-admin control
 identity, creator-scoped invitation permissions, and the disposable raw-token
 permission matrix. The guard URLs use the exact persisted Board mode names.
 
+The disposable matrix also records Authentik's built-in
+`rbac_allow_create_without_perm` behavior: an authenticated non-superuser token
+can mint another API token for its own account despite lacking `add_token`.
+The isolated gateway exposes no token route, so Board cannot exercise that raw
+authority or receive a token key.
+
 The raw token is mounted only into Authentik's authoritative bootstrap process
 and a separate gateway binary. Board uses a closed HTTP/1.1 protocol over a
 gateway-owned Unix socket protected by dedicated token/control groups and Linux

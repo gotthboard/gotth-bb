@@ -106,7 +106,9 @@ table and rejects omission, duplication, or invention in either direction.
   `0cc2556b3e7b0c9b64b6bb63265635a69c5b1c61` after two fresh CLEAN reviews;
   implementation evidence remains pending. The disposable Authentik 2026.5.2
   permission test subsequently exposed creator-owned invitation `send_email`
-  as inseparable from required view permission. The corrective isolated-gateway
+  as inseparable from required view permission and self-token creation as
+  available to every authenticated non-superuser despite absent `add_token`.
+  The corrective isolated-gateway
   contract was admitted from commit
   `03f207a7eb2de4992d9e8788c6050b2a5d4657b2` / tree
   `66eb25f09e94357e1d9094ff9a9b89b87d8f02ca` after two fresh CLEAN reviews;
