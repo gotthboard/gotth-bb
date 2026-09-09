@@ -173,14 +173,15 @@ exercise either upstream excess capability.
 
 Authentik's generic object-permission rows do not cascade when an invitation is
 deleted. The authoritative operator bootstrap removes only control-role
-invitation permissions whose target no longer exists, then requires exactly
-view/delete on every still-live invitation created by the control account.
-Group and unrelated RBAC rows are never swept. Stale invitation permission
-rows are inert, but unbounded accumulation and false idempotence are not
-accepted.
+invitation permissions whose target is not a live invitation created by the
+control account, then requires exactly view/delete on every such live
+invitation. Group and unrelated RBAC rows are never swept. Stale or out-of-scope
+invitation permission rows are inert, but unbounded accumulation and false
+idempotence are not accepted.
 Bootstrap also rejects every unexpected token owned by the control account. It
-removes that account's detached, empty Authentik-managed role only when no such
-token exists; an attached or repurposed role is a blocking drift, not cleanup.
+removes that account's detached, principal-free Authentik-managed role only when
+no such token exists; an attached or repurposed role is a blocking drift, not
+cleanup.
 
 The OIDC callback also consults Board's pending state before issuing a local
 session. Every non-approved pending state denies even if Authentik group state

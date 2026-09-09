@@ -1412,8 +1412,8 @@ service account/role/token/initial-permission rule, no unrelated application/pro
 second apply. After invitation create/delete fixtures, a third apply must
 remove only stale control-role invitation object permissions, preserve exact
 group permissions, reject an unexpected live service token, remove only a
-detached empty service-account managed role, and remain byte-identical in its
-emitted descriptor. For each open, approval, invitation, closed, maintenance,
+detached principal-free service-account managed role, and remain byte-identical
+in its emitted descriptor. For each open, approval, invitation, closed, maintenance,
 Board
 outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
