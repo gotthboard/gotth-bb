@@ -115,7 +115,7 @@ claims never grant moderator, administrator, or area-access privileges.
   providers, applications, roles, tokens, or secrets. The gateway exposes only
   the exact B1-09 user-read, invitation, and Board-group membership operations
   over a filesystem-protected Unix socket and rejects every generic or
-  arbitrary-recipient operation.
+  arbitrary-recipient email-send operation.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
