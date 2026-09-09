@@ -101,7 +101,10 @@ table and rejects omission, duplication, or invention in either direction.
 - AN-05: `docs/evidence/an05-04-integrated-1abbeab.txt`.
 - B1-01: `docs/evidence/beta1-01-security-f91a6fb.txt`.
 - B1-08 candidate: `docs/evidence/beta1-08-standalone-stack-eef7c48.txt`.
-- B1-09 contract: pending B1-09-00 admission and implementation.
+- B1-09 contract: admitted from commit
+  `a1ff1eaef5aa16d18073fa5281cc16a3cea41d3d` / tree
+  `0cc2556b3e7b0c9b64b6bb63265635a69c5b1c61` after two fresh CLEAN reviews;
+  implementation evidence remains pending.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence
