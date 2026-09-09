@@ -143,6 +143,8 @@ func Build(ctx context.Context, configured Config, run Runner) (Result, error) {
 		{path: "deploy/container/Containerfile", mode: 0o644},
 		{path: "deploy/container/compose.yml", mode: 0o644},
 		{path: "deploy/container/entrypoint.sh", mode: 0o755},
+		{path: "deploy/postgresql/backup-logical.sh", mode: 0o755},
+		{path: "deploy/postgresql/restore-logical.sh", mode: 0o755},
 		{path: "deploy/standalone/Caddyfile", mode: 0o644},
 		{path: "deploy/standalone/README.md", mode: 0o644},
 		{path: "deploy/standalone/app.env.example", mode: 0o644},

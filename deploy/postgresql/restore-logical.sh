@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-	printf '%s\n' 'usage: restore-logical.sh CONTAINER /absolute/input.dump' >&2
+	printf '%s\n' 'usage: restore-logical.sh CONTAINER /absolute/input.dump [EXPECTED_POSTGRES_MAJOR]' >&2
 	exit 2
 }
 
@@ -11,9 +11,10 @@ fail() {
 	exit 1
 }
 
-[ "$#" -eq 2 ] || usage
+[ "$#" -eq 2 ] || [ "$#" -eq 3 ] || usage
 container=$1
 archive=$2
+expected_major=${3:-17}
 
 case "$container" in
 	''|*[!A-Za-z0-9_.-]*|[!A-Za-z0-9]*) fail 'invalid container name' ;;
@@ -21,6 +22,9 @@ esac
 case "$archive" in
 	/*) ;;
 	*) fail 'archive path must be absolute' ;;
+esac
+case "$expected_major" in
+	''|*[!0-9]*) fail 'invalid expected PostgreSQL major' ;;
 esac
 [ -f "$archive" ] && [ ! -L "$archive" ] || fail 'archive must be a regular non-symlink file'
 sidecar=$archive.sha256
@@ -62,8 +66,8 @@ child_pid=
 
 version=$(docker exec --user postgres "$container" postgres --version) || fail 'PostgreSQL version check failed'
 case "$version" in
-	'postgres (PostgreSQL) 17.'*) ;;
-	*) fail 'target is not PostgreSQL major 17' ;;
+	"postgres (PostgreSQL) $expected_major."*) ;;
+	*) fail "target is not PostgreSQL major $expected_major" ;;
 esac
 
 if ! docker exec --user postgres "$container" sh -ceu '

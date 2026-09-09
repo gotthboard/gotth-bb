@@ -49,6 +49,15 @@ first. Wait for health, then run `apply-authentik.sh` twice and require the exac
 line `AUTHENTIK_BOARD_BLUEPRINT_APPLIED` both times. The import uses the mounted
 OIDC secret in memory and does not write a secret-bearing blueprint.
 
+Complete Authentik's initial-setup flow through the dedicated Authentik origin,
+then create or approve only the designated Board users and add them to
+`gotth-bb-users`. Record each user's Authentik `uuid`; the database primary key
+and a subject from another Authentik instance are not OIDC subjects for this
+stack. Set `BOOTSTRAP_ADMIN_SUBJECT` to the exact designated administrator UUID
+before the first Board login. An upgrade from another issuer uses the packaged
+`gotth-bb-operator rebind-external-identity` command while the Board application
+is stopped; do not create a second forum user.
+
 Run the release's migration binary against the migration-role URL, apply the
 packaged runtime grants as the migration owner with `runtime_role` set to
 `gotth_bb_runtime`, and prove readiness before starting `app` and `caddy`.
@@ -56,6 +65,26 @@ Never put either database URL in a command argument or broad log. Existing
 deployments follow the stopped upgrade and identity-rebind procedure in
 `docs/release-operations.md`; they do not rerun PostgreSQL init scripts.
 
-Do not use `docker compose down -v`. Backup and clean-restore both PostgreSQL
-databases and retain Caddy `/data`, Authentik `/data`, `/certs`, the exact
-non-secret configuration inventory, and every required secret reference.
+Do not use `docker compose down -v`. With the application stopped, the packaged
+logical helper creates validated, checksummed custom archives for each database:
+
+```sh
+deploy/postgresql/backup-logical.sh \
+  gotth-bb-standalone-board-postgresql-1 /absolute/backup/board.dump
+deploy/postgresql/backup-logical.sh \
+  gotth-bb-standalone-authentik-postgresql-1 /absolute/backup/authentik.dump
+```
+
+Prove each archive against a fresh matching-major container. Board restore uses
+the default PostgreSQL 17 contract; Authentik's pinned Alpine database uses the
+explicit PostgreSQL 16 contract:
+
+```sh
+deploy/postgresql/restore-logical.sh clean-board-postgresql /absolute/backup/board.dump
+deploy/postgresql/restore-logical.sh clean-authentik-postgresql /absolute/backup/authentik.dump 16
+```
+
+Also retain Caddy `/data`, Authentik `/data` and `/certs`, the exact non-secret
+configuration inventory, and every required secret reference. Logical database
+archives alone do not preserve Caddy certificates or Authentik media/signing
+state.

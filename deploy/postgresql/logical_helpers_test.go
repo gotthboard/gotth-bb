@@ -169,6 +169,18 @@ func TestRestoreLogicalValidatesBeforeSingleTransactionRestore(t *testing.T) {
 	}
 }
 
+func TestRestoreLogicalAcceptsExplicitAuthentikPostgreSQLMajor(t *testing.T) {
+	fixture := newFakeDocker(t)
+	archive := cleanArchive(t)
+	writeArchivePair(t, archive, []byte("authentik-custom-archive"))
+	result := fixture.run(t, "restore-logical.sh", map[string]string{
+		"FAKE_POSTGRES_VERSION": "postgres (PostgreSQL) 16.10",
+	}, "clean-authentik-postgresql", archive, "16")
+	if result.err != nil || !strings.Contains(result.output, "result=committed") {
+		t.Fatalf("Authentik restore = (%v, %q)", result.err, result.output)
+	}
+}
+
 func TestRestoreLogicalFailsClosedBeforeOrDuringRestore(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -191,6 +203,7 @@ func TestRestoreLogicalFailsClosedBeforeOrDuringRestore(t *testing.T) {
 		}, want: "sidecar format"},
 		{name: "archive validation", env: map[string]string{"FAKE_LIST_FAIL": "1"}, prepare: writeDefaultPair, want: "archive validation failed"},
 		{name: "wrong major", env: map[string]string{"FAKE_POSTGRES_VERSION": "postgres (PostgreSQL) 18.1"}, prepare: writeDefaultPair, want: "not PostgreSQL major 17"},
+		{name: "invalid expected major", prepare: writeDefaultPair, want: "invalid expected PostgreSQL major"},
 		{name: "identity", env: map[string]string{"FAKE_IDENTITY_FAIL": "1"}, prepare: writeDefaultPair, want: "identity is unavailable"},
 		{name: "inspection", env: map[string]string{"FAKE_INSPECT_FAIL": "1"}, prepare: writeDefaultPair, want: "clean-target inspection failed"},
 		{name: "nonempty", env: map[string]string{"FAKE_RELATIONS": "1"}, prepare: writeDefaultPair, want: "target database is not clean"},
@@ -201,7 +214,11 @@ func TestRestoreLogicalFailsClosedBeforeOrDuringRestore(t *testing.T) {
 			fixture := newFakeDocker(t)
 			archive := cleanArchive(t)
 			test.prepare(t, archive)
-			result := fixture.run(t, "restore-logical.sh", test.env, "clean-postgresql-17", archive)
+			args := []string{"clean-postgresql-17", archive}
+			if test.name == "invalid expected major" {
+				args = append(args, "16x")
+			}
+			result := fixture.run(t, "restore-logical.sh", test.env, args...)
 			if result.err == nil || !strings.Contains(result.output, test.want) {
 				t.Fatalf("result = (%v, %q), want failure containing %q", result.err, result.output, test.want)
 			}
