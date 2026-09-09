@@ -1454,8 +1454,10 @@ The Board-to-gateway contract test then proves the containment boundary: Board
 has no control-token mount or file descriptor, only the expected Board UID can
 connect, every route and method outside the closed Unix protocol is rejected,
 the gateway-owned directory is not writable by Board, the Board client rejects
-non-Unix configuration, local request/response/concurrency bounds hold, and no
-email/origin/path/generic Authentik operation exists.
+non-Unix configuration, and a process with Board's ordinary UID/GID but without
+supplemental control GID `65531` cannot traverse the socket directory. Local
+request/response/concurrency bounds hold, and no email/origin/path/generic
+Authentik operation exists.
 
 It must receive `403` or equivalent denial for admin-interface access,
 user create/change/delete/password/recovery, arbitrary group create/change/

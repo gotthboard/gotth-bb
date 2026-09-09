@@ -142,9 +142,11 @@ An isolated Authentik control gateway, not Board, reads the root-owned API-token
 secret. The gateway has no TCP listener and accepts requests only over a
 host-root-provisioned Unix socket. At accept time it verifies the peer UID is
 the dedicated Board runtime UID. The gateway owns the directory while the
-Board runtime group receives traverse/read but no write permission; Board
-therefore cannot replace the server socket. The socket mode independently
-denies other non-root processes. A stale path after unclean exit requires
+dedicated control-socket GID receives traverse/read but no write permission;
+Board alone receives that GID as a supplemental group and therefore cannot
+replace the server socket. The socket mode and peer-UID check independently
+deny other non-root processes, including an unrelated process that happens to
+reuse Board's ordinary UID/GID. A stale path after unclean exit requires
 host-operator inode-checked removal; gateway startup never unlinks it. Its
 server routes are a closed versioned set for
 one exact user UUID, one bounded pending-group page, the three named Board-group

@@ -214,11 +214,14 @@ Rules:
   discipline, requires exactly 32 raw bytes, and is mounted only into Board.
 - `AUTHENTIK_CONTROL_SOCKET` is an absolute clean path ending in
   `authentik-control.sock`. Its parent is a root-created bind directory owned
-  `65533:65532` mode `0750`. The gateway runs as `65533:65532`, creates the socket
+  `65533:65531` mode `0750`. The gateway runs as `65533:65531`, creates the socket
   at startup with mode `0660`, fails closed if any entry already occupies the
   final path, removes only the exact inode it created on clean shutdown, and
-  accepts only Linux `SO_PEERCRED` UID `65532`. Board mounts that directory
-  read-only, cannot replace the socket, and never falls back to TCP. After an
+  accepts only Linux `SO_PEERCRED` UID `65532`. Board retains primary UID/GID
+  `65532:65532`, receives only supplemental control GID `65531`, mounts that
+  directory read-only, cannot replace the socket, and never falls back to TCP.
+  An unrelated process with Board's ordinary UID/GID but without the dedicated
+  supplemental group cannot traverse the directory. After an
   unclean exit, only the host operator may remove a stale socket, after proving
   no gateway process owns it and that its device/inode still matches the
   inspected path; startup never guesses that an occupant is stale.
@@ -3159,12 +3162,14 @@ decoding, and response close/drain limits. Authorization is never logged.
 
 Board connects to the gateway only through the exact absolute
 `AUTHENTIK_CONTROL_SOCKET`. The root-provisioned socket directory is owned by
-`65533:65532` at mode `0750`; the gateway runs as `65533:65532`, binds a mode
-`0660` Unix socket owned by `65533:65532`, and rejects any accepted connection
+`65533:65531` at mode `0750`; the gateway runs as `65533:65531`, binds a mode
+`0660` Unix socket owned by `65533:65531`, and rejects any accepted connection
 whose Linux `SO_PEERCRED` UID is not the Board runtime UID `65532`. Startup
 fails if the final path already exists; it never unlinks an incumbent path.
-Board mounts the directory read-only and has no permission to replace the
-server socket.
+Board runs as `65532:65532` with supplemental control GID `65531`, mounts the
+directory read-only, and has no permission to replace the server socket. An
+unrelated process that merely shares Board's ordinary numeric UID/GID lacks the
+control group and cannot reach the socket path.
 The gateway has no TCP listener, no Board database or SMTP access, and no
 generic proxy. Its versioned HTTP-over-Unix route set is exactly:
 

@@ -965,8 +965,9 @@ Proceed in this order:
 2. Generate a new independent 256-bit control token and a distinct 256-bit
    invitation-fingerprint key into separate root-owned protected files. Prepare
    the non-secret SMTP values, optional separate password secret, and a
-   gateway-owned `65533:65532` mode-0750 socket directory that Board mounts
-   read-only. Never reuse the OIDC client,
+   gateway-owned `65533:65531` mode-0750 socket directory. Grant dedicated
+   control GID `65531` only as a supplemental group to Board, which mounts the
+   directory read-only. Never reuse the OIDC client,
    Authentik bootstrap, superuser token, or either B1-09 secret for another
    purpose.
 3. On a clean task-owned standalone stack, apply the B1-09 blueprint twice,
@@ -983,7 +984,8 @@ Proceed in this order:
    control-token mount, environment value, or descriptor.
 6. Start the isolated gateway first and require its Unix socket owner, group,
    mode, gateway-owned non-Board-writable directory, peer-UID rejection, closed
-   route surface, request/concurrency bounds, and Authentik probe. Then
+   route surface, denial to Board's ordinary UID/GID without supplemental
+   control GID `65531`, request/concurrency bounds, and Authentik probe. Then
    start the candidate Board application. Require readiness head 000013,
    ceiling equality, control-object identity, gateway-only API probes, and
    closed registration before enabling any other mode.
