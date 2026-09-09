@@ -58,7 +58,7 @@ type archiveEntry struct {
 	data       []byte
 }
 
-// Build verifies an exact clean native checkout, builds all three release
+// Build verifies an exact clean native checkout, builds all four release
 // executables with one linker identity, executes the database-free identity
 // check, and atomically admits a normalized tar.gz plus SHA256SUMS directory.
 //

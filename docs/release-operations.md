@@ -145,7 +145,7 @@ environment values. It runs `make verify` first. The packaging command then:
    validation, archive writing, and checksum writing succeed.
 
 Archive contents are rooted at
-`gotth-bb-VERSION-GOOS-GOARCH/` and include the three binaries,
+`gotth-bb-VERSION-GOOS-GOARCH/` and include the four binaries,
 `DEPENDENCIES.txt`, `RELEASE.txt`, the runtime PostgreSQL grant, and the exact
 container build/entrypoint/Compose contracts. The release metadata contains no
 build timestamp or host path. The same clean commit built twice with the same
