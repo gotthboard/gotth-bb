@@ -202,11 +202,59 @@ adds a regression assertion forbidding `user: root`. The correction changes no
 identity, network, enrollment, storage, or user-facing behavior. It resets the
 required CLEAN-review counter.
 
+Exact corrected-candidate rerun
+-------------------------------
+
+The permission correction and its first evidence update produced candidate commit
+`877f1791b86f083b1eedd5330d3dd6f6220fb0ba`, tree
+`1d348718b4ddddc2453e23a3cd9a17d33c9ca73c`. A clean clone on the development
+host reran every affected exact-candidate gate instead of inheriting the prior
+tree's results:
+
+- `make verify`: PASS, including deterministic generation, format, vet, and
+  repository-wide race/coverage.
+- PostgreSQL integration/race through migration 000012: PASS.
+- gitleaks history over 461 commits and exact worktree: no leaks.
+- govulncheck: no vulnerabilities found.
+- Two independent release builds were byte-identical at SHA-256
+  `bef8fd1cf9ceb848f9db711af7eb5d526b2a76f4ed5b480e83f87432bf1d0e22`.
+- The checksum-verified package produced image
+  `gotth-bb:1.0.0-beta.1.3-877f179`, exact image ID
+  `sha256:2d52f81610ba9ebb0188b090a4fc886b8504caa0175732d918ab210e9588f77f`.
+  Binary digests, release identity, labels, and package contents matched.
+
+The recovered six-service project then ran that exact image and packaged
+Compose tree. Preflight returned `STANDALONE_PREFLIGHT_OK`. Authentik server and
+worker both had Docker `Config.User=1000:1000`; runtime inspection reported UID
+1000 and GID 1000, with only the documented supplemental secret-reading groups.
+Every service reached its required health state. The blueprint returned
+`AUTHENTIK_BOARD_BLUEPRINT_APPLIED` twice.
+
+The entire six-service project was stopped and started without deleting or
+recreating durable paths. Worker UID/GID remained 1000, both blueprint reruns
+again returned the exact marker, direct and stack-Caddy readiness returned
+`200 ok`, and Chromium completed the dedicated username/password OIDC journey
+and received a Board session cookie. Database inspection after restart proved
+the unchanged recovered tuple:
+
+  user 1 / administrator
+  issuer http://127.0.0.1:28181/application/o/gotth-bb/
+  subject 71c60e60-99f4-477f-821c-5b4bc5312de8
+  audit 1 / bootstrap_administrator / operator / b1-08-recovery-gate
+  users=1 external_identities=1 areas=0 topics=0 posts=0
+
+The loopback recovery browser deliberately begins at the application's direct
+listener and replays the exact public-origin callback to that listener; its
+`APP_ENV=test` contract forbids forwarded identity. Caddy readiness proves the
+unchanged recovery origin. Production proxy/header behavior remains covered by
+the production-mode browser/configuration gates and must be repeated over the
+live HTTPS edge after admission.
+
 Admission limits and remaining release work
 -------------------------------------------
 
 - Candidate implementation, package, image, fresh-stack, recovery, restart,
-  browser OIDC, and Authentik-outage gates are complete.
+  browser OIDC, Authentik-outage, and corrected exact-tree gates are complete.
 - Two fresh independent cold reviews on the final repository state remain
   mandatory. Any real finding resets the count.
 - Guarded merge/mirror, annotated immutable 1.0.0-beta.1.3 tag, tagged package
