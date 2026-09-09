@@ -129,6 +129,39 @@ async function auditAreaFormPresentation(send, sessionId, label, formSelector, g
   console.log(`AREA_UI label=${JSON.stringify(label)} mobile_controls=${narrow.controls.length} mobile_columns=${JSON.stringify(narrow.columns)} desktop_columns=${JSON.stringify(desktopColumns)} result=pass`);
 }
 
+async function auditAreaGroupActionPresentation(send, sessionId, label) {
+  await send("Emulation.setDeviceMetricsOverride", { width: 320, height: 640, deviceScaleFactor: 1, mobile: true }, sessionId);
+  await send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 }, sessionId);
+  const narrow = await evaluate(send, sessionId, `(() => ({
+    viewport: document.documentElement.clientWidth,
+    pageWidth: document.documentElement.scrollWidth,
+    forms: [...document.querySelectorAll("[data-area-group-action]")].map((form) => ({
+      columns: getComputedStyle(form).gridTemplateColumns.split(" ").length,
+      controls: [...form.querySelectorAll("input:not([type=hidden]), button")].map((control) => {
+        const style = getComputedStyle(control);
+        const rect = control.getBoundingClientRect();
+        return { name: control.name || control.textContent.trim(), left: rect.left, right: rect.right, width: rect.width, height: rect.height, border: style.borderTopWidth };
+      }),
+    })),
+  }))()`);
+  assert.ok(narrow.pageWidth <= narrow.viewport, `${label} overflows at 320px: ${JSON.stringify(narrow)}`);
+  assert.ok(narrow.forms.length > 0, `${label} has no group action forms`);
+  for (const form of narrow.forms) {
+    assert.equal(form.columns, 1, `${label} group action does not stack at 320px: ${JSON.stringify(form)}`);
+    assert.equal(form.controls.length, 2, `${label} group action controls are incomplete: ${JSON.stringify(form)}`);
+    for (const control of form.controls) {
+      assert.ok(control.left >= 0 && control.right <= narrow.viewport, `${label} group control escapes viewport: ${JSON.stringify(control)}`);
+      assert.ok(control.width > 80 && control.height >= 44, `${label} group control is not usable: ${JSON.stringify(control)}`);
+      assert.notEqual(control.border, "0px", `${label} group control has no visible border: ${JSON.stringify(control)}`);
+    }
+  }
+
+  await send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
+  const desktopColumns = await evaluate(send, sessionId, `[...document.querySelectorAll("[data-area-group-action]")].map((form) => getComputedStyle(form).gridTemplateColumns.split(" ").length)`);
+  assert.ok(desktopColumns.every((columns) => columns === 2), `${label} desktop group actions are not bounded: ${JSON.stringify(desktopColumns)}`);
+  console.log(`AREA_GROUP_UI label=${JSON.stringify(label)} mobile_forms=${narrow.forms.length} desktop_columns=${JSON.stringify(desktopColumns)} result=pass`);
+}
+
 async function submitForm(send, sessionId, selector, values) {
   const expression = `(() => {
     const form = document.querySelector(${JSON.stringify(selector)});
@@ -272,6 +305,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await navigate(send, sessionId, `${target}/areas/3`, "document.body.textContent.includes('General') && document.body.textContent.includes('Group access')");
   await auditAccessibility(send, sessionId, evaluate, "administration area detail", false);
   await auditAreaFormPresentation(send, sessionId, "administration area detail", `form[action$="/admin/areas/3"]`, ["[data-area-policy-fields]"]);
+  await auditAreaGroupActionPresentation(send, sessionId, "administration area detail");
   await auditReflow(send, sessionId, evaluate, "administration area detail");
   const areaSelector = `form[action$="/admin/areas/3"]`;
   const areaValues = { name: "General", description: "Browser area", display_order: "3", visibility: "groups", reason: "Change browser area" };
