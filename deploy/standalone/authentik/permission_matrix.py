@@ -240,7 +240,7 @@ finally:
     Invitation.objects.filter(pk=foreign_invitation.pk).delete()
     outsider_group.delete()
     test_user.delete()
-    Token.objects.filter(identifier=CHILD_TOKEN).delete()
+    Token.objects.including_expired().filter(identifier=CHILD_TOKEN).delete()
     RoleObjectPermission.objects.filter(
         role__name="gotth-bb-control",
         permission__content_type__app_label="authentik_stages_invitation",
