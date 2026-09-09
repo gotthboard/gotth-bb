@@ -181,6 +181,46 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NULL AND authentik_sync_state = 'accepted' AND authentik_sync_failure_class IS NULL FROM public.users WHERE id = $1`, controlledUserID).Scan(&acceptedLocally); err != nil || !acceptedLocally {
 		t.Fatalf("controlled reinstatement state = (%t, %v)", acceptedLocally, err)
 	}
+
+	expiredSubject := "88888888-8888-4888-8888-888888888888"
+	var expiredUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspended_until, suspension_reason, authentik_sync_state)
+		VALUES ('Expired Member', 'member', $1, $1, $1, $2, $3, 'Finite suspension', 'suspended') RETURNING id`, syncTime.Add(-2*time.Hour), syncTime.Add(-time.Hour), syncTime.Add(-time.Minute)).Scan(&expiredUserID); err != nil {
+		t.Fatalf("insert expired member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, expiredUserID, expiredSubject); err != nil {
+		t.Fatalf("insert expired identity: %v", err)
+	}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 808, UUID: expiredSubject, Username: "expired", Name: "Expired Member", Email: "expired@example.test", Active: true}, Accepted: true}
+	expiryResult, err := ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader(strings.Repeat("r", 16)))
+	if err != nil || expiryResult != (ExpiryReconciliationResult{Claimed: 1, Completed: 1}) {
+		t.Fatalf("expiry reconciliation = (%+v, %v)", expiryResult, err)
+	}
+	var expiryAccepted bool
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NULL AND suspended_until IS NULL AND authentik_sync_state = 'accepted' AND administration_revision = 3 FROM public.users WHERE id = $1`, expiredUserID).Scan(&expiryAccepted); err != nil || !expiryAccepted {
+		t.Fatalf("expiry reconciliation state = (%t, %v)", expiryAccepted, err)
+	}
+
+	failedExpirySubject := "99999999-9999-4999-8999-999999999999"
+	var failedExpiryUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspended_until, suspension_reason, authentik_sync_state)
+		VALUES ('Failed Expiry', 'member', $1, $1, $1, $2, $3, 'Finite suspension', 'suspended') RETURNING id`, syncTime.Add(-2*time.Hour), syncTime.Add(-time.Hour), syncTime.Add(-time.Minute)).Scan(&failedExpiryUserID); err != nil {
+		t.Fatalf("insert failed expiry member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, failedExpiryUserID, failedExpirySubject); err != nil {
+		t.Fatalf("insert failed expiry identity: %v", err)
+	}
+	gateway.failNext = authentikgateway.ErrRemoteUnavailable
+	expiryResult, err = ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader(strings.Repeat("s", 16)))
+	if err != nil || expiryResult != (ExpiryReconciliationResult{Claimed: 1, Failed: 1}) {
+		t.Fatalf("failed expiry reconciliation = (%+v, %v)", expiryResult, err)
+	}
+	var expiryDenied bool
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL AND authentik_sync_state = 'grant_required' AND authentik_sync_failure_class = 'remote_unavailable' AND administration_revision = 3 FROM public.users WHERE id = $1`, failedExpiryUserID).Scan(&expiryDenied); err != nil || !expiryDenied {
+		t.Fatalf("failed expiry denial = (%t, %v)", expiryDenied, err)
+	}
 	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
 	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
 	adoptionHandle, err := issueAdoptionHandle(baseTime, key, adoptionUser.ID, adoptionUser.UUID)

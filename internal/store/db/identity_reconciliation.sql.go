@@ -89,6 +89,141 @@ func (q *Queries) BeginIdentityReinstatement(ctx context.Context, arg BeginIdent
 	return i, err
 }
 
+const claimExpiredIdentityReconciliations = `-- name: ClaimExpiredIdentityReconciliations :many
+WITH guard AS MATERIALIZED (
+    SELECT pg_catalog.pg_try_advisory_xact_lock(
+        pg_catalog.hashtext('gotth-bb'),
+        pg_catalog.hashtext('expired-identity-reconciliation')
+    ) AS acquired
+), candidate AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.authentik_sync_state
+    FROM public.users AS forum_user
+    JOIN public.external_identities AS identity ON identity.user_id = forum_user.id
+    JOIN guard ON guard.acquired
+    WHERE forum_user.suspended_until IS NOT NULL
+      AND forum_user.suspended_until <= $1::timestamptz
+      AND forum_user.authentik_sync_state IN ('suspended', 'removal_required', 'grant_required')
+      AND (forum_user.authentik_sync_next_attempt_at IS NULL OR forum_user.authentik_sync_next_attempt_at <= $1::timestamptz)
+      AND forum_user.administration_revision < 9223372036854775807
+    ORDER BY forum_user.authentik_sync_next_attempt_at NULLS FIRST,
+             forum_user.suspended_until, forum_user.id
+    LIMIT 5
+    FOR UPDATE OF forum_user SKIP LOCKED
+), changed AS (
+    UPDATE public.users AS forum_user
+    SET authentik_sync_state = 'grant_required',
+        authentik_sync_last_attempt_at = $1,
+        authentik_sync_next_attempt_at = $2,
+        authentik_sync_failure_class = NULL,
+        administration_revision = forum_user.administration_revision + 1
+    FROM candidate
+    WHERE forum_user.id = candidate.id
+    RETURNING forum_user.id, forum_user.administration_revision,
+              candidate.authentik_sync_state AS previous_sync_state
+)
+SELECT changed.id AS user_id, identity.subject,
+       changed.previous_sync_state, changed.administration_revision
+FROM changed
+JOIN public.external_identities AS identity ON identity.user_id = changed.id
+ORDER BY changed.id
+`
+
+type ClaimExpiredIdentityReconciliationsParams struct {
+	ObservedAt pgtype.Timestamptz
+	ClaimUntil pgtype.Timestamptz
+}
+
+type ClaimExpiredIdentityReconciliationsRow struct {
+	UserID                 int64
+	Subject                string
+	PreviousSyncState      string
+	AdministrationRevision int64
+}
+
+func (q *Queries) ClaimExpiredIdentityReconciliations(ctx context.Context, arg ClaimExpiredIdentityReconciliationsParams) ([]ClaimExpiredIdentityReconciliationsRow, error) {
+	rows, err := q.db.Query(ctx, claimExpiredIdentityReconciliations, arg.ObservedAt, arg.ClaimUntil)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ClaimExpiredIdentityReconciliationsRow{}
+	for rows.Next() {
+		var i ClaimExpiredIdentityReconciliationsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.Subject,
+			&i.PreviousSyncState,
+			&i.AdministrationRevision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const completeExpiredIdentityReconciliation = `-- name: CompleteExpiredIdentityReconciliation :one
+WITH changed AS (
+    UPDATE public.users AS forum_user
+    SET suspended_at = NULL, suspended_until = NULL, suspension_reason = NULL,
+        authentik_sync_state = 'accepted',
+        authentik_sync_last_attempt_at = $1,
+        authentik_sync_next_attempt_at = NULL,
+        authentik_sync_failure_class = NULL,
+        updated_at = GREATEST($1::timestamptz, forum_user.updated_at),
+        administration_revision = forum_user.administration_revision + 1
+    WHERE forum_user.id = $2
+      AND forum_user.authentik_sync_state = 'grant_required'
+      AND forum_user.administration_revision = $3
+      AND forum_user.suspended_until IS NOT NULL
+      AND forum_user.suspended_until <= $1::timestamptz
+      AND forum_user.administration_revision < 9223372036854775807
+    RETURNING forum_user.id, forum_user.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, operator_identifier, target_type, target_user_id, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'operator', 'gotth-bb-expiry-reconciler', 'user', changed.id,
+           'reconcile_identity_access', $4,
+           pg_catalog.jsonb_build_object('sync_state', 'grant_required'::text, 'administration_revision', $3::bigint),
+           pg_catalog.jsonb_build_object('sync_state', 'accepted'::text, 'administration_revision', changed.administration_revision, 'result', 'confirmed'::text),
+           $5, $1::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true
+`
+
+type CompleteExpiredIdentityReconciliationParams struct {
+	ObservedAt       pgtype.Timestamptz
+	UserID           int64
+	ExpectedRevision int64
+	Reason           pgtype.Text
+	RequestID        pgtype.UUID
+}
+
+type CompleteExpiredIdentityReconciliationRow struct {
+	AdministrationRevision int64
+	AuditID                int64
+}
+
+func (q *Queries) CompleteExpiredIdentityReconciliation(ctx context.Context, arg CompleteExpiredIdentityReconciliationParams) (CompleteExpiredIdentityReconciliationRow, error) {
+	row := q.db.QueryRow(ctx, completeExpiredIdentityReconciliation,
+		arg.ObservedAt,
+		arg.UserID,
+		arg.ExpectedRevision,
+		arg.Reason,
+		arg.RequestID,
+	)
+	var i CompleteExpiredIdentityReconciliationRow
+	err := row.Scan(&i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
 const completeIdentityReinstatement = `-- name: CompleteIdentityReinstatement :one
 WITH actor AS MATERIALIZED (
     SELECT forum_user.id, forum_user.role
@@ -272,6 +407,103 @@ func (q *Queries) LoadSuspendedIdentityTarget(ctx context.Context, arg LoadSuspe
 	var i LoadSuspendedIdentityTargetRow
 	err := row.Scan(&i.Subject, &i.AuthentikSyncState, &i.AdministrationRevision)
 	return i, err
+}
+
+const recordExpiredIdentityReconciliationFailure = `-- name: RecordExpiredIdentityReconciliationFailure :one
+WITH changed AS (
+    UPDATE public.users AS forum_user
+    SET authentik_sync_last_attempt_at = $1,
+        authentik_sync_next_attempt_at = $2,
+        authentik_sync_failure_class = $3,
+        administration_revision = forum_user.administration_revision + 1
+    WHERE forum_user.id = $4
+      AND forum_user.authentik_sync_state = 'grant_required'
+      AND forum_user.administration_revision = $5
+      AND forum_user.administration_revision < 9223372036854775807
+    RETURNING forum_user.id, forum_user.administration_revision
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, operator_identifier, target_type, target_user_id, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'operator', 'gotth-bb-expiry-reconciler', 'user', changed.id,
+           'reconcile_identity_access', $6,
+           pg_catalog.jsonb_build_object('sync_state', 'grant_required'::text, 'administration_revision', $5::bigint),
+           pg_catalog.jsonb_build_object('sync_state', 'grant_required'::text, 'administration_revision', changed.administration_revision, 'result', $3::text),
+           $7, $1::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true
+`
+
+type RecordExpiredIdentityReconciliationFailureParams struct {
+	ObservedAt       pgtype.Timestamptz
+	NextAttemptAt    pgtype.Timestamptz
+	FailureClass     pgtype.Text
+	UserID           int64
+	ExpectedRevision int64
+	Reason           pgtype.Text
+	RequestID        pgtype.UUID
+}
+
+type RecordExpiredIdentityReconciliationFailureRow struct {
+	AdministrationRevision int64
+	AuditID                int64
+}
+
+func (q *Queries) RecordExpiredIdentityReconciliationFailure(ctx context.Context, arg RecordExpiredIdentityReconciliationFailureParams) (RecordExpiredIdentityReconciliationFailureRow, error) {
+	row := q.db.QueryRow(ctx, recordExpiredIdentityReconciliationFailure,
+		arg.ObservedAt,
+		arg.NextAttemptAt,
+		arg.FailureClass,
+		arg.UserID,
+		arg.ExpectedRevision,
+		arg.Reason,
+		arg.RequestID,
+	)
+	var i RecordExpiredIdentityReconciliationFailureRow
+	err := row.Scan(&i.AdministrationRevision, &i.AuditID)
+	return i, err
+}
+
+const recordExpiredIdentityReconciliationRequest = `-- name: RecordExpiredIdentityReconciliationRequest :one
+INSERT INTO public.moderation_actions (
+    actor_kind, operator_identifier, target_type, target_user_id, action_type,
+    reason, previous_state, resulting_state, request_id, created_at
+) VALUES (
+    'operator', 'gotth-bb-expiry-reconciler', 'user', $1,
+    'request_identity_reconciliation', $2,
+    pg_catalog.jsonb_build_object('sync_state', $3::text, 'administration_revision', $4::bigint),
+    pg_catalog.jsonb_build_object('sync_state', 'grant_required'::text, 'administration_revision', $5::bigint),
+    $6, $7::timestamptz
+)
+RETURNING id
+`
+
+type RecordExpiredIdentityReconciliationRequestParams struct {
+	UserID                 pgtype.Int8
+	Reason                 pgtype.Text
+	PreviousSyncState      string
+	PreviousRevision       int64
+	AdministrationRevision int64
+	RequestID              pgtype.UUID
+	ObservedAt             pgtype.Timestamptz
+}
+
+func (q *Queries) RecordExpiredIdentityReconciliationRequest(ctx context.Context, arg RecordExpiredIdentityReconciliationRequestParams) (int64, error) {
+	row := q.db.QueryRow(ctx, recordExpiredIdentityReconciliationRequest,
+		arg.UserID,
+		arg.Reason,
+		arg.PreviousSyncState,
+		arg.PreviousRevision,
+		arg.AdministrationRevision,
+		arg.RequestID,
+		arg.ObservedAt,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const recordIdentityReconciliationFailure = `-- name: RecordIdentityReconciliationFailure :one

@@ -65,6 +65,27 @@ type approvalIntakeVerifier interface {
 	VerifyApprovalIntake(context.Context, string, string) (registrationservice.Intake, error)
 }
 
+func runExpiryReconciler(ctx context.Context, pool databasePool, gateway registrationservice.ControlGateway, logger *slog.Logger) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		result, err := registrationservice.ReconcileExpiredSuspensions(ctx, pool, gateway, time.Now, rand.Reader)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			logger.ErrorContext(context.Background(), "expired identity reconciliation failed")
+		} else if result.Claimed != 0 {
+			logger.InfoContext(context.Background(), "expired identity reconciliation completed", "claimed", result.Claimed, "completed", result.Completed, "failed", result.Failed)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
 func loadRegistrationControl(objectsPath, issuer, socketPath, fingerprintKeyPath string) (registrationControlRuntime, error) {
 	objects, err := authentikcontrol.LoadObjects(objectsPath, issuer)
 	if err != nil {
@@ -553,8 +574,22 @@ func run(
 		return fmt.Errorf("service startup canceled: %w", err)
 	}
 	logger.InfoContext(context.Background(), "service starting", "version", release.Version, "commit", release.Commit)
-	if err := app.RunHTTPServer(ctx, server, listener, shutdownTimeout); err != nil {
-		return err
+	reconcilerContext, stopReconciler := context.WithCancel(ctx)
+	var reconcilerDone chan struct{}
+	if configured.Environment != config.EnvironmentTest {
+		reconcilerDone = make(chan struct{})
+		go func() {
+			defer close(reconcilerDone)
+			runExpiryReconciler(reconcilerContext, pool, registrationControl.Gateway, logger)
+		}()
+	}
+	serverErr := app.RunHTTPServer(ctx, server, listener, shutdownTimeout)
+	stopReconciler()
+	if reconcilerDone != nil {
+		<-reconcilerDone
+	}
+	if serverErr != nil {
+		return serverErr
 	}
 	logger.InfoContext(context.Background(), "service stopped")
 	return nil
