@@ -1,0 +1,281 @@
+name: gotth-bb-standalone
+
+x-authentik-environment: &authentik-environment
+  AUTHENTIK_POSTGRESQL__HOST: authentik-postgresql
+  AUTHENTIK_POSTGRESQL__NAME: authentik
+  AUTHENTIK_POSTGRESQL__USER: authentik
+  AUTHENTIK_POSTGRESQL__SSLMODE: disable
+  AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
+  AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+  GOTTH_BB_PUBLIC_BASE_URL: ${GOTTH_BB_PUBLIC_BASE_URL:?GOTTH_BB_PUBLIC_BASE_URL is required}
+  GOTTH_BB_OIDC_REDIRECT_URI: ${GOTTH_BB_OIDC_REDIRECT_URI:?GOTTH_BB_OIDC_REDIRECT_URI is required}
+
+x-authentik-common: &authentik-common
+  image: ghcr.io/goauthentik/server@sha256:3ddf09bbf69ded6a9634ecd753a01608d477f811e99bb5ffe9fc2ef7ad1c6581
+  restart: unless-stopped
+  entrypoint: ["/bootstrap/entrypoint.sh"]
+  environment: *authentik-environment
+  group_add:
+    - "999"
+  secrets:
+    - authentik_postgres_password
+    - authentik_secret_key
+  volumes:
+    - type: bind
+      source: ${GOTTH_BB_AUTHENTIK_DATA_DIR:?GOTTH_BB_AUTHENTIK_DATA_DIR is required}
+      target: /data
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${GOTTH_BB_AUTHENTIK_TEMPLATES_DIR:?GOTTH_BB_AUTHENTIK_TEMPLATES_DIR is required}
+      target: /templates
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ./authentik
+      target: /bootstrap
+      read_only: true
+      bind:
+        create_host_path: false
+  depends_on:
+    authentik-postgresql:
+      condition: service_healthy
+  networks:
+    - authentik-data
+    - authentik-egress
+  logging:
+    driver: journald
+  stop_grace_period: 30s
+
+services:
+  caddy:
+    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    restart: unless-stopped
+    user: "65532:65532"
+    network_mode: host
+    environment:
+      GOTTH_BB_BOARD_HOST: ${GOTTH_BB_BOARD_HOST:?GOTTH_BB_BOARD_HOST is required}
+      GOTTH_BB_AUTH_HOST: ${GOTTH_BB_AUTH_HOST:?GOTTH_BB_AUTH_HOST is required}
+      GOTTH_BB_AUTH_HTTP_PORT: ${GOTTH_BB_AUTH_HTTP_PORT:-19000}
+      GOTTH_BB_CADDY_ADMIN: ${GOTTH_BB_CADDY_ADMIN:-127.0.0.1:2019}
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_CADDY_DATA_DIR:?GOTTH_BB_CADDY_DATA_DIR is required}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_CADDY_CONFIG_DIR:?GOTTH_BB_CADDY_CONFIG_DIR is required}
+        target: /config
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      authentik-server:
+        condition: service_healthy
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-caddy
+    stop_grace_period: 20s
+
+  app:
+    image: ${GOTTH_BB_IMAGE:?GOTTH_BB_IMAGE is required}
+    pull_policy: never
+    restart: unless-stopped
+    user: "65532:65532"
+    env_file:
+      - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
+    environment:
+      LISTEN_ADDR: 127.0.0.1:18082
+      DATABASE_URL_FILE: /run/secrets/database_runtime_url
+      OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
+      ABUSE_RULES_FILE: /run/config/gotth-bb-abuse-rules
+    network_mode: host
+    secrets:
+      - database_runtime_url
+      - oidc_client_secret
+      - activity_cursor_keyring
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_ABUSE_RULES_FILE:?GOTTH_BB_ABUSE_RULES_FILE is required}
+        target: /run/config/gotth-bb-abuse-rules
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      board-postgresql:
+        condition: service_healthy
+      caddy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:18082/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-app
+    stop_grace_period: 20s
+
+  board-postgresql:
+    image: postgres@sha256:a426e44bac0b759c95894d68e1a0ac03ecc20b619f498a91aae373bf06d8508d
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gotth_bb
+      POSTGRES_USER: gotth_bb_migrate
+      POSTGRES_PASSWORD_FILE: /run/secrets/board_postgres_migrate_password
+    ports:
+      - "127.0.0.1:${GOTTH_BB_POSTGRES_PORT:-55435}:5432"
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_POSTGRES_DATA_DIR:?GOTTH_BB_POSTGRES_DATA_DIR is required}
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./postgresql/init-runtime.sh
+        target: /docker-entrypoint-initdb.d/10-gotth-bb-runtime.sh
+        read_only: true
+        bind:
+          create_host_path: false
+    secrets:
+      - board_postgres_migrate_password
+      - board_postgres_runtime_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gotth_bb_migrate -d gotth_bb"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-postgresql
+    stop_grace_period: 60s
+
+  authentik-postgresql:
+    image: postgres@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD_FILE: /run/secrets/authentik_postgres_password
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR:?GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR is required}
+        target: /var/lib/postgresql/data
+        bind:
+          create_host_path: false
+    secrets:
+      - authentik_postgres_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - authentik-data
+    logging:
+      driver: journald
+      options:
+        tag: gotth-bb-authentik-postgresql
+    stop_grace_period: 60s
+
+  authentik-server:
+    <<: *authentik-common
+    command: server
+    group_add:
+      - "999"
+      - "65532"
+    secrets:
+      - authentik_postgres_password
+      - authentik_secret_key
+      - oidc_client_secret
+    ports:
+      - "127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000"
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+
+  authentik-worker:
+    <<: *authentik-common
+    command: worker
+    user: root
+    volumes:
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_DATA_DIR:?GOTTH_BB_AUTHENTIK_DATA_DIR is required}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_CERTS_DIR:?GOTTH_BB_AUTHENTIK_CERTS_DIR is required}
+        target: /certs
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${GOTTH_BB_AUTHENTIK_TEMPLATES_DIR:?GOTTH_BB_AUTHENTIK_TEMPLATES_DIR is required}
+        target: /templates
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./authentik
+        target: /bootstrap
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "ak", "healthcheck"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 60s
+
+networks:
+  authentik-data:
+    internal: true
+  authentik-egress: {}
+
+secrets:
+  board_postgres_migrate_password:
+    file: ${GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE:?GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE is required}
+  board_postgres_runtime_password:
+    file: ${GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE:?GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE is required}
+  database_runtime_url:
+    file: ${GOTTH_BB_DATABASE_URL_FILE:?GOTTH_BB_DATABASE_URL_FILE is required}
+  oidc_client_secret:
+    file: ${GOTTH_BB_OIDC_CLIENT_SECRET_FILE:?GOTTH_BB_OIDC_CLIENT_SECRET_FILE is required}
+  activity_cursor_keyring:
+    file: ${GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE:?GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE is required}
+  authentik_postgres_password:
+    file: ${GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE:?GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE is required}
+  authentik_secret_key:
+    file: ${GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE:?GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE is required}

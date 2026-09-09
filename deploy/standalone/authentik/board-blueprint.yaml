@@ -1,0 +1,112 @@
+version: 1
+metadata:
+  name: GOTTH Board dedicated identity boundary
+  labels:
+    blueprints.goauthentik.io/instantiate: "false"
+entries:
+  - identifiers: {name: GOTTH Board}
+    id: oidc-provider
+    model: authentik_providers_oauth2.oauth2provider
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      client_id: gotth-bb
+      client_secret: !Env GOTTH_BB_OIDC_CLIENT_SECRET
+      sub_mode: user_uuid
+      redirect_uris:
+        - matching_mode: strict
+          url: !Env GOTTH_BB_OIDC_REDIRECT_URI
+          redirect_uri_type: authorization
+      grant_types: [authorization_code, refresh_token]
+      include_claims_in_id_token: true
+      issuer_mode: per_provider
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+
+  - identifiers: {slug: gotth-bb}
+    id: application
+    model: authentik_core.application
+    attrs:
+      name: GOTTH Board
+      provider: !KeyOf oidc-provider
+      meta_launch_url: !Env GOTTH_BB_PUBLIC_BASE_URL
+
+  - identifiers: {name: gotth-bb-users}
+    id: access-group
+    model: authentik_core.group
+    attrs: {is_superuser: false}
+
+  - identifiers: {slug: gotth-bb-enrollment}
+    id: enrollment-flow
+    model: authentik_flows.flow
+    attrs:
+      name: GOTTH Board enrollment
+      title: Register for GOTTH Board
+      designation: enrollment
+      authentication: require_unauthenticated
+
+  - identifiers: {name: gotth-bb-enrollment-username}
+    id: username
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: username, label: Username, type: username, required: true, order: 0}
+  - identifiers: {name: gotth-bb-enrollment-password}
+    id: password
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: password, label: Password, type: password, required: true, order: 1}
+  - identifiers: {name: gotth-bb-enrollment-password-repeat}
+    id: password-repeat
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: password_repeat, label: Password (repeat), type: password, required: true, order: 2}
+  - identifiers: {name: gotth-bb-enrollment-name}
+    id: display-name
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: name, label: Display name, type: text, required: true, order: 3}
+  - identifiers: {name: gotth-bb-enrollment-email}
+    id: email
+    model: authentik_stages_prompt.prompt
+    attrs: {field_key: email, label: Email, type: email, required: true, order: 4}
+
+  - identifiers: {name: gotth-bb-enrollment-prompts}
+    id: prompts
+    model: authentik_stages_prompt.promptstage
+    attrs:
+      fields: [!KeyOf username, !KeyOf password, !KeyOf password-repeat, !KeyOf display-name, !KeyOf email]
+  - identifiers: {name: gotth-bb-enrollment-user-write}
+    id: user-write
+    model: authentik_stages_user_write.userwritestage
+    attrs:
+      create_users_as_inactive: true
+      user_creation_mode: always_create
+      user_type: external
+      user_path_template: users/gotth-bb
+      create_users_group: !KeyOf access-group
+  - identifiers: {name: gotth-bb-enrollment-email-verification}
+    id: email-verification
+    model: authentik_stages_email.emailstage
+    attrs:
+      use_global_settings: true
+      template: email/account_confirmation.html
+      activate_user_on_success: true
+  - identifiers: {name: gotth-bb-enrollment-login}
+    id: login
+    model: authentik_stages_user_login.userloginstage
+
+  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf prompts, order: 10}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf user-write, order: 20}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf email-verification, order: 30}
+    model: authentik_flows.flowstagebinding
+  - identifiers: {target: !KeyOf enrollment-flow, stage: !KeyOf login, order: 100}
+    model: authentik_flows.flowstagebinding
+
+  - identifiers:
+      target: !KeyOf application
+      group: !KeyOf access-group
+      order: 20
+    model: authentik_policies.policybinding
+    attrs: {enabled: true, negate: false, failure_result: false}

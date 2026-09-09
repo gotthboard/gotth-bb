@@ -1,0 +1,15 @@
+{
+	admin {$GOTTH_BB_CADDY_ADMIN}
+}
+
+{$GOTTH_BB_AUTH_HOST} {
+	reverse_proxy 127.0.0.1:{$GOTTH_BB_AUTH_HTTP_PORT}
+}
+
+{$GOTTH_BB_BOARD_HOST} {
+	reverse_proxy 127.0.0.1:18082 {
+		header_up X-Forwarded-For {remote_host}
+		header_up -Forwarded
+		header_up -X-Real-IP
+	}
+}
