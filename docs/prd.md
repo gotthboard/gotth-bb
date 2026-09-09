@@ -116,9 +116,9 @@ claims never grant moderator, administrator, or area-access privileges.
   the exact B1-09 user-read, invitation, and Board-group membership operations
   over a filesystem-protected Unix socket and rejects every generic or
   arbitrary-recipient email-send operation.
-  Authentik's unavoidable ability for any authenticated non-superuser to mint
-  and retrieve the key of another usable API token for itself remains confined
-  behind that gateway; Board has no token operation.
+  Authentik's unavoidable ability for any authenticated non-superuser to create,
+  retrieve, use, change, and delete its own API tokens remains confined behind
+  that gateway; Board has no token operation.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
@@ -807,9 +807,9 @@ into an identity provider or a host-management console:
    assigned only to invitations that account creates, and object permissions
    to view and add/remove users on the three exact Board identity groups.
    Effective authority additionally includes two inseparable upstream
-   capabilities: Authentik permits every authenticated non-superuser to create
-   another usable API token for its own service account and retrieve its key
-   regardless of model create permission, and
+   capabilities: Authentik permits every authenticated non-superuser to create,
+   retrieve, use, change, and delete API tokens belonging to its own service
+   account regardless of model permissions, and
    Authentik 2026.5.2 permits its invitation `send_email` action to any
    principal that can view that invitation; there is no separate permission to
    revoke. The gateway contains that upstream excess authority: it listens on

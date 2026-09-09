@@ -3132,9 +3132,8 @@ gateway, never the Board application. The role has exactly global
 to that role only on invitation objects created by its service account request.
 Group object permissions grant only `view_group`, `add_user_to_group`, and
 `remove_user_from_group` on the exact accepted, pending, and suspended groups.
-It lacks `access_admin_interface`, every user/group/flow/stage/policy/provider/
-application/role add/change/delete permission not listed above, and every token
-change/delete permission.
+It lacks `access_admin_interface` and every user/group/flow/stage/policy/
+provider/application/role add/change/delete permission not listed above.
 
 Global `view_user` is the one deliberately coarse permission. Authentik
 2026.5.2's atomic group `add_user`/`remove_user` actions resolve the target
@@ -3159,10 +3158,9 @@ request can exercise that upstream capability.
 
 Authentik's token API separately declares create permissible without model
 permission for every authenticated non-superuser and forces the new token to
-that requester's own account. Creation grants that requester object permission
-to retrieve the new key. The raw service token can therefore mint and use
-another service-account API token even though its role has no `add_token`
-permission.
+that requester's own account. Authentik then permits that account to retrieve,
+use, change, and delete the new token. The raw service token therefore has a
+self-token lifecycle despite lacking explicit token model permissions.
 That is a second documented upstream excess, not an admissible Board feature:
 the gateway exposes no token route or generic proxy operation, never returns
 the raw token, and never returns the key of any other token.

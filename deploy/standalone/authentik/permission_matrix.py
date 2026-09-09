@@ -170,6 +170,15 @@ try:
         },
     )
     child_key = ""
+    changed_token = call(
+        "PATCH",
+        f"/core/tokens/{CHILD_TOKEN}/",
+        {200},
+        {"description": "forbidden mutation"},
+    ).json()
+    if changed_token.get("description") != "forbidden mutation":
+        raise RuntimeError("self-issued token update did not persist")
+    call("DELETE", f"/core/tokens/{CHILD_TOKEN}/", {204})
     forbidden("GET", "/tasks/tasks/")
     forbidden("GET", "/events/events/export/")
 
