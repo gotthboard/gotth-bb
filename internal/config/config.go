@@ -26,6 +26,7 @@ type Config struct {
 	AuthentikControlObjectsFile  string
 	AuthentikControlSocket       string
 	InvitationFingerprintKeyFile string
+	SMTP                         SMTPConfig
 	BootstrapAdminSubject        string
 	RegistrationURL              url.URL
 	RegistrationEnabled          bool
@@ -160,6 +161,10 @@ func Load(lookup LookupEnv) (Config, error) {
 	if authentikControlObjectsFile == invitationFingerprintKeyFile {
 		return Config{}, fmt.Errorf("Authentik control objects and invitation fingerprint key files must differ")
 	}
+	smtp, err := loadSMTPConfig(lookup, environment)
+	if err != nil {
+		return Config{}, err
+	}
 	bootstrapAdminSubjectRaw, err := required("BOOTSTRAP_ADMIN_SUBJECT")
 	if err != nil {
 		return Config{}, err
@@ -255,6 +260,7 @@ func Load(lookup LookupEnv) (Config, error) {
 		AuthentikControlObjectsFile:  authentikControlObjectsFile,
 		AuthentikControlSocket:       authentikControlSocket,
 		InvitationFingerprintKeyFile: invitationFingerprintKeyFile,
+		SMTP:                         smtp,
 		BootstrapAdminSubject:        bootstrapAdminSubject,
 		RegistrationURL:              registrationURL,
 		RegistrationEnabled:          registrationEnabled,

@@ -12,6 +12,34 @@ WHERE forum_user.id = sqlc.arg(actor_user_id)
   AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= sqlc.arg(observed_at)::timestamptz)
 FOR UPDATE OF forum_user;
 
+-- name: UpsertPendingRegistrationIntake :one
+WITH admitted AS (
+    INSERT INTO public.pending_registrations (
+        authentik_user_id, authentik_subject, display_name, verified_email,
+        status, administration_revision, intake_at
+    )
+    VALUES (
+        sqlc.arg(authentik_user_id), sqlc.arg(authentik_subject),
+        sqlc.arg(display_name), sqlc.arg(verified_email),
+        'pending', 1, sqlc.arg(intake_at)
+    )
+    ON CONFLICT (authentik_subject) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        verified_email = EXCLUDED.verified_email
+    WHERE pending_registrations.authentik_user_id = EXCLUDED.authentik_user_id
+      AND pending_registrations.status = 'pending'
+    RETURNING true AS accepted
+)
+SELECT COALESCE(
+    (SELECT accepted FROM admitted),
+    EXISTS (
+        SELECT 1
+        FROM public.pending_registrations
+        WHERE pending_registrations.authentik_subject = sqlc.arg(authentik_subject)
+          AND pending_registrations.authentik_user_id = sqlc.arg(authentik_user_id)
+    )
+)::boolean AS accepted;
+
 -- name: LockPendingRegistration :one
 SELECT id, authentik_user_id, authentik_subject, status,
        administration_revision, transition_request_id,

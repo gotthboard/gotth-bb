@@ -231,8 +231,9 @@ Rules:
   unclean exit, only the host operator may remove a stale socket, after proving
   no gateway process owns it and that its device/inode still matches the
   inspected path; startup never guesses that an occupant is stale.
-- SMTP disabled is one exact configuration state with no host, username,
-  password, or sender. Enabled SMTP requires a canonical DNS name or numeric
+- SMTP disabled is one exact configuration state: all six required non-secret
+  `SMTP_*` values are present but empty and `SMTP_PASSWORD_FILE` is absent or
+  empty. It has no host, username, password, or sender. Enabled SMTP requires a canonical DNS name or numeric
   address, port 1–65535, bounded username/sender, timeout 1–30 seconds, and one
   closed TLS mode: `starttls`, `implicit_tls`, or `plain`. Production forbids
   `plain`. Password presence must match authenticated SMTP. Board and

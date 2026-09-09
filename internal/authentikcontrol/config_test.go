@@ -26,6 +26,10 @@ func TestLoadClosedDescriptorAndToken(t *testing.T) {
 	if len(secret.bytes) != 0 {
 		t.Fatal("secret not destroyed")
 	}
+	boardObjects, err := LoadObjects(objectsPath, "https://auth.example.test/application/o/gotth-bb/")
+	if err != nil || boardObjects != objects {
+		t.Fatalf("LoadObjects() = (%+v, %v)", boardObjects, err)
+	}
 }
 
 func TestLoadRejectsUnsafeInputs(t *testing.T) {

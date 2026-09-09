@@ -77,19 +77,28 @@ func Load(tokenPath, objectsPath, issuer string) (Secret, Objects, error) {
 		return Secret{}, Objects{}, fmt.Errorf("Authentik control token is invalid")
 	}
 	secret := Secret{bytes: tokenRaw}
-	objectsRaw, err := readImmutableFile(objectsPath, maximumObjectsBytes)
-	if err != nil || !utf8.Valid(objectsRaw) {
-		secret.destroy()
-		clear(objectsRaw)
-		return Secret{}, Objects{}, fmt.Errorf("Authentik control objects are invalid")
-	}
-	objects, err := decodeObjects(objectsRaw, issuer)
-	clear(objectsRaw)
+	objects, err := LoadObjects(objectsPath, issuer)
 	if err != nil {
 		secret.destroy()
 		return Secret{}, Objects{}, fmt.Errorf("Authentik control objects are invalid")
 	}
 	return secret, objects, nil
+}
+
+// LoadObjects descriptor-opens and validates the non-secret closed object
+// document without crossing the gateway-only token boundary.
+func LoadObjects(objectsPath, issuer string) (Objects, error) {
+	objectsRaw, err := readImmutableFile(objectsPath, maximumObjectsBytes)
+	if err != nil || !utf8.Valid(objectsRaw) {
+		clear(objectsRaw)
+		return Objects{}, fmt.Errorf("Authentik control objects are invalid")
+	}
+	objects, err := decodeObjects(objectsRaw, issuer)
+	clear(objectsRaw)
+	if err != nil {
+		return Objects{}, fmt.Errorf("Authentik control objects are invalid")
+	}
+	return objects, nil
 }
 
 func readImmutableFile(path string, maximum int64) ([]byte, error) {

@@ -297,3 +297,53 @@ func (q *Queries) RecordPendingRegistrationDecisionFailure(ctx context.Context, 
 	err := row.Scan(&i.Status, &i.AdministrationRevision, &i.AuditID)
 	return i, err
 }
+
+const upsertPendingRegistrationIntake = `-- name: UpsertPendingRegistrationIntake :one
+WITH admitted AS (
+    INSERT INTO public.pending_registrations (
+        authentik_user_id, authentik_subject, display_name, verified_email,
+        status, administration_revision, intake_at
+    )
+    VALUES (
+        $2, $1,
+        $3, $4,
+        'pending', 1, $5
+    )
+    ON CONFLICT (authentik_subject) DO UPDATE
+    SET display_name = EXCLUDED.display_name,
+        verified_email = EXCLUDED.verified_email
+    WHERE pending_registrations.authentik_user_id = EXCLUDED.authentik_user_id
+      AND pending_registrations.status = 'pending'
+    RETURNING true AS accepted
+)
+SELECT COALESCE(
+    (SELECT accepted FROM admitted),
+    EXISTS (
+        SELECT 1
+        FROM public.pending_registrations
+        WHERE pending_registrations.authentik_subject = $1
+          AND pending_registrations.authentik_user_id = $2
+    )
+)::boolean AS accepted
+`
+
+type UpsertPendingRegistrationIntakeParams struct {
+	AuthentikSubject pgtype.UUID
+	AuthentikUserID  int64
+	DisplayName      string
+	VerifiedEmail    string
+	IntakeAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertPendingRegistrationIntake(ctx context.Context, arg UpsertPendingRegistrationIntakeParams) (bool, error) {
+	row := q.db.QueryRow(ctx, upsertPendingRegistrationIntake,
+		arg.AuthentikSubject,
+		arg.AuthentikUserID,
+		arg.DisplayName,
+		arg.VerifiedEmail,
+		arg.IntakeAt,
+	)
+	var accepted bool
+	err := row.Scan(&accepted)
+	return accepted, err
+}

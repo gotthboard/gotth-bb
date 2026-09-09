@@ -30,6 +30,8 @@ state and read markers are explicit mutations but are not moderation audits.
 | `GET` | `/auth/revalidate` | existing local session | no | `no-store` | yes / OIDC attempt / no | login or bounded failure |
 | `POST` | `/logout` | current local session | yes | `no-store` | yes / session revoke / no | fixed recovery/error |
 | `GET` | `/register` | public only when operator gate is enabled | no | `no-store` | no / no / no | `404` while disabled |
+| `GET` | `/registration/admission/{mode}` | public exact current-mode probe | no | `no-store` | yes / no / no | empty `404`/`503` |
+| `POST` | `/registration/intake/approval` | exact Authentik-signed assertion | external signed assertion | `no-store` | yes / bounded idempotent pending intake / no | empty bounded grammar/`202`/`503` |
 | `GET` | `/setup` | designated current/revalidated member | no | `no-store` | yes / no / no | login/revalidate/closed result |
 | `POST` | `/setup/administrator` | designated current/revalidated member | yes | `no-store` | yes / role, session / yes | fixed closed/denied/error |
 | `GET` | `/rules` | public | no | `no-store` | yes / no / no | bounded `404`/`503` |
@@ -90,13 +92,9 @@ These are exact planned additions, deliberately kept out of the current
 machine-checked table until their production registrations exist. B1-09-03/04
 must add each route and its complete metadata to the table in the same commit
 as the implementation; route-inventory tests reject either an invented row or
-an unrecorded registration.
+an unrecorded registration. The two public B1-09-03 machine routes have moved
+into the table above because their production dispatch now exists.
 
-- `GET /registration/admission/{mode}` — public fixed empty allow/deny; no
-  session; settings read only; no-store.
-- `POST /registration/intake/approval` — Authentik-signed JWT, not browser
-  authority and therefore not browser CSRF; bounded idempotent pending insert;
-  fixed empty response.
 - `GET /admin/control` and `POST /admin/control` — current/revalidated
   administrator; settings read or revision-guarded audited update.
 - `GET /admin/registrations` plus

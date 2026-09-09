@@ -17,10 +17,12 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/discovery"
 	"github.com/gotthboard/gotth-bb/internal/governance"
 	"github.com/gotthboard/gotth-bb/internal/httpui"
+	"github.com/gotthboard/gotth-bb/internal/registration"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -371,6 +373,10 @@ func validAuthenticationFactory() authenticationFactory {
 	}
 }
 
+func validAuthentikObjectsFactory(string, string) (authentikcontrol.Objects, error) {
+	return authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{Approval: authentikcontrol.Object{UUID: "8d29e230-3485-4ee6-a741-ec089e510002"}}}, nil
+}
+
 type fakeAuthenticationService struct{}
 
 func (fakeAuthenticationService) BeginInitialLogin(context.Context, string) (string, string, error) {
@@ -396,6 +402,10 @@ func (fakeAuthenticationService) AuthenticateSession(context.Context, string) (a
 
 func (fakeAuthenticationService) RevokeSession(context.Context, string) (bool, error) {
 	return false, nil
+}
+
+func (fakeAuthenticationService) VerifyApprovalIntake(context.Context, string, string) (registration.Intake, error) {
+	return registration.Intake{}, errors.New("approval intake is not expected")
 }
 
 func (listener *notifyingListener) Accept() (net.Conn, error) {
@@ -434,7 +444,7 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	}
 	result := make(chan error, 1)
 	go func() {
-		result <- run(ctx, mapLookup(values), &logs, returnPool(pool), authentication, keyring, validAbuseFactory, func(string, string) (net.Listener, error) {
+		result <- run(ctx, mapLookup(values), &logs, returnPool(pool), authentication, keyring, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 			return wrapped, nil
 		})
 	}()
@@ -532,36 +542,36 @@ func TestRunRejectsInvalidDependenciesAndRedactsConfigFailure(t *testing.T) {
 	const secret = "do-not-expose-service-secret"
 	validPool := returnPool(&fakeDatabasePool{})
 	validAuthentication := validAuthenticationFactory()
-	if err := run(nil, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil {
+	if err := run(nil, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(nil, lookup, output) accepted nil context")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), nil, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), nil, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, nil) accepted nil output")
 	}
 	values := validEnvironment("127.0.0.1:8080")
 	values["OIDC_ISSUER_URL"] = "https://" + secret + "%zz.example.com/application/o/gotth-bb/"
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, nil); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, nil); err == nil {
 		t.Fatal("run(context, lookup, output, nil) accepted nil listener factory")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, nil, validAuthentication, validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, nil, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, output, nil, listener) accepted nil pool factory")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, nil, validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, nil, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, output, pool, nil, listener) accepted nil authentication factory")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, nil, validAbuseFactory, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, nil, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, output, pool, authentication, nil, listener) accepted nil cursor keyring factory")
 	}
-	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, nil, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, nil, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run(context, lookup, output, pool, authentication, keyring, nil, listener) accepted nil abuse factory")
 	}
-	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, net.Listen)
+	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() error = %v", err)
 	}
 	values = validEnvironment("127.0.0.1:8080")
 	values["DATABASE_URL"] = "postgres://" + secret + "%zz"
-	err = run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, net.Listen)
+	err = run(context.Background(), mapLookup(values), &bytes.Buffer{}, validPool, validAuthentication, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen)
 	if err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() database configuration error = %v", err)
 	}
@@ -576,7 +586,7 @@ func TestRunRejectsCursorKeyringFailureWithoutOpeningDatabaseOrLeakingCause(t *t
 	err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, func(context.Context, *pgxpool.Config) (databasePool, error) {
 		opened = true
 		return nil, errors.New("must not open")
-	}, validAuthenticationFactory(), failingKeyring, validAbuseFactory, net.Listen)
+	}, validAuthenticationFactory(), failingKeyring, validAbuseFactory, validAuthentikObjectsFactory, net.Listen)
 	if err == nil || !strings.Contains(err.Error(), "load activity cursor keyring failed") || strings.Contains(err.Error(), secret) || opened {
 		t.Fatalf("run() = (error %v, opened %t)", err, opened)
 	}
@@ -591,7 +601,7 @@ func TestRunRejectsAbusePolicyFailureWithoutOpeningDatabaseOrLeakingCause(t *tes
 	err := run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, func(context.Context, *pgxpool.Config) (databasePool, error) {
 		opened = true
 		return nil, errors.New("must not open")
-	}, validAuthenticationFactory(), validCursorKeyringFactory, failingAbuse, net.Listen)
+	}, validAuthenticationFactory(), validCursorKeyringFactory, failingAbuse, validAuthentikObjectsFactory, net.Listen)
 	if err == nil || !strings.Contains(err.Error(), "load abuse policy failed") || strings.Contains(err.Error(), secret) || opened {
 		t.Fatalf("run() = (error %v, opened %t)", err, opened)
 	}
@@ -602,7 +612,7 @@ func TestRunRejectsAbusePolicyFailureWithoutOpeningDatabaseOrLeakingCause(t *tes
 	err = run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, func(context.Context, *pgxpool.Config) (databasePool, error) {
 		opened = true
 		return nil, errors.New("must not open")
-	}, validAuthenticationFactory(), validCursorKeyringFactory, emptyAbuse, net.Listen)
+	}, validAuthenticationFactory(), validCursorKeyringFactory, emptyAbuse, validAuthentikObjectsFactory, net.Listen)
 	if err == nil || !strings.Contains(err.Error(), "load abuse policy failed") || opened {
 		t.Fatalf("run() empty limiter = (error %v, opened %t)", err, opened)
 	}
@@ -611,7 +621,7 @@ func TestRunRejectsAbusePolicyFailureWithoutOpeningDatabaseOrLeakingCause(t *tes
 func TestRunReportsListenFailure(t *testing.T) {
 	values := validEnvironment("127.0.0.1:8080")
 	pool := &fakeDatabasePool{}
-	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		return nil, errors.New("bind failed")
 	})
 	if err == nil || !strings.Contains(err.Error(), "listen for HTTP") {
@@ -628,20 +638,20 @@ func TestRunRejectsInvalidPoolResultsWithoutLeakingCause(t *testing.T) {
 	failed := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return nil, errors.New(secret)
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, failed, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, failed, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() pool-open error = %v", err)
 	}
 	empty := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return nil, nil
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, empty, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, empty, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil {
 		t.Fatal("run() accepted a nil database pool")
 	}
 	returned := &fakeDatabasePool{}
 	returnedWithError := func(context.Context, *pgxpool.Config) (databasePool, error) {
 		return returned, errors.New(secret)
 	}
-	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnedWithError, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
+	if err := run(context.Background(), mapLookup(values), &bytes.Buffer{}, returnedWithError, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); err == nil || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() pool-and-error result = %v", err)
 	}
 	if returned.closeCount() != 1 {
@@ -652,7 +662,7 @@ func TestRunRejectsInvalidPoolResultsWithoutLeakingCause(t *testing.T) {
 		cancel()
 		return nil, errors.New(secret)
 	}
-	if err := run(ctx, mapLookup(values), &bytes.Buffer{}, canceled, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, net.Listen); !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), secret) {
+	if err := run(ctx, mapLookup(values), &bytes.Buffer{}, canceled, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, net.Listen); !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), secret) {
 		t.Fatalf("run() canceled pool-open error = %v", err)
 	}
 }
@@ -685,7 +695,7 @@ func TestRunClosesPoolAndRedactsAuthenticationConstructionFailures(t *testing.T)
 			}
 			pool := &fakeDatabasePool{}
 			listened := false
-			err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), factory, validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+			err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), factory, validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 				listened = true
 				return nil, errors.New("must not listen")
 			})
@@ -707,7 +717,7 @@ func TestRunClosesPoolWhenStartupIsCanceledAfterOpen(t *testing.T) {
 		return pool, nil
 	}
 	listened := false
-	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, openAndCancel, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, openAndCancel, validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		listened = true
 		return nil, errors.New("must not listen")
 	})
@@ -723,7 +733,7 @@ func TestRunDoesNotBindAfterCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	called := false
-	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err := run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		called = true
 		return nil, errors.New("must not bind")
 	})
@@ -738,7 +748,7 @@ func TestRunClosesListenerWhenCanceledDuringBind(t *testing.T) {
 		t.Fatalf("net.Listen() returned error: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		cancel()
 		return listener, nil
 	})
@@ -757,7 +767,7 @@ func TestRunReportsListenerCloseFailureAfterCancellationDuringBind(t *testing.T)
 	}
 	defer func() { _ = listener.Close() }()
 	ctx, cancel := context.WithCancel(context.Background())
-	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err = run(ctx, mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(&fakeDatabasePool{}), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		cancel()
 		return &closeFailingListener{Listener: listener, err: errors.New("close failed")}, nil
 	})
@@ -775,7 +785,7 @@ func TestRunReturnsHTTPServeFailureAndClosesPool(t *testing.T) {
 		t.Fatalf("listener.Close() returned error: %v", err)
 	}
 	pool := &fakeDatabasePool{}
-	err = run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, func(string, string) (net.Listener, error) {
+	err = run(context.Background(), mapLookup(validEnvironment("127.0.0.1:8080")), &bytes.Buffer{}, returnPool(pool), validAuthenticationFactory(), validCursorKeyringFactory, validAbuseFactory, validAuthentikObjectsFactory, func(string, string) (net.Listener, error) {
 		return listener, nil
 	})
 	if err == nil || pool.closeCount() != 1 {
@@ -795,6 +805,12 @@ func validEnvironment(listenAddress string) map[string]string {
 		"AUTHENTIK_CONTROL_OBJECTS_FILE":  "/run/config/authentik-control-objects.json",
 		"AUTHENTIK_CONTROL_SOCKET":        "/run/gotth-bb-control/authentik-control.sock",
 		"INVITATION_FINGERPRINT_KEY_FILE": "/run/secrets/invitation-fingerprint-key",
+		"SMTP_HOST":                       "",
+		"SMTP_PORT":                       "",
+		"SMTP_USERNAME":                   "",
+		"SMTP_FROM":                       "",
+		"SMTP_TLS_MODE":                   "",
+		"SMTP_TIMEOUT":                    "",
 		"BOOTSTRAP_ADMIN_SUBJECT":         "subject-1",
 		"REGISTRATION_URL":                "http://127.0.0.1:9000/if/flow/gotth-bb-enrollment/",
 		"REGISTRATION_ENABLED":            "false",

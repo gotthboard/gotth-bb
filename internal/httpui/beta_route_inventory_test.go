@@ -27,6 +27,8 @@ func TestBetaRouteInventoryMatchesProductionRegistrations(t *testing.T) {
 		"GET /auth/revalidate",
 		"POST /logout",
 		"GET /register",
+		"GET /registration/admission/{mode}",
+		"POST /registration/intake/approval",
 		"GET /setup",
 		"POST /setup/administrator",
 	} {
@@ -106,7 +108,7 @@ func readBetaRouteInventory(t *testing.T, path string) map[string]struct{} {
 			default:
 				t.Fatalf("Beta route %s has unsupported method %q", pattern, method)
 			}
-			if method == "POST" && csrf != "yes" {
+			if method == "POST" && csrf != "yes" && !(pattern == "/registration/intake/approval" && csrf == "external signed assertion") {
 				t.Fatalf("Beta mutation %s %s is not recorded as CSRF-protected", method, pattern)
 			}
 			if method != "POST" && csrf != "no" {

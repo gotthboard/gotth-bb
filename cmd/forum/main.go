@@ -17,6 +17,7 @@ import (
 	administrationservice "github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/app"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
 	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/control"
@@ -28,6 +29,7 @@ import (
 	moderationservice "github.com/gotthboard/gotth-bb/internal/moderation"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/readiness"
+	registrationservice "github.com/gotthboard/gotth-bb/internal/registration"
 	siteservice "github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
@@ -49,6 +51,11 @@ type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
 type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
 type abuseFactory func(config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error)
+type authentikObjectsFactory func(string, string) (authentikcontrol.Objects, error)
+
+type approvalIntakeVerifier interface {
+	VerifyApprovalIntake(context.Context, string, string) (registrationservice.Intake, error)
+}
 
 // newLoggedInitialAdministratorClaimer preserves the exact claim result while
 // recording an operator-visible failure cause. It deliberately logs no user,
@@ -113,7 +120,7 @@ func main() {
 		}
 		limiter, err := policy.NewRequestLimiter(rand.Reader, time.Now)
 		return policy, limiter, err
-	}, net.Listen); err != nil {
+	}, authentikcontrol.LoadObjects, net.Listen); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "gotth-bb: %v\n", err)
 		os.Exit(1)
 	}
@@ -138,6 +145,7 @@ func run(
 	newAuthentication authenticationFactory,
 	loadCursorKeyring cursorKeyringFactory,
 	loadAbuse abuseFactory,
+	loadAuthentikObjects authentikObjectsFactory,
 	listen func(string, string) (net.Listener, error),
 ) error {
 	if ctx == nil {
@@ -157,6 +165,9 @@ func run(
 	}
 	if loadAbuse == nil {
 		return fmt.Errorf("abuse policy factory is required")
+	}
+	if loadAuthentikObjects == nil {
+		return fmt.Errorf("Authentik object loader is required")
 	}
 	if listen == nil {
 		return fmt.Errorf("service listener factory is required")
@@ -232,6 +243,14 @@ func run(
 	}
 	if authenticationService == nil {
 		return fmt.Errorf("construct authentication service returned no service")
+	}
+	approvalVerifier, ok := authenticationService.(approvalIntakeVerifier)
+	if !ok {
+		return fmt.Errorf("construct approval-intake verifier failed")
+	}
+	authentikObjects, err := loadAuthentikObjects(configured.AuthentikControlObjectsFile, configured.OIDCIssuerURL.String())
+	if err != nil {
+		return fmt.Errorf("load Authentik control objects failed")
 	}
 	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
@@ -412,6 +431,21 @@ func run(
 	)
 	if err != nil {
 		return fmt.Errorf("construct authenticated HTTP routes: %w", err)
+	}
+	applicationHandler, err = httpui.NewRegistrationControlHandler(applicationHandler, httpui.RegistrationControlHTTPServices{
+		LoadSettings: func(registrationContext context.Context) (control.Settings, error) {
+			return control.Load(registrationContext, queries, controlCeilings)
+		},
+		VerifyApproval: func(registrationContext context.Context, raw string) (registrationservice.Intake, error) {
+			return approvalVerifier.VerifyApprovalIntake(registrationContext, raw, authentikObjects.Flows.Approval.UUID)
+		},
+		AcceptApproval: func(registrationContext context.Context, intake registrationservice.Intake) error {
+			return registrationservice.AcceptIntake(registrationContext, queries, time.Now, intake)
+		},
+		SMTPConfigured: configured.SMTP.Configured(),
+	})
+	if err != nil {
+		return fmt.Errorf("construct registration control routes: %w", err)
 	}
 	applicationHandler, err = httpui.NewFooterLoadTimesHandler(applicationHandler, release.Version, time.Now)
 	if err != nil {

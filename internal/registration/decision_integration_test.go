@@ -13,6 +13,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/authentikgateway"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -55,6 +56,32 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	key := [32]byte{0x41}
 	baseTime := time.Date(2026, time.September, 9, 18, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return baseTime }
+	intakeSubject := "44444444-4444-4444-8444-444444444444"
+	intake := Intake{AuthentikUserID: 104, Subject: intakeSubject, Username: "intake", DisplayName: "Intake Member", VerifiedEmail: "intake@example.test"}
+	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err != nil {
+		t.Fatalf("accept intake: %v", err)
+	}
+	intake.DisplayName = "Refreshed Member"
+	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err != nil {
+		t.Fatalf("refresh pending intake: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.pending_registrations
+		SET status = 'rejected', decided_at = $1, deciding_administrator_id = $2
+		WHERE authentik_subject = $3`, baseTime, administratorID, intakeSubject); err != nil {
+		t.Fatalf("make intake terminal: %v", err)
+	}
+	intake.DisplayName = "Must Not Reopen"
+	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err != nil {
+		t.Fatalf("observe terminal intake: %v", err)
+	}
+	var terminalName, terminalStatus string
+	if err := connection.QueryRow(ctx, `SELECT display_name, status FROM public.pending_registrations WHERE authentik_subject = $1`, intakeSubject).Scan(&terminalName, &terminalStatus); err != nil || terminalName != "Refreshed Member" || terminalStatus != "rejected" {
+		t.Fatalf("terminal intake = (%q, %q, %v)", terminalName, terminalStatus, err)
+	}
+	intake.AuthentikUserID = 999
+	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err == nil {
+		t.Fatal("coordinate-conflicting intake accepted")
+	}
 
 	approveSubject := "11111111-1111-4111-8111-111111111111"
 	approveID := insertPendingRegistration(t, ctx, connection, 101, approveSubject, "Approve Me", "approve@example.test")
@@ -192,3 +219,11 @@ func assertRegistrationState(t *testing.T, ctx context.Context, connection *pgx.
 }
 
 var _ Gateway = (*recordingGateway)(nil)
+
+type pgxIntakeStore struct{ connection *pgx.Conn }
+
+func (store pgxIntakeStore) UpsertPendingRegistrationIntake(ctx context.Context, params db.UpsertPendingRegistrationIntakeParams) (bool, error) {
+	return db.New(store.connection).UpsertPendingRegistrationIntake(ctx, params)
+}
+
+var _ IntakeStore = pgxIntakeStore{}
