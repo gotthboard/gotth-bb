@@ -953,7 +953,7 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    Reconcile PRD, architecture, implementation specification, routes,
    verification, operations, traceability, and changelog. Pin Authentik 2026.5.2
    API/source behavior for expression-policy requests, flow bindings,
-   invitations, group membership, API tokens, tasks, and object permissions.
+   invitations, group membership, API tokens, and object permissions.
    Define exact database ownership, cross-system restrictive ordering,
    configuration ceilings, failure classes, migration/rollback, and route
    inventory. Two fresh cold reviews must be CLEAN before runtime work.
@@ -971,10 +971,10 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    reconciliation.** Add public admission/intake endpoints, mode-aware
    registration, bounded pending/invitation pages, approve/reject/create/revoke
    operations, restrictive cross-system state machines, integration with local
-   suspension/reinstatement, idempotency, audit redaction, and failure/retry
-   evidence.
+   suspension/reinstatement, pending-orphan adoption, idempotency, audit
+   redaction, and failure/retry evidence.
 5. **B1-09-04 — sessions, email, and complete administrator UI.** Add bounded
-   session projections and one/all revocation, aggregate Authentik task status,
+   session projections and one/all revocation, bounded Board email-test status,
    same-transport self-addressed email testing, complete settings/navigation,
    ordinary HTML/HTMX parity, no-JavaScript operation, responsive 320-pixel
    layout, keyboard/focus/status/error behavior, and fixed resource bounds.

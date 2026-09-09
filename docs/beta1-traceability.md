@@ -70,7 +70,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | B1-09-01/04 database, HTTP, and browser evidence | blocked |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | B1-09-03 Authentik/HTTP/browser evidence | blocked |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | B1-09-04 database/HTTP/security evidence | blocked |
-| `ADMIN-009` | B1-09 email capability, task status, and self-addressed test | B1-09-04 SMTP/Auth task/HTTP evidence | blocked |
+| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | B1-09-04 SMTP/HTTP evidence | blocked |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
 | `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |

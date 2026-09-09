@@ -112,7 +112,7 @@ claims never grant moderator, administrator, or area-access privileges.
   host-managed Board-control API token only when its Authentik service account
   cannot access the admin interface, cannot change users, flows, providers,
   applications, roles, or secrets, and has only the exact B1-09 read,
-  invitation, task-status, and Board-group membership permissions.
+  invitation and Board-group membership permissions.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
@@ -285,11 +285,11 @@ Requirements:
   session shall be exposed. Session-policy changes and revocations shall take
   effect on the next protected Board request and shall be audited.
 - **ADMIN-009:** Administrators shall see whether the shared Authentik email
-  path is configured and whether recent bounded email tasks succeeded or
-  failed, and may request one rate-limited test message to their own current
-  verified address. SMTP credentials, arbitrary-recipient relay, message body,
-  recipient address, and provider task logs shall not be exposed or persisted
-  by Board.
+  transport is configured and the bounded result of Board's most recent
+  self-addressed transport test, and may request one rate-limited test message
+  to their own current verified address. SMTP credentials,
+  arbitrary-recipient relay, message body, recipient address, and Authentik
+  task or event data shall not be exposed to Board or persisted by Board.
 
 ### 5.7 Experience and accessibility
 
@@ -784,11 +784,14 @@ into an identity provider or a host-management console:
    it does not grant application access. Invitation enrollment requires a
    flow-bound, expiring, single-use Authentik invitation and grants ordinary
    Board eligibility only. OIDC first login still creates only a local member.
+   An Authentik identity recorded as pending, approval-required, or rejected in
+   Board cannot receive a local session even if remote group state is briefly
+   or incorrectly permissive.
 3. A dedicated Authentik service account is provisioned from a separate
    root-owned secret. It has no admin-interface access and no permission to
    create/change/delete users, groups, flows, stages, policies, applications,
    providers, roles, tokens, or secrets. Its complete authority is global
-   read-user, invitation create/view/delete, task view, and object permissions
+   read-user, invitation create/view/delete, and object permissions
    to view and add/remove users on the three exact Board identity groups.
    Board hard-codes and verifies the issuer origin, flow and group identities,
    rejects redirects and oversized responses, and never accepts caller-owned
@@ -800,6 +803,9 @@ into an identity provider or a host-management console:
    and verifies identity-group access before clearing local denial. A failed or
    unknown cross-system step remains denied, records bounded reconciliation
    state, and is safely retryable; no distributed-transaction claim is made.
+   The pending page detects a bounded Authentik pending-group identity whose
+   signed intake was lost and permits only a one-identity, revalidated,
+   audited adoption into the local queue.
 5. The control singleton extends existing site settings with registration,
    maintenance, publication, and session-policy fields under one positive
    revision. Browser-adjustable values cannot exceed deployment ceilings.
@@ -811,12 +817,12 @@ into an identity provider or a host-management console:
    last-seen, last-validated, and expiry times plus a server-authenticated
    action handle; they may revoke one or all local sessions. Client address,
    user-agent data, token material, and Authentik sessions remain absent.
-7. Email administration exposes only configured/unconfigured state, bounded
-   aggregate Authentik task outcomes, and Board test results. A test is
+7. Email administration exposes only configured/unconfigured state and
+   bounded Board test results. A test is
    addressed solely to the requesting administrator's current verified email,
    uses the same host-managed SMTP transport configuration as Authentik, is
    rate limited, and reports accepted/failed/unknown honestly. Board neither
-   accepts an arbitrary recipient nor displays task logs.
+   accepts an arbitrary recipient nor requests Authentik task or event data.
 8. Every B1-09 page and mutation requires a current, revalidated,
    unsuspended local administrator; mutations require CSRF, an exact positive
    revision where state can conflict, and a bounded audit reason. Responses are
@@ -825,7 +831,8 @@ into an identity provider or a host-management console:
    allow/deny result and never private configuration.
 9. PostgreSQL and Authentik upgrades, clean install, mode-direct-URL denial,
    invitation and approval journeys, cross-system failure/retry, suspension,
-   session revocation, maintenance recovery, email task behavior, permission
+   session revocation, maintenance recovery, email transport behavior,
+   permission
    negatives, backup/restore, rollback, and exact live HTTPS/OIDC behavior pass
    before owner acceptance. Two fresh cold reviews must be CLEAN on the exact
    candidate before guarded delivery.

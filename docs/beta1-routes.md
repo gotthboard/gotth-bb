@@ -102,6 +102,8 @@ an unrecorded registration.
 - `GET /admin/registrations` plus
   `POST /admin/registrations/{registrationID}/approve` and `/reject` — bounded
   pending reads and one restrictive audited identity transition.
+- `POST /admin/registrations/{handle}/adopt` — re-fetch and adopt one exact
+  signed-handle Authentik pending-group orphan; no grant or generic selector.
 - `GET /admin/invitations`, `POST /admin/invitations`, and
   `POST /admin/invitations/{handle}/revoke` — bounded exact-flow invitation
   read/create/revoke; mutation forms are CSRF protected and audited.
@@ -111,7 +113,7 @@ an unrecorded registration.
   session view and one/all audited revocation.
 - `POST /admin/accounts/{userID}/identity/reconcile` — retry one restrictive
   Authentik group reconciliation; no generic remote selector.
-- `GET /admin/email` and `POST /admin/email/test` — bounded configured/task/test
+- `GET /admin/email` and `POST /admin/email/test` — bounded configured/test
   status and one rate-limited self-addressed test.
 
 Every B1-09 administrator POST uses the existing current-session,

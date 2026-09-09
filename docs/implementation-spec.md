@@ -2933,9 +2933,10 @@ file, trusted proxy, and every secret remain immutable startup/operator state.
 
 The migration creates `pending_registrations` with immutable Authentik numeric
 user ID and UUID subject, bounded display name and verified email snapshot,
-closed `pending|approved|rejected` status, positive revision, finite intake and
-decision timestamps, nullable deciding administrator, and one current bounded
-reconciliation class. UUID subject and numeric ID are independently unique.
+closed `pending|approval_required|rejection_required|approved|rejected` status,
+positive revision, finite intake and decision timestamps, nullable deciding
+administrator, one idempotency UUID, and one current bounded reconciliation
+class. UUID subject and numeric ID are independently unique.
 The intake path may insert once or return the existing row; it may refresh the
 bounded profile only while status remains pending and may never reopen a
 terminal row.
@@ -2948,8 +2949,22 @@ administrator with a server-generated idempotency UUID, closed status,
 finite request/completion times, and next-allowed time. It stores no address,
 subject, body, SMTP response, or task log.
 
-The audit action set adds `update_control_settings`, `approve_registration`,
-`reject_registration`, `create_invitation`, `revoke_invitation`,
+`registration_invitations` contains one local idempotency UUID and unique
+non-secret Authentik invitation name, closed
+`creating|active|revoke_required|revoked|unknown` transition state, closed
+`not_requested|queued|failed|unknown` delivery state, fixed flow identity,
+finite expiry and transition times, creator, positive revision, and a bounded
+failure class. It stores no invitation UUID/link, recipient digest, or plain
+recipient. The remote UUID remains bearer material: the client holds it
+only long enough to display the just-created link or perform the exact remote
+operation, then drops that buffer.
+
+The audit action set adds `update_control_settings`,
+`request_registration_approval`, `approve_registration`,
+`request_registration_rejection`, `reject_registration`,
+`adopt_pending_registration`,
+`request_create_invitation`, `create_invitation`,
+`request_revoke_invitation`, `revoke_invitation`,
 `reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`, and
 `test_email`. Audit objects contain closed modes, numeric policy values,
 digests or opaque action references, counts, and result classes only. Email,
@@ -2967,21 +2982,32 @@ cardinality, grant delta, settings ceilings, and closed values.
 
 The standalone blueprint owns three enrollment flows with distinct immutable
 slugs and UUIDs: open verified email, administrator approval, and invitation.
-All bind a first policy evaluation that calls the matching Board admission URL
-using the documented Authentik expression `requests` session. The source uses
-one fixed URL from blueprint environment, `GET`, `timeout=2`,
+All bind the matching Board admission policy both at flow entry and again
+immediately before the first irreversible user-write or invitation-consume
+stage. No permissive result is cached between bindings. Each evaluation calls
+the Board admission URL using the documented Authentik expression `requests`
+session. The source uses one fixed URL from blueprint environment, `GET`, `timeout=2`,
 `allow_redirects=False`, no caller headers/body, and returns true only for exact
 status 204 with empty body. Exceptions return false. Policy execution logging
 is disabled so no enrollment URL or decision becomes an unbounded event.
 
-The open flow writes the new external user into `gotth-bb-users`, verifies
-email, activates the user, and logs in. The approval flow writes into
-`gotth-bb-pending`, verifies and activates the Authentik identity, sends the
-signed intake, then redirects to Board's fixed pending page; it never joins the
-application access group. The invitation flow begins with an invitation stage
-whose `continue_flow_without_invitation` is false, accepts only invitations
-bound to that exact flow, writes into `gotth-bb-users`, verifies email, and
-logs in. All three create only external users under the fixed Board path.
+The open flow writes the new external user into `gotth-bb-users` while
+inactive, verifies email, activates the user, and logs in. The approval flow
+writes into `gotth-bb-pending` while inactive, verifies and activates the
+Authentik identity, sends the signed intake, then redirects to Board's fixed
+pending page; it never joins the application access group. The invitation flow uses an invitation-specific
+prompt stage whose email field is read-only after fixed invitation data is
+applied. Its invitation stage has `continue_flow_without_invitation=false`,
+accepts only invitations bound to that exact flow, and uses Authentik's actual
+2026.5.2 single-use behavior: the invitation is deleted when that stage accepts
+it, before later user-write/email stages finish. The second admission guard and
+the stage therefore follow prompt validation, preventing a token from being
+burned merely because its link was opened or after Board has closed admission.
+The UI states that a token is consumed on valid form submission and
+that an abandoned later flow requires administrator inspection/recovery rather
+than pretending successful enrollment is the deletion boundary. It then writes
+into `gotth-bb-users`, verifies email, and logs in. All three create only
+external users under the fixed Board path.
 
 `GET /registration/admission/{mode}` accepts only the three exact canonical
 mode slugs and no query. It performs no session lookup, accepts no forwarded
@@ -2993,9 +3019,10 @@ and required SMTP configured. Every other result is empty `404` or `503`,
 `POST /registration/intake/approval` accepts only `application/jwt`, no query,
 and at most 8 KiB. It is exempt from browser CSRF but not from the outer request
 limiter. Verification pins the Board provider algorithm and key, exact issuer,
-client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID, expiry
-no more than 60 seconds ahead, nonfuture issued time, positive Authentik user
-ID, canonical UUID subject, and bounded strict-UTF-8 profile claims. One
+client audience, `purpose=gotth-bb-approval-intake`, approval-flow UUID,
+canonical UUID `jti`, expiry no more than 60 seconds ahead, nonfuture issued
+time, positive Authentik user ID, canonical UUID subject, and bounded
+strict-UTF-8 profile claims. One
 timeout-bounded transaction inserts or idempotently observes the pending row.
 It returns a fixed empty status and never reveals whether an identity was new,
 duplicate, terminal, or malformed.
@@ -3012,50 +3039,104 @@ The blueprint creates a non-superuser `service_account` excluded from every
 Board application group, a role, and one non-expiring API token whose key comes
 from the separately mounted control-token secret. The role has exactly global
 `authentik_core.view_user`, `authentik_stages_invitation.add_invitation`,
-`view_invitation`, `delete_invitation`, and `authentik_tasks.view_task`.
+`view_invitation`, and `delete_invitation`.
 Object permissions grant only `view_group`, `add_user_to_group`, and
 `remove_user_from_group` on the exact accepted, pending, and suspended groups.
 It lacks `access_admin_interface` and every user/group/flow/stage/policy/
 provider/application/role/token change/delete/add permission not listed above.
 
+Global `view_user` is the one deliberately coarse permission. Authentik
+2026.5.2's atomic group `add_user`/`remove_user` actions resolve the target
+through the requester's `view_user` queryset. The apparent alternative is not
+narrower in practice: group PATCH requires `change_group`, submits the complete
+membership set, and can lose a concurrent membership update. The dedicated
+identity tenant, fixed UUID lookup, concrete client methods, response bounds,
+and negative permission matrix contain this unavoidable read authority.
+
 The Go client has concrete methods only for: retrieve a user by the pinned UUID
-filter; retrieve the three pinned groups; add/remove that exact user on one
-pinned group; create/list/retrieve/delete invitations forced to the invitation
-flow; send one invitation to its fixed recipient; and load aggregate task
-status. It uses a dedicated `http.Client` with two-second total timeout, no
+filter; list at most 51 users through the fixed pending-group filter; retrieve
+the three pinned groups; add/remove that exact user on one pinned group; and
+create/list/retrieve/delete invitations forced to the invitation flow. It has
+no Authentik email, task, event, or generic-object method. It uses
+a dedicated `http.Client` with two-second total timeout, no
 redirects, system TLS validation, fixed issuer-derived API origin, bounded JSON
 decoding, and response close/drain limits. Authorization is never logged.
 
-Approval locks the pending row and actor, rejects stale revision or nonpending
-state, records `grant_required`, calls add-user on accepted, reads back exact
-membership, removes pending, and only then commits `approved` plus audit. If
-remote work fails, the row remains pending/grant-required. If Board commit is
-unknown after a verified grant, the next retry reads both systems and completes
-idempotently without a second semantic grant.
+Approval never holds a PostgreSQL transaction or row lock across network I/O.
+A first transaction revalidates actor/revision, moves `pending` to
+`approval_required`, stores the request idempotency key, and appends
+`request_registration_approval`. The remote phase adds accepted membership,
+verifies it, and removes pending membership. A second transaction revalidates
+the same intent/key and commits `approved` plus `approve_registration`. If the
+remote phase fails, the row remains `approval_required`; if the second commit
+is unknown, retry reads both systems and completes idempotently. No competing
+reject can overtake that committed intent.
 
-Rejection first removes accepted and pending membership and verifies absence,
-then commits rejected plus audit. If remote denial cannot be verified, the row
-remains pending with a restrictive error and `/register` does not imply
-acceptance. No path deletes or deactivates the Authentik user.
+The OIDC callback checks `pending_registrations` by verified issuer/subject
+before creating a local account or session. `pending`, `approval_required`,
+`rejection_required`, and `rejected` all deny; only terminal `approved` may
+continue. This local gate closes the interval between a successful remote group
+grant and the approval completion transaction. An identity with no pending row
+follows the ordinary open/invitation JIT path.
+
+Rejection uses the same three-phase shape: commit `rejection_required` and its
+request audit; remove accepted and pending membership and verify both absent;
+then commit terminal `rejected` and its completion audit. Remote failure keeps
+the restrictive required state. No path deletes or deactivates the Authentik
+user, and no transaction waits on Authentik.
+
+The pending page renders local rows even when Authentik is unavailable. When it
+is available, a separate bounded section lists at most 51 exact pending-group
+users absent locally, with an overflow marker and an expiring signed adoption
+handle. `POST /admin/registrations/{handle}/adopt` re-fetches the exact user,
+verifies pending membership and accepted/suspended absence, then inserts or
+idempotently observes one pending row plus `adopt_pending_registration` in one
+short transaction. A GET never mutates and adoption never grants access.
 
 Suspension uses the existing local transaction first, including complete local
 session revocation and audit, and sets `removal_required`. A synchronous
-best-effort exact-group removal follows and may advance the sync state to
-`suspended`; local authorization remains denied regardless. Reinstatement
-requires successful accepted-group grant and readback before the existing
-governance-serialized local reinstatement commits. A failed or ambiguous grant
-leaves the user locally suspended. Reconciliation is one explicit POST using
-the same restrictive ordering, never an unbounded background loop.
+best-effort remote phase removes accepted/pending membership, adds suspended
+membership, verifies the three exact groups, then advances local sync state to
+`suspended` in a separate short transaction; local authorization remains denied
+regardless. Reinstatement records `grant_required` while retaining local
+suspension, then removes suspended/pending membership, grants and verifies
+accepted membership, and only afterward runs the existing governance-serialized
+local reinstatement/audit transaction. A failed or ambiguous grant leaves the
+user locally suspended. Reconciliation is one explicit POST using the same
+restrictive ordering, never an unbounded background loop or a transaction held
+open around HTTP.
 
 Invitations accept one validated email, expiry from 15 minutes through seven
-days, one optional bounded display name, and one reason. Board creates an exact
-flow-bound, single-use Authentik invitation with fixed prompt data, verifies the
-returned flow and fields, then optionally asks Authentik to email that one
-recipient. The page lists at most 51 current Board-flow invitations and exposes
-only name, expiry, sent/not-requested state, and a server-authenticated revoke
-handle. UUID tokens and raw links are shown exactly once after creation over a
-private no-store response and never logged or audited. Revocation deletes only
-the exact flow-bound invitation after a readback check.
+days, one optional bounded display name, one request idempotency key, and one
+reason. A short Board transaction reserves the unique invitation name in
+`creating` state and appends `request_create_invitation`, then closes before
+the remote call. Board creates an exact flow-bound, single-use Authentik
+invitation with fixed prompt data and verifies the returned flow/fields. When
+delivery is requested, Board sends the fixed invitation template itself through
+the same host-managed SMTP transport; it does not grant the Authentik token
+`change_invitation` merely to call the invitation email action. SMTP acceptance
+means `queued`, a definite pre-accept failure means `failed`, and an ambiguous
+post-DATA result means `unknown`; none is retried automatically. A second short
+transaction advances the local transition to `active`, stores only that closed
+delivery result, and appends `create_invitation` with the same redacted result.
+Creation failure/unknown leaves a reconcilable row. Retry with the same
+idempotency key and validated form values lists only the unique reserved name
+and adopts an exact remote match or refuses a mismatch; it never blindly
+creates a second invitation. Adoption of an already-existing remote object
+always records delivery `unknown` and never sends email, because the first
+request may already have crossed SMTP's acceptance boundary.
+
+The page lists at most 51 current local invitation operations, reconciled with
+at most 51 current Board-flow remote invitations, and exposes only name,
+expiry, closed delivery/transition state, and a server-authenticated revoke
+handle. A UUID token/raw link is eligible for one private no-store response only
+after the local `active` completion commits. An already-active retry never
+redisplays it; a crash may therefore lose the one response, but cannot turn
+Board into bearer-token storage. Links are never logged, audited, or persisted
+by Board. Revocation first commits `revoke_required` plus
+`request_revoke_invitation`, deletes only the exact-name/flow remote invitation
+and verifies absence, then commits `revoked` plus `revoke_invitation`. No
+PostgreSQL lock spans the remote call.
 
 ### 24.4 Control settings, maintenance, and publication policy
 
@@ -3104,10 +3185,13 @@ clears its cookie after commit. Zero-row and unknown-commit results are
 reported honestly and never retried automatically.
 
 Email configuration is loaded once from the shared host values and exposed as
-only `configured` or `disabled`. Authentik aggregate task status is projected
-to counts by closed state; task identity, actor, relation, description, logs,
-and messages are discarded before the view model. Failure or missing API
-authority renders status unavailable without exposing the token or response.
+only `configured` or `disabled`. The page shows only the requesting
+administrator's bounded `email_test_state`; it never calls Authentik's task or
+event APIs. Authentik's task-list representation includes log-bearing objects,
+so fetching and discarding those fields would still breach the intended data
+boundary. Enrollment-email worker health is therefore proved only by the
+operator's disposable-stack and deployment smoke journeys, not exposed through
+the browser control plane.
 
 An email test has no recipient field. It uses the requesting administrator's
 current verified local email snapshot, a server-generated idempotency UUID, and
@@ -3136,7 +3220,7 @@ TLS Authentik server proves exact paths, JSON, headers, redirects, timeouts,
 body limits, token redaction, object pinning, and permissions failures. A real
 disposable Authentik 2026.5.2 stack proves all modes by both Board and direct
 flow URLs, verified pending intake, approval/rejection/invitation, suspension/
-reinstatement, token negative permissions, task status, SMTP test, restart,
+reinstatement, token negative permissions, SMTP test, restart,
 dual-database backup/restore, and rollback/forward recovery.
 
 Migration 000013 has no down path. Before it commits, rollback is the exact

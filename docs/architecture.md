@@ -45,9 +45,9 @@ flowchart LR
     C -->|HTTP on loopback| I[Dedicated Authentik server]
     A -->|OIDC redirects and validation| I
     I -->|fixed fail-closed enrollment admission and signed pending intake| A
-    A -->|restricted API: invitations, task status, exact group membership| I
+    A -->|restricted API: invitations and exact group membership| I
     A -->|SQL| P[(Board PostgreSQL)]
-    I -->|SQL and task coordination| IP[(Authentik PostgreSQL)]
+    I -->|SQL and worker coordination| IP[(Authentik PostgreSQL)]
     IW[Authentik worker] --> IP
     A -->|structured logs| L[Journal/log collector]
     H[Operator] -->|deploy and migrate| A
@@ -117,20 +117,21 @@ This avoids the classic failure where a topic page is protected but search,
 counts, or an HTMX fragment leaks the same topic.
 
 Registration uses the same ownership rule. Board stores the effective closed
-mode. Each dedicated Authentik enrollment flow binds an expression policy that
-performs one fixed HTTPS GET to the corresponding public Board admission path,
-with a two-second timeout, redirects disabled, and success defined only as an
-empty `204`. Board outage, database uncertainty, another status, a redirect,
-or malformed state denies the flow. The endpoint accepts no body, identity,
-URL, or object selector and returns no policy detail. This is a read-only
-availability dependency, not an administrative callback.
+mode. Each dedicated Authentik enrollment flow evaluates the matching policy at
+entry and again immediately before its first irreversible stage. Each
+evaluation performs one fixed HTTPS GET to the corresponding public Board
+admission path, with a two-second timeout, redirects disabled, and success
+defined only as an empty `204`. Board outage, database uncertainty, another
+status, a redirect, or malformed state denies the flow. The endpoint accepts no
+body, identity, URL, or object selector and returns no policy detail. This is a
+read-only availability dependency, not an administrative callback.
 
 Approval enrollment performs a second fixed HTTPS POST only after Authentik
 email verification. It carries one at-most-60-second JWT made by the dedicated
 Board OIDC provider and containing exact issuer, audience, purpose, flow,
 numeric Authentik user key, immutable user UUID, and bounded display/email
-claims. Board verifies the provider algorithm/key, issuer, audience, purpose,
-flow, expiry, and body size before an idempotent insert. Replays cannot reopen
+claims plus a unique `jti`. Board verifies the provider algorithm/key, issuer,
+audience, purpose, flow, `jti`, expiry, and body size before an idempotent insert. Replays cannot reopen
 a rejected or completed registration. No unsigned identity input becomes a
 pending account.
 
@@ -139,11 +140,16 @@ hard-coded to the configured issuer origin and exact blueprint-provided object
 identities. It rejects redirects, cross-origin locations, oversized bodies,
 unknown JSON fields where the local projection requires closure, and ambiguous
 timeouts. The token belongs to a service account without admin-interface
-access. Global authority is limited to read-user, invitation create/view/delete,
-and task view; object authority is limited to view plus add/remove user on the
+access. Global authority is limited to read-user and invitation
+create/view/delete; object authority is limited to view plus add/remove user on the
 exact accepted, pending, and suspended Board groups. The client exposes no
 generic method accepting a URL, HTTP verb, model name, or caller-owned object
 identifier.
+
+The OIDC callback also consults Board's pending state before issuing a local
+session. Every non-approved pending state denies even if Authentik group state
+is briefly permissive; an identity with no pending row follows ordinary
+open/invitation JIT creation.
 
 Cross-database access is forbidden. Board never connects to Authentik
 PostgreSQL, and Authentik never connects to Board PostgreSQL. The signed intake,
@@ -386,9 +392,13 @@ identity access, or content history.
   policy, and session-policy values constrained by deployment ceilings.
 - `pending_registrations`: bounded Authentik identity coordinates and closed
   pending/approved/rejected state, with no password or token material.
-- `identity_reconciliations`: one current restrictive cross-system transition
-  state per affected identity; it is operational truth, not an audit substitute.
-- `email_test_attempts`: bounded idempotency/rate/status state for tests sent
+- `registration_invitations`: one bounded local operation/idempotency record
+  per requested invitation, with closed transition/delivery state and no remote
+  invitation UUID/link or plain recipient.
+- `users.authentik_sync_state` and the pending-registration transition columns:
+  one current restrictive cross-system state per affected identity; this is
+  operational truth, not an audit substitute.
+- `email_test_state`: bounded idempotency/rate/status state for tests sent
   only to the requesting administrator's current verified address; no address
   or body is stored.
 - `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order,
@@ -494,11 +504,18 @@ silently break referential or audit integrity.
   deployment ceilings and positive revision, update the closed mode, and append
   one audit event. Authentik flow admission reads that committed row directly;
   there is no asynchronously copied permissive mode.
-- Approval: lock the pending row and actor, record a restrictive applying
-  state, add and verify exact Authentik accepted-group membership, then commit
-  approved state and one audit. Failure never fabricates approval. Rejection
-  commits terminal denial locally and removes pending/accepted group access
-  before it can be reported complete.
+- Approval/rejection: a short first Board transaction locks the pending row,
+  records one restrictive intent plus request audit/idempotency key, and
+  commits. Authentik group work and readback then run without any PostgreSQL
+  transaction or lock. A short second Board transaction verifies the same
+  intent/key and records the terminal state plus completion audit. Failure
+  leaves a retryable restrictive intent; it never fabricates completion or
+  lets a competing transition overtake the committed intent.
+- Pending-intake recovery: the administrator page may list at most 51 users
+  through an exact pending-group filter. An expiring server-authenticated
+  handle selects one projected identity for a POST which re-fetches and
+  revalidates exact pending membership before an idempotent local insert. A GET
+  never repairs state, and an Authentik outage does not hide already-local rows.
 - Suspension: commit the existing local suspension and all-session revocation
   first; Authentik accepted-group removal follows as a recorded reconciliation.
   Local denial remains authoritative during failure. Reinstatement reverses the
@@ -508,10 +525,15 @@ silently break referential or audit integrity.
   session or target account, set finite revocation time, and append one audit in
   the same Board transaction. A server-authenticated action handle, not a raw
   cookie or hash, selects a single session.
+- Invitation create/revoke uses the same local-intent, remote-call, local-
+  completion phases and a unique non-secret remote object name. Retry adopts
+  only an exact matching remote object; a mismatch blocks. The invitation UUID
+  and link remain ephemeral bearer material rather than Board database state.
 - Email test: reserve one idempotency/rate slot in Board before the external
-  call, queue through Authentik, and store only queued/observed/failed/unknown
-  state plus finite timestamps. Unknown delivery is never retried
-  automatically because SMTP may already have accepted the message.
+  call, send through the same host-managed SMTP transport as Authentik, and
+  store only accepted/failed/unknown state plus finite timestamps. Unknown is
+  never retried automatically because SMTP may already have accepted the
+  message.
 
 Report-detail reads prove current persisted staff authority in both the detail
 and notes queries. The notes query returns an explicit authorized empty

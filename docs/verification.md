@@ -1407,28 +1407,28 @@ second apply. For each open, approval, invitation, closed, maintenance, Board
 outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
 admission result. Expression requests use fixed method/URL/timeout and emit no
-credential or profile data.
+credential or profile data. A mode change between flow entry and the first
+irreversible stage is denied by the second fresh policy evaluation.
 
 The service-token matrix must positively prove only:
 
 - one exact user lookup and exact group read;
 - add/remove user on accepted, pending, and suspended groups;
-- create/read/delete one invitation bound to the invitation flow;
-- send that invitation to its one fixed recipient; and
-- aggregate task-status read.
+- create/read/delete one invitation bound to the invitation flow.
 
 It must receive `403` or equivalent denial for admin-interface access,
 user create/change/delete/password/recovery, arbitrary group create/change/
 delete, membership on a non-Board group, flow/stage/policy/application/provider/
-role/token/secret mutation, task retry, event/log export, and impersonation.
+role/token/secret mutation, invitation `send_email`, task list/status/retry,
+event/log export, and impersonation.
 The control token, invitation UUID/link, email, user UUID/numeric key, and
 remote bodies are absent from retained commands, logs, screenshots, and Git.
 
 ### 24.3 Registration, approval, invitation, and reconciliation
 
 - Signed-intake tests cover algorithm/key, issuer, audience, purpose, flow,
-  issued/expiry bounds, numeric ID, UUID, body/content-type/query, UTF-8/profile
-  limits, replay, terminal replay, concurrent first intake, and database
+  `jti`, issued/expiry bounds, numeric ID, UUID, body/content-type/query,
+  UTF-8/profile limits, replay, terminal replay, concurrent first intake, and database
   failure. Invalid cases perform no pending write and return the fixed class.
 - Real-browser journeys prove open enrollment verifies email and yields only a
   local member; approval enrollment verifies into pending with no OIDC Board
@@ -1438,15 +1438,27 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
 - Approval/rejection tests inject failure before/after every Authentik call,
   membership readback, Board state transition, audit, and commit. Concurrent
   approve/reject/retry requests converge to one terminal state without granting
-  a rejected identity.
+  a rejected identity. Lock observation proves no PostgreSQL transaction spans
+  an Authentik request. OIDC callback tests prove every non-approved local
+  pending state denies session creation even while the accepted group is
+  deliberately permissive.
+- Pending-orphan tests lose the signed intake after Authentik commits, retain
+  local rows during Authentik outage, bound the remote section and overflow,
+  reject forged/stale/cross-group handles, and adopt exactly one re-fetched
+  pending-only identity without granting access.
 - Suspension tests prove local denial and all-session revocation commit before
   Authentik removal; an Authentik outage cannot restore Board access.
   Reinstatement cannot clear local denial until accepted-group membership is
   verified. Reconciliation is idempotent and operates on only one identity.
 - Invitation tests cover email/name/expiry bounds, exact flow/single-use/fixed
-  data, 51-row continuation, one-time link display, signed revoke handles,
-  remote mismatch, send failure/unknown, revocation, audit redaction, and no
-  arbitrary-recipient test-mail path.
+  read-only email data, prompt-before-consume ordering, Authentik 2026.5.2's
+  consumption-at-stage behavior, 51-row continuation, one-time link display,
+  signed revoke handles, local-intent/remote/completion failures, exact-name
+  adoption using the retry's validated form values, remote mismatch, Board SMTP
+  queued/failure/unknown results, no send while adopting an existing object,
+  no resend after ambiguity, revocation, audit
+  redaction, no PostgreSQL lock across HTTP, and no arbitrary-recipient
+  test-mail path.
 
 ### 24.4 Sessions, email, UI, and integrated delivery
 
@@ -1460,8 +1472,9 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
   with hostname verification, authentication failure, timeout before DATA,
   disconnect after DATA, accepted result, per-admin rate/idempotency, absent
   verified address, and fixed self-addressed content. Board persists/logs no
-  recipient, SMTP transcript, or message body. Authentik task aggregation
-  discards all task/log detail and fails closed on API error.
+  recipient, SMTP transcript, or message body. Board never requests Authentik
+  task or event data; disposable-stack and deployment smoke prove the actual
+  Authentik enrollment-email worker path outside the browser control plane.
 - Every added page passes exact route/query/body/CSRF/revalidation/cache/status
   tests, ordinary HTML and HTMX parity, base paths empty and `/bb`, JavaScript
   absent, keyboard order/focus/status/error semantics, automated accessibility,
