@@ -962,12 +962,16 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    runtime grants/readiness, typed registration/maintenance/publication/session
    settings, revision/audit transitions, dynamic publication/session reads,
    maintenance recovery behavior, and focused PostgreSQL/concurrency tests.
-3. **B1-09-02 — Authentik enrollment and restricted client.** Extend the
+3. **B1-09-02 — Authentik enrollment and isolated control gateway.** Extend the
    deterministic blueprint with three guarded flows, pending/accepted/suspended
    groups, signed approval intake, the non-admin service account/token, and the
-   exact permission set. Add descriptor-safe token/object configuration and the
-   fixed-origin, fixed-operation bounded Go API client. Prove all positive and
-   forbidden API operations against a disposable Authentik 2026.5.2 instance.
+   exact enforceable permission set. Add an isolated Unix-socket gateway that
+   alone holds the descriptor-safe token, verifies the Board peer UID, exposes
+   only the closed Board protocol, and uses the fixed-origin, fixed-operation
+   bounded Go API client. Prove all positive and forbidden API operations plus
+   the upstream invitation `send_email` excess against a disposable Authentik
+   2026.5.2 instance, then prove the gateway makes that excess unreachable from
+   Board.
 4. **B1-09-03 — registration, approval, invitation, and suspension
    reconciliation.** Add public admission/intake endpoints, mode-aware
    registration, bounded pending/invitation pages, approve/reject/create/revoke

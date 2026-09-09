@@ -115,8 +115,10 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `OIDC_ISSUER_URL` | Yes | Exact Authentik issuer |
 | `OIDC_CLIENT_ID` | Yes | OIDC client identifier |
 | `OIDC_CLIENT_SECRET` | Yes in production | Confidential-client secret |
-| `AUTHENTIK_CONTROL_TOKEN_FILE` | Yes after B1-09 | Absolute path to the dedicated non-admin Authentik API-token secret |
-| `AUTHENTIK_CONTROL_OBJECTS_FILE` | Yes after B1-09 | Absolute path to exact non-secret Board flow/group UUIDs and slugs emitted by blueprint admission |
+| `AUTHENTIK_CONTROL_TOKEN_FILE` | Gateway only after B1-09 | Absolute path to the dedicated non-admin Authentik API-token secret; never mounted into Board |
+| `AUTHENTIK_CONTROL_OBJECTS_FILE` | Board and gateway after B1-09 | Absolute path to exact non-secret Board flow/group UUIDs and slugs emitted by blueprint admission |
+| `AUTHENTIK_CONTROL_SOCKET` | Board and gateway after B1-09 | Exact absolute Unix-socket path beneath the root-provisioned control-socket directory |
+| `INVITATION_FINGERPRINT_KEY_FILE` | Board only after B1-09 | Independent 256-bit key used solely for local invitation-request fingerprints |
 | `SMTP_PASSWORD_FILE` | When SMTP authentication is configured after B1-09 | Absolute path to the SMTP password shared with Authentik |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, `SMTP_TLS_MODE`, `SMTP_TIMEOUT` | Yes after B1-09 | Non-secret SMTP transport settings identical to Authentik's effective global email configuration; an exact disabled sentinel is allowed only while registration stays closed |
 | `ACTIVITY_CURSOR_KEYRING_FILE` | Yes after AN-02 | Absolute path to the read-only cursor-keyring secret |
@@ -205,7 +207,18 @@ Rules:
 - `AUTHENTIK_CONTROL_TOKEN_FILE` follows the secret-file framing used by the
   OIDC client secret: absolute clean path, `O_CLOEXEC|O_NOFOLLOW`, regular-file
   `fstat`, maximum 4,096 bytes plus EOF, strict UTF-8, exactly one nonblank
-  line, owned immutable memory, and no formatting/logging/template method.
+  line, owned immutable memory, and no formatting/logging/template method. It
+  is accepted only by the gateway executable and is never present in Board's
+  mount table, environment, memory, diagnostics, or backup of Board-local
+  configuration. `INVITATION_FINGERPRINT_KEY_FILE` uses the same descriptor
+  discipline, requires exactly 32 raw bytes, and is mounted only into Board.
+- `AUTHENTIK_CONTROL_SOCKET` is an absolute clean path ending in
+  `authentik-control.sock`. Its parent is a root-created bind directory owned
+  `65533:65532` mode `0750`. The gateway runs as `65533:65532`, creates the socket
+  at startup with mode `0660`, fails closed if any entry already occupies the
+  final path, removes only the exact inode it created on clean shutdown, and
+  accepts only Linux `SO_PEERCRED` UID `65532`. Board mounts that directory
+  read-only, cannot replace the socket, and never falls back to TCP.
 - SMTP disabled is one exact configuration state with no host, username,
   password, or sender. Enabled SMTP requires a canonical DNS name or numeric
   address, port 1–65535, bounded username/sender, timeout 1–30 seconds, and one
@@ -2965,10 +2978,12 @@ non-secret Authentik invitation name, closed
 finite expiry and transition times, creator, positive revision, one HMAC
 request fingerprint, and a bounded failure class. The fingerprint covers the
 canonical recipient, expiry, display name, and delivery choice under the
-separate `gotth-bb/invitation-request/v1` domain derived from the control token.
-It stores no invitation UUID/link or plain recipient. The remote UUID remains bearer material: the client holds it
-only long enough to display the just-created link or perform the exact remote
-operation, then drops that buffer.
+separate `gotth-bb/invitation-request/v1` domain keyed by the independent
+Board-only invitation-fingerprint secret. It is never derived from the raw
+Authentik control token.
+It stores no invitation UUID/link or plain recipient. The remote UUID remains
+bearer material: the gateway and Board hold it only long enough to display the
+just-created link or perform the exact remote operation, then drop that buffer.
 
 The audit action set adds `update_control_settings`,
 `request_registration_approval`, `approve_registration`,
@@ -3093,11 +3108,13 @@ No browser input supplies the flow, authority, or return location. The
 invitation link contains the Authentik invitation UUID and is generated only by
 the administrator workflow.
 
-### 24.3 Restricted Authentik client and identity transitions
+### 24.3 Isolated Authentik control gateway and identity transitions
 
 The blueprint creates a non-superuser `service_account` excluded from every
 Board application group, a role, and one non-expiring API token whose key comes
-from the separately mounted control-token secret. The role has exactly global
+from the separately mounted control-token secret. That secret is mounted only
+into the authoritative Authentik bootstrap process and the isolated control
+gateway, never the Board application. The role has exactly global
 `authentik_core.view_user` and
 `authentik_stages_invitation.add_invitation`. One Authentik
 `InitialPermissions` object assigns `view_invitation` and `delete_invitation`
@@ -3119,7 +3136,16 @@ flow-scoped by Authentik. The Board-only identity tenant contains that create
 blast radius; the concrete client supplies only the pinned invitation flow, and
 creator-scoped initial permissions prevent global read/delete after creation.
 
-The Go client has concrete methods only for: retrieve a user by the pinned UUID
+Authentik 2026.5.2 does not enforce a distinct permission on the invitation
+`send_email` action. Creator-scoped `view_invitation` is sufficient to send to
+an arbitrary address, while removing that view permission also removes the
+retrieve/list/delete operations needed for reconciliation. The raw service
+token therefore has one documented excess capability that Authentik cannot
+remove. Board does not receive the token. A separate non-network-listening
+gateway holds it and exposes no email operation, so neither Board nor a browser
+request can exercise that upstream capability.
+
+The gateway's outbound Go client has concrete methods only for: retrieve a user by the pinned UUID
 filter; list at most 51 users through the fixed pending-group filter; retrieve
 the three pinned groups; add/remove that exact user on one pinned group; and
 create/list/retrieve/delete invitations forced to the invitation flow. It has
@@ -3127,6 +3153,48 @@ no Authentik email, task, event, or generic-object method. It uses
 a dedicated `http.Client` with two-second total timeout, no
 redirects, system TLS validation, fixed issuer-derived API origin, bounded JSON
 decoding, and response close/drain limits. Authorization is never logged.
+
+Board connects to the gateway only through the exact absolute
+`AUTHENTIK_CONTROL_SOCKET`. The root-provisioned socket directory is owned by
+`65533:65532` at mode `0750`; the gateway runs as `65533:65532`, binds a mode
+`0660` Unix socket owned by `65533:65532`, and rejects any accepted connection
+whose Linux `SO_PEERCRED` UID is not the Board runtime UID `65532`. Startup
+fails if the final path already exists; it never unlinks an incumbent path.
+Board mounts the directory read-only and has no permission to replace the
+server socket.
+The gateway has no TCP listener, no Board database or SMTP access, and no
+generic proxy. Its versioned HTTP-over-Unix route set is exactly:
+
+- `GET /v1/users/{canonical-uuid}`;
+- `GET /v1/pending-users`;
+- `GET /v1/groups`;
+- `POST /v1/groups/{accepted|pending|suspended}/{add|remove}` with one canonical
+  user UUID body;
+- `POST /v1/invitations`, `GET /v1/invitations`, and
+  `GET|DELETE /v1/invitations/{canonical-uuid}`; and
+- `GET /health/live` for Board-side readiness.
+
+Unknown paths, methods, names, fields, query parameters, oversized bodies, and
+noncanonical UUIDs fail before an Authentik call. The gateway resolves numeric
+user keys and every group/flow identity internally from the attested object
+file. Board has no raw token file descriptor, environment value, mount, or
+fallback TCP configuration.
+
+The local protocol accepts HTTP/1.1 only. Requests carry no query, cookies,
+forwarded headers, caller authority, or caller-selected content type. Routes
+with a body require exact `application/json`, at most 8 KiB, one strict JSON
+object, no duplicate/unknown fields, and EOF. Membership carries only
+`user_uuid`; invitation create carries only the already-validated bounded
+`name`, RFC 3339 `expires`, canonical `email`, and optional bounded
+`display_name`. Responses are closed local projections rather than raw
+Authentik JSON and are capped at 256 KiB. Success is `200` for reads, `201` for
+invitation create, and empty `204` for health/membership/delete. Failures use
+only `400 invalid_request`, `404 absent`, `409 remote_conflict`,
+`502 remote_invalid`, or `503 remote_unavailable`; no Authentik body, URL,
+numeric key, token, exception, or profile value appears in an error. Board's
+Unix client has a 2.5-second total timeout, never follows redirects, and never
+retries a mutation. The gateway admits at most eight concurrent Authentik
+calls; excess work receives `503` without an outbound call.
 
 Approval never holds a PostgreSQL transaction or row lock across network I/O.
 A first transaction revalidates actor/revision, moves `pending` to
@@ -3336,8 +3404,9 @@ dual-database backup/restore, and rollback/forward recovery.
 Migration 000013 has no down path. Before it commits, rollback is the exact
 Beta.1.5 artifact and both verified databases. After it commits, older binaries
 fail exact-head readiness; recovery is current artifact/forward repair or a
-verified dual-database pre-000013 restore. The control token and object file are
-backed up as protected configuration but never enter Git or evidence. B1-09
+verified dual-database pre-000013 restore. The control token, independent
+invitation-fingerprint key, object file, and socket-directory ownership/mode
+are backed up as protected configuration but never enter Git or evidence. B1-09
 requires two fresh CLEAN reviews on one exact commit before guarded merge,
 package, tag, deployment, smoke, and owner physical acceptance. It stops before
 B1-10 and RC.1.

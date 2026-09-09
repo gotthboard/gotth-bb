@@ -5,6 +5,24 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Contain Authentik's invitation email permission defect
+
+Commit: current commit; hash assigned by Git after commit
+
+A disposable Authentik 2026.5.2 tenant proved that creator-scoped invitation
+view permission also authorizes the invitation `send_email` action for an
+arbitrary recipient. Authentik exposes no separate permission for the action,
+and removing view also removes the retrieve/list/delete operations required for
+bounded invitation reconciliation. The earlier claim that the raw token could
+be permissioned without mail-relay authority was therefore false.
+
+B1-09 now isolates that raw token in a non-network-listening local gateway.
+Board connects only over a mode-protected Unix socket whose accepted peer UID is
+verified. The gateway exposes a closed versioned set of exact user, Board-group,
+and invitation operations and implements no email or generic proxy surface.
+Board receives a separate invitation-fingerprint key and never receives the raw
+Authentik token. The live Beta.1.5 deployment is unchanged.
+
 ### 2026-09-09 — Add B1-09 database-backed control settings
 
 Commit: current commit; hash assigned by Git after commit

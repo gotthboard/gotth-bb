@@ -1442,14 +1442,29 @@ groups, and the pinned invitation flow. The disposable-tenant test demonstrates
 that raw global user read and invitation create are broader than these client
 methods; that blast radius must not be hidden in a fake permission claim.
 
+The disposable-tenant matrix must also record Authentik 2026.5.2's actual
+excess capability: creator-scoped `view_invitation` permits `send_email` to an
+arbitrary address because the action performs no separate permission check.
+This is an expected upstream `204`, not a fabricated denial. Removing view
+permission must prove that retrieve/list/delete become unusable, documenting
+why permission subtraction cannot satisfy the required reconciliation surface.
+The Board-to-gateway contract test then proves the containment boundary: Board
+has no control-token mount or file descriptor, only the expected Board UID can
+connect, every route and method outside the closed Unix protocol is rejected,
+the gateway-owned directory is not writable by Board, the Board client rejects
+non-Unix configuration, local request/response/concurrency bounds hold, and no
+email/origin/path/generic Authentik operation exists.
+
 It must receive `403` or equivalent denial for admin-interface access,
 user create/change/delete/password/recovery, arbitrary group create/change/
 delete, membership on a non-Board group, flow/stage/policy/application/provider/
-role/token/secret mutation, read/delete of a pre-existing or other-account
-invitation, invitation `send_email`, task list/status/retry, event/log export,
+role/token/secret mutation, read/delete/send-email of a pre-existing or
+other-account invitation, task list/status/retry, event/log export,
 and impersonation.
-The control token, invitation UUID/link, email, user UUID/numeric key, and
-remote bodies are absent from retained commands, logs, screenshots, and Git.
+The control token, invitation-fingerprint key, invitation UUID/link, email, user
+UUID/numeric key, and remote bodies are absent from retained commands, logs,
+screenshots, and Git. The raw control token is also absent from the Board
+container's mounts, environment, and open descriptors.
 
 ### 24.3 Registration, approval, invitation, and reconciliation
 

@@ -341,16 +341,20 @@ Secret handling requirements:
   mounted at `/run/config/gotth-bb-abuse-rules`; only that container path is
   configured as `ABUSE_RULES_FILE`. Record its SHA-256 and the seven exact rate
   values without copying rule contents into deployment logs or evidence.
-- B1-09 mounts the Authentik control token and optional SMTP password as
+- B1-09 mounts the Authentik control token only into the isolated control
+  gateway and authoritative Authentik bootstrap process, never Board. The
+  optional SMTP password and independent invitation-fingerprint key are
   separate Compose secrets. Its non-secret control-object JSON is a root-owned
-  read-only bind generated only after the blueprint's exact UUID/slug
-  attestation. Neither file is passed on a process argument, copied into an
-  image, or rendered by `docker compose config`.
-- The application derives invitation request fingerprints from the control
-  token under a fixed separate HMAC domain. Control-token rotation is blocked
+  read-only bind shared by Board and the gateway only after exact UUID/slug
+  attestation. No secret is passed on a process argument, copied into an image,
+  rendered by `docker compose config`, or exposed in the Board container.
+- The application derives invitation request fingerprints from the independent
+  256-bit Board-only fingerprint key under a fixed HMAC domain. Control-token
+  rotation is blocked
   while any invitation create operation remains `creating` or `unknown`;
   reconcile it to a terminal/active state first, then rotate the Authentik token
-  and application secret as one stopped-writer change.
+  and gateway secret mount as one stopped-writer change. The independent
+  invitation-fingerprint key does not rotate with the Authentik token.
 
 ### 8.1 AN-05 abuse-policy update
 
@@ -958,9 +962,13 @@ Proceed in this order:
    Before migration, prove every existing local external identity is represented
    in the dedicated accepted group; any mismatch blocks rather than poisoning
    the sync-state backfill.
-2. Generate a new independent 256-bit control token into a root-owned mode-0600
-   file; prepare the non-secret SMTP values and optional separate password
-   secret. Never reuse the OIDC client, Authentik bootstrap, or superuser token.
+2. Generate a new independent 256-bit control token and a distinct 256-bit
+   invitation-fingerprint key into separate root-owned protected files. Prepare
+   the non-secret SMTP values, optional separate password secret, and a
+   gateway-owned `65533:65532` mode-0750 socket directory that Board mounts
+   read-only. Never reuse the OIDC client,
+   Authentik bootstrap, superuser token, or either B1-09 secret for another
+   purpose.
 3. On a clean task-owned standalone stack, apply the B1-09 blueprint twice,
    emit and validate the exact control-object JSON, run the complete permission
    positive/negative matrix, and prove all registration and email journeys.
@@ -969,11 +977,16 @@ Proceed in this order:
    restores before any live schema or blueprint mutation.
 5. Stop the live Board writer. Apply migration 000013 and runtime grants while
    registration remains closed. Apply the Authentik blueprint using the new
-   control token, validate exact objects/permissions, install the control-object
-   file, and render the complete Compose configuration without secret values.
-6. Start only the candidate Board application. Require readiness head 000013,
-   ceiling equality, control-object identity, Authentik API permission probes,
-   and closed registration before enabling any other mode.
+   control token, validate exact objects/permissions including the documented
+   raw-token `send_email` excess, install the control-object file, and render the
+   complete Compose configuration without secret values. Prove Board has no
+   control-token mount, environment value, or descriptor.
+6. Start the isolated gateway first and require its Unix socket owner, group,
+   mode, gateway-owned non-Board-writable directory, peer-UID rejection, closed
+   route surface, request/concurrency bounds, and Authentik probe. Then
+   start the candidate Board application. Require readiness head 000013,
+   ceiling equality, control-object identity, gateway-only API probes, and
+   closed registration before enabling any other mode.
 7. Run the B1-09 smoke matrix with disposable identities/content. Restore the
    exact pre-smoke control settings and keep registration closed unless the
    owner separately chooses another live mode. A test email goes only to the

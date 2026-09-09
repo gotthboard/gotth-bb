@@ -138,26 +138,41 @@ user coordinates. Replays cannot reopen
 a rejected or completed registration. No unsigned identity input becomes a
 pending account.
 
-Board's outbound Authentik client reads one root-owned API-token secret and is
-hard-coded to the configured issuer origin and exact blueprint-provided object
-identities. It rejects redirects, cross-origin locations, oversized bodies,
-unknown JSON fields where the local projection requires closure, and ambiguous
-timeouts. The token belongs to a service account without admin-interface
-access. Global authority is limited to read-user and invitation create.
-Authentik initial-permission rules assign view/delete only on invitations that
-service account creates; group object authority is limited to view plus
-add/remove user on the exact accepted, pending, and suspended Board groups. The client exposes no
-generic method accepting a URL, HTTP verb, model name, or caller-owned object
-identifier.
+An isolated Authentik control gateway, not Board, reads the root-owned API-token
+secret. The gateway has no TCP listener and accepts requests only over a
+host-root-provisioned Unix socket. At accept time it verifies the peer UID is
+the dedicated Board runtime UID. The gateway owns the directory while the
+Board runtime group receives traverse/read but no write permission; Board
+therefore cannot replace the server socket. The socket mode independently
+denies other non-root processes. Its server routes are a closed versioned set for
+one exact user UUID, one bounded pending-group page, the three named Board-group
+membership transitions, and flow-bound invitation create/list/retrieve/delete.
+There is no generic proxy, caller-provided origin, HTTP verb, Authentik path,
+numeric user key, group UUID, or invitation flow.
+
+The gateway's outbound Authentik client is hard-coded to the configured issuer
+origin and exact blueprint-provided object identities. It rejects redirects,
+cross-origin locations, oversized bodies, unknown JSON fields where the local
+projection requires closure, and ambiguous timeouts. The token belongs to a
+service account without admin-interface access. Authentik-enforced global
+authority is limited to read-user and invitation create. Creator-scoped rules
+assign view/delete only on invitations the account creates; group object
+authority is limited to view plus add/remove user on the exact accepted,
+pending, and suspended Board groups. Authentik 2026.5.2's invitation
+`send_email` action omits an independent permission check and therefore rides
+on `view_invitation`; pretending the raw token lacks that capability is false.
+The gateway never implements or forwards that action, so the Board process and
+its browser surface cannot exercise the upstream excess capability.
 
 The OIDC callback also consults Board's pending state before issuing a local
 session. Every non-approved pending state denies even if Authentik group state
 is briefly permissive; an identity with no pending row follows ordinary
 open/invitation JIT creation.
 
-Cross-database access is forbidden. Board never connects to Authentik
+Cross-database access is forbidden. Board and the gateway never connect to Authentik
 PostgreSQL, and Authentik never connects to Board PostgreSQL. The signed intake,
-read-only admission endpoint, and restricted HTTP API are the complete
+read-only admission endpoint, filesystem-protected local gateway, and restricted
+outbound Authentik API are the complete
 cross-system mechanisms.
 
 ### 3.5 Repository boundary

@@ -109,10 +109,13 @@ claims never grant moderator, administrator, or area-access privileges.
   the configured maximum session-validation interval.
 - **ID-009:** The forum shall not store passwords, recovery codes, or a general
   Authentik administrator credential. A dedicated deployment may supply one
-  host-managed Board-control API token only when its Authentik service account
-  cannot access the admin interface, cannot change users, flows, providers,
-  applications, roles, or secrets, and has only the exact B1-09 read,
-  invitation and Board-group membership permissions.
+  host-managed Board-control API token only to an isolated local control
+  gateway. The Board process shall never receive that token. The Authentik
+  service account cannot access the admin interface or change users, flows,
+  providers, applications, roles, tokens, or secrets. The gateway exposes only
+  the exact B1-09 user-read, invitation, and Board-group membership operations
+  over a filesystem-protected Unix socket and rejects every generic or
+  arbitrary-recipient operation.
 - **ID-010:** A fresh deployment may expose one first-run administrator claim
   only to the freshly reauthenticated local account whose verified issuer and
   subject match the immutable deployment configuration. The claim shall be
@@ -792,15 +795,22 @@ into an identity provider or a host-management console:
    Board cannot receive a local session even if remote group state is briefly
    or incorrectly permissive.
 3. A dedicated Authentik service account is provisioned from a separate
-   root-owned secret. It has no admin-interface access and no permission to
+   root-owned secret mounted only into an isolated control gateway and the
+   authoritative Authentik bootstrap process. Board receives neither the raw
+   token nor a generic HTTP proxy. The service account has no admin-interface access and no permission to
    create/change/delete users, groups, flows, stages, policies, applications,
-   providers, roles, tokens, or secrets. Its complete authority is global
-   read-user and invitation create, per-object view/delete permission assigned
-   only to invitations that account creates, and object permissions to view
-   and add/remove users on the three exact Board identity groups.
-   Board hard-codes and verifies the issuer origin, flow and group identities,
-   rejects redirects and oversized responses, and never accepts caller-owned
-   Authentik URLs or object identifiers.
+   providers, roles, tokens, or secrets. Its explicit permission grants are
+   global read-user and invitation create, per-object view/delete permission
+   assigned only to invitations that account creates, and object permissions
+   to view and add/remove users on the three exact Board identity groups. Its
+   effective authority additionally includes the inseparable action below. Authentik
+   2026.5.2 incorrectly permits its invitation `send_email` action to any
+   principal that can view that invitation; there is no separate permission to
+   revoke. The gateway contains that upstream excess authority: it listens on
+   no TCP socket, authenticates the Board peer from Unix credentials, hard-codes
+   and verifies the issuer origin plus flow/group identities, rejects redirects
+   and oversized responses, and implements no email, generic URL/method, or
+   caller-selected Authentik-object operation beyond the admitted identities.
 4. Approval/rejection and local suspension/reinstatement use explicit
    restrictive ordering. Granting access must succeed and be read back before
    Board marks approval complete. Suspension commits local denial and session
