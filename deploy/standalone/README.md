@@ -40,8 +40,10 @@ replaces itself. Docker image/configuration metadata retains no secret value.
 Set `GOTTH_BB_COMPOSE_ENV_FILE` to the absolute deployment-environment path.
 Run the root-only preflight before starting anything. It rejects mismatched
 public/OIDC origins, overlapping durable paths, incorrect numeric ownership or
-modes, secret framing, mutable Board image naming, and an invalid Compose
-render:
+modes, secret framing, listener collisions, mutable Board image naming, a local
+image ID or release-label mismatch, and an invalid Compose render. Record the
+exact `sha256:` image ID printed by packaged `build-image.sh` in
+`GOTTH_BB_IMAGE_ID`; a matching-looking mutable tag is not custody:
 
 ```sh
 sudo deploy/standalone/preflight.sh "$GOTTH_BB_COMPOSE_ENV_FILE"
@@ -94,9 +96,12 @@ deploy/postgresql/backup-logical.sh \
   gotth-bb-standalone-authentik-postgresql-1 /absolute/backup/authentik.dump
 ```
 
-Prove each archive against a fresh matching-major container. Board restore uses
-the default PostgreSQL 17 contract; Authentik's pinned Alpine database uses the
-explicit PostgreSQL 16 contract:
+Prove each archive against a fresh matching-major container initialized with
+the original database name and owning role. Board requires database `gotth_bb`
+owned by `gotth_bb_migrate`; Authentik requires database `authentik` owned by
+`authentik`. `--no-privileges` deliberately does not erase ownership. Board
+restore uses the default PostgreSQL 17 contract; Authentik's pinned Alpine
+database uses the explicit PostgreSQL 16 contract:
 
 ```sh
 deploy/postgresql/restore-logical.sh clean-board-postgresql /absolute/backup/board.dump

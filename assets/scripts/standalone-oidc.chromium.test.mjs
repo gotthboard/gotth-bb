@@ -169,5 +169,5 @@ test("dedicated Authentik completes one Board OIDC login", async (t) => {
   await waitFor(send, sessionId, `location.origin === ${JSON.stringify(directOrigin)} && document.readyState === 'complete' && !location.pathname.startsWith('/auth/callback')`);
   const cookies = await send("Network.getAllCookies", {}, sessionId);
   assert(cookies.cookies.some((cookie) => cookie.name === "gotth_bb_session"), "Board session cookie is absent after OIDC callback");
-  console.log(`OIDC_LOGIN user=${JSON.stringify(username)} callback_replayed_direct=true session_cookie=true`);
+  console.log("OIDC_LOGIN callback_replayed_direct=true session_cookie=true");
 });

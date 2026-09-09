@@ -8,6 +8,7 @@ fail() {
 
 [ "$(id -u)" -eq 0 ] || fail "run as root"
 [ "$#" -eq 1 ] || fail "expected one absolute deployment.env path"
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 deployment_env=$1
 case "$deployment_env" in /*) ;; *) fail "deployment.env path is not absolute" ;; esac
 [ -f "$deployment_env" ] && [ ! -L "$deployment_env" ] || fail "deployment.env is not a regular non-symlink file"
@@ -19,7 +20,7 @@ set -a
 . "$deployment_env"
 set +a
 
-required_variables='GOTTH_BB_IMAGE GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_AUTH_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_BIND GOTTH_BB_CADDY_CLIENT_ADDRESS GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE'
+required_variables='GOTTH_BB_IMAGE GOTTH_BB_IMAGE_ID GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_AUTH_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_BIND GOTTH_BB_CADDY_CLIENT_ADDRESS GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE'
 for name in $required_variables; do
 	eval "value=\${$name-}"
 	[ -n "$value" ] || fail "$name is required"
@@ -29,21 +30,39 @@ done
 [ "$GOTTH_BB_PUBLIC_BASE_URL" != "$GOTTH_BB_AUTH_PUBLIC_BASE_URL" ] || fail "Board and Authentik public origins must differ"
 
 case "$GOTTH_BB_CADDY_BIND" in 0.0.0.0 | 127.0.0.1) ;; *) fail "Caddy bind must be 0.0.0.0 or 127.0.0.1" ;; esac
+caddy_board_port=
+caddy_auth_port=
+edge_port() {
+	address=$1
+	authority=$2
+	label=$3
+	case "$authority" in '' | *[/:?#]*) fail "$label public origin authority is invalid for edge-fed deployment" ;; esac
+	prefix=http://$authority:
+	case "$address" in "$prefix"*) port=${address#"$prefix"} ;; *) fail "edge-fed $label Caddy address differs from its public origin" ;; esac
+	case "$port" in '' | *[!0-9]*) fail "edge-fed $label Caddy port is invalid" ;; esac
+	[ "$port" -ge 1024 ] && [ "$port" -le 65535 ] || fail "edge-fed $label Caddy port is outside 1024..65535"
+	printf %s "$port"
+}
 case "$GOTTH_BB_CADDY_BIND:$GOTTH_BB_PUBLIC_BASE_URL:$GOTTH_BB_AUTH_PUBLIC_BASE_URL" in
 	0.0.0.0:https://*:https://*)
 		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{remote_host}' ] || fail "direct Caddy must derive client identity from its peer"
 		[ "$GOTTH_BB_BOARD_HOST" = "${GOTTH_BB_PUBLIC_BASE_URL#https://}" ] || fail "direct Board Caddy address differs from its public origin"
 		[ "$GOTTH_BB_AUTH_HOST" = "${GOTTH_BB_AUTH_PUBLIC_BASE_URL#https://}" ] || fail "direct Authentik Caddy address differs from its public origin"
+		for host in "$GOTTH_BB_BOARD_HOST" "$GOTTH_BB_AUTH_HOST"; do
+			case "$host" in *[/:?#]*) fail "direct Caddy hosts must use standard HTTPS ports and bare hostnames" ;; esac
+		done
 		;;
 	127.0.0.1:https://*:https://*)
 		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{http.request.header.X-Forwarded-For}' ] || fail "edge-fed Caddy must consume the edge canonical client identity"
-		case "$GOTTH_BB_BOARD_HOST" in http://"${GOTTH_BB_PUBLIC_BASE_URL#https://}":[0-9]*) ;; *) fail "edge-fed Board Caddy address differs from its public origin" ;; esac
-		case "$GOTTH_BB_AUTH_HOST" in http://"${GOTTH_BB_AUTH_PUBLIC_BASE_URL#https://}":[0-9]*) ;; *) fail "edge-fed Authentik Caddy address differs from its public origin" ;; esac
+		caddy_board_port=$(edge_port "$GOTTH_BB_BOARD_HOST" "${GOTTH_BB_PUBLIC_BASE_URL#https://}" Board)
+		caddy_auth_port=$(edge_port "$GOTTH_BB_AUTH_HOST" "${GOTTH_BB_AUTH_PUBLIC_BASE_URL#https://}" Authentik)
 		;;
 	127.0.0.1:http://127.0.0.1:*:http://127.0.0.1:*)
 		[ "$GOTTH_BB_CADDY_CLIENT_ADDRESS" = '{remote_host}' ] || fail "loopback-test Caddy must derive client identity from its peer"
 		[ "$GOTTH_BB_BOARD_HOST" = "$GOTTH_BB_PUBLIC_BASE_URL" ] || fail "test Board Caddy address differs from its public origin"
 		[ "$GOTTH_BB_AUTH_HOST" = "$GOTTH_BB_AUTH_PUBLIC_BASE_URL" ] || fail "test Authentik Caddy address differs from its public origin"
+		caddy_board_port=${GOTTH_BB_BOARD_HOST##*:}
+		caddy_auth_port=${GOTTH_BB_AUTH_HOST##*:}
 		;;
 	*) fail "Caddy bind and public origins are not an admitted direct, edge-fed, or loopback-test tuple" ;;
 esac
@@ -53,21 +72,37 @@ GOTTH_BB_AUTH_HTTP_PORT=${GOTTH_BB_AUTH_HTTP_PORT:-19000}
 GOTTH_BB_POSTGRES_PORT=${GOTTH_BB_POSTGRES_PORT:-55435}
 GOTTH_BB_CADDY_ADMIN=${GOTTH_BB_CADDY_ADMIN:-127.0.0.1:2019}
 case "$GOTTH_BB_CADDY_ADMIN" in 127.0.0.1:*) caddy_admin_port=${GOTTH_BB_CADDY_ADMIN##*:} ;; *) fail "Caddy admin binding is not loopback" ;; esac
-for binding in "$GOTTH_BB_APP_HTTP_PORT" "$GOTTH_BB_AUTH_HTTP_PORT" "$GOTTH_BB_POSTGRES_PORT" "$caddy_admin_port"; do
+seen_ports=' '
+for binding in "$GOTTH_BB_APP_HTTP_PORT" "$GOTTH_BB_AUTH_HTTP_PORT" "$GOTTH_BB_POSTGRES_PORT" "$caddy_admin_port" $caddy_board_port $caddy_auth_port; do
 	case "$binding" in '' | *[!0-9]*) fail "loopback service port is invalid" ;; esac
 	[ "$binding" -ge 1024 ] && [ "$binding" -le 65535 ] || fail "loopback service port is outside 1024..65535"
+	case "$seen_ports" in *" $binding "*) fail "loopback service ports overlap" ;; esac
+	seen_ports=$seen_ports$binding' '
 done
-[ "$GOTTH_BB_APP_HTTP_PORT" != "$GOTTH_BB_AUTH_HTTP_PORT" ] &&
-	[ "$GOTTH_BB_APP_HTTP_PORT" != "$GOTTH_BB_POSTGRES_PORT" ] &&
-	[ "$GOTTH_BB_AUTH_HTTP_PORT" != "$GOTTH_BB_POSTGRES_PORT" ] &&
-	[ "$caddy_admin_port" != "$GOTTH_BB_APP_HTTP_PORT" ] &&
-	[ "$caddy_admin_port" != "$GOTTH_BB_AUTH_HTTP_PORT" ] &&
-	[ "$caddy_admin_port" != "$GOTTH_BB_POSTGRES_PORT" ] || fail "loopback service ports overlap"
 
 case "$GOTTH_BB_IMAGE" in
 	gotth-bb:*-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]*) ;;
 	*) fail "Board image must carry a release and commit identity" ;;
 esac
+case "$GOTTH_BB_IMAGE_ID" in sha256:*) image_digest=${GOTTH_BB_IMAGE_ID#sha256:} ;; *) fail "Board image ID is invalid" ;; esac
+[ "${#image_digest}" -eq 64 ] || fail "Board image ID is invalid"
+case "$image_digest" in *[!0-9a-f]*) fail "Board image ID is invalid" ;; esac
+
+release_file=$script_dir/../../RELEASE.txt
+[ -f "$release_file" ] && [ ! -L "$release_file" ] || fail "packaged RELEASE.txt is unavailable"
+release_value() {
+	name=$1
+	value=$(sed -n "s/^$name=//p" "$release_file")
+	[ -n "$value" ] && [ "$(printf %s "$value" | wc -l)" -eq 0 ] || fail "RELEASE.txt $name is invalid"
+	[ "$(grep -c "^$name=" "$release_file")" -eq 1 ] || fail "RELEASE.txt $name is not unique"
+	printf %s "$value"
+}
+release_version=$(release_value version)
+release_commit=$(release_value commit)
+release_short_commit=$(printf %.7s "$release_commit")
+[ "$GOTTH_BB_IMAGE" = "gotth-bb:$release_version-$release_short_commit" ] || fail "Board image tag differs from the release package"
+image_metadata=$(docker image inspect --format '{{.Id}}|{{index .Config.Labels "org.opencontainers.image.version"}}|{{index .Config.Labels "org.opencontainers.image.revision"}}' "$GOTTH_BB_IMAGE" 2>/dev/null) || fail "Board image is unavailable"
+[ "$image_metadata" = "$GOTTH_BB_IMAGE_ID|$release_version|$release_commit" ] || fail "Board image identity differs from the release package"
 
 check_path() {
 	path=$1
@@ -165,6 +200,5 @@ case "${APP_ENV-}:$expected_public" in
 	*) fail "APP_ENV and public URL are not an admitted production or loopback-test pair" ;;
 esac
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 docker compose --env-file "$deployment_env" --project-directory "$script_dir" -f "$script_dir/compose.yml" config --quiet
 echo STANDALONE_PREFLIGHT_OK
