@@ -291,7 +291,9 @@ Requirements:
   self-addressed transport test, and may request one rate-limited test message
   to their own current verified address. SMTP credentials,
   arbitrary-recipient relay, message body, recipient address, and Authentik
-  task or event data shall not be exposed to Board or persisted by Board.
+  task or event data shall not appear in email-administration responses, logs,
+  or audit, or be duplicated into email-test state beyond the existing verified
+  address on the local account.
 
 ### 5.7 Experience and accessibility
 

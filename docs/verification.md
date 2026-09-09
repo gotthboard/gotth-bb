@@ -1413,11 +1413,13 @@ outage, database outage, timeout, redirect, non-204, and oversized-response
 case, both `/register` and the direct `/if/flow/.../` URL produce the same
 admission result. Expression requests use fixed method/URL/timeout and emit no
 credential or profile data. Mode changes before user creation/invitation
-consumption or before a restored email stage activates the user and assigns a
-Board group are denied by a fresh policy evaluation; no result is reused.
-Blueprint/source evidence pins `evaluate_on_plan=true` and
-`re_evaluate_policies=true`, and a restored-flow test proves re-evaluation
-occurs rather than trusting the original plan result.
+consumption or before post-email Board-group assignment execute the conditional
+Deny stage; no result is reused. Blueprint/source evidence pins the guard's
+deny-predicate return values and `evaluate_on_plan=false`,
+`re_evaluate_policies=true`, `negate=false`, `failure_result=true` binding.
+Tests inject false allow, true deny, caught network failure, and uncaught policy
+engine failure at every guard and prove `stage_invalid` cancels the plan without
+skipping forward into any critical stage.
 
 The raw service-token capability matrix must positively prove exactly the
 authority Authentik can enforce:

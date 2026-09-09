@@ -3007,27 +3007,28 @@ cardinality, grant delta, settings ceilings, and closed values.
 
 The standalone blueprint owns three enrollment flows with distinct immutable
 slugs and UUIDs: open verified email, administrator approval, and invitation.
-All bind the matching Board admission policy at flow entry, immediately before
-the first irreversible user-write or invitation-consume stage, and on every
-email-stage execution, including a restored verification link, before that
-stage activates the user and before assignment to a Board group.
-No permissive result is cached between bindings. Each evaluation calls
-the Board admission URL using the documented Authentik expression `requests`
-session. The source uses one fixed URL from blueprint environment, `GET`, `timeout=2`,
-`allow_redirects=False`, no caller headers/body, and returns true only for exact
-status 204 with empty body. Exceptions return false. Policy execution logging
-is disabled so no enrollment URL or decision becomes an unbounded event. The
-prompt, user-write/invitation, and email stage bindings set
-`evaluate_on_plan=true` and `re_evaluate_policies=true`; Authentik 2026.5.2
-therefore checks during planning and again when each marked stage is presented,
-including a restored email-verification request.
+Each flow contains the same conditional Deny stage at entry, immediately before
+the first irreversible user-write or invitation-consume stage, and after the
+email stage but before accepted/pending group assignment. Its expression uses
+the documented Authentik `requests` session and one fixed blueprint URL with
+`GET`, `timeout=2`, `allow_redirects=False`, and no caller headers/body. The
+policy is deliberately a deny predicate: it returns false only for exact empty
+`204` and true for every other response or caught exception. Its stage binding
+sets `evaluate_on_plan=false`, `re_evaluate_policies=true`, `negate=false`, and
+`failure_result=true`. Authentik therefore always places the guard in the plan,
+re-evaluates without cache when reached, removes it only on the false allow
+result, and executes the Deny stage on policy-engine failure or a true deny
+result. Deny-stage execution calls `stage_invalid` and cancels the plan. The
+prompt, invitation, user-write, email, group-assignment, and login stages have
+no admission policy that could remove them on failure. Policy execution logging
+is disabled.
 
 The open flow first creates an inactive external user with no Board group,
-rechecks admission when the email link resumes, verifies and activates the
-user, assigns `gotth-bb-users`, and logs in. The approval flow likewise creates
-an inactive ungrouped user, rechecks admission when email verification resumes,
-verifies/activates, assigns `gotth-bb-pending`, sends the signed intake, then redirects to Board's fixed pending
-page; it never joins the application access group. The invitation flow uses an
+verifies and activates the user, reaches the still-planned post-email guard,
+assigns `gotth-bb-users`, and logs in. The approval flow likewise creates an
+inactive ungrouped user, verifies/activates, passes the post-email guard,
+assigns `gotth-bb-pending`, sends the signed intake, then redirects to Board's
+fixed pending page; it never joins the application access group. The invitation flow uses an
 invitation-specific prompt stage whose email field is read-only after fixed
 invitation data is applied. Its invitation stage has
 `continue_flow_without_invitation=false`,
@@ -3039,18 +3040,23 @@ burned merely because its link was opened or after Board has closed admission.
 The UI states that a token is consumed on valid form submission and that an
 abandoned later flow requires administrator inspection/recovery rather than
 pretending successful enrollment is the deletion boundary. It creates the
-inactive ungrouped user, rechecks admission when email verification resumes,
-verifies/activates, then assigns `gotth-bb-users` and logs in. Thus accepted and pending membership
+inactive ungrouped user, verifies/activates, passes the still-planned post-email
+guard, then assigns
+`gotth-bb-users` and logs in. Thus accepted and pending membership
 always means the flow completed email verification; abandoned unverified
 identities remain ungrouped and cannot appear in Board's pending recovery list.
 All three create only external users under the fixed Board path.
 
-The approval intake expression uses Authentik's documented
-`ak_create_jwt_raw` with the fixed Board provider and supplies every required
-claim explicitly. It POSTs only to the fixed Board intake URL with exact
-`Content-Type: application/jwt`, a two-second timeout, redirects disabled, no
-cookies, and success only for empty `202`; every exception or other response
-halts that flow stage. Expression logging is disabled.
+The approval intake uses a second conditional Deny stage after pending-group
+assignment. Its expression uses Authentik's documented `ak_create_jwt_raw` with
+the fixed Board provider and supplies every required claim explicitly. It POSTs
+only to the fixed Board intake URL with exact `Content-Type: application/jwt`,
+a two-second timeout, redirects disabled, and no cookies. This deny predicate
+returns false only for empty `202` and true for every other response or caught
+exception; the binding also has `failure_result=true`. Success removes the
+Deny stage and continues to the pending page. Failure executes it and cancels
+the flow, leaving a verified pending-group orphan for bounded Board adoption.
+Expression logging is disabled.
 
 `GET /registration/admission/{mode}` accepts only the three exact canonical
 mode slugs and no query. It performs no session lookup, accepts no forwarded

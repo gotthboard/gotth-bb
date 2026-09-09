@@ -117,15 +117,16 @@ This avoids the classic failure where a topic page is protected but search,
 counts, or an HTMX fragment leaks the same topic.
 
 Registration uses the same ownership rule. Board stores the effective closed
-mode. Each dedicated Authentik enrollment flow evaluates the matching policy at
-entry, immediately before its first irreversible stage, and after email
-verification is resumed but before activation/group assignment. Each
-evaluation performs one fixed HTTPS GET to the corresponding public Board
-admission path, with a two-second timeout, redirects disabled, and success
-defined only as an empty `204`. Board outage, database uncertainty, another
-status, a redirect, or malformed state denies the flow. The endpoint accepts no
-body, identity, URL, or object selector and returns no policy detail. This is a
-read-only availability dependency, not an administrative callback.
+mode. Each dedicated Authentik enrollment flow contains a conditional Deny
+stage at entry, immediately before its first irreversible stage, and after
+email verification but before Board-group assignment. The guard's policy makes
+one fixed HTTPS GET to the corresponding public Board admission path. It
+removes the Deny stage only for empty `204`; Board outage, policy-engine failure,
+another status, a redirect, or malformed state executes the Deny stage and
+cancels the flow. Critical write/verification stages carry no conditional
+policy and therefore cannot be skipped on policy failure. The endpoint accepts
+no body, identity, URL, or object selector and returns no policy detail. This is
+a read-only availability dependency, not an administrative callback.
 
 Approval enrollment performs a second fixed HTTPS POST only after Authentik
 email verification. It carries one at-most-60-second JWT made by the dedicated
