@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/a-h/templ"
+	"github.com/gotthboard/gotth-bb/internal/site"
 )
 
-func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
+func TestFooterLoadTimesHandlerRendersImmutableProductAttribution(t *testing.T) {
 	t.Parallel()
 
 	publicBaseURL, err := url.Parse("https://forum.example.test")
@@ -57,6 +58,9 @@ func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
 
 	response := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
+	request = request.WithContext(withSiteShell(request.Context(), site.ShellPresentation{
+		Name: "Ddz", Description: "Tenant description", Theme: "cyan",
+	}))
 	handler.ServeHTTP(response, request)
 
 	if response.Code != http.StatusOK || clockIndex != len(times) {
@@ -68,6 +72,7 @@ func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
 	for _, expected := range []string{
 		"Powered by",
 		"GOTTH Board",
+		"Ddz",
 		"Version:",
 		"1.0.0-alpha.1",
 		"Page:",
@@ -78,6 +83,14 @@ func TestFooterLoadTimesHandlerRendersForgejoStyleEvidence(t *testing.T) {
 		if !strings.Contains(response.Body.String(), expected) {
 			t.Fatalf("complete page lacks %q: %q", expected, response.Body.String())
 		}
+	}
+	body := response.Body.String()
+	if strings.Count(body, "Powered by ") != 1 ||
+		strings.Count(body, `href="https://github.com/gotthboard"`) != 1 ||
+		!strings.Contains(body, `Powered by <a href="https://github.com/gotthboard"`) ||
+		strings.Contains(body, `Powered by <a href="https://forum.example.test"`) ||
+		strings.Contains(body, `>Ddz</a></span>`) {
+		t.Fatalf("footer attribution followed tenant presentation: %q", body)
 	}
 }
 

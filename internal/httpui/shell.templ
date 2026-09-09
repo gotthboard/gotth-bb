@@ -196,7 +196,7 @@ templ administratorSetupContent(view pageView, setup administratorSetupView) {
 templ footer(view pageView, loadTimes footerLoadTimesView) {
 	<footer class="border-t border-slate-800" aria-label="Software information">
 		<div class="mx-auto flex max-w-6xl flex-wrap gap-x-3 gap-y-1 px-4 py-6 text-sm text-slate-400 sm:px-6 lg:px-8">
-			<span>Powered by <a href={ view.HomeURL } class="rounded-sm font-medium text-cyan-300 hover:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">{ siteShellFromContext(ctx, view).Name }</a></span>
+			<span>Powered by <a href="https://github.com/gotthboard" class="rounded-sm font-medium text-cyan-300 hover:text-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300">GOTTH Board</a></span>
 			if loadTimes.Version != "" {
 				<span>Version: <strong class="font-medium text-slate-200">{ loadTimes.Version }</strong></span>
 				<span>Page: <strong class="font-medium text-slate-200">{ loadTimes.PageTime }</strong></span>
