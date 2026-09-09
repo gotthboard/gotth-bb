@@ -107,8 +107,10 @@ table and rejects omission, duplication, or invention in either direction.
   implementation evidence remains pending. The disposable Authentik 2026.5.2
   permission test subsequently exposed creator-owned invitation `send_email`
   as inseparable from required view permission. The corrective isolated-gateway
-  contract is pending its own exact commit/tree and two fresh CLEAN reviews
-  before gateway implementation can be admitted.
+  contract was admitted from commit
+  `03f207a7eb2de4992d9e8788c6050b2a5d4657b2` / tree
+  `66eb25f09e94357e1d9094ff9a9b89b87d8f02ca` after two fresh CLEAN reviews;
+  gateway implementation evidence remains pending.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence

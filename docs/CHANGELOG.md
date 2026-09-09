@@ -23,6 +23,10 @@ and invitation operations and implements no email or generic proxy surface.
 Board receives a separate invitation-fingerprint key and never receives the raw
 Authentik token. The live Beta.1.5 deployment is unchanged.
 
+The corrective contract was admitted from commit
+`03f207a7eb2de4992d9e8788c6050b2a5d4657b2` / tree
+`66eb25f09e94357e1d9094ff9a9b89b87d8f02ca` after two fresh CLEAN reviews.
+
 ### 2026-09-09 — Add B1-09 database-backed control settings
 
 Commit: current commit; hash assigned by Git after commit
