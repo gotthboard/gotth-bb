@@ -61,10 +61,11 @@ SELECT
     )::bigint[] AS group_ids
 FROM public.sessions AS session
 JOIN public.users AS forum_user ON forum_user.id = session.user_id
-WHERE session.token_hash = $1
+WHERE session.id = public.session_id_for_token($1)
   AND session.revoked_at IS NULL
   AND session.expires_at > $2
   AND session.last_seen_at > $3
+  AND forum_user.authentik_sync_state = 'accepted'
   AND (
       forum_user.suspended_at IS NULL
       OR forum_user.suspended_at > $2
@@ -103,6 +104,78 @@ func (q *Queries) GetActiveSession(ctx context.Context, arg GetActiveSessionPara
 		&i.Role,
 		&i.MutedUntil,
 		&i.GroupIds,
+	)
+	return i, err
+}
+
+const getActiveSessionWithControl = `-- name: GetActiveSessionWithControl :one
+SELECT
+    session.id AS session_id,
+    session.user_id,
+    session.issued_at,
+    session.last_seen_at,
+    session.validated_at,
+    session.expires_at,
+    forum_user.role,
+    forum_user.muted_until,
+    ARRAY(
+        SELECT membership.group_id
+        FROM public.forum_group_members AS membership
+        WHERE membership.user_id = forum_user.id
+        ORDER BY membership.group_id
+    )::bigint[] AS group_ids,
+    settings.session_idle_seconds,
+    settings.auth_revalidate_seconds
+FROM public.sessions AS session
+JOIN public.users AS forum_user ON forum_user.id = session.user_id
+JOIN public.site_settings AS settings ON settings.singleton
+WHERE session.id = public.session_id_for_token($1)
+  AND (SELECT count(*) FROM public.site_settings) = 1
+  AND session.revoked_at IS NULL
+  AND session.expires_at > $2
+  AND session.last_seen_at > $2 - pg_catalog.make_interval(secs => settings.session_idle_seconds)
+  AND forum_user.authentik_sync_state = 'accepted'
+  AND (
+      forum_user.suspended_at IS NULL
+      OR forum_user.suspended_at > $2
+      OR forum_user.suspended_until <= $2
+  )
+`
+
+type GetActiveSessionWithControlParams struct {
+	TokenHash  []byte
+	ObservedAt pgtype.Timestamptz
+}
+
+type GetActiveSessionWithControlRow struct {
+	SessionID             int64
+	UserID                int64
+	IssuedAt              pgtype.Timestamptz
+	LastSeenAt            pgtype.Timestamptz
+	ValidatedAt           pgtype.Timestamptz
+	ExpiresAt             pgtype.Timestamptz
+	Role                  string
+	MutedUntil            pgtype.Timestamptz
+	GroupIds              []int64
+	SessionIdleSeconds    int32
+	AuthRevalidateSeconds int32
+}
+
+func (q *Queries) GetActiveSessionWithControl(ctx context.Context, arg GetActiveSessionWithControlParams) (GetActiveSessionWithControlRow, error) {
+	row := q.db.QueryRow(ctx, getActiveSessionWithControl, arg.TokenHash, arg.ObservedAt)
+	var i GetActiveSessionWithControlRow
+	err := row.Scan(
+		&i.SessionID,
+		&i.UserID,
+		&i.IssuedAt,
+		&i.LastSeenAt,
+		&i.ValidatedAt,
+		&i.ExpiresAt,
+		&i.Role,
+		&i.MutedUntil,
+		&i.GroupIds,
+		&i.SessionIdleSeconds,
+		&i.AuthRevalidateSeconds,
 	)
 	return i, err
 }
@@ -155,49 +228,41 @@ func (q *Queries) InsertOIDCLoginAttempt(ctx context.Context, arg InsertOIDCLogi
 	return err
 }
 
-const revokeSession = `-- name: RevokeSession :execrows
-UPDATE public.sessions
-SET revoked_at = $1
-WHERE token_hash = $2
-  AND revoked_at IS NULL
-  AND issued_at <= $1
+const revokeSession = `-- name: RevokeSession :one
+SELECT public.revoke_session_by_token(
+    $1, $2
+)::bigint
 `
 
 type RevokeSessionParams struct {
-	ObservedAt pgtype.Timestamptz
 	TokenHash  []byte
+	ObservedAt pgtype.Timestamptz
 }
 
 func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeSession, arg.ObservedAt, arg.TokenHash)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, revokeSession, arg.TokenHash, arg.ObservedAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-const revokeSessionForRotation = `-- name: RevokeSessionForRotation :execrows
-UPDATE public.sessions
-SET revoked_at = $1
-WHERE id = $2
-  AND token_hash = $3
-  AND revoked_at IS NULL
-  AND issued_at <= $1
-  AND expires_at > $1
+const revokeSessionForRotation = `-- name: RevokeSessionForRotation :one
+SELECT public.revoke_session_for_rotation_by_token(
+    $1, $2, $3
+)::bigint
 `
 
 type RevokeSessionForRotationParams struct {
-	ObservedAt pgtype.Timestamptz
 	SessionID  int64
 	TokenHash  []byte
+	ObservedAt pgtype.Timestamptz
 }
 
 func (q *Queries) RevokeSessionForRotation(ctx context.Context, arg RevokeSessionForRotationParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeSessionForRotation, arg.ObservedAt, arg.SessionID, arg.TokenHash)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
+	row := q.db.QueryRow(ctx, revokeSessionForRotation, arg.SessionID, arg.TokenHash, arg.ObservedAt)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const touchSession = `-- name: TouchSession :execrows

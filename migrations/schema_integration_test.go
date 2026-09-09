@@ -90,8 +90,8 @@ func TestInitialSchemaOnPostgreSQL17(t *testing.T) {
        (SELECT count(*) FROM public.governance_state WHERE singleton)`).Scan(&serverVersion, &migrationCount, &governanceCount); err != nil {
 		t.Fatalf("inspect migrated database: %v", err)
 	}
-	if serverVersion != 170010 || migrationCount != 12 || governanceCount != 1 {
-		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 12, 1)", serverVersion, migrationCount, governanceCount)
+	if serverVersion != 170010 || migrationCount != 13 || governanceCount != 1 {
+		t.Fatalf("schema state = (version %d, migrations %d, governance %d), want (170010, 13, 1)", serverVersion, migrationCount, governanceCount)
 	}
 	var finiteConstraintValidated bool
 	var finiteConstraintDefinition string
@@ -130,6 +130,68 @@ VALUES ('Administrator', 'administrator') RETURNING id`).Scan(&administratorID);
 VALUES ('Member', 'member') RETURNING id`).Scan(&memberID); err != nil {
 		t.Fatalf("insert member: %v", err)
 	}
+	var registrationMode, maintenanceMessage string
+	var maintenanceEnabled bool
+	var publishLimit, newAccountLimit, publishWindow, newAccountPeriod, sessionIdle, authRevalidate int32
+	if err := conn.QueryRow(ctx, `SELECT registration_mode, maintenance_enabled,
+       maintenance_message, publish_rate_limit, new_account_publish_rate_limit,
+       publish_window_seconds, new_account_period_seconds, session_idle_seconds,
+       auth_revalidate_seconds
+FROM public.site_settings WHERE singleton`).Scan(
+		&registrationMode, &maintenanceEnabled, &maintenanceMessage,
+		&publishLimit, &newAccountLimit, &publishWindow, &newAccountPeriod,
+		&sessionIdle, &authRevalidate,
+	); err != nil {
+		t.Fatalf("load control-setting defaults: %v", err)
+	}
+	if registrationMode != "closed" || maintenanceEnabled || maintenanceMessage != "" ||
+		publishLimit != 10 || newAccountLimit != 3 || publishWindow != 600 ||
+		newAccountPeriod != 86400 || sessionIdle != 28800 || authRevalidate != 1800 {
+		t.Fatalf("control-setting defaults = (%q, %t, %q, %d, %d, %d, %d, %d, %d)",
+			registrationMode, maintenanceEnabled, maintenanceMessage, publishLimit,
+			newAccountLimit, publishWindow, newAccountPeriod, sessionIdle, authRevalidate)
+	}
+	var administratorSync, memberSync string
+	if err := conn.QueryRow(ctx, `SELECT
+    (SELECT authentik_sync_state FROM public.users WHERE id = $1),
+    (SELECT authentik_sync_state FROM public.users WHERE id = $2)`, administratorID, memberID).Scan(&administratorSync, &memberSync); err != nil {
+		t.Fatalf("load fresh JIT sync states: %v", err)
+	}
+	if administratorSync != "unknown" || memberSync != "unknown" {
+		t.Fatalf("fresh JIT sync states = (%q, %q), want unknown/unknown", administratorSync, memberSync)
+	}
+	expectExecutionFailure(t, conn, ctx, `UPDATE public.site_settings SET registration_mode = 'open' WHERE singleton`)
+	expectExecutionFailure(t, conn, ctx, `UPDATE public.site_settings SET new_account_publish_rate_limit = publish_rate_limit + 1 WHERE singleton`)
+	expectExecutionFailure(t, conn, ctx, `UPDATE public.site_settings SET maintenance_message = E'bad\nmessage' WHERE singleton`)
+	if _, err := conn.Exec(ctx, `INSERT INTO public.pending_registrations
+    (authentik_user_id, authentik_subject, display_name, verified_email)
+VALUES (17, '00000000-0000-0000-0000-000000000017', 'Pending user', 'pending@example.test')`); err != nil {
+		t.Fatalf("insert pending registration: %v", err)
+	}
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.pending_registrations
+    (authentik_user_id, authentik_subject, display_name, verified_email)
+VALUES (17, '00000000-0000-0000-0000-000000000018', 'Duplicate numeric ID', 'duplicate@example.test')`)
+	if _, err := conn.Exec(ctx, `INSERT INTO public.registration_invitations
+    (idempotency_key, authentik_invitation_name, flow_identity, expires_at,
+     created_by, request_fingerprint)
+VALUES ('00000000-0000-0000-0000-000000000019', 'board-19', 'board-invitation',
+        clock_timestamp() + interval '1 day', $1, decode(repeat('19', 32), 'hex'))`, administratorID); err != nil {
+		t.Fatalf("insert registration invitation: %v", err)
+	}
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.registration_invitations
+    (idempotency_key, authentik_invitation_name, flow_identity, expires_at,
+     created_by, request_fingerprint)
+VALUES ('00000000-0000-0000-0000-000000000020', 'board-20', 'board-invitation',
+        clock_timestamp() + interval '1 day', $1, decode('20', 'hex'))`, administratorID)
+	if _, err := conn.Exec(ctx, `INSERT INTO public.email_test_state
+    (administrator_id, idempotency_key, status, requested_at, next_allowed_at)
+VALUES ($1, '00000000-0000-0000-0000-000000000021', 'requested',
+        '2026-09-09T12:00:00Z', '2026-09-09T12:05:00Z')`, administratorID); err != nil {
+		t.Fatalf("insert email test reservation: %v", err)
+	}
+	expectExecutionFailure(t, conn, ctx, `UPDATE public.email_test_state
+SET next_allowed_at = requested_at + interval '4 minutes'
+WHERE administrator_id = $1`, administratorID)
 	expectExecutionFailure(t, conn, ctx, "INSERT INTO public.users (display_name, role) VALUES ('Bad', 'owner')")
 	expectExecutionFailure(t, conn, ctx, "INSERT INTO public.governance_state (singleton) VALUES (true)")
 
@@ -310,7 +372,7 @@ WHERE get_byte(state_hash, 0) IN (204, 221, 238)`).Scan(&consumedAttempts, &unco
 	sessionTokenHash := bytes.Repeat([]byte{0xf1}, 32)
 	sessionUserAgentHash := bytes.Repeat([]byte{0xf2}, 32)
 	sessionIP := netip.MustParseAddr("192.0.2.42")
-	var insertedSession db.Session
+	var insertedSession db.InsertSessionRow
 	if err := store.WithinTx(ctx, conn, func(transactionQueries *db.Queries) error {
 		locked, err := transactionQueries.LockExternalIdentity(ctx, db.LockExternalIdentityParams{
 			Issuer: "https://auth.example.test/application/o/forum/", Subject: "transaction-subject",
@@ -342,14 +404,17 @@ WHERE get_byte(state_hash, 0) IN (204, 221, 238)`).Scan(&consumedAttempts, &unco
 	}); err != nil {
 		t.Fatalf("WithinTx() OIDC refresh/session: %v", err)
 	}
-	if insertedSession.ID == 0 || insertedSession.UserID != transactionUserID || insertedSession.RevokedAt.Valid ||
-		!bytes.Equal(insertedSession.TokenHash, sessionTokenHash) || !bytes.Equal(insertedSession.UserAgentHash, sessionUserAgentHash) ||
-		insertedSession.IpPrefix == nil || *insertedSession.IpPrefix != sessionIP ||
-		!insertedSession.IssuedAt.Valid || !insertedSession.IssuedAt.Time.Equal(refreshTime.Time) ||
-		!insertedSession.LastSeenAt.Valid || !insertedSession.LastSeenAt.Time.Equal(refreshTime.Time) ||
-		!insertedSession.ValidatedAt.Valid || !insertedSession.ValidatedAt.Time.Equal(refreshTime.Time) ||
-		!insertedSession.ExpiresAt.Valid || !insertedSession.ExpiresAt.Time.Equal(refreshTime.Time.Add(24*time.Hour)) {
+	if insertedSession.ID == 0 || insertedSession.UserID != transactionUserID {
 		t.Fatal("InsertSession() returned incorrect session state")
+	}
+	var storedSessionValid bool
+	if err := conn.QueryRow(ctx, `SELECT
+		token_hash = $2 AND user_agent_hash = $3 AND ip_prefix = $4
+		AND issued_at = $5 AND last_seen_at = $5 AND validated_at = $5
+		AND expires_at = $6 AND revoked_at IS NULL
+		FROM public.sessions WHERE id = $1`, insertedSession.ID, sessionTokenHash,
+		sessionUserAgentHash, sessionIP, refreshTime, refreshTime.Time.Add(24*time.Hour)).Scan(&storedSessionValid); err != nil || !storedSessionValid {
+		t.Fatalf("stored InsertSession() state = (%t, %v)", storedSessionValid, err)
 	}
 	var verifiedAt time.Time
 	if err := conn.QueryRow(ctx, "SELECT last_verified_at FROM public.external_identities WHERE user_id = $1", transactionUserID).Scan(&verifiedAt); err != nil || !verifiedAt.Equal(refreshTime.Time) {
@@ -544,6 +609,16 @@ VALUES ($1, $2, 'unassigned review report', 'in_review')`, memberID, topicID)
 	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.moderation_actions
     (actor_kind, target_type, target_user_id, action_type, request_id)
 VALUES ('forum_user', 'user', $1, 'warn_user', '00000000-0000-0000-0000-000000000001')`, memberID)
+	expectExecutionFailure(t, conn, ctx, `INSERT INTO public.moderation_actions
+    (actor_kind, actor_user_id, target_type, target_site, action_type, request_id)
+VALUES ('forum_user', $1, 'site', true, 'update_control_settings',
+        '00000000-0000-0000-0000-000000000022')`, administratorID)
+	if _, err := conn.Exec(ctx, `INSERT INTO public.moderation_actions
+    (actor_kind, actor_user_id, target_type, target_site, action_type, reason, request_id)
+VALUES ('forum_user', $1, 'site', true, 'update_control_settings', 'test controls',
+        '00000000-0000-0000-0000-000000000023')`, administratorID); err != nil {
+		t.Fatalf("insert control-setting audit: %v", err)
+	}
 	if _, err := conn.Exec(ctx, `INSERT INTO public.moderation_actions
     (actor_kind, actor_user_id, target_type, target_topic_id, action_type, reason, request_id)
 VALUES ('forum_user', $1, 'topic', $2, 'lock_topic', NULL,

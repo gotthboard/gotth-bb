@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -325,6 +326,9 @@ func validSiteHTTPServices() SiteHTTPServices {
 		},
 		Update: func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error) {
 			return site.MutationResult{Revision: 2, AuditID: 1}, nil
+		},
+		Control: func(context.Context) (control.Settings, error) {
+			return control.Settings{Registration: control.RegistrationClosed}, nil
 		},
 	}
 }

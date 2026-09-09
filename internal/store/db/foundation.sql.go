@@ -236,22 +236,23 @@ func (q *Queries) CountGovernanceRows(ctx context.Context) (int64, error) {
 }
 
 const getActiveSessionForRotation = `-- name: GetActiveSessionForRotation :one
-SELECT
-    session.user_id,
-    identity.issuer,
-    identity.subject,
+	SELECT
+	    session.user_id,
+	    identity.issuer,
+	    identity.subject,
     session.expires_at
 FROM public.sessions AS session
 JOIN public.users AS forum_user ON forum_user.id = session.user_id
 JOIN public.external_identities AS identity ON identity.user_id = session.user_id
 WHERE session.id = $1
-  AND session.token_hash = $2
+  AND session.id = public.session_id_for_token($2)
   AND session.revoked_at IS NULL
   AND session.issued_at <= $3
   AND session.last_seen_at <= $3
   AND session.validated_at <= $3
   AND session.expires_at > $3
   AND session.last_seen_at > $4
+  AND forum_user.authentik_sync_state = 'accepted'
   AND (
       forum_user.suspended_at IS NULL
       OR forum_user.suspended_at > $3
@@ -292,7 +293,7 @@ func (q *Queries) GetActiveSessionForRotation(ctx context.Context, arg GetActive
 }
 
 const getUserByExternalIdentity = `-- name: GetUserByExternalIdentity :one
-SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at, u.administration_revision, u.publication_window_started_at, u.publication_count
+SELECT u.id, u.display_name, u.email, u.avatar_url, u.bio, u.role, u.suspended_at, u.suspended_until, u.suspension_reason, u.muted_until, u.created_at, u.updated_at, u.last_login_at, u.administration_revision, u.publication_window_started_at, u.publication_count, u.authentik_sync_state, u.authentik_sync_last_attempt_at, u.authentik_sync_next_attempt_at, u.authentik_sync_failure_class
 FROM public.users AS u
 JOIN public.external_identities AS identity ON identity.user_id = u.id
 WHERE identity.issuer = $1
@@ -324,6 +325,10 @@ func (q *Queries) GetUserByExternalIdentity(ctx context.Context, arg GetUserByEx
 		&i.AdministrationRevision,
 		&i.PublicationWindowStartedAt,
 		&i.PublicationCount,
+		&i.AuthentikSyncState,
+		&i.AuthentikSyncLastAttemptAt,
+		&i.AuthentikSyncNextAttemptAt,
+		&i.AuthentikSyncFailureClass,
 	)
 	return i, err
 }
@@ -374,7 +379,7 @@ VALUES (
     $5,
     $6
 )
-RETURNING id, token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at, revoked_at, user_agent_hash, ip_prefix
+RETURNING id, user_id
 `
 
 type InsertSessionParams struct {
@@ -386,7 +391,12 @@ type InsertSessionParams struct {
 	IpPrefix      *netip.Addr
 }
 
-func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (Session, error) {
+type InsertSessionRow struct {
+	ID     int64
+	UserID int64
+}
+
+func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (InsertSessionRow, error) {
 	row := q.db.QueryRow(ctx, insertSession,
 		arg.TokenHash,
 		arg.UserID,
@@ -395,29 +405,21 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) (S
 		arg.UserAgentHash,
 		arg.IpPrefix,
 	)
-	var i Session
-	err := row.Scan(
-		&i.ID,
-		&i.TokenHash,
-		&i.UserID,
-		&i.IssuedAt,
-		&i.LastSeenAt,
-		&i.ValidatedAt,
-		&i.ExpiresAt,
-		&i.RevokedAt,
-		&i.UserAgentHash,
-		&i.IpPrefix,
-	)
+	var i InsertSessionRow
+	err := row.Scan(&i.ID, &i.UserID)
 	return i, err
 }
 
 const insertUser = `-- name: InsertUser :one
-INSERT INTO public.users (display_name, email, avatar_url, created_at, updated_at, last_login_at)
+INSERT INTO public.users (
+    display_name, email, avatar_url, created_at, updated_at, last_login_at,
+    authentik_sync_state
+)
 VALUES (
     $1, $2, $3,
-    $4, $4, $4
+    $4, $4, $4, 'accepted'
 )
-RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count
+RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count, authentik_sync_state, authentik_sync_last_attempt_at, authentik_sync_next_attempt_at, authentik_sync_failure_class
 `
 
 type InsertUserParams struct {
@@ -452,6 +454,10 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) (User, e
 		&i.AdministrationRevision,
 		&i.PublicationWindowStartedAt,
 		&i.PublicationCount,
+		&i.AuthentikSyncState,
+		&i.AuthentikSyncLastAttemptAt,
+		&i.AuthentikSyncNextAttemptAt,
+		&i.AuthentikSyncFailureClass,
 	)
 	return i, err
 }
@@ -637,7 +643,8 @@ SET display_name = $1,
     updated_at = $4,
     last_login_at = $4
 WHERE id = $5
-RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count
+  AND authentik_sync_state = 'accepted'
+RETURNING id, display_name, email, avatar_url, bio, role, suspended_at, suspended_until, suspension_reason, muted_until, created_at, updated_at, last_login_at, administration_revision, publication_window_started_at, publication_count, authentik_sync_state, authentik_sync_last_attempt_at, authentik_sync_next_attempt_at, authentik_sync_failure_class
 `
 
 type UpdateUserFromOIDCParams struct {
@@ -674,6 +681,10 @@ func (q *Queries) UpdateUserFromOIDC(ctx context.Context, arg UpdateUserFromOIDC
 		&i.AdministrationRevision,
 		&i.PublicationWindowStartedAt,
 		&i.PublicationCount,
+		&i.AuthentikSyncState,
+		&i.AuthentikSyncLastAttemptAt,
+		&i.AuthentikSyncNextAttemptAt,
+		&i.AuthentikSyncFailureClass,
 	)
 	return i, err
 }

@@ -39,6 +39,36 @@ type SessionAuthentication struct {
 	RequiresRevalidation bool
 }
 
+type activeSessionPolicyLoader func(context.Context, []byte, time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error)
+
+func authenticateSession(
+	ctx context.Context,
+	load func(context.Context, db.GetActiveSessionParams) (db.GetActiveSessionRow, error),
+	touch func(context.Context, db.TouchSessionParams) (int64, error),
+	clock func() time.Time,
+	idleTimeout time.Duration,
+	revalidationInterval time.Duration,
+	token string,
+) (SessionAuthentication, error) {
+	if load == nil {
+		return SessionAuthentication{}, fmt.Errorf("active-session loader is required")
+	}
+	if idleTimeout < time.Second {
+		return SessionAuthentication{}, fmt.Errorf("session idle timeout is below supported precision")
+	}
+	if revalidationInterval < time.Second {
+		return SessionAuthentication{}, fmt.Errorf("session revalidation interval is below supported precision")
+	}
+	return authenticateSessionWithPolicy(ctx, touch, clock, func(loadContext context.Context, tokenHash []byte, now time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error) {
+		row, err := load(loadContext, db.GetActiveSessionParams{
+			TokenHash:  tokenHash,
+			ObservedAt: pgtype.Timestamptz{Time: now, Valid: true},
+			IdleCutoff: pgtype.Timestamptz{Time: now.Add(-idleTimeout), Valid: true},
+		})
+		return row, idleTimeout, revalidationInterval, err
+	}, token)
+}
+
 // authenticateSession validates and hashes one opaque browser credential,
 // loads one current local access snapshot, and performs a conditional activity
 // write only at the fixed throttle boundary. Missing credentials and no-row
@@ -49,20 +79,15 @@ type SessionAuthentication struct {
 // delegated indexed lookup cost L and optional conditional touch cost T, total
 // time is O(L+T+g), Omega(L+g), and auxiliary space O(g) beyond driver state.
 // No operation is retried or detached.
-func authenticateSession(
+func authenticateSessionWithPolicy(
 	ctx context.Context,
-	load func(context.Context, db.GetActiveSessionParams) (db.GetActiveSessionRow, error),
 	touch func(context.Context, db.TouchSessionParams) (int64, error),
 	clock func() time.Time,
-	idleTimeout time.Duration,
-	revalidationInterval time.Duration,
+	load activeSessionPolicyLoader,
 	token string,
 ) (SessionAuthentication, error) {
 	if ctx == nil {
 		return SessionAuthentication{}, fmt.Errorf("session authentication context is required")
-	}
-	if load == nil {
-		return SessionAuthentication{}, fmt.Errorf("active-session loader is required")
 	}
 	if touch == nil {
 		return SessionAuthentication{}, fmt.Errorf("session activity writer is required")
@@ -70,11 +95,8 @@ func authenticateSession(
 	if clock == nil {
 		return SessionAuthentication{}, fmt.Errorf("session authentication clock is required")
 	}
-	if idleTimeout < time.Second {
-		return SessionAuthentication{}, fmt.Errorf("session idle timeout is below supported precision")
-	}
-	if revalidationInterval < time.Second {
-		return SessionAuthentication{}, fmt.Errorf("session revalidation interval is below supported precision")
+	if load == nil {
+		return SessionAuthentication{}, fmt.Errorf("active-session policy loader is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return SessionAuthentication{}, fmt.Errorf("authenticate session: %w", err)
@@ -96,18 +118,9 @@ func authenticateSession(
 		return SessionAuthentication{}, fmt.Errorf("session authentication clock returned a zero time")
 	}
 	now = now.UTC().Truncate(time.Microsecond)
-	idleCutoff := now.Add(-idleTimeout)
-	touchInterval := sessionLastSeenWriteInterval
-	if halfIdleTimeout := idleTimeout / 2; halfIdleTimeout < touchInterval {
-		touchInterval = halfIdleTimeout
-	}
 	tokenHash := sha256.Sum256(encoded[:])
 	defer clear(tokenHash[:])
-	row, err := load(ctx, db.GetActiveSessionParams{
-		TokenHash:  tokenHash[:],
-		ObservedAt: pgtype.Timestamptz{Time: now, Valid: true},
-		IdleCutoff: pgtype.Timestamptz{Time: idleCutoff, Valid: true},
-	})
+	row, idleTimeout, revalidationInterval, err := load(ctx, tokenHash[:], now)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return SessionAuthentication{}, nil
@@ -116,6 +129,14 @@ func authenticateSession(
 			return SessionAuthentication{}, fmt.Errorf("load active session: %w", contextError)
 		}
 		return SessionAuthentication{}, fmt.Errorf("load active session failed")
+	}
+	if idleTimeout < time.Second || revalidationInterval < time.Second {
+		return SessionAuthentication{}, fmt.Errorf("active-session policy loader returned invalid values")
+	}
+	idleCutoff := now.Add(-idleTimeout)
+	touchInterval := sessionLastSeenWriteInterval
+	if halfIdleTimeout := idleTimeout / 2; halfIdleTimeout < touchInterval {
+		touchInterval = halfIdleTimeout
 	}
 	if row.SessionID <= 0 || row.UserID <= 0 || !row.IssuedAt.Valid || !row.LastSeenAt.Valid ||
 		!row.ValidatedAt.Valid || !row.ExpiresAt.Valid || row.IssuedAt.Time.After(now) ||

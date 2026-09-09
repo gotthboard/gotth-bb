@@ -119,8 +119,8 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		t.Fatalf("read runtime grant contract: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if strings.Count(string(grantTemplate), rolePlaceholder) != 14 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 14", strings.Count(string(grantTemplate), rolePlaceholder))
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 21 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 21", strings.Count(string(grantTemplate), rolePlaceholder))
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	if _, err := connection.Exec(ctx, grantSQL); err != nil {
@@ -129,6 +129,8 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 
 	var tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete bool
 	var searchSelect, searchInsert, searchUpdate, searchDelete bool
+	var sessionSelect, sessionIDSelect, tokenHashSelect, sessionInsert, sessionTableUpdate, sessionRevokeUpdate, tokenLookupExecute bool
+	var userTableInsert, userSyncStateInsert bool
 	if err := connection.QueryRow(ctx, `SELECT
 		pg_catalog.has_table_privilege($1, 'public.governance_state', 'UPDATE'),
 		pg_catalog.has_column_privilege($1, 'public.governance_state', 'singleton', 'UPDATE'),
@@ -141,14 +143,50 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'SELECT'),
 		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'INSERT'),
 		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'UPDATE'),
-		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'DELETE')`, runtimePrivilegeTestRole).Scan(
+		pg_catalog.has_table_privilege($1, 'public.search_projection_state', 'DELETE'),
+		pg_catalog.has_table_privilege($1, 'public.sessions', 'SELECT'),
+		pg_catalog.has_column_privilege($1, 'public.sessions', 'id', 'SELECT'),
+		pg_catalog.has_column_privilege($1, 'public.sessions', 'token_hash', 'SELECT'),
+		pg_catalog.has_column_privilege($1, 'public.sessions', 'token_hash', 'INSERT'),
+		pg_catalog.has_table_privilege($1, 'public.sessions', 'UPDATE'),
+		pg_catalog.has_column_privilege($1, 'public.sessions', 'revoked_at', 'UPDATE'),
+		pg_catalog.has_function_privilege($1, 'public.session_id_for_token(bytea)', 'EXECUTE'),
+		pg_catalog.has_table_privilege($1, 'public.users', 'INSERT'),
+		pg_catalog.has_column_privilege($1, 'public.users', 'authentik_sync_state', 'INSERT')`, runtimePrivilegeTestRole).Scan(
 		&tableUpdate, &singletonUpdate, &createdAtUpdate, &tableDelete, &rendererSelect, &rendererInsert, &rendererUpdate, &rendererDelete,
 		&searchSelect, &searchInsert, &searchUpdate, &searchDelete,
+		&sessionSelect, &sessionIDSelect, &tokenHashSelect, &sessionInsert, &sessionTableUpdate, &sessionRevokeUpdate, &tokenLookupExecute,
+		&userTableInsert, &userSyncStateInsert,
 	); err != nil {
 		t.Fatalf("inspect packaged runtime privileges: %v", err)
 	}
 	if tableUpdate || !singletonUpdate || createdAtUpdate || tableDelete || !rendererSelect || rendererInsert || rendererUpdate || rendererDelete || !searchSelect || searchInsert || searchUpdate || searchDelete {
 		t.Fatalf("runtime privileges = (governance table update %t, singleton update %t, created_at update %t, delete %t; renderer select %t, insert %t, update %t, delete %t; search select %t, insert %t, update %t, delete %t)", tableUpdate, singletonUpdate, createdAtUpdate, tableDelete, rendererSelect, rendererInsert, rendererUpdate, rendererDelete, searchSelect, searchInsert, searchUpdate, searchDelete)
+	}
+	if sessionSelect || !sessionIDSelect || tokenHashSelect || !sessionInsert || sessionTableUpdate || !sessionRevokeUpdate || !tokenLookupExecute {
+		t.Fatalf("session privileges = (table select %t, id select %t, token hash select %t, insert %t, table update %t, revoke update %t, token lookup execute %t)", sessionSelect, sessionIDSelect, tokenHashSelect, sessionInsert, sessionTableUpdate, sessionRevokeUpdate, tokenLookupExecute)
+	}
+	if userTableInsert || !userSyncStateInsert {
+		t.Fatalf("user insert privileges = (table %t, sync-state column %t)", userTableInsert, userSyncStateInsert)
+	}
+	if _, err := connection.Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {
+		t.Fatalf("assume runtime role for token-hash denial: %v", err)
+	}
+	var admittedUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (
+		display_name, email, avatar_url, created_at, updated_at, last_login_at,
+		authentik_sync_state
+	) VALUES ('Restricted JIT account', NULL, NULL, $1, $1, $1, 'accepted')
+	RETURNING id`, atTime).Scan(&admittedUserID); err != nil || admittedUserID <= 0 {
+		t.Fatalf("runtime accepted JIT insert = (%d, %v)", admittedUserID, err)
+	}
+	_, tokenReadErr := connection.Exec(ctx, "SELECT token_hash FROM public.sessions LIMIT 1")
+	if _, err := connection.Exec(ctx, "RESET ROLE"); err != nil {
+		t.Fatalf("reset runtime role after token-hash denial: %v", err)
+	}
+	postgresError = nil
+	if !errors.As(tokenReadErr, &postgresError) || postgresError.Code != "42501" {
+		t.Fatalf("runtime token-hash read error = %v, want SQLSTATE 42501", tokenReadErr)
 	}
 
 	if _, err := connection.Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {

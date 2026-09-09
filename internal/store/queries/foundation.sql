@@ -6,10 +6,13 @@ WHERE identity.issuer = sqlc.arg(issuer)
   AND identity.subject = sqlc.arg(subject);
 
 -- name: InsertUser :one
-INSERT INTO public.users (display_name, email, avatar_url, created_at, updated_at, last_login_at)
+INSERT INTO public.users (
+    display_name, email, avatar_url, created_at, updated_at, last_login_at,
+    authentik_sync_state
+)
 VALUES (
     sqlc.arg(display_name), sqlc.narg(email), sqlc.narg(avatar_url),
-    sqlc.arg(login_at), sqlc.arg(login_at), sqlc.arg(login_at)
+    sqlc.arg(login_at), sqlc.arg(login_at), sqlc.arg(login_at), 'accepted'
 )
 RETURNING *;
 
@@ -38,6 +41,7 @@ SET display_name = sqlc.arg(display_name),
     updated_at = sqlc.arg(login_at),
     last_login_at = sqlc.arg(login_at)
 WHERE id = sqlc.arg(user_id)
+  AND authentik_sync_state = 'accepted'
 RETURNING *;
 
 -- name: UpdateExternalIdentityVerification :exec
@@ -66,25 +70,26 @@ VALUES (
     sqlc.narg(user_agent_hash),
     sqlc.narg(ip_prefix)
 )
-RETURNING *;
+RETURNING id, user_id;
 
 -- name: GetActiveSessionForRotation :one
-SELECT
-    session.user_id,
-    identity.issuer,
-    identity.subject,
+	SELECT
+	    session.user_id,
+	    identity.issuer,
+	    identity.subject,
     session.expires_at
 FROM public.sessions AS session
 JOIN public.users AS forum_user ON forum_user.id = session.user_id
 JOIN public.external_identities AS identity ON identity.user_id = session.user_id
 WHERE session.id = sqlc.arg(session_id)
-  AND session.token_hash = sqlc.arg(token_hash)
+  AND session.id = public.session_id_for_token(sqlc.arg(token_hash))
   AND session.revoked_at IS NULL
   AND session.issued_at <= sqlc.arg(observed_at)
   AND session.last_seen_at <= sqlc.arg(observed_at)
   AND session.validated_at <= sqlc.arg(observed_at)
   AND session.expires_at > sqlc.arg(observed_at)
   AND session.last_seen_at > sqlc.arg(idle_cutoff)
+  AND forum_user.authentik_sync_state = 'accepted'
   AND (
       forum_user.suspended_at IS NULL
       OR forum_user.suspended_at > sqlc.arg(observed_at)

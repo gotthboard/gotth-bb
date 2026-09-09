@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -21,19 +19,14 @@ func TestRevokeSessionForRotationBindsExactSessionAndReturnsRows(t *testing.T) {
 	tokenHash := bytes.Repeat([]byte{0x62}, 32)
 	ctx := context.WithValue(context.Background(), rotationRevokeContextKey{}, "preserved")
 	for _, rows := range []int64{0, 1} {
-		database := &rotationRevokeDBTX{tag: pgconn.NewCommandTag(fmt.Sprintf("UPDATE %d", rows))}
+		database := &rotationRevokeDBTX{rows: rows}
 		got, err := New(database).RevokeSessionForRotation(ctx, RevokeSessionForRotationParams{
 			ObservedAt: observedAt, SessionID: 73, TokenHash: tokenHash,
 		})
 		if err != nil || got != rows || database.ctx != ctx || database.query != revokeSessionForRotation || len(database.args) != 3 ||
-			!reflect.DeepEqual(database.args[0], observedAt) || database.args[1] != int64(73) ||
-			!bytes.Equal(database.args[2].([]byte), tokenHash) {
+			database.args[0] != int64(73) || !bytes.Equal(database.args[1].([]byte), tokenHash) ||
+			!reflect.DeepEqual(database.args[2], observedAt) {
 			t.Fatalf("RevokeSessionForRotation() = (rows %d, error %v, query %q, args %#v)", got, err, database.query, database.args)
-		}
-		for _, required := range []string{"WHERE id = $2", "token_hash = $3", "revoked_at IS NULL", "expires_at > $1"} {
-			if !strings.Contains(database.query, required) {
-				t.Fatalf("rotation revoke query lacks %q", required)
-			}
 		}
 	}
 }
@@ -56,13 +49,26 @@ type rotationRevokeDBTX struct {
 	ctx   context.Context
 	query string
 	args  []any
-	tag   pgconn.CommandTag
+	rows  int64
 	err   error
 }
 
-func (database *rotationRevokeDBTX) Exec(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
+func (database *rotationRevokeDBTX) QueryRow(ctx context.Context, query string, args ...any) pgx.Row {
 	database.ctx = ctx
 	database.query = query
 	database.args = append([]any(nil), args...)
-	return database.tag, database.err
+	return rotationRevokeRow{rows: database.rows, err: database.err}
+}
+
+type rotationRevokeRow struct {
+	rows int64
+	err  error
+}
+
+func (row rotationRevokeRow) Scan(destinations ...any) error {
+	if row.err != nil {
+		return row.err
+	}
+	*(destinations[0].(*int64)) = row.rows
+	return nil
 }

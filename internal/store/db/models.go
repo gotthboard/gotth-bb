@@ -40,6 +40,15 @@ type ContentRendererState struct {
 	CompletedAt         pgtype.Timestamptz
 }
 
+type EmailTestState struct {
+	AdministratorID int64
+	IdempotencyKey  pgtype.UUID
+	Status          string
+	RequestedAt     pgtype.Timestamptz
+	CompletedAt     pgtype.Timestamptz
+	NextAllowedAt   pgtype.Timestamptz
+}
+
 type ExternalIdentity struct {
 	UserID         int64
 	Issuer         string
@@ -102,6 +111,21 @@ type OidcLoginAttempt struct {
 	ConsumedAt             pgtype.Timestamptz
 }
 
+type PendingRegistration struct {
+	ID                      int64
+	AuthentikUserID         int64
+	AuthentikSubject        pgtype.UUID
+	DisplayName             string
+	VerifiedEmail           string
+	Status                  string
+	AdministrationRevision  int64
+	IntakeAt                pgtype.Timestamptz
+	DecidedAt               pgtype.Timestamptz
+	DecidingAdministratorID pgtype.Int8
+	TransitionRequestID     pgtype.UUID
+	ReconciliationClass     pgtype.Text
+}
+
 type Post struct {
 	ID                      int64
 	TopicID                 int64
@@ -124,6 +148,21 @@ type Post struct {
 	RedactionReason         pgtype.Text
 	SearchVector            interface{}
 	SearchProjectionVersion pgtype.Text
+}
+
+type RegistrationInvitation struct {
+	IdempotencyKey          pgtype.UUID
+	AuthentikInvitationName string
+	TransitionState         string
+	DeliveryState           string
+	FlowIdentity            string
+	ExpiresAt               pgtype.Timestamptz
+	CreatedAt               pgtype.Timestamptz
+	TransitionedAt          pgtype.Timestamptz
+	CreatedBy               int64
+	AdministrationRevision  int64
+	RequestFingerprint      []byte
+	FailureClass            pgtype.Text
 }
 
 type Report struct {
@@ -174,15 +213,24 @@ type Session struct {
 }
 
 type SiteSetting struct {
-	Singleton              bool
-	SiteName               string
-	SiteDescription        string
-	BrandTheme             string
-	RulesMarkdown          string
-	RulesHtml              string
-	RulesRendererVersion   string
-	AdministrationRevision int64
-	UpdatedAt              pgtype.Timestamptz
+	Singleton                  bool
+	SiteName                   string
+	SiteDescription            string
+	BrandTheme                 string
+	RulesMarkdown              string
+	RulesHtml                  string
+	RulesRendererVersion       string
+	AdministrationRevision     int64
+	UpdatedAt                  pgtype.Timestamptz
+	RegistrationMode           string
+	MaintenanceEnabled         bool
+	MaintenanceMessage         string
+	PublishRateLimit           int32
+	NewAccountPublishRateLimit int32
+	PublishWindowSeconds       int32
+	NewAccountPeriodSeconds    int32
+	SessionIdleSeconds         int32
+	AuthRevalidateSeconds      int32
 }
 
 type Topic struct {
@@ -229,6 +277,10 @@ type User struct {
 	AdministrationRevision     int64
 	PublicationWindowStartedAt pgtype.Timestamptz
 	PublicationCount           int32
+	AuthentikSyncState         string
+	AuthentikSyncLastAttemptAt pgtype.Timestamptz
+	AuthentikSyncNextAttemptAt pgtype.Timestamptz
+	AuthentikSyncFailureClass  pgtype.Text
 }
 
 type UserWarning struct {

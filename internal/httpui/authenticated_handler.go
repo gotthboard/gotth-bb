@@ -377,7 +377,7 @@ func NewAuthenticatedSiteForumHandler(
 	secure bool,
 	checkReadiness ReadinessChecker,
 ) (http.Handler, error) {
-	if sites.Shell == nil || sites.Rules == nil || sites.Editable == nil || sites.Update == nil {
+	if sites.Shell == nil || sites.Rules == nil || sites.Editable == nil || sites.Update == nil || sites.Control == nil {
 		return nil, fmt.Errorf("browser site settings services are required")
 	}
 	if sites.Administration == nil {
@@ -528,6 +528,7 @@ func newAuthenticatedHandler(
 		return nil, fmt.Errorf("construct logout route: %w", err)
 	}
 	var registrationHandler http.Handler
+	var authenticatedRegistrationHandler http.Handler
 	var authenticatedAdministratorSetupHandler http.Handler
 	if registrationURL.Scheme != "" || loadAdministratorSetup != nil || claimInitialAdministrator != nil {
 		if registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
@@ -537,6 +538,12 @@ func newAuthenticatedHandler(
 			registrationHandler, err = newRegistrationRedirectHandler(builder, registrationURL)
 			if err != nil {
 				return nil, fmt.Errorf("construct registration route: %w", err)
+			}
+			authenticatedRegistrationHandler, err = newSessionAuthenticationHandler(
+				registrationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("construct registration session boundary: %w", err)
 			}
 		}
 		setupHandler, setupErr := newAdministratorSetupHandler(builder, loadAdministratorSetup, claimInitialAdministrator, sessionCookieName, secure)
@@ -703,6 +710,12 @@ func newAuthenticatedHandler(
 			return nil, fmt.Errorf("construct site settings session boundary: %w", err)
 		}
 		publicSiteHandler = withExactSiteRoutePreflight(publicSiteHandler, "/rules", http.MethodGet)
+		publicSiteHandler, err = newSessionAuthenticationHandler(
+			publicSiteHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("construct rules session boundary: %w", err)
+		}
 		authenticatedSiteHandler = withExactSiteRoutePreflight(authenticatedSiteHandler, "/admin/settings", http.MethodGet, http.MethodPost)
 		if siteServices.Administration != nil {
 			inner, administrationErr := newAdministrationCompletionHandler(builder, *siteServices.Administration)
@@ -731,9 +744,9 @@ func newAuthenticatedHandler(
 			request.Pattern = request.Method + " /logout"
 			authenticatedLogoutHandler.ServeHTTP(response, request)
 		case "/register":
-			if registrationHandler != nil {
+			if authenticatedRegistrationHandler != nil {
 				request.Pattern = request.Method + " /register"
-				registrationHandler.ServeHTTP(response, request)
+				authenticatedRegistrationHandler.ServeHTTP(response, request)
 				return
 			}
 			publicHandler.ServeHTTP(response, request)
@@ -941,7 +954,7 @@ func newAuthenticatedHandler(
 		dispatch.ServeHTTP(response, contextualRequest)
 	})
 	if siteServices != nil {
-		return withSiteShellLoader(outer, siteServices.Shell), nil
+		return withSiteShellLoader(withControlSettingsLoader(outer, siteServices.Control), siteServices.Shell), nil
 	}
 	return outer, nil
 }

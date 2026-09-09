@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/control"
 )
 
 // NewAuthenticationService crosses the retained OIDC client-secret boundary
@@ -50,7 +51,16 @@ func (configured Config) NewAuthenticationService(
 	callbackURL := publicBaseURL
 	callbackURL.Path += "/auth/callback"
 	callbackURL.RawPath = ""
-	return auth.NewService(
+	ceilings := control.Ceilings{
+		PublishLimit:      configured.Abuse.PublishLimit,
+		NewAccountLimit:   configured.Abuse.NewAccountPublishLimit,
+		PublishWindow:     configured.Abuse.PublishWindow,
+		NewAccountPeriod:  configured.Abuse.NewAccountPeriod,
+		SessionIdle:       configured.SessionIdleTimeout,
+		AuthRevalidate:    configured.AuthRevalidateInterval,
+		SessionMaximumAge: configured.SessionMaxAge,
+	}
+	return auth.NewServiceWithControl(
 		ctx,
 		transport,
 		issuerURL,
@@ -63,6 +73,7 @@ func (configured Config) NewAuthenticationService(
 		configured.SessionMaxAge,
 		configured.SessionIdleTimeout,
 		configured.AuthRevalidateInterval,
+		ceilings,
 		validateReturnPath,
 	)
 }

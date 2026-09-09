@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gotthboard/gotth-bb/internal/abuse"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -55,6 +56,8 @@ type transactionBeginner interface {
 type publicationTransactionBeginner interface {
 	BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error)
 }
+
+type publicationPolicyLoader func(context.Context, *db.Queries) (abuse.PublicationPolicy, error)
 
 type PublishResult struct {
 	TopicID     int64
@@ -162,14 +165,58 @@ func CreateTopic(
 	title string,
 	markdownSource string,
 ) (PublishResult, error) {
+	if !publicationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create topic publication policy is invalid")
+	}
+	return createTopic(ctx, beginner, func(context.Context, *db.Queries) (abuse.PublicationPolicy, error) {
+		return publicationPolicy, nil
+	}, destinationPolicy, actor, areaSlug, title, markdownSource)
+}
+
+// CreateTopicWithControl reads the current publication policy inside the same
+// transaction that spends the durable publication counter. A concurrent
+// settings commit therefore becomes visible at one ordinary READ COMMITTED
+// statement boundary; no request retains a process-start policy.
+func CreateTopicWithControl(
+	ctx context.Context,
+	beginner publicationTransactionBeginner,
+	ceilings control.Ceilings,
+	destinationPolicy abuse.DestinationPolicy,
+	actor policy.AccessContext,
+	areaSlug string,
+	title string,
+	markdownSource string,
+) (PublishResult, error) {
+	if !ceilings.Valid() {
+		return PublishResult{}, fmt.Errorf("create topic control ceilings are invalid")
+	}
+	return createTopic(ctx, beginner, func(loadContext context.Context, queries *db.Queries) (abuse.PublicationPolicy, error) {
+		settings, err := control.Load(loadContext, queries, ceilings)
+		if err != nil {
+			return abuse.PublicationPolicy{}, err
+		}
+		return settings.Publication, nil
+	}, destinationPolicy, actor, areaSlug, title, markdownSource)
+}
+
+func createTopic(
+	ctx context.Context,
+	beginner publicationTransactionBeginner,
+	loadPublicationPolicy publicationPolicyLoader,
+	destinationPolicy abuse.DestinationPolicy,
+	actor policy.AccessContext,
+	areaSlug string,
+	title string,
+	markdownSource string,
+) (PublishResult, error) {
 	if ctx == nil {
 		return PublishResult{}, fmt.Errorf("create topic context is required")
 	}
 	if beginner == nil {
 		return PublishResult{}, fmt.Errorf("create topic transaction beginner is required")
 	}
-	if !publicationPolicy.Valid() {
-		return PublishResult{}, fmt.Errorf("create topic publication policy is invalid")
+	if loadPublicationPolicy == nil {
+		return PublishResult{}, fmt.Errorf("create topic publication policy loader is required")
 	}
 	if !destinationPolicy.Valid() {
 		return PublishResult{}, fmt.Errorf("create topic destination policy is invalid")
@@ -200,6 +247,10 @@ func CreateTopic(
 	err = store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
 		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
 			return fmt.Errorf("configure topic publication transaction: %w", err)
+		}
+		publicationPolicy, err := loadPublicationPolicy(ctx, queries)
+		if err != nil || !publicationPolicy.Valid() {
+			return fmt.Errorf("load topic publication policy failed")
 		}
 		currentActor, lockedActor, err := lockPublicationActor(ctx, queries, actor)
 		if err != nil {
@@ -265,14 +316,55 @@ func CreateReply(
 	parentPostID int64,
 	markdownSource string,
 ) (PublishResult, error) {
+	if !publicationPolicy.Valid() {
+		return PublishResult{}, fmt.Errorf("create reply publication policy is invalid")
+	}
+	return createReply(ctx, beginner, func(context.Context, *db.Queries) (abuse.PublicationPolicy, error) {
+		return publicationPolicy, nil
+	}, destinationPolicy, actor, topicID, parentPostID, markdownSource)
+}
+
+// CreateReplyWithControl is the reply equivalent of CreateTopicWithControl.
+func CreateReplyWithControl(
+	ctx context.Context,
+	beginner publicationTransactionBeginner,
+	ceilings control.Ceilings,
+	destinationPolicy abuse.DestinationPolicy,
+	actor policy.AccessContext,
+	topicID int64,
+	parentPostID int64,
+	markdownSource string,
+) (PublishResult, error) {
+	if !ceilings.Valid() {
+		return PublishResult{}, fmt.Errorf("create reply control ceilings are invalid")
+	}
+	return createReply(ctx, beginner, func(loadContext context.Context, queries *db.Queries) (abuse.PublicationPolicy, error) {
+		settings, err := control.Load(loadContext, queries, ceilings)
+		if err != nil {
+			return abuse.PublicationPolicy{}, err
+		}
+		return settings.Publication, nil
+	}, destinationPolicy, actor, topicID, parentPostID, markdownSource)
+}
+
+func createReply(
+	ctx context.Context,
+	beginner publicationTransactionBeginner,
+	loadPublicationPolicy publicationPolicyLoader,
+	destinationPolicy abuse.DestinationPolicy,
+	actor policy.AccessContext,
+	topicID int64,
+	parentPostID int64,
+	markdownSource string,
+) (PublishResult, error) {
 	if ctx == nil {
 		return PublishResult{}, fmt.Errorf("create reply context is required")
 	}
 	if beginner == nil {
 		return PublishResult{}, fmt.Errorf("create reply transaction beginner is required")
 	}
-	if !publicationPolicy.Valid() {
-		return PublishResult{}, fmt.Errorf("create reply publication policy is invalid")
+	if loadPublicationPolicy == nil {
+		return PublishResult{}, fmt.Errorf("create reply publication policy loader is required")
 	}
 	if !destinationPolicy.Valid() {
 		return PublishResult{}, fmt.Errorf("create reply destination policy is invalid")
@@ -306,6 +398,10 @@ func CreateReply(
 	err = store.WithinTxOptions(ctx, beginner, pgx.TxOptions{IsoLevel: pgx.ReadCommitted}, func(queries *db.Queries) error {
 		if err := queries.ConfigurePublicationTransaction(ctx); err != nil {
 			return fmt.Errorf("configure reply publication transaction: %w", err)
+		}
+		publicationPolicy, err := loadPublicationPolicy(ctx, queries)
+		if err != nil || !publicationPolicy.Valid() {
+			return fmt.Errorf("load reply publication policy failed")
 		}
 		currentActor, lockedActor, err := lockPublicationActor(ctx, queries, actor)
 		if err != nil {

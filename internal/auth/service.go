@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // SessionDatabase is the exact pgx/sqlc surface required by login-attempt and
@@ -32,7 +34,46 @@ type Service struct {
 	sessionMaximumAge    time.Duration
 	sessionIdleTimeout   time.Duration
 	revalidationInterval time.Duration
+	controlCeilings      control.Ceilings
+	dynamicControl       bool
 	validateReturnPath   func(string) (string, error)
+}
+
+// NewServiceWithControl constructs the ordinary OIDC service and enables
+// database-backed session policy reads beneath immutable startup ceilings.
+// Discovery still occurs exactly once through NewService.
+func NewServiceWithControl(
+	ctx context.Context,
+	baseTransport http.RoundTripper,
+	issuerURL url.URL,
+	clientID string,
+	clientSecret string,
+	redirectURL string,
+	database SessionDatabase,
+	entropy io.Reader,
+	clock func() time.Time,
+	sessionMaximumAge time.Duration,
+	sessionIdleTimeout time.Duration,
+	revalidationInterval time.Duration,
+	ceilings control.Ceilings,
+	validateReturnPath func(string) (string, error),
+) (*Service, error) {
+	if !ceilings.Valid() || ceilings.SessionMaximumAge != sessionMaximumAge ||
+		ceilings.SessionIdle != sessionIdleTimeout ||
+		ceilings.AuthRevalidate != revalidationInterval {
+		return nil, fmt.Errorf("authentication control ceilings are invalid")
+	}
+	service, err := NewService(
+		ctx, baseTransport, issuerURL, clientID, clientSecret, redirectURL,
+		database, entropy, clock, sessionMaximumAge, sessionIdleTimeout,
+		revalidationInterval, validateReturnPath,
+	)
+	if err != nil {
+		return nil, err
+	}
+	service.controlCeilings = ceilings
+	service.dynamicControl = true
+	return service, nil
 }
 
 // Format prevents recursive formatting of retained OIDC, PostgreSQL, entropy,
@@ -302,6 +343,39 @@ func (service *Service) AuthenticateSession(ctx context.Context, token string) (
 	if service == nil || service.database == nil || service.queries == nil || service.clock == nil ||
 		service.sessionIdleTimeout < time.Second || service.revalidationInterval < time.Second {
 		return SessionAuthentication{}, fmt.Errorf("authentication service is not initialized for session lookup")
+	}
+	if service.dynamicControl {
+		if !service.controlCeilings.Valid() {
+			return SessionAuthentication{}, fmt.Errorf("authentication service control ceilings are invalid")
+		}
+		return authenticateSessionWithPolicy(
+			ctx,
+			service.queries.TouchSession,
+			service.clock,
+			func(loadContext context.Context, tokenHash []byte, now time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error) {
+				loaded, err := service.queries.GetActiveSessionWithControl(loadContext, db.GetActiveSessionWithControlParams{
+					TokenHash:  tokenHash,
+					ObservedAt: pgtype.Timestamptz{Time: now, Valid: true},
+				})
+				if err != nil {
+					return db.GetActiveSessionRow{}, 0, 0, err
+				}
+				idle := time.Duration(loaded.SessionIdleSeconds) * time.Second
+				revalidate := time.Duration(loaded.AuthRevalidateSeconds) * time.Second
+				if loaded.SessionIdleSeconds <= 0 || loaded.AuthRevalidateSeconds <= 0 ||
+					idle > service.controlCeilings.SessionIdle || revalidate > service.controlCeilings.AuthRevalidate ||
+					idle > service.controlCeilings.SessionMaximumAge || revalidate > service.controlCeilings.SessionMaximumAge {
+					return db.GetActiveSessionRow{}, 0, 0, fmt.Errorf("persisted session policy exceeds startup ceiling")
+				}
+				return db.GetActiveSessionRow{
+					SessionID: loaded.SessionID, UserID: loaded.UserID,
+					IssuedAt: loaded.IssuedAt, LastSeenAt: loaded.LastSeenAt,
+					ValidatedAt: loaded.ValidatedAt, ExpiresAt: loaded.ExpiresAt,
+					Role: loaded.Role, MutedUntil: loaded.MutedUntil, GroupIds: loaded.GroupIds,
+				}, idle, revalidate, nil
+			},
+			token,
+		)
 	}
 	return authenticateSession(
 		ctx,

@@ -60,7 +60,9 @@ const publicationPrivilegeReadySQL = `SELECT
               'suspended_at', 'suspended_until', 'suspension_reason',
               'muted_until', 'updated_at', 'last_login_at',
               'administration_revision',
-              'publication_window_started_at', 'publication_count'
+              'publication_window_started_at', 'publication_count',
+              'authentik_sync_state', 'authentik_sync_last_attempt_at',
+              'authentik_sync_next_attempt_at', 'authentik_sync_failure_class'
           )
           AND has_column_privilege(current_user, 'public.users', column_state.attname, 'UPDATE')
     )

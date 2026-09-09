@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/rerender"
 	"github.com/gotthboard/gotth-bb/internal/searchprojection"
@@ -23,6 +24,13 @@ const (
 	readinessRestrictedRole     = "gotth_bb_alpha3_readiness_runtime"
 	readinessRestrictedPassword = "alpha3-readiness-test-only"
 )
+
+var integrationControlCeilings = control.Ceilings{
+	PublishLimit: 10, NewAccountLimit: 3,
+	PublishWindow: 10 * time.Minute, NewAccountPeriod: 24 * time.Hour,
+	SessionIdle: 8 * time.Hour, AuthRevalidate: 30 * time.Minute,
+	SessionMaximumAge: 24 * time.Hour,
+}
 
 func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -101,7 +109,7 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	}
 	checker, err := New(connection, func(checkContext context.Context) error {
 		return release.Verify(checkContext, connection)
-	}, time.Now)
+	}, time.Now, integrationControlCeilings, false)
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -147,7 +155,7 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 	t.Cleanup(func() { _ = restricted.Close(context.Background()) })
 	restrictedChecker, err := New(restricted, func(checkContext context.Context) error {
 		return release.Verify(checkContext, restricted)
-	}, time.Now)
+	}, time.Now, integrationControlCeilings, false)
 	if err != nil {
 		t.Fatalf("New(restricted) returned error: %v", err)
 	}
@@ -161,8 +169,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 14 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 14", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 21 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 21", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {

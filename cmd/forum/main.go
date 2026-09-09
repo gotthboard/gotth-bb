@@ -19,6 +19,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/buildinfo"
 	"github.com/gotthboard/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/discovery"
 	forumservice "github.com/gotthboard/gotth-bb/internal/forum"
 	"github.com/gotthboard/gotth-bb/internal/governance"
@@ -175,9 +176,17 @@ func run(
 	if err != nil || requestLimiter == nil {
 		return fmt.Errorf("load abuse policy failed")
 	}
-	publicationPolicy := abusePolicy.PublicationPolicy()
-	if !publicationPolicy.Valid() {
-		return fmt.Errorf("load publication policy failed")
+	controlCeilings := control.Ceilings{
+		PublishLimit:      configured.Abuse.PublishLimit,
+		NewAccountLimit:   configured.Abuse.NewAccountPublishLimit,
+		PublishWindow:     configured.Abuse.PublishWindow,
+		NewAccountPeriod:  configured.Abuse.NewAccountPeriod,
+		SessionIdle:       configured.SessionIdleTimeout,
+		AuthRevalidate:    configured.AuthRevalidateInterval,
+		SessionMaximumAge: configured.SessionMaxAge,
+	}
+	if !controlCeilings.Valid() {
+		return fmt.Errorf("construct runtime control ceilings failed")
 	}
 	destinationPolicy := abusePolicy.DestinationPolicy()
 	if !destinationPolicy.Valid() {
@@ -230,7 +239,7 @@ func run(
 	}
 	readinessChecker, err := readiness.New(pool, func(readinessContext context.Context) error {
 		return releaseMigrations.Verify(readinessContext, pool)
-	}, time.Now)
+	}, time.Now, controlCeilings, false)
 	if err != nil {
 		return fmt.Errorf("construct readiness checker: %w", err)
 	}
@@ -258,10 +267,10 @@ func run(
 		destinationPolicy,
 		abuseObserver,
 		func(publishContext context.Context, access auth.AccessContext, areaSlug, title, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateTopic(publishContext, pool, publicationPolicy, destinationPolicy, access, areaSlug, title, markdown)
+			return forumservice.CreateTopicWithControl(publishContext, pool, controlCeilings, destinationPolicy, access, areaSlug, title, markdown)
 		},
 		func(publishContext context.Context, access auth.AccessContext, topicID, parentPostID int64, markdown string) (forumservice.PublishResult, error) {
-			return forumservice.CreateReply(publishContext, pool, publicationPolicy, destinationPolicy, access, topicID, parentPostID, markdown)
+			return forumservice.CreateReplyWithControl(publishContext, pool, controlCeilings, destinationPolicy, access, topicID, parentPostID, markdown)
 		},
 		func(editContext context.Context, access auth.AccessContext, postID int64) (store.EditablePost, error) {
 			return store.GetEditablePost(editContext, queries, postID, access)
@@ -342,6 +351,9 @@ func run(
 			},
 			Update: func(siteContext context.Context, access auth.AccessContext, input siteservice.SettingsInput, requestID pgtype.UUID) (siteservice.MutationResult, error) {
 				return siteservice.UpdateSettings(siteContext, pool, time.Now, destinationPolicy, access, input, requestID)
+			},
+			Control: func(siteContext context.Context) (control.Settings, error) {
+				return control.Load(siteContext, queries, controlCeilings)
 			},
 			Administration: &httpui.AdministrationHTTPServices{
 				Dashboard: func(adminContext context.Context, access auth.AccessContext) (administrationservice.Dashboard, error) {

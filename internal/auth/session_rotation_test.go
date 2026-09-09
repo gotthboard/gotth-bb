@@ -132,7 +132,15 @@ func (tx *rotationFunctionTx) QueryRow(context.Context, string, ...any) pgx.Row 
 				sessionID = 0
 			}
 			*(destinations[0].(*int64)) = sessionID
-			*(destinations[2].(*int64)) = userID
+			*(destinations[1].(*int64)) = userID
+			return nil
+		}}
+	case 4:
+		return rotationFunctionRow{scan: func(destinations ...any) error {
+			if tx.failure == "session revoke" {
+				return tx.cause
+			}
+			*(destinations[0].(*int64)) = tx.revokeRows
 			return nil
 		}}
 	default:
@@ -145,21 +153,7 @@ func (tx *rotationFunctionTx) Exec(context.Context, string, ...any) (pgconn.Comm
 	if tx.execCalls == 1 && tx.failure == "identity update" {
 		return pgconn.CommandTag{}, tx.cause
 	}
-	if tx.execCalls == 2 && tx.failure == "session revoke" {
-		return pgconn.CommandTag{}, tx.cause
-	}
-	rows := int64(1)
-	if tx.execCalls == 2 {
-		rows = tx.revokeRows
-	}
-	switch rows {
-	case 0:
-		return pgconn.NewCommandTag("UPDATE 0"), nil
-	case 1:
-		return pgconn.NewCommandTag("UPDATE 1"), nil
-	default:
-		return pgconn.NewCommandTag("UPDATE 2"), nil
-	}
+	return pgconn.NewCommandTag("UPDATE 1"), nil
 }
 
 func (tx *rotationFunctionTx) Commit(context.Context) error {

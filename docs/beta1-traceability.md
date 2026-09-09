@@ -24,7 +24,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ID-011` | controlled Authentik enrollment redirect | registration handler/config tests and deployment blueprint validation | implemented |
 | `ID-012` | fail-closed registration activation gate | registration handler tests and deployed `REGISTRATION_ENABLED=false` state | implemented |
 | `ID-013` | independent setup and registration routes/state | setup/registration HTTP tests | implemented |
-| `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | B1-09-01/03 PostgreSQL, HTTP, and Authentik evidence | blocked |
+| `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | `docs/evidence/beta1-09-01-control-settings.txt`; B1-09-03 HTTP/Auth evidence pending | blocked |
 | `ID-015` | B1-09 verified pending approval and flow-bound invitation lifecycle | B1-09-02/03 real Authentik and transition evidence | blocked |
 | `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry and live OIDC evidence | blocked |
 | `ACL-001` | closed visibility/posting policy types and constraints | policy tests and migration schema tests | implemented |
@@ -67,7 +67,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-003` | local roles/groups/memberships | AN-04 integrated evidence | implemented |
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
-| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | B1-09-01/04 database, HTTP, and browser evidence | blocked |
+| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; B1-09-04 administrator UI/browser evidence pending | blocked |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | B1-09-03 Authentik/HTTP/browser evidence | blocked |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | B1-09-04 database/HTTP/security evidence | blocked |
 | `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | B1-09-04 SMTP/HTTP evidence | blocked |
@@ -83,7 +83,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |
 | `SEC-004` | escaped templates and boundary sanitizer | B1-01 fixed-parser/raw-tag regression plus template/render/XSS tests | implemented |
 | `SEC-005` | bounded structured redacted logs | observability and AN-02/AN-05 log evidence | implemented |
-| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000012 | implemented |
+| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000013 and `docs/evidence/beta1-09-01-control-settings.txt` | implemented |
 | `OPS-002` | bounded public liveness/readiness | readiness and deployed health tests | implemented |
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
 | `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 packaged-helper, live-copy upgrade, Beta backup/clean-restore, readiness, and rollback rehearsal complete; live release record pending B1-05 | blocked |

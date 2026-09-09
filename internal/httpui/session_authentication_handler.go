@@ -58,6 +58,11 @@ func newSessionAuthenticationHandler(
 	if err := expiredCookie.Valid(); err != nil {
 		return nil, fmt.Errorf("expired session cookie is invalid: %w", err)
 	}
+	maintenanceView, err := newPageView(builder, "Maintenance")
+	if err != nil {
+		return nil, fmt.Errorf("construct maintenance view: %w", err)
+	}
+	maintenanceView.CanonicalURL = ""
 	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		response.Header().Add("Vary", "Cookie")
 		cookies := request.CookiesNamed(cookieName)
@@ -93,6 +98,9 @@ func newSessionAuthenticationHandler(
 			requestContext = context.WithValue(requestContext, csrfTokenContextKey{}, csrfToken)
 		}
 		downstreamRequest := request.WithContext(requestContext)
+		if enforceMaintenance(response, downstreamRequest, authentication, maintenanceView) {
+			return
+		}
 		defer func() { request.Pattern = downstreamRequest.Pattern }()
 		next.ServeHTTP(response, downstreamRequest)
 	}), nil

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/abuse"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/searchprojection"
 	"github.com/gotthboard/gotth-bb/internal/site"
@@ -105,13 +106,15 @@ type Checker struct {
 	database         database
 	verifyMigrations MigrationVerifier
 	now              func() time.Time
+	controlCeilings  control.Ceilings
+	smtpConfigured   bool
 }
 
 // New constructs a checker without touching PostgreSQL. Dependencies are
 // validated at startup so request handling cannot silently omit an invariant.
 //
 // Complexity: tight Theta(1) time and auxiliary space.
-func New(database database, verifyMigrations MigrationVerifier, now func() time.Time) (*Checker, error) {
+func New(database database, verifyMigrations MigrationVerifier, now func() time.Time, controlCeilings control.Ceilings, smtpConfigured bool) (*Checker, error) {
 	if database == nil {
 		return nil, fmt.Errorf("readiness database is required")
 	}
@@ -121,7 +124,13 @@ func New(database database, verifyMigrations MigrationVerifier, now func() time.
 	if now == nil {
 		return nil, fmt.Errorf("readiness clock is required")
 	}
-	return &Checker{database: database, verifyMigrations: verifyMigrations, now: now}, nil
+	if !controlCeilings.Valid() {
+		return nil, fmt.Errorf("readiness control ceilings are invalid")
+	}
+	return &Checker{
+		database: database, verifyMigrations: verifyMigrations, now: now,
+		controlCeilings: controlCeilings, smtpConfigured: smtpConfigured,
+	}, nil
 }
 
 // Check proves the exact release migration head, singleton governance row,
@@ -132,7 +141,7 @@ func New(database database, verifyMigrations MigrationVerifier, now func() time.
 // bounded by probeTimeout plus scheduler delay and otherwise delegated to one
 // migration verification and one constant-shape SQL query.
 func (checker *Checker) Check(ctx context.Context) error {
-	if checker == nil || checker.database == nil || checker.verifyMigrations == nil || checker.now == nil {
+	if checker == nil || checker.database == nil || checker.verifyMigrations == nil || checker.now == nil || !checker.controlCeilings.Valid() {
 		return fmt.Errorf("readiness checker is incomplete")
 	}
 	if ctx == nil {
@@ -173,6 +182,9 @@ func (checker *Checker) Check(ctx context.Context) error {
 	}
 	if err := abuse.PublicationReady(probeContext, checker.database); err != nil {
 		return fmt.Errorf("publication readiness failed: %w", err)
+	}
+	if err := control.Ready(probeContext, checker.database, checker.controlCeilings, checker.smtpConfigured); err != nil {
+		return fmt.Errorf("control readiness failed: %w", err)
 	}
 	return nil
 }

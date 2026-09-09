@@ -1,0 +1,112 @@
+B1-09-01 schema and control-settings evidence
+================================================
+
+Candidate
+---------
+
+- implementation commit: current commit; hash assigned after this evidence
+- admitted B1-09 contract: 7af00255eae51f0f38468e5d282b7ea4032ecd95
+- Beta.1.5 implementation base: 9211cb54b8d689594466493170a997b48b4b1b54
+- branch: feature/beta-1-admin-control-plane
+
+Environment
+-----------
+
+- local: Go 1.26.6-X:nodwarf5, Node.js 26.7.0, npm 12.0.2,
+  Linux amd64
+- development evidence host: Go 1.26.5-X:nodwarf5, Linux amd64
+- PostgreSQL: 17.10 (Debian 17.10-1.pgdg13+1)
+- database tests used a task-owned temporary superuser and fixed disposable
+  test databases; the role and databases are removed after the unit gate
+- no live service, production database, Authentik tenant, Caddy route, tag,
+  release, or deployment was changed
+
+Exact gates
+-----------
+
+1. Deterministic SQL generation and local repository suite:
+
+     go tool sqlc generate --no-remote
+     GOMAXPROCS=2 go test -count=1 -p=1 ./...
+     git diff --check
+
+2. Focused PostgreSQL 17 schema, upgrade, control, authorization, readiness,
+   authentication, publication, and migration packages:
+
+     GOTTH_BB_TEST_DATABASE_URL=<task-owned PostgreSQL 17 URL> \
+       go test -count=1 -tags=integration -p=1 \
+       ./internal/control ./internal/auth ./internal/readiness \
+       ./internal/governance ./internal/forum ./migrations
+
+3. Complete serial PostgreSQL 17 integration gate on the repaired candidate:
+
+     go vet ./...
+     GOTTH_BB_TEST_DATABASE_URL=<task-owned PostgreSQL 17 URL> \
+       go test -count=1 -tags=integration -p=1 ./...
+
+Results
+-------
+
+- All final gates passed.
+- Migration 000013 is present in deterministic order on fresh and upgrade
+  paths. It installs exact closed checks/defaults, backfills active identities
+  to accepted and currently suspended identities to removal-required, and
+  creates pending-registration, invitation, and email-test state without
+  deleting existing rows.
+- Runtime cannot select `sessions.token_hash`. Three fixed-shape
+  security-definer functions retain indexed credential comparison/revocation
+  at the migration-owner boundary, have fixed search paths, deny PUBLIC, and
+  are executable by the non-owning runtime role. Runtime JIT insertion can set
+  only the explicitly admitted accepted sync-state column in addition to its
+  existing profile/time tuple; table-wide user INSERT remains denied.
+- Control values are typed and rejected when malformed, non-closed, above a
+  startup ceiling, subsecond, inconsistent, or non-SMTP registration is
+  requested while SMTP is disabled. No persisted value is silently clamped.
+- One settings transaction revalidates and locks the administrator, locks the
+  singleton, rejects stale/no-op/overflow revisions, changes the tuple, and
+  appends one redacted audit. Audit failure rolls back the settings change.
+  Concurrent writers admit one winner and one conflict or bounded lock-timeout
+  loser. A committed-but-unacknowledged result is returned as unknown without
+  retry, and its exact revision plus audit remain inspectable.
+- Publication reads current database limits inside the existing atomic counter
+  transaction. The simultaneous-change fixture pauses after the old settings
+  statement without holding a database lock, commits a new policy, proves the
+  in-flight request uses the coherent old snapshot, and proves the next request
+  observes the new policy. The immutable request limiter and destination
+  matcher are unchanged.
+- Session authentication reads idle/revalidation policy in the indexed active
+  session statement. A tightened idle value rejects the next protected
+  request, while maximum age and cookie expiry remain startup-only ceilings.
+- Maintenance is evaluated after session resolution. Ordinary visitor/member/
+  moderator/administrator traffic receives a private no-store 503 with fixed
+  Retry-After; current-administrator recovery plus login, callback,
+  revalidation, logout, setup, static, liveness, and readiness boundaries
+  remain reachable. Settings-read failure also fails ordinary traffic closed.
+
+Rejected intermediate work
+--------------------------
+
+- The first integration compile compared a generated row containing a slice.
+  That is invalid Go and irrelevant to the contract; the assertion now checks
+  the required `pgx.ErrNoRows` result.
+- The first simultaneous-policy fixture held a user row while trying to beat
+  the production 250 ms lock timeout. Under host scheduling pressure the test
+  correctly timed out. It was replaced with a statement-boundary pause that
+  proves old/new policy ordering without weakening or racing the timeout.
+- The first upgrade suspension fixture let PostgreSQL evaluate `created_at`
+  after `suspended_at`, violating the existing timestamp check by microseconds.
+  The fixture now supplies an earlier explicit creation/update/login tuple.
+- Privilege review found the JIT SQL wrote accepted sync state without the
+  corresponding narrow INSERT grant. The exact column grant and a real
+  restricted-role JIT insertion test were added before commit.
+- Runtime-grant reset initially covered tables and sequences but not prior
+  direct function grants. The complete contract now revokes all direct
+  function grants before restoring only the three admitted session functions,
+  and readiness rejects function ownership by runtime.
+
+Boundary
+--------
+
+This evidence admits only B1-09-01. B1-09-02 through B1-09-05 remain required.
+It does not claim B1-09 completion, Beta completion, RC.1 admission, owner
+acceptance, merge, tag, release, or deployment.

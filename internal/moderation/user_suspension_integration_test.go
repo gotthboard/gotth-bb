@@ -64,14 +64,14 @@ func TestUserSuspensionOnPostgreSQL17(t *testing.T) {
 	createdAt := time.Date(2026, time.September, 2, 8, 0, 0, 0, time.UTC)
 	var moderatorID, memberID int64
 	if err := connection.QueryRow(ctx, `
-INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at)
-VALUES ('Moderator', 'moderator', $1, $1, $1)
+INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at, authentik_sync_state)
+VALUES ('Moderator', 'moderator', $1, $1, $1, 'accepted')
 RETURNING id`, createdAt).Scan(&moderatorID); err != nil {
 		t.Fatalf("insert moderator: %v", err)
 	}
 	if err := connection.QueryRow(ctx, `
-INSERT INTO public.users (display_name, created_at, updated_at, last_login_at)
-VALUES ('Member', $1, $1, $1)
+INSERT INTO public.users (display_name, created_at, updated_at, last_login_at, authentik_sync_state)
+VALUES ('Member', $1, $1, $1, 'accepted')
 RETURNING id`, createdAt).Scan(&memberID); err != nil {
 		t.Fatalf("insert member: %v", err)
 	}
@@ -248,14 +248,14 @@ FROM public.users WHERE id = $1`, memberID).Scan(&active, &auditCount); err != n
 
 	var firstAdminID, secondAdminID int64
 	if err := connection.QueryRow(ctx, `
-INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at)
-VALUES ('First administrator', 'administrator', $1, $1, $1)
+INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at, authentik_sync_state)
+VALUES ('First administrator', 'administrator', $1, $1, $1, 'accepted')
 RETURNING id`, createdAt).Scan(&firstAdminID); err != nil {
 		t.Fatalf("insert first administrator: %v", err)
 	}
 	if err := connection.QueryRow(ctx, `
-INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at)
-VALUES ('Second administrator', 'administrator', $1, $1, $1)
+INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at, authentik_sync_state)
+VALUES ('Second administrator', 'administrator', $1, $1, $1, 'accepted')
 RETURNING id`, createdAt).Scan(&secondAdminID); err != nil {
 		t.Fatalf("insert second administrator: %v", err)
 	}

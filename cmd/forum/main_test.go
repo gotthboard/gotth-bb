@@ -275,6 +275,19 @@ func (fakeSiteShellRow) Scan(destinations ...any) error {
 type fakeSiteReadinessRow struct{}
 
 func (fakeSiteReadinessRow) Scan(destinations ...any) error {
+	if len(destinations) == 10 {
+		*(destinations[0].(*string)) = "closed"
+		*(destinations[1].(*bool)) = false
+		*(destinations[2].(*string)) = ""
+		*(destinations[3].(*int32)) = 10
+		*(destinations[4].(*int32)) = 3
+		*(destinations[5].(*int32)) = 600
+		*(destinations[6].(*int32)) = 86400
+		*(destinations[7].(*int32)) = 1800
+		*(destinations[8].(*int32)) = 900
+		*(destinations[9].(*int64)) = 1
+		return nil
+	}
 	*(destinations[0].(*string)) = "GOTTH Board"
 	*(destinations[1].(*string)) = "Community discussions, plainly organized."
 	*(destinations[2].(*string)) = "blue"

@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -24,6 +25,7 @@ type SiteHTTPServices struct {
 	Rules    func(context.Context) (site.PublicRules, error)
 	Editable func(context.Context, auth.AccessContext) (site.EditableSettings, error)
 	Update   func(context.Context, auth.AccessContext, site.SettingsInput, pgtype.UUID) (site.MutationResult, error)
+	Control  func(context.Context) (control.Settings, error)
 	// Administration enables AN-04-03's bounded administrator surface. It is
 	// optional so older constructors retain their exact route set.
 	Administration *AdministrationHTTPServices

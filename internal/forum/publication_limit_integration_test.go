@@ -16,6 +16,7 @@ import (
 
 	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/administration"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -89,8 +90,9 @@ RETURNING id, ctid::text`).Scan(&upgradedID, &beforeCTID); err != nil {
 	var afterCTID string
 	var upgradedStart *time.Time
 	var upgradedCount int32
-	if err := connections[0].QueryRow(ctx, `SELECT ctid::text, publication_window_started_at, publication_count FROM public.users WHERE id=$1`, upgradedID).Scan(&afterCTID, &upgradedStart, &upgradedCount); err != nil || afterCTID != beforeCTID || upgradedStart != nil || upgradedCount != 0 {
-		t.Fatalf("upgrade tuple = (ctid %q/%q start %v count %d error %v)", beforeCTID, afterCTID, upgradedStart, upgradedCount, err)
+	var upgradedSyncState string
+	if err := connections[0].QueryRow(ctx, `SELECT ctid::text, publication_window_started_at, publication_count, authentik_sync_state FROM public.users WHERE id=$1`, upgradedID).Scan(&afterCTID, &upgradedStart, &upgradedCount, &upgradedSyncState); err != nil || afterCTID == beforeCTID || upgradedStart != nil || upgradedCount != 0 || upgradedSyncState != "accepted" {
+		t.Fatalf("upgrade tuple = (ctid %q/%q start %v count %d sync %q error %v)", beforeCTID, afterCTID, upgradedStart, upgradedCount, upgradedSyncState, err)
 	}
 	_, checkErr := connections[0].Exec(ctx, `UPDATE public.users SET publication_count=1 WHERE id=$1`, upgradedID)
 	assertPublicationCheckViolation(t, checkErr)
@@ -133,6 +135,67 @@ VALUES ('normal', 'Normal', 'normal', $1, $1), ('staff-only', 'Staff only', 'rea
 	if err != nil {
 		t.Fatal(err)
 	}
+	controlCeilings := control.Ceilings{
+		PublishLimit: 3, NewAccountLimit: 2,
+		PublishWindow: 10 * time.Minute, NewAccountPeriod: 24 * time.Hour,
+		SessionIdle: 8 * time.Hour, AuthRevalidate: 30 * time.Minute,
+		SessionMaximumAge: 24 * time.Hour,
+	}
+	var dynamicID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (
+display_name, created_at, updated_at, last_login_at,
+publication_window_started_at, publication_count
+) VALUES (
+'Dynamic policy account', clock_timestamp() - interval '2 days',
+clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days',
+clock_timestamp(), 1
+) RETURNING id`).Scan(&dynamicID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.site_settings
+SET publish_rate_limit=1, new_account_publish_rate_limit=1,
+    administration_revision=administration_revision+1`); err != nil {
+		t.Fatal(err)
+	}
+	dynamicActor := policy.AccessContext{Authenticated: true, UserID: dynamicID, Role: policy.RoleMember}
+	policyLoaded := make(chan struct{}, 1)
+	resumePublication := make(chan struct{})
+	dynamicResult := make(chan error, 1)
+	go func() {
+		_, publishErr := CreateTopicWithControl(
+			ctx,
+			publicationPolicyPauseBeginner{
+				connection: connections[2], loaded: policyLoaded,
+				resume: resumePublication,
+			},
+			controlCeilings,
+			testDestinationPolicy,
+			dynamicActor,
+			"normal",
+			"Concurrent old policy",
+			"body",
+		)
+		dynamicResult <- publishErr
+	}()
+	select {
+	case <-policyLoaded:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	_, settingsUpdateErr := connections[3].Exec(ctx, `UPDATE public.site_settings
+SET publish_rate_limit=2, administration_revision=administration_revision+1`)
+	close(resumePublication)
+	if settingsUpdateErr != nil {
+		t.Fatal(settingsUpdateErr)
+	}
+	if err := <-dynamicResult; !errors.Is(err, ErrPublicationRateLimited) {
+		t.Fatalf("simultaneous old publication policy = %v, want rate limited", err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], dynamicID, 1)
+	if _, err := CreateTopicWithControl(ctx, connections[2], controlCeilings, testDestinationPolicy, dynamicActor, "normal", "Next-request new policy", "body"); err != nil {
+		t.Fatalf("next-request dynamic publication policy: %v", err)
+	}
+	assertPublicationTuple(t, ctx, connections[0], dynamicID, 2)
 	var yearOneID int64
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at) VALUES ('Year one account', '0001-01-01 00:00:00+00') RETURNING id`).Scan(&yearOneID); err != nil {
 		t.Fatal(err)
@@ -704,6 +767,54 @@ func (tx *publicationUnknownCommitTx) Commit(ctx context.Context) error {
 		return err
 	}
 	return tx.commitErr
+}
+
+type publicationPolicyPauseBeginner struct {
+	connection *pgx.Conn
+	loaded     chan<- struct{}
+	resume     <-chan struct{}
+}
+
+func (beginner publicationPolicyPauseBeginner) BeginTx(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
+	tx, err := beginner.connection.BeginTx(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &publicationPolicyPauseTx{Tx: tx, loaded: beginner.loaded, resume: beginner.resume}, nil
+}
+
+type publicationPolicyPauseTx struct {
+	pgx.Tx
+	loaded chan<- struct{}
+	resume <-chan struct{}
+}
+
+func (tx *publicationPolicyPauseTx) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	row := tx.Tx.QueryRow(ctx, sql, args...)
+	if !strings.Contains(sql, "FROM public.site_settings") {
+		return row
+	}
+	return publicationPolicyPauseRow{Row: row, ctx: ctx, loaded: tx.loaded, resume: tx.resume}
+}
+
+type publicationPolicyPauseRow struct {
+	pgx.Row
+	ctx    context.Context
+	loaded chan<- struct{}
+	resume <-chan struct{}
+}
+
+func (row publicationPolicyPauseRow) Scan(destinations ...any) error {
+	if err := row.Row.Scan(destinations...); err != nil {
+		return err
+	}
+	row.loaded <- struct{}{}
+	select {
+	case <-row.resume:
+		return nil
+	case <-row.ctx.Done():
+		return row.ctx.Err()
+	}
 }
 
 func migrationPrefix(t *testing.T, maximum int) fs.FS {

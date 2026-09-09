@@ -122,6 +122,16 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Negative infinity reader') RETURNING id`).Scan(&negativeInfinityUserID); err != nil {
 		t.Fatalf("insert negative-infinity reader: %v", err)
 	}
+	var suspendedUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+    (display_name, created_at, updated_at, last_login_at,
+     suspended_at, suspension_reason)
+VALUES ('Suspended upgrade user', clock_timestamp() - interval '1 hour',
+        clock_timestamp() - interval '1 hour', clock_timestamp() - interval '1 hour',
+        clock_timestamp(), 'upgrade backfill')
+RETURNING id`).Scan(&suspendedUserID); err != nil {
+		t.Fatalf("insert suspended upgrade user: %v", err)
+	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.topic_reads
 	(user_id, topic_id, last_read_post_number, read_at) VALUES ($1, $3, 1, 'infinity'), ($2, $3, 1, '-infinity')`, userID, negativeInfinityUserID, topicID); err != nil {
 		t.Fatalf("insert legacy non-finite marker: %v", err)
@@ -161,6 +171,7 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 	var assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized bool
 	var rootParent, replyParent *int64
 	var rootPath, replyPath []int32
+	var activeSyncState, suspendedSyncState string
 	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.gotth_schema_migrations`).Scan(&migrationCount); err != nil {
 		t.Fatalf("inspect upgrade migration count: %v", err)
 	}
@@ -180,7 +191,17 @@ func TestPopulatedAlphaOneUpgradeOnPostgreSQL17(t *testing.T) {
 FROM public.reports`).Scan(&assignedOpenNormalized, &unassignedReviewNormalized, &terminalAssignmentNormalized); err != nil {
 		t.Fatalf("inspect normalized report states: %v", err)
 	}
-	if migrationCount != 12 || upgradedMarkerCount != 2 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
+	if err := connection.QueryRow(ctx, `SELECT
+    (SELECT authentik_sync_state FROM public.users WHERE id = $1),
+    (SELECT authentik_sync_state FROM public.users WHERE id = $2)`, userID, suspendedUserID).Scan(
+		&activeSyncState, &suspendedSyncState,
+	); err != nil {
+		t.Fatalf("inspect identity sync backfill: %v", err)
+	}
+	if migrationCount != 13 || upgradedMarkerCount != 2 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
 		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v, reports %t/%t/%t)", migrationCount, rootParent, rootPath, replyParent, replyPath, assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized)
+	}
+	if activeSyncState != "accepted" || suspendedSyncState != "removal_required" {
+		t.Fatalf("identity sync backfill = (%q, %q), want accepted/removal_required", activeSyncState, suspendedSyncState)
 	}
 }

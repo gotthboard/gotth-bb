@@ -26,6 +26,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000010_administration_completion.sql",
 		"000011_publication_limits.sql",
 		"000012_external_identity_rebind.sql",
+		"000013_board_control_plane.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -37,6 +38,46 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestBoardControlPlaneSchemaStepIsClosedAndDoesNotCrossDatabases(t *testing.T) {
+	t.Parallel()
+
+	body, err := fs.ReadFile(Files(), "000013_board_control_plane.sql")
+	if err != nil {
+		t.Fatalf("read board-control-plane migration: %v", err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{
+		"authentik_core", "authentik_stages", "dblink", "postgres_fdw",
+		"DELETE FROM", "DROP TABLE", "CREATE EXTENSION",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("board-control-plane migration contains forbidden boundary %q", forbidden)
+		}
+	}
+	for _, required := range []string{
+		"registration_mode text NOT NULL DEFAULT 'closed'",
+		"maintenance_enabled boolean NOT NULL DEFAULT false",
+		"site_settings_registration_mode_closed",
+		"site_settings_publication_limits_positive",
+		"site_settings_session_limits_positive",
+		"authentik_sync_state text NOT NULL DEFAULT 'unknown'",
+		"UPDATE public.users",
+		"CREATE TABLE public.pending_registrations",
+		"CREATE TABLE public.registration_invitations",
+		"CREATE TABLE public.email_test_state",
+		"octet_length(request_fingerprint) = 32",
+		"'update_control_settings'",
+		"'record_registration_transition_result'",
+		"'record_invitation_result'",
+		"'reconcile_identity_access'",
+		"'gotth-bb-expiry-reconciler'",
+	} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("board-control-plane migration lacks required contract %q", required)
 		}
 	}
 }

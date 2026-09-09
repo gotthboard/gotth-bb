@@ -5,6 +5,34 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-09 — Add B1-09 database-backed control settings
+
+Commit: current commit; hash assigned by Git after commit
+
+Migration 000013 adds the closed registration, maintenance, publication,
+session, identity-reconciliation, invitation, pending-registration, and email
+state required by the admitted Board administration contract. Runtime reads
+publication and session policy from the singleton beneath immutable startup
+ceilings; maintenance fails ordinary traffic closed while preserving the
+current-administrator recovery path. Settings changes use one bounded
+read-committed transaction, optimistic revision, redacted audit, and no retry
+after an unknown commit outcome.
+
+The runtime database role can compare and revoke opaque sessions through three
+fixed security-definer functions without reading `sessions.token_hash`. Its
+JIT user INSERT grant is limited to the existing profile/time fields plus the
+explicit accepted sync state; table-wide user INSERT remains denied. Readiness
+attests migration 000013, exact functions/ownership/grants, singleton values,
+SMTP gating, and every startup ceiling. PostgreSQL 17 integration proves fresh
+and upgrade paths, restricted-role execution, concurrent settings and
+publication policy, immediate session tightening, maintenance behavior,
+rollback, audit failure, overflow, and inspectable unknown commit.
+
+This is B1-09-01 only. It does not add the restricted Authentik client,
+registration workflows, complete administrator UI, email delivery, a merge,
+tag, release, or deployment. Beta.1.5 remains the unchanged live candidate
+until its physical acceptance and the later B1-09 units close.
+
 ### 2026-09-09 — Admit the B1-09 Board administration control-plane contract
 
 Commit: current commit; hash assigned by Git after commit

@@ -144,6 +144,61 @@ func TestAuthenticateSessionTreatsMissingOrInvalidCredentialsAsAnonymous(t *test
 	}
 }
 
+func TestAuthenticateSessionLoadsDynamicPolicyAfterCredentialValidation(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 9, 13, 0, 0, 0, time.UTC)
+	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x44}, 32))
+	policyCalls := 0
+	result, err := authenticateSessionWithPolicy(
+		context.Background(),
+		func(context.Context, db.TouchSessionParams) (int64, error) { return 0, nil },
+		func() time.Time { return now },
+		func(_ context.Context, tokenHash []byte, observedAt time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error) {
+			policyCalls++
+			wantHash := sha256.Sum256([]byte(token))
+			if !bytes.Equal(tokenHash, wantHash[:]) || !observedAt.Equal(now) {
+				t.Fatalf("dynamic session query = (hash %x, time %s)", tokenHash, observedAt)
+			}
+			return activeSessionRow(now, "member", now.Add(-time.Minute), now.Add(-10*time.Minute), pgtype.Timestamptz{}), 15 * time.Minute, 10 * time.Minute, nil
+		},
+		token,
+	)
+	if err != nil || policyCalls != 1 || !result.Access.Authenticated || !result.RequiresRevalidation {
+		t.Fatalf("dynamic authenticateSession() = (%+v, policy calls %d, %v)", result, policyCalls, err)
+	}
+	result, err = authenticateSessionWithPolicy(
+		context.Background(),
+		func(context.Context, db.TouchSessionParams) (int64, error) { panic("touch must not run") },
+		time.Now,
+		func(context.Context, []byte, time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error) {
+			panic("policy must not load")
+		},
+		"invalid",
+	)
+	if err != nil || !reflect.DeepEqual(result, SessionAuthentication{}) {
+		t.Fatalf("invalid dynamic credential = (%+v, %v), want anonymous", result, err)
+	}
+}
+
+func TestAuthenticateSessionFailsClosedAndRedactsDynamicPolicyFailure(t *testing.T) {
+	t.Parallel()
+
+	token := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x45}, 32))
+	result, err := authenticateSessionWithPolicy(
+		context.Background(),
+		func(context.Context, db.TouchSessionParams) (int64, error) { panic("touch must not run") },
+		time.Now,
+		func(context.Context, []byte, time.Time) (db.GetActiveSessionRow, time.Duration, time.Duration, error) {
+			return db.GetActiveSessionRow{}, 0, 0, errors.New("private control value")
+		},
+		token,
+	)
+	if err == nil || !reflect.DeepEqual(result, SessionAuthentication{}) || strings.Contains(err.Error(), "private control value") {
+		t.Fatalf("dynamic policy failure = (%+v, %v), want zero/redacted error", result, err)
+	}
+}
+
 func TestAuthenticateSessionRejectsInvalidDependenciesAndDatabaseRows(t *testing.T) {
 	t.Parallel()
 
