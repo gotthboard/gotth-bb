@@ -22,10 +22,11 @@ no token route, so Board cannot exercise that raw authority or receive a token
 key.
 
 Authentik also retains generic object-permission rows after their invitation is
-deleted. Operator bootstrap now removes only stale or out-of-scope invitation
-permissions for the dedicated control role and verifies exact view/delete
-permissions for each live, single-use, pinned-flow invitation created by the
-control account. Unrelated RBAC state is untouched.
+deleted. Operator bootstrap now removes only stale invitation permissions for
+the dedicated control role and verifies exact view/delete permissions for each
+live, single-use, pinned-flow invitation created by the control account. A
+permission targeting a live foreign invitation blocks as active drift.
+Unrelated RBAC state is untouched.
 Bootstrap also rejects unexpected live or expired control-account tokens and
 removes only that account's detached managed-role residue after proving no replacement
 token exists.

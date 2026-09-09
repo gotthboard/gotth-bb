@@ -162,7 +162,8 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 		!strings.Contains(apply, `Token.objects.including_expired().filter(user=service).exclude(pk=token.pk).exists()`) ||
 		!strings.Contains(apply, `managed_role.managed != managed_role.name`) ||
 		!strings.Contains(apply, `Invitation.objects.filter(created_by=service)`) ||
-		!strings.Contains(apply, `exclude(object_pk__in=live_invitation_pks).delete()`) ||
+		!strings.Contains(apply, `existing_permission_targets - live_invitation_pks`) ||
+		!strings.Contains(apply, `invitation_permissions.exclude(object_pk__in=live_invitation_pks).delete()`) ||
 		!strings.Contains(apply, `b"\x00" in raw`) || !strings.Contains(apply, `b"\n" in raw`) {
 		t.Fatal("blueprint apply does not clear and verify the mounted provider secret")
 	}

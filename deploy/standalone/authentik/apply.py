@@ -115,10 +115,22 @@ try:
     ):
         raise RuntimeError("Board control invitation scope differs")
     live_invitation_pks = {str(invitation.pk) for invitation in service_invitations}
-    object_permissions.filter(
+    invitation_permissions = object_permissions.filter(
         permission__content_type__app_label="authentik_stages_invitation",
         permission__content_type__model="invitation",
-    ).exclude(object_pk__in=live_invitation_pks).delete()
+    )
+    permission_target_pks = set(
+        invitation_permissions.values_list("object_pk", flat=True)
+    )
+    existing_permission_targets = {
+        str(pk)
+        for pk in Invitation.objects.filter(pk__in=permission_target_pks).values_list(
+            "pk", flat=True
+        )
+    }
+    if existing_permission_targets - live_invitation_pks:
+        raise RuntimeError("Board control permission targets a foreign invitation")
+    invitation_permissions.exclude(object_pk__in=live_invitation_pks).delete()
     expected_object_permissions = {
         ("authentik_core", codename, str(group.pk))
         for group in groups.values()

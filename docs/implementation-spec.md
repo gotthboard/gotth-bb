@@ -3135,8 +3135,8 @@ has exactly global
 to that role only on invitation objects created by its service account request.
 Because Authentik does not cascade generic object permissions when the target
 invitation is deleted, operator bootstrap deletes only this role's invitation
-permission rows whose UUID does not identify a live invitation created by the
-service account. It then
+permission rows whose UUID no longer identifies an invitation. It blocks if a
+row targets a live invitation not created by the service account. It then
 requires exactly view/delete for every live invitation created by the service
 account and rejects any such invitation outside the pinned flow or without
 single-use semantics. This cleanup never touches group or unrelated role
