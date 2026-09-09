@@ -216,8 +216,8 @@ Rules:
   authoritative Authentik server container in which operator bootstrap runs
   receive supplemental token GID `65530`. The server process can read that
   mounted file for the life of the container; this is not misreported as a
-  subprocess-only mount. The object descriptor is `root:65531` mode `0440`, and the Board-only
-  fingerprint key is `root:65532` mode `0440`.
+  subprocess-only mount. The object descriptor is `root:65531` mode `0440`,
+  and the Board-only fingerprint key is `root:65532` mode `0440`.
 - `AUTHENTIK_CONTROL_SOCKET` is an absolute clean path ending in
   `authentik-control.sock`. Its parent is a root-created bind directory owned
   `65533:65531` mode `0750`. The gateway runs as `65533:65531`, creates the socket
