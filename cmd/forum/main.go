@@ -402,6 +402,13 @@ func run(
 			Control: func(siteContext context.Context) (control.Settings, error) {
 				return control.Load(siteContext, queries, controlCeilings)
 			},
+			Registration: &httpui.RegistrationHTTPServices{
+				LoadSettings: func(registrationContext context.Context) (control.Settings, error) {
+					return control.Load(registrationContext, queries, controlCeilings)
+				},
+				Issuer: configured.OIDCIssuerURL, OpenFlowSlug: authentikObjects.Flows.Open.Slug,
+				ApprovalFlowSlug: authentikObjects.Flows.Approval.Slug, SMTPConfigured: configured.SMTP.Configured(),
+			},
 			Administration: &httpui.AdministrationHTTPServices{
 				Dashboard: func(adminContext context.Context, access auth.AccessContext) (administrationservice.Dashboard, error) {
 					return administrationservice.LoadDashboard(adminContext, pool, access)

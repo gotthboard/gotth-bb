@@ -29,6 +29,7 @@ type SiteHTTPServices struct {
 	// Administration enables AN-04-03's bounded administrator surface. It is
 	// optional so older constructors retain their exact route set.
 	Administration *AdministrationHTTPServices
+	Registration   *RegistrationHTTPServices
 }
 
 func newSiteSettingsHandler(builder URLBuilder, observer abuse.Observer, services SiteHTTPServices) (http.Handler, http.Handler, error) {

@@ -530,11 +530,15 @@ func newAuthenticatedHandler(
 	var registrationHandler http.Handler
 	var authenticatedRegistrationHandler http.Handler
 	var authenticatedAdministratorSetupHandler http.Handler
+	registrationAvailable := registrationEnabled
 	if registrationURL.Scheme != "" || loadAdministratorSetup != nil || claimInitialAdministrator != nil {
 		if registrationURL.Scheme == "" || loadAdministratorSetup == nil || claimInitialAdministrator == nil {
 			return nil, fmt.Errorf("browser first-run identity services are incomplete")
 		}
-		if registrationEnabled {
+		if siteServices != nil && siteServices.Registration != nil {
+			registrationHandler, err = newDynamicRegistrationHandler(builder, *siteServices.Registration)
+			registrationAvailable = true
+		} else if registrationEnabled {
 			registrationHandler, err = newRegistrationRedirectHandler(builder, registrationURL)
 			if err != nil {
 				return nil, fmt.Errorf("construct registration route: %w", err)
@@ -948,7 +952,7 @@ func newAuthenticatedHandler(
 		}
 	})
 	outer := http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-		ctx := context.WithValue(request.Context(), registrationEnabledContextKey{}, registrationEnabled)
+		ctx := context.WithValue(request.Context(), registrationEnabledContextKey{}, registrationAvailable)
 		contextualRequest := request.WithContext(ctx)
 		defer func() { request.Pattern = contextualRequest.Pattern }()
 		dispatch.ServeHTTP(response, contextualRequest)

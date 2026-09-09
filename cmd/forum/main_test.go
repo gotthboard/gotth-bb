@@ -375,7 +375,10 @@ func validAuthenticationFactory() authenticationFactory {
 
 func validAuthentikObjectsFactory(string, string, string, string) (registrationControlRuntime, error) {
 	return registrationControlRuntime{
-		Objects: authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{Approval: authentikcontrol.Object{UUID: "8d29e230-3485-4ee6-a741-ec089e510002"}}},
+		Objects: authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{
+			Open:     authentikcontrol.Object{Slug: "gotth-bb-open", UUID: "8d29e230-3485-4ee6-a741-ec089e510001"},
+			Approval: authentikcontrol.Object{Slug: "gotth-bb-approval", UUID: "8d29e230-3485-4ee6-a741-ec089e510002"},
+		}},
 		Gateway: fakeRegistrationGateway{}, ReferenceKey: [32]byte{1}, Close: func() {},
 	}, nil
 }
