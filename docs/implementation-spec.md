@@ -141,6 +141,8 @@ Rules:
   contains no traversal or encoded separator.
 - `LISTEN_ADDR` must be an explicit numeric IP/port. Production accepts only
   IPv4 or IPv6 loopback so the service cannot bypass the Caddy edge boundary.
+  The standalone Compose stack therefore uses host networking for Caddy and
+  the application instead of weakening this rule or trusting a bridge subnet.
 - The configuration loader requires a nonempty `DATABASE_URL` without parsing
   or logging it. A1-02 passes it directly to pgx's documented configuration
   parser; driver rejection aborts startup before readiness or request serving.

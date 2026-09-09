@@ -79,6 +79,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
 | `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 packaged-helper, live-copy upgrade, Beta backup/clean-restore, readiness, and rollback rehearsal complete; live release record pending B1-05 | blocked |
 | `OPS-005` | fail-closed identity/session/access validation | auth/policy/readiness/failure tests | implemented |
+| `OPS-006` | standalone pinned Caddy/Auth/Board stack with separate databases | B1-08 Compose, identity-cutover, recovery, isolation, and live-deployment evidence | blocked |
 
 ## Existing retained evidence
 

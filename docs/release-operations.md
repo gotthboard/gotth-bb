@@ -833,9 +833,66 @@ promised cache lifetime. The corrective successor still requires affirmative
 owner confirmation before it becomes known-good. This procedure does not admit
 RC.1 or stable work.
 
+### 18.3 Beta.1 standalone-stack corrective successor
+
+Beta.1.2 remains immutable but is not known-good because its running package
+depends on a host Caddy and a shared Authentik tenant. Its successor must use
+the packaged standalone Compose model and the exact sequence below:
+
+1. Render and validate the complete Compose and Caddy configurations with
+   non-secret test values. Require six long-running services: Caddy, Board,
+   Board PostgreSQL, Authentik server, Authentik worker, and Authentik
+   PostgreSQL. Reject mutable image references, Docker-socket mounts, a public
+   application/Auth/database port, or shared durable paths.
+2. On a clean task-owned host namespace, create independent secrets and empty
+   durable paths. Start both databases and Authentik only. Apply the packaged
+   blueprint twice; prove byte-identical desired state, preserved provider
+   secret, `user_uuid` subject mode, exact redirect/launch/enrollment URLs, the
+   exact Board application/provider/access group, and no unrelated non-built-in
+   application or provider.
+3. Migrate a disposable Alpha/Beta Board database with the application stopped,
+   apply exact runtime grants, provision one dedicated Authentik identity, and
+   run the operator identity rebind. Prove one exact identity changed, every
+   prior session was revoked, one immutable operator audit row was appended,
+   and user/role/group/content counts and ownership did not change.
+4. Start Board and Caddy. Prove only Caddy accepts non-loopback traffic; the
+   Board and Authentik hostnames route to their respective loopback upstreams;
+   caller forwarding headers are overwritten; OIDC discovery, authorization,
+   callback, revalidation, logout, and an Authentik outage fail-closed path work;
+   and the full Beta smoke matrix remains clean.
+5. Restart the entire project without recreating durable paths. Require exact
+   image/configuration identity, healthy services, idempotent blueprint state,
+   unchanged Board/Auth identities, and a repeated smoke pass.
+6. Create separate digested logical backups of Board and Authentik PostgreSQL
+   plus a non-secret inventory of Caddy state/configuration and required secret
+   references. Restore both databases into clean task-owned services, restore
+   required non-database state, and repeat identity and smoke checks. Same-host
+   storage remains an explicit Beta limitation, not disaster recovery.
+7. Rehearse rollback after cutover: stop the candidate, restore the exact
+   stopped Board backup containing the prior issuer binding, and start the
+   retained Beta.1.2 topology without mixing old and new identity state. Then
+   restore the candidate pair and prove forward recovery. Never use
+   `docker compose down -v`.
+8. Only after exact-tree gates and two fresh CLEAN reviews may the successor be
+   merged, mirrored, tagged, packaged, and staged for live cutover. Before
+   touching live DNS, Caddy, Authentik, or the Board database, take and verify
+   fresh stopped backups and retain the old configuration, containers, images,
+   provider, and durable paths.
+9. The live cutover changes one boundary at a time, records every resolved
+   identity, digest, port, path, and rollback decision without secret values,
+   and repeats health, login, revalidation, leakage, accessibility, restart,
+   backup, and rollback-readiness checks. The old shared-tenant Board objects
+   are disabled or removed only after owner acceptance and a retention period;
+   unrelated shared-tenant state is never changed.
+
+The dedicated Authentik hostname and issuer are deployment identity. They must
+resolve to the stack Caddy and appear in the blueprint, Board configuration,
+and release record exactly. Changing them after admission requires a new
+identity cutover; aliases and silent issuer normalization are forbidden.
+
 ## 19. Operational decisions
 
-The active Alpha.2 deployment resolves the following Beta baseline without
+The Beta.1.2 deployment resolved the following baseline before B1-08 without
 placing secret or personal values in the repository:
 
 - the public Caddy/TLS path terminates on `development` and proxies to the
@@ -852,6 +909,11 @@ placing secret or personal values in the repository:
 
 Changing any resolved identity, lifetime, listener, database, or backup
 boundary requires explicit owner approval and fresh affected evidence.
+
+The owner's B1-08 instruction explicitly replaces the shared-Caddy/shared-
+Authentik topology with the standalone-stack contract. It does not alter the
+30-minute revalidation maximum, public-area policy, retention policy, or
+off-host backup boundary.
 
 The following decisions remain open for their later affected behavior:
 

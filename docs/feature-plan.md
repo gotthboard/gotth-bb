@@ -826,6 +826,69 @@ entry gate for the first test-user build.
   candidate; corrective work uses
   `feature/beta-1-breadcrumb-a11y-repair` and stops before RC.1.
 
+### B1-08: Beta.1 standalone deployment corrective release
+
+- **Problem and outcome:** Beta.1.2 is functionally admitted but not deployable
+  without the host's shared Caddy and shared Authentik tenant. Ship one pinned
+  Compose stack that owns its Caddy, Authentik server/worker and database,
+  Board service, and Board database without importing unrelated identity state.
+- **Requirements:** `OPS-004`–`OPS-006`, `ID-001`–`ID-013`, `SEC-005`, Beta
+  identity, recovery, release, and owner-confirmation acceptance.
+- **In scope:** exact six-service Compose model; pinned images; root-owned
+  non-secret configuration and secret files; host-loopback Board and Authentik
+  upstreams; private Authentik/database network; Caddy configuration and state;
+  deterministic idempotent Board Authentik blueprint import; independent
+  Authentik secret/signing/provider state; separate durable database paths;
+  Board and Authentik backup/clean-restore; fresh install, restart, stopped
+  Board upgrade, identity-rebind/revocation, cutover, smoke, and rollback
+  rehearsals; exact package/image identity; two fresh CLEAN reviews; guarded
+  merge/mirror; immutable corrective tag; live cutover; owner confirmation.
+- **Out of scope:** copying unrelated shared-tenant applications or users;
+  Docker-socket access; Authentik outposts; horizontal replicas; public
+  production; unrestricted enrollment; off-host backup scheduling/retention;
+  RC.1; stable claims; or changing forum roles from identity claims.
+- **Trust and permission:** only Caddy is public. The application retains the
+  loopback proxy trust contract. Database and identity secrets never enter Git,
+  image metadata, Compose interpolation output retained as evidence, process
+  arguments, or logs. Live DNS/edge and identity mutation wait for exact-tree
+  admission and verified stopped backups.
+- **Data and migration:** one forward schema migration admits an audited
+  operator identity-rebind action if required by the live issuer change. The
+  rebind updates only the exact existing external identity, revokes its active
+  sessions, and appends the audit row in one transaction; user ID, role,
+  memberships, content, and moderation history do not change. Board and
+  Authentik PostgreSQL stores remain separate.
+- **Failure and retry:** a shared dependency, public non-Caddy listener,
+  unpinned image, blueprint drift, unrelated Authentik object, missing backup,
+  partial restore, ambiguous identity, unrevoked session, audit failure,
+  unknown commit, restart drift, or rollback failure rejects the candidate.
+  No volume deletion or `compose down -v` is permitted.
+- **Acceptance:** a clean host can render and start the exact stack from the
+  release package; only ports 80/443 are public; the dedicated Authentik has
+  exactly the Board application/provider/access boundary; both databases pass
+  backup/clean-restore; Board data and authorization survive rehearsed upgrade
+  and identity cutover; Authentik outage fails closed; Caddy identity overwrite,
+  full Beta smoke, and restart pass; two reviews are CLEAN; remotes, corrective
+  tag, packages, images, and deployed tree agree; owner confirmation is required
+  before known-good status.
+- **Rollback/recovery:** retain Beta.1.2 app, host Caddy configuration, shared
+  Authentik Board provider, stopped Board backup, and all prior durable paths
+  until the owner accepts the dedicated stack. Rollback restores the stopped
+  Board backup before returning to the old issuer; it does not mix identity
+  bindings across issuers.
+- **Evidence:** `docs/evidence/beta1-08-standalone-stack-<commit>.txt`, release
+  record, topology inventory, backup/restore record, and owner-confirmed
+  known-good record.
+- **Dependency/worktree:** B1-07 produced immutable Beta.1.2, which remains a
+  rejected topology candidate. Corrective work uses
+  `feature/beta-1-standalone-stack` and stops before RC.1.
+
+B1-08 proceeds serially as: contract/topology admission; standalone stack and
+blueprint; audited identity rebind; recovery/integration admission; then
+guarded release and live cutover. Each boundary reaches HANDOFF and review
+before the next begins. A passing Compose render is not evidence that identity
+migration or recovery works.
+
 Beta.1 adds no new product feature beyond repairing a demonstrated version 1.0
 gap. Scheduled/off-host backup retention, alert routing, final dependency and
 license review, migration freeze, production deployment, and stable operator

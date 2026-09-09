@@ -24,9 +24,10 @@
   same topic; presentation depth never substitutes for stored ancestry.
 - Apply access predicates inside data-access queries and explicit write-policy
   checks.
-- Deploy behind Caddy at `https://bb.alhstudios.com/` with no path prefix.
-- Run the Go service and PostgreSQL as separate containers in one Docker
-  Compose project; never combine process and database lifecycles in one image.
+- Deploy the version 1.0 release as one pinned Compose project that owns Caddy,
+  the Go service, Authentik server/worker, and separate Board and Authentik
+  PostgreSQL services; never combine their process or database lifecycles in
+  one image.
 - Prefer direct SQL, explicit transactions, and small interfaces over an ORM or
   generic policy framework.
 
@@ -34,19 +35,24 @@
 
 ```mermaid
 flowchart LR
-    B[Browser] -->|HTTPS bb.alhstudios.com| C[Caddy]
+    B[Browser] -->|HTTPS Board/Auth hosts| C[Stack-owned Caddy]
     C -->|HTTP on loopback| A[Go forum service]
-    A -->|OIDC redirects and validation| I[Authentik]
-    A -->|SQL| P[(PostgreSQL)]
+    C -->|HTTP on loopback| I[Dedicated Authentik server]
+    A -->|OIDC redirects and validation| I
+    A -->|SQL| P[(Board PostgreSQL)]
+    I -->|SQL and task coordination| IP[(Authentik PostgreSQL)]
+    IW[Authentik worker] --> IP
     A -->|structured logs| L[Journal/log collector]
-    H[Operator] -->|deploy, migrate, backup| A
+    H[Operator] -->|deploy and migrate| A
+    H -->|configure and recover| C
     H -->|backup and restore| P
+    H -->|backup and restore| IP
 ```
 
-Caddy owns public TLS and routing. The Go process binds to a non-public
-interface. PostgreSQL is not exposed to the public network. Authentik is an
-external trust boundary even when it runs on infrastructure controlled by the
-same owner.
+Caddy is the only public listener and owns TLS and routing for both hostnames.
+The Go and Authentik HTTP processes bind to host-loopback upstreams. Authentik
+is the identity authority but not the forum authorization authority. The Board
+and Authentik use distinct PostgreSQL services and durable directories.
 
 ## 3. Architectural boundaries
 
@@ -880,27 +886,32 @@ and its descendants explicitly and may not orphan a tree.
 
 ## 13. Runtime topology
 
-Version 1.0 runs as:
+Version 1.0 ships one Compose project containing six independently replaceable
+services:
 
-- One Caddy instance serving `bb.alhstudios.com` and proxying it on loopback.
-- One immutable Go service container for version 1.0. AN-05 request limiting
-  is process-local, so adding replicas requires a newly admitted coordination
-  contract rather than a topology-only change.
-- One PostgreSQL container with its durable data on an external host bind
-  mount. Application replacement never replaces or copies the database data.
-- A migration command using the same release artifact as the service.
-- One Docker Compose project defining the two services, their health checks,
-  restart policies, host-loopback application and database routes, external
-  configuration, and read-only secret mounts. The application uses host
-  networking so it can retain the production loopback-only listener enforced
-  by configuration; PostgreSQL remains in its own container.
+- one pinned Caddy container serving the configured Board and Authentik hosts;
+- one immutable Go service container. AN-05 request limiting remains
+  process-local, so replicas require a new coordination contract;
+- one pinned Board PostgreSQL container with an operator-selected durable host
+  bind mount;
+- one pinned Authentik server and one same-version Authentik worker; and
+- one pinned Authentik PostgreSQL container with a different durable host bind
+  mount.
 
-The application image and binaries are immutable for a release. The application
-container runs nonroot with a read-only root filesystem, no Linux capabilities,
-and `no-new-privileges`. Caddy remains outside the project so certificate
-renewal and unrelated sites do not share the board's container lifecycle.
-Configuration and secrets are external. Database migrations run once before
-the new service becomes ready.
+Caddy and the Go service use host networking so the application retains its
+production-enforced `127.0.0.1:18082` listener and accepts forwarded identity
+only from a loopback peer. Authentik uses a private Compose network; its HTTP
+port is published only on host loopback for Caddy, and its PostgreSQL service
+has no published port. The Board PostgreSQL maintenance port is host-loopback
+only. Thus only Caddy binds public ports 80/443. The worker has no Docker socket
+because this deployment owns no Authentik outpost.
+
+All images are content-pinned. The application runs nonroot with a read-only
+root filesystem, no Linux capabilities, and `no-new-privileges`. Configuration
+and secrets are external root-owned files or Compose secrets. Caddy state,
+Authentik data, Authentik PostgreSQL data, and Board PostgreSQL data have
+separate durable paths. Database migrations and the Authentik blueprint import
+are explicit one-shot operations and must be safe to inspect and retry.
 
 ## 14. Failure behavior
 
@@ -918,8 +929,8 @@ the new service becomes ready.
 
 ## 15. Beta.1 admission and recovery architecture
 
-Beta.1 adds no second application architecture. It closes and verifies the
-existing single-Caddy, single-Go-process, single-PostgreSQL design. Requirement
+Beta.1 adds no second forum application architecture. It closes and verifies
+the single-Caddy, single-Go-process, separate-database design. Requirement
 and route inventories are build/review artifacts derived from the exact source
 syntax and checked against a canonical reviewed inventory; they do not become
 runtime registries, reflection layers, policy engines, or alternate routers.
@@ -966,6 +977,20 @@ limitation and every tester is told the data is non-production and may be lost
 with the host. Scheduling, off-host storage, retention, encryption policy,
 alerting, and production recovery budgets remain later operational admission,
 not hidden properties of a successful one-time restore.
+
+The first standalone-stack cutover is a topology and identity migration, not
+an application-only restart. A fresh Authentik instance gets its own secret
+key, signing material, provider secret, database, and user state. It does not
+clone the shared tenant. The dedicated provider uses a stable subject mode
+independent of the Authentik instance secret. While the forum is stopped, one
+audited operator action may replace an existing user's exact issuer/subject
+binding with a previously verified dedicated-issuer binding and revoke all of
+that user's sessions. Local role, memberships, authored content, moderation
+history, and user ID remain unchanged. A missing or ambiguous old binding,
+occupied new binding, unverified target, audit failure, or uncertain commit
+blocks cutover. Rollback restores the old binding and Board database from the
+verified stopped backup before the old issuer is used again; concurrent dual
+issuer acceptance is not invented.
 
 ## 16. Evolution
 

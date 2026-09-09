@@ -276,6 +276,15 @@ Requirements:
   shall be documented and tested before `1.0.0`.
 - **OPS-005:** The service shall fail closed when identity, session, or access
   state cannot be validated.
+- **OPS-006:** A version 1.0 release shall include one deployable, pinned
+  Compose stack that owns the Board Caddy edge, Authentik server and worker,
+  a dedicated Authentik PostgreSQL database, the Board service, and a
+  dedicated Board PostgreSQL database. It shall not require an operator's
+  pre-existing Caddy, shared identity tenant, or shared application database.
+  Only Caddy may accept public traffic; both databases and the application and
+  identity upstreams remain non-public. Fresh install, stopped upgrade,
+  identity cutover, backup/restore of both durable stores, restart, and
+  rollback shall be rehearsed before the stack is offered to Beta testers.
 
 ## 6. Version plan
 
@@ -690,6 +699,12 @@ hold on one exact candidate:
     tagged release artifact. Deployment uses that artifact, preserves an exact
     pre-upgrade backup and rollback record, and passes the Beta smoke matrix
     through Caddy before the owner is asked to confirm the real workflow.
+11. The Beta deployment satisfies `OPS-006`. An existing account moved from a
+    shared issuer retains its local user, role, memberships, content ownership,
+    and audit history through one stopped, explicit identity rebind. The
+    rebind revokes existing sessions and is itself audited. It never copies an
+    unrelated Authentik application, user, signing key, database row, or
+    instance secret into the dedicated deployment.
 
 Beta.1 does not authorize public production use, unrestricted enrollment,
 horizontal replicas, new version 2 features, a stable durability claim, or the
@@ -713,10 +728,14 @@ prerequisite for opening the first Beta to testers.
 
 ## 16. Constraints and assumptions
 
-- The forum is a single deployable Go service and PostgreSQL database in
-  version 1.0.
-- Caddy terminates TLS and routes `bb.alhstudios.com` to the service.
-- Authentik exposes a reachable OIDC issuer and the required identity claims.
+- The forum remains one deployable Go service and one application PostgreSQL
+  database in version 1.0. Its release stack also owns the required Caddy and
+  Authentik processes plus Authentik's separate PostgreSQL database; those are
+  deployment dependencies, not new forum application services.
+- The stack's Caddy terminates TLS and routes the configured Board and
+  Authentik hostnames to non-public upstreams.
+- The stack's dedicated Authentik exposes the configured OIDC issuer and the
+  required identity claims.
 - SMTP, object storage, WebSockets, SCIM, and external search are not required
   for version 1.0.
 - Production secrets are supplied at runtime and are never committed.
