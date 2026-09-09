@@ -2973,10 +2973,11 @@ operation, then drops that buffer.
 The audit action set adds `update_control_settings`,
 `request_registration_approval`, `approve_registration`,
 `request_registration_rejection`, `reject_registration`,
+`record_registration_transition_result`,
 `adopt_pending_registration`,
 `request_create_invitation`, `create_invitation`,
 `request_revoke_invitation`, `revoke_invitation`,
-`record_invitation_absent`,
+`record_invitation_absent`, `record_invitation_result`,
 `request_identity_reinstatement`, `request_identity_reconciliation`,
 `reconcile_identity_access`, `revoke_session`, `revoke_user_sessions`,
 `request_test_email`, and `test_email`. Audit objects contain closed modes, numeric policy values,
@@ -3134,7 +3135,9 @@ verifies it, and removes pending membership. A second transaction revalidates
 the same intent/key and commits `approved` plus `approve_registration`. If the
 remote phase fails, the row remains `approval_required`; if the second commit
 is unknown, retry reads both systems and completes idempotently. No competing
-reject can overtake that committed intent.
+reject can overtake that committed intent. Every failed or unknown remote/local
+completion that updates bounded failure/reconciliation fields appends
+`record_registration_transition_result` in the same transaction.
 
 The OIDC callback checks `pending_registrations` by verified issuer/subject
 before creating a local account or session. `pending`, `approval_required`,
@@ -3146,7 +3149,8 @@ follows the ordinary open/invitation JIT path.
 Rejection uses the same three-phase shape: commit `rejection_required` and its
 request audit; remove accepted and pending membership and verify both absent;
 then commit terminal `rejected` and its completion audit. Remote failure keeps
-the restrictive required state. No path deletes or deactivates the Authentik
+the restrictive required state and records the same closed transition-result
+audit with its state update. No path deletes or deactivates the Authentik
 user, and no transaction waits on Authentik.
 
 The pending page renders local rows even when Authentik is unavailable. When it
@@ -3161,13 +3165,16 @@ Suspension uses the existing local transaction first, including complete local
 session revocation and audit, and sets `removal_required`. A synchronous
 best-effort remote phase removes accepted/pending membership, adds suspended
 membership, verifies the three exact groups, then advances local sync state to
-`suspended` in a separate short transaction; local authorization remains denied
-regardless. Reinstatement records `grant_required` while retaining local
+`suspended` plus `reconcile_identity_access` in a separate short transaction.
+A failure update carries the same result audit; local authorization remains
+denied regardless. Reinstatement records `grant_required` while retaining local
 suspension and appends `request_identity_reinstatement`, then removes
 suspended/pending membership, grants and verifies
 accepted membership, and only afterward runs the existing governance-serialized
-local reinstatement/audit transaction. A failed or ambiguous grant leaves the
-user locally suspended. Reconciliation is one explicit POST using the same
+local reinstatement transaction with both the verified
+`reconcile_identity_access` result and existing `reinstate_user` audit. A
+failed or ambiguous grant leaves the user locally suspended and records the
+closed reconciliation result. Reconciliation is one explicit POST using the same
 restrictive ordering: its first short transaction appends
 `request_identity_reconciliation`, and a later result transaction appends
 `reconcile_identity_access`. It never holds a transaction open around HTTP.
@@ -3200,13 +3207,19 @@ means `queued`, a definite pre-accept failure means `failed`, and an ambiguous
 post-DATA result means `unknown`; none is retried automatically. A second short
 transaction advances the local transition to `active`, stores only that closed
 delivery result, and appends `create_invitation` with the same redacted result.
-Creation failure/unknown leaves a reconcilable row. A retry of `creating` or
+Creation failure/unknown leaves a reconcilable row and appends
+`record_invitation_result` atomically with that state update. A retry of `creating` or
 `unknown` must match both the idempotency key and request fingerprint before it
 lists only the unique reserved name
 and adopts an exact remote match or refuses a mismatch; it never blindly
 creates a second invitation. Adoption of an already-existing remote object
 always records delivery `unknown` and never sends email, because the first
 request may already have crossed SMTP's acceptance boundary.
+If creation committed remotely but creator-scoped permission assignment failed,
+the service account may receive a name conflict yet be unable to view/delete
+that object. Board records `operator_required`, never creates a replacement,
+and directs the operator to inspect the one exact name; it does not widen the
+token to recover automatically.
 An already-active or terminal idempotency key returns the fixed completed class
 without revalidating the obsolete fingerprint, redisplaying a link, or causing
 any side effect.
@@ -3224,7 +3237,8 @@ confirmed delete and absence readback commits `revoked` plus
 `revoke_invitation`. If it was already absent, Board commits `absent` plus
 `record_invitation_absent` with an honest consumed-or-otherwise-removed result;
 it never claims the administrator prevented use. Ambiguous delete outcome
-commits `unknown`. No PostgreSQL lock spans the remote call.
+commits `unknown` plus `record_invitation_result`. No PostgreSQL lock spans the
+remote call.
 
 ### 24.4 Control settings, maintenance, and publication policy
 

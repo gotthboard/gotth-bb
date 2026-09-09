@@ -1474,6 +1474,9 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
   an Authentik request. OIDC callback tests prove every non-approved local
   pending state denies session creation even while the accepted group is
   deliberately permissive.
+  Every persisted failed/unknown transition result has exactly one redacted
+  outcome audit in the same transaction; success retains the semantic
+  approve/reject completion audit instead.
 - Pending-orphan tests lose the signed intake after Authentik commits, retain
   local rows during Authentik outage, bound the remote section and overflow,
   reject forged/stale/cross-group handles, and adopt exactly one re-fetched
@@ -1483,6 +1486,8 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
   Reinstatement cannot clear local denial until accepted-group membership is
   verified. Every protected authorization query denies non-accepted sync state.
   Reconciliation is idempotent and operates on only one identity.
+  Reinstatement and explicit reconciliation retain a request audit when remote
+  or completion work fails and append exactly one result audit on completion.
   Reinstatement and explicit reconciliation retain a request audit when remote
   or completion work fails and append exactly one result audit on completion.
 - Finite-expiry tests cover migration backfill, startup/60-second ticks,
@@ -1496,10 +1501,12 @@ remote bodies are absent from retained commands, logs, screenshots, and Git.
   signed revoke handles, local-intent/remote/completion failures, exact-name
   and HMAC-fingerprint adoption using the retry's validated form values,
   idempotency-key/fingerprint mismatch, control-token rotation refusal while a
-  create outcome is unresolved, remote mismatch, Board SMTP
+  create outcome is unresolved, creator-permission partial failure and exact
+  operator-required classification, remote mismatch, Board SMTP
   queued/failure/unknown results, no send while adopting an existing object,
-  no resend after ambiguity, confirmed revocation, consumed/missing ambiguity, audit
-  redaction, no PostgreSQL lock across HTTP, and no arbitrary-recipient
+  no resend after ambiguity, confirmed revocation, consumed/missing ambiguity,
+  atomic failure/unknown outcome audit, audit redaction, no PostgreSQL lock
+  across HTTP, and no arbitrary-recipient
   test-mail path.
 
 ### 24.4 Sessions, email, UI, and integrated delivery
