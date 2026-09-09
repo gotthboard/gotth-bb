@@ -190,6 +190,18 @@ rebind, exercise rollback by restoring that stopped old-issuer backup and
 starting Beta.1.2, then restore the candidate Board/Auth pair and prove forward
 recovery. Old and new issuer bindings must never be mixed.
 
+Cold-review permission correction
+---------------------------------
+
+The first cold pass rejected an unjustified Compose override that ran the
+Authentik worker as root even though the pinned image declares UID 1000 and
+every required writable path is prepared for UID/GID 1000. Commit
+`c350339686c6b5c10d5184c49e3ff5bb2dee6311` makes UID/GID 1000 explicit in
+the common Authentik service contract, removes the worker's root override, and
+adds a regression assertion forbidding `user: root`. The correction changes no
+identity, network, enrollment, storage, or user-facing behavior. It resets the
+required CLEAN-review counter.
+
 Admission limits and remaining release work
 -------------------------------------------
 
