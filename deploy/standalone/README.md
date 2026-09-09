@@ -112,6 +112,14 @@ deploy/postgresql/restore-logical.sh clean-board-postgresql /absolute/backup/boa
 deploy/postgresql/restore-logical.sh clean-authentik-postgresql /absolute/backup/authentik.dump 16
 ```
 
+Before the restored Board application starts, the migration owner must apply
+the packaged `deploy/postgresql/runtime-grants.sql` with
+`runtime_role=gotth_bb_runtime`; a privilege-free logical archive deliberately
+does not restore runtime ACLs. A recovery smoke must reuse the exact public
+Board and Authentik origins and therefore the exact OIDC issuer. A different
+rehearsal hostname or port is a different issuer and would create a second
+forum identity instead of proving recovery.
+
 Also retain Caddy `/data`, Authentik `/data` and `/certs`, the exact non-secret
 configuration inventory, and every required secret reference. Logical database
 archives alone do not preserve Caddy certificates or Authentik media/signing

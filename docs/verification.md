@@ -1349,8 +1349,10 @@ selection, complete session and pending-attempt revocation, one audit row, and
 unchanged user, role, group, ownership, and content state.
 
 Both databases receive separate logical backups and clean matching-major
-restores. Caddy/Auth non-database state and required secret references are
-inventoried separately. Direct-host evidence proves stack Caddy derives the
+restores. The restored Board receives the packaged runtime grants before a
+smoke test at the unchanged Board/Auth origins proves identity continuity.
+Caddy/Auth non-database state and required secret references are inventoried
+separately. Direct-host evidence proves stack Caddy derives the
 client from its peer. Shared-host evidence proves the retained TLS edge
 overwrites a single canonical address and stack Caddy is loopback-only, trusts
 only that value, removes alternate identity headers, supplies the exact public

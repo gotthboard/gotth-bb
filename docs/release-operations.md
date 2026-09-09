@@ -869,8 +869,11 @@ the packaged standalone Compose model and the exact sequence below:
 6. Create separate digested logical backups of Board and Authentik PostgreSQL
    plus a non-secret inventory of Caddy state/configuration and required secret
    references. Restore both databases into clean task-owned services, restore
-   required non-database state, and repeat identity and smoke checks. Same-host
-   storage remains an explicit Beta limitation, not disaster recovery.
+   required non-database state, reapply the packaged Board runtime grants, and
+   repeat identity and smoke checks at the exact original Board/Auth origins.
+   A substituted recovery hostname or port changes the OIDC issuer and is not
+   recovery evidence. Same-host storage remains an explicit Beta limitation,
+   not disaster recovery.
 7. Rehearse rollback after cutover: stop the candidate, restore the exact
    stopped Board backup containing the prior issuer binding, and start the
    retained Beta.1.2 topology without mixing old and new identity state. Then
