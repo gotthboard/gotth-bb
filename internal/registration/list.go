@@ -23,8 +23,10 @@ type Pending struct {
 }
 
 type PendingPage struct {
-	Registrations []Pending
-	NextAfter     int64
+	Registrations                 []Pending
+	NextAfter                     int64
+	Orphans                       []Orphan
+	RemoteUnavailable, RemoteMore bool
 }
 
 type pendingQuerier interface {

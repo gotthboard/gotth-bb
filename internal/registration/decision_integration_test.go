@@ -24,6 +24,8 @@ const decisionTestDatabase = "gotth_bb_beta109_registration_test"
 type recordingGateway struct {
 	operations []string
 	failNext   error
+	pending    []authentikgateway.User
+	state      authentikgateway.UserState
 }
 
 func (gateway *recordingGateway) AddUser(_ context.Context, group, subject string) error {
@@ -42,6 +44,14 @@ func (gateway *recordingGateway) takeFailure() error {
 	return err
 }
 
+func (gateway *recordingGateway) PendingUsers(context.Context) ([]authentikgateway.User, bool, error) {
+	return gateway.pending, false, gateway.takeFailure()
+}
+
+func (gateway *recordingGateway) User(context.Context, string) (authentikgateway.UserState, error) {
+	return gateway.state, gateway.takeFailure()
+}
+
 func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
@@ -56,6 +66,26 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	key := [32]byte{0x41}
 	baseTime := time.Date(2026, time.September, 9, 18, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return baseTime }
+	gateway := &recordingGateway{}
+	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
+	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
+	adoptionHandle, err := issueAdoptionHandle(baseTime, key, adoptionUser.ID, adoptionUser.UUID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adoptionRequest := pgtype.UUID{Bytes: [16]byte{0xd4}, Valid: true}
+	adopted, err := Adopt(ctx, connection, gateway, clock, actor, AdoptionInput{Handle: adoptionHandle, Reason: "Recover verified pending identity", RequestID: adoptionRequest}, key)
+	if err != nil || !adopted.Inserted || adopted.RegistrationID <= 0 || adopted.Revision != 1 || adopted.AuditID <= 0 {
+		t.Fatalf("adoption = (%+v, %v)", adopted, err)
+	}
+	replayedAdoption, err := Adopt(ctx, connection, gateway, clock, actor, AdoptionInput{Handle: adoptionHandle, Reason: "Recover verified pending identity", RequestID: adoptionRequest}, key)
+	if err != nil || replayedAdoption.Inserted || replayedAdoption.RegistrationID != adopted.RegistrationID || replayedAdoption.Revision != 1 || replayedAdoption.AuditID != 0 {
+		t.Fatalf("adoption replay = (%+v, %v)", replayedAdoption, err)
+	}
+	var adoptionAuditCount int
+	if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.moderation_actions WHERE action_type = 'adopt_pending_registration'`).Scan(&adoptionAuditCount); err != nil || adoptionAuditCount != 1 {
+		t.Fatalf("adoption audit count = (%d, %v)", adoptionAuditCount, err)
+	}
 	intakeSubject := "44444444-4444-4444-8444-444444444444"
 	intake := Intake{AuthentikUserID: 104, Subject: intakeSubject, Username: "intake", DisplayName: "Intake Member", VerifiedEmail: "intake@example.test"}
 	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err != nil {
@@ -86,11 +116,10 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	approveSubject := "11111111-1111-4111-8111-111111111111"
 	approveID := insertPendingRegistration(t, ctx, connection, 101, approveSubject, "Approve Me", "approve@example.test")
 	page, err := ListPending(ctx, db.New(connection), actor, baseTime, 0)
-	if err != nil || len(page.Registrations) != 1 || page.Registrations[0].ID != approveID || page.Registrations[0].DisplayName != "Approve Me" || page.Registrations[0].VerifiedEmail != "approve@example.test" || page.Registrations[0].Status != "pending" || page.Registrations[0].Revision != 1 {
+	if err != nil || len(page.Registrations) != 2 || page.Registrations[1].ID != approveID || page.Registrations[1].DisplayName != "Approve Me" || page.Registrations[1].VerifiedEmail != "approve@example.test" || page.Registrations[1].Status != "pending" || page.Registrations[1].Revision != 1 {
 		t.Fatalf("pending list = (%+v, %v)", page, err)
 	}
 	approveRequest := pgtype.UUID{Bytes: [16]byte{0xa1}, Valid: true}
-	gateway := &recordingGateway{}
 	approved, err := Decide(ctx, connection, gateway, clock, actor, DecisionInput{
 		RegistrationID: approveID, Revision: 1, Decision: Approve,
 		Reason: "Verified applicant", RequestID: approveRequest,

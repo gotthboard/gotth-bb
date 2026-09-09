@@ -153,8 +153,10 @@ one exact user UUID, one bounded pending-group page, the three named Board-group
 membership transitions, and flow-bound invitation create/list/retrieve/delete.
 There is no generic proxy, caller-provided origin, HTTP verb, Authentik path,
 numeric user-key selector, group UUID, or invitation flow. The closed user
-projection returns the positive immutable numeric key beside the UUID because
-pending-orphan adoption must persist both independently unique coordinates.
+projection returns the positive immutable numeric key beside the UUID and the
+three exact Board-group membership booleans because pending-orphan adoption
+must persist both independently unique coordinates only after re-verifying its
+restrictive group state.
 
 The gateway's outbound Authentik client is hard-coded to the configured issuer
 origin and exact blueprint-provided object identities. It rejects redirects,

@@ -98,13 +98,17 @@ func TestAdministrationCompletionMutationUsesStrictFormAndHTMXNavigation(t *test
 func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T) {
 	t.Parallel()
 	services := administrationCompletionTestServices()
-	decisionCalls := 0
+	decisionCalls, adoptionCalls := 0, 0
+	handle := strings.Repeat("A", 87)
 	services.Registrations = &RegistrationAdministrationHTTPServices{
 		List: func(_ context.Context, actor auth.AccessContext, after int64) (registration.PendingPage, error) {
 			if actor.UserID != 1 || after != 0 {
 				t.Fatalf("list args = (%+v, %d)", actor, after)
 			}
-			return registration.PendingPage{Registrations: []registration.Pending{{ID: 17, Revision: 4, DisplayName: "Pending Member", VerifiedEmail: "pending@example.test", Status: "pending", IntakeAt: time.Date(2026, 9, 9, 19, 0, 0, 0, time.UTC)}}}, nil
+			return registration.PendingPage{
+				Registrations: []registration.Pending{{ID: 17, Revision: 4, DisplayName: "Pending Member", VerifiedEmail: "pending@example.test", Status: "pending", IntakeAt: time.Date(2026, 9, 9, 19, 0, 0, 0, time.UTC)}},
+				Orphans:       []registration.Orphan{{DisplayName: "Recovered Member", VerifiedEmail: "recovered@example.test", Handle: handle}},
+			}, nil
 		},
 		Decide: func(_ context.Context, actor auth.AccessContext, input registration.DecisionInput) (registration.DecisionResult, error) {
 			decisionCalls++
@@ -112,6 +116,13 @@ func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T
 				t.Fatalf("decision args = (%+v, %+v)", actor, input)
 			}
 			return registration.DecisionResult{Status: "approved", Revision: 6, AuditID: 19}, nil
+		},
+		Adopt: func(_ context.Context, actor auth.AccessContext, input registration.AdoptionInput) (registration.AdoptionResult, error) {
+			adoptionCalls++
+			if actor.UserID != 1 || input.Handle != handle || input.Reason != "Recover verified intake" || !input.RequestID.Valid {
+				t.Fatalf("adoption args = (%+v, %+v)", actor, input)
+			}
+			return registration.AdoptionResult{RegistrationID: 20, Revision: 1, AuditID: 21, Inserted: true}, nil
 		},
 	}
 	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
@@ -123,7 +134,7 @@ func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T
 	request := areaAdministrationTestRequest(http.MethodGet, "/admin/registrations", nil, admin)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	for _, want := range []string{"Pending registrations", "Pending Member", "pending@example.test", "/bb/admin/registrations/17/approve", "/bb/admin/registrations/17/reject", "Registrations"} {
+	for _, want := range []string{"Pending registrations", "Pending Member", "pending@example.test", "/bb/admin/registrations/17/approve", "/bb/admin/registrations/17/reject", "Registrations", "Recovered Member", "recovered@example.test", "/bb/admin/registrations/" + handle + "/adopt"} {
 		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), want) {
 			t.Fatalf("registration page missing %q: (%d, %q)", want, response.Code, response.Body.String())
 		}
@@ -135,6 +146,13 @@ func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T
 	handler.ServeHTTP(mutationResponse, mutation)
 	if mutationResponse.Code != http.StatusNoContent || mutationResponse.Header().Get("HX-Location") != `{"path":"/bb/admin/registrations","target":"#main-content","swap":"outerHTML"}` || decisionCalls != 1 {
 		t.Fatalf("registration decision = (%d, %q, %d, %q)", mutationResponse.Code, mutationResponse.Header().Get("HX-Location"), decisionCalls, mutationResponse.Body.String())
+	}
+	adoptionForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Recover verified intake"}}
+	adoption := areaAdministrationTestRequest(http.MethodPost, "/admin/registrations/"+handle+"/adopt", adoptionForm, admin)
+	adoptionResponse := httptest.NewRecorder()
+	handler.ServeHTTP(adoptionResponse, adoption)
+	if adoptionResponse.Code != http.StatusSeeOther || adoptionResponse.Header().Get("Location") != "/bb/admin/registrations" || adoptionCalls != 1 {
+		t.Fatalf("registration adoption = (%d, %q, %d, %q)", adoptionResponse.Code, adoptionResponse.Header().Get("Location"), adoptionCalls, adoptionResponse.Body.String())
 	}
 }
 

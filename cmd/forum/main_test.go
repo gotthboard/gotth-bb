@@ -18,6 +18,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
+	"github.com/gotthboard/gotth-bb/internal/authentikgateway"
 	"github.com/gotthboard/gotth-bb/internal/config"
 	"github.com/gotthboard/gotth-bb/internal/discovery"
 	"github.com/gotthboard/gotth-bb/internal/governance"
@@ -387,6 +388,12 @@ type fakeRegistrationGateway struct{}
 
 func (fakeRegistrationGateway) AddUser(context.Context, string, string) error    { return nil }
 func (fakeRegistrationGateway) RemoveUser(context.Context, string, string) error { return nil }
+func (fakeRegistrationGateway) PendingUsers(context.Context) ([]authentikgateway.User, bool, error) {
+	return nil, false, nil
+}
+func (fakeRegistrationGateway) User(context.Context, string) (authentikgateway.UserState, error) {
+	return authentikgateway.UserState{}, nil
+}
 
 type fakeAuthenticationService struct{}
 

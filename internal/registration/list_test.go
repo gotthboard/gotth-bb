@@ -12,14 +12,22 @@ import (
 )
 
 type pendingQueryStub struct {
-	rows   []db.ListPendingRegistrationsForAdministrationRow
-	err    error
-	params db.ListPendingRegistrationsForAdministrationParams
+	rows        []db.ListPendingRegistrationsForAdministrationRow
+	err         error
+	params      db.ListPendingRegistrationsForAdministrationParams
+	matches     []db.MatchPendingRegistrationCoordinatesRow
+	matchErr    error
+	matchParams db.MatchPendingRegistrationCoordinatesParams
 }
 
 func (stub *pendingQueryStub) ListPendingRegistrationsForAdministration(_ context.Context, params db.ListPendingRegistrationsForAdministrationParams) ([]db.ListPendingRegistrationsForAdministrationRow, error) {
 	stub.params = params
 	return stub.rows, stub.err
+}
+
+func (stub *pendingQueryStub) MatchPendingRegistrationCoordinates(_ context.Context, params db.MatchPendingRegistrationCoordinatesParams) ([]db.MatchPendingRegistrationCoordinatesRow, error) {
+	stub.matchParams = params
+	return stub.matches, stub.matchErr
 }
 
 func TestListPendingReturnsBoundedValidatedPage(t *testing.T) {

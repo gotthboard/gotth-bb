@@ -7,6 +7,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -46,6 +47,7 @@ type AdministrationHTTPServices struct {
 type RegistrationAdministrationHTTPServices struct {
 	List   func(context.Context, auth.AccessContext, int64) (registration.PendingPage, error)
 	Decide func(context.Context, auth.AccessContext, registration.DecisionInput) (registration.DecisionResult, error)
+	Adopt  func(context.Context, auth.AccessContext, registration.AdoptionInput) (registration.AdoptionResult, error)
 }
 
 type administrationDashboardView struct {
@@ -89,12 +91,19 @@ type administrationRegistrationView struct {
 	ID, DisplayName, VerifiedEmail, Status, Revision, IntakeAt, Failure, ApproveURL, RejectURL string
 }
 type administrationRegistrationsView struct {
-	Registrations      []administrationRegistrationView
-	CSRFToken, NextURL string
+	Registrations                 []administrationRegistrationView
+	Orphans                       []administrationRegistrationOrphanView
+	CSRFToken, NextURL            string
+	RemoteUnavailable, RemoteMore bool
+}
+type administrationRegistrationOrphanView struct {
+	DisplayName, VerifiedEmail, AdoptURL string
 }
 
+var administrationAdoptionHandle = regexp.MustCompile(`^[A-Za-z0-9_-]{87}$`)
+
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
-	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil
+	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil && services.Registrations.Adopt != nil
 	return registrationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
 		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
@@ -221,7 +230,11 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 				serveAdministrationServiceError(response, request, views["registrations"], loadErr)
 				return
 			}
-			presentation := administrationRegistrationsView{Registrations: make([]administrationRegistrationView, len(page.Registrations)), CSRFToken: csrfTokenFromContext(request.Context())}
+			presentation := administrationRegistrationsView{
+				Registrations: make([]administrationRegistrationView, len(page.Registrations)),
+				Orphans:       make([]administrationRegistrationOrphanView, len(page.Orphans)),
+				CSRFToken:     csrfTokenFromContext(request.Context()), RemoteUnavailable: page.RemoteUnavailable, RemoteMore: page.RemoteMore,
+			}
 			for index, pending := range page.Registrations {
 				id := strconv.FormatInt(pending.ID, 10)
 				approveURL, _ := builder.Path("admin", "registrations", id, "approve")
@@ -232,6 +245,10 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 					IntakeAt: pending.IntakeAt.Format(time.RFC3339), Failure: pending.ReconciliationClass,
 					ApproveURL: approveURL, RejectURL: rejectURL,
 				}
+			}
+			for index, orphan := range page.Orphans {
+				adoptURL, _ := builder.Path("admin", "registrations", orphan.Handle, "adopt")
+				presentation.Orphans[index] = administrationRegistrationOrphanView{DisplayName: orphan.DisplayName, VerifiedEmail: orphan.VerifiedEmail, AdoptURL: adoptURL}
 			}
 			if page.NextAfter > 0 {
 				presentation.NextURL, _ = builder.PathWithQuery([]string{"admin", "registrations"}, url.Values{"after": {strconv.FormatInt(page.NextAfter, 10)}})
@@ -271,6 +288,32 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		}
 		router.Post("/admin/registrations/{registrationID}/approve", decide(registration.Approve))
 		router.Post("/admin/registrations/{registrationID}/reject", decide(registration.Reject))
+		router.Post("/admin/registrations/{handle}/adopt", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["registrations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason"})
+			if !ok {
+				return
+			}
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if requestErr != nil {
+				serveAdministrationServiceError(response, request, views["registrations"], requestErr)
+				return
+			}
+			result, adoptErr := services.Registrations.Adopt(request.Context(), actor, registration.AdoptionInput{Handle: chi.URLParam(request, "handle"), Reason: form.Get("reason"), RequestID: requestID})
+			if adoptErr != nil {
+				serveAdministrationMutationError(response, request, views["registrations"], adoptErr)
+				return
+			}
+			if result.RegistrationID <= 0 || result.Revision <= 0 || result.AuditID < 0 || result.Inserted && result.AuditID == 0 {
+				serveAdministrationServiceError(response, request, views["registrations"], errors.New("invalid registration adoption result"))
+				return
+			}
+			destination, _ := builder.Path("admin", "registrations")
+			serveMutationNavigation(response, request, destination)
+		})
 	}
 	router.Get("/admin/accounts/{userID}", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
@@ -809,7 +852,12 @@ func administrationRouteValid(request *http.Request) bool {
 	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" {
 		return false
 	}
-	if _, err := parseCanonicalPositiveID(parts[1]); err != nil {
+	adoption := parts[0] == "registrations" && len(parts) == 3 && parts[2] == "adopt"
+	if adoption {
+		if !administrationAdoptionHandle.MatchString(parts[1]) {
+			return false
+		}
+	} else if _, err := parseCanonicalPositiveID(parts[1]); err != nil {
 		return false
 	}
 	if method == http.MethodGet {
@@ -822,7 +870,7 @@ func administrationRouteValid(request *http.Request) bool {
 		return parts[0] == "groups" || parts[0] == "areas"
 	}
 	if len(parts) == 3 {
-		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject")
+		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt")
 	}
 	if parts[2] != "groups" || (parts[0] != "accounts" && parts[0] != "areas") {
 		return false

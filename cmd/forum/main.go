@@ -54,7 +54,7 @@ type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
 type abuseFactory func(config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error)
 type registrationControlRuntime struct {
 	Objects      authentikcontrol.Objects
-	Gateway      registrationservice.Gateway
+	Gateway      registrationservice.ControlGateway
 	ReferenceKey [32]byte
 	Close        func()
 }
@@ -454,10 +454,13 @@ func run(
 				},
 				Registrations: &httpui.RegistrationAdministrationHTTPServices{
 					List: func(adminContext context.Context, access auth.AccessContext, after int64) (registrationservice.PendingPage, error) {
-						return registrationservice.ListPending(adminContext, queries, access, time.Now(), after)
+						return registrationservice.ListPendingAdministration(adminContext, queries, registrationControl.Gateway, access, time.Now(), after, registrationControl.ReferenceKey)
 					},
 					Decide: func(adminContext context.Context, access auth.AccessContext, input registrationservice.DecisionInput) (registrationservice.DecisionResult, error) {
 						return registrationservice.Decide(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
+					},
+					Adopt: func(adminContext context.Context, access auth.AccessContext, input registrationservice.AdoptionInput) (registrationservice.AdoptionResult, error) {
+						return registrationservice.Adopt(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
 					},
 				},
 			},

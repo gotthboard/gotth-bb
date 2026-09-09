@@ -66,6 +66,13 @@ type User struct {
 	Active   bool   `json:"active"`
 }
 
+type UserState struct {
+	User
+	Accepted  bool `json:"accepted"`
+	Pending   bool `json:"pending"`
+	Suspended bool `json:"suspended"`
+}
+
 type Invitation struct {
 	UUID        string `json:"uuid"`
 	Name        string `json:"name"`
@@ -141,7 +148,17 @@ func (handler *Handler) route(response http.ResponseWriter, request *http.Reques
 		if err == nil && !found {
 			err = authentikcontrol.ErrAbsent
 		}
-		writeRemote(response, http.StatusOK, projectUser(user), err)
+		state := UserState{User: projectUser(user)}
+		if err == nil {
+			state.Accepted, err = handler.remote.UserInGroup(request.Context(), uuid, handler.objects.Groups.Accepted)
+		}
+		if err == nil {
+			state.Pending, err = handler.remote.UserInGroup(request.Context(), uuid, handler.objects.Groups.Pending)
+		}
+		if err == nil {
+			state.Suspended, err = handler.remote.UserInGroup(request.Context(), uuid, handler.objects.Groups.Suspended)
+		}
+		writeRemote(response, http.StatusOK, state, err)
 	case strings.HasPrefix(request.URL.Path, "/v1/groups/"):
 		handler.membership(response, request)
 	case request.URL.Path == "/v1/invitations" && request.Method == http.MethodGet:

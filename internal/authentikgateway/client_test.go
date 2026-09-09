@@ -56,14 +56,14 @@ func TestBoardClientRequiresUnixPathAndExactErrors(t *testing.T) {
 }
 
 func TestBoardClientRequiresPositiveUserKey(t *testing.T) {
-	responseBody := `{"id":17,"uuid":"` + testUser + `","username":"member","name":"Member","email":"member@example.test","active":true}`
+	responseBody := `{"id":17,"uuid":"` + testUser + `","username":"member","name":"Member","email":"member@example.test","active":true,"accepted":false,"pending":true,"suspended":false}`
 	client := &Client{http: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		headers := make(http.Header)
 		headers.Set("Content-Type", "application/json")
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(responseBody)), Header: headers}, nil
 	})}}
 	user, err := client.User(context.Background(), testUser)
-	if err != nil || user.ID != 17 || user.UUID != testUser {
+	if err != nil || user.ID != 17 || user.UUID != testUser || !user.Pending || user.Accepted || user.Suspended {
 		t.Fatalf("User() = (%+v, %v)", user, err)
 	}
 

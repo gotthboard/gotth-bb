@@ -3221,9 +3221,10 @@ Unknown paths, methods, names, fields, query parameters, oversized bodies, and
 noncanonical UUIDs fail before an Authentik call. The gateway resolves
 caller-visible UUID selectors and every group/flow identity internally from
 the attested object file. Its closed user projection returns the positive
-immutable Authentik numeric key beside the UUID because pending-orphan adoption
-must persist both independently unique coordinates; no request accepts a
-numeric user-key selector. Board has no raw token file descriptor, environment
+immutable Authentik numeric key beside the UUID and the accepted, pending, and
+suspended membership booleans because pending-orphan adoption must persist
+both independently unique coordinates only after re-verifying pending-only
+state; no request accepts a numeric user-key selector. Board has no raw token file descriptor, environment
 value, mount, or fallback TCP configuration.
 
 The local protocol accepts HTTP/1.1 only with the fixed

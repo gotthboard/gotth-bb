@@ -56,13 +56,13 @@ func (client *Client) Close() {
 	}
 }
 
-func (client *Client) User(ctx context.Context, uuid string) (User, error) {
+func (client *Client) User(ctx context.Context, uuid string) (UserState, error) {
 	if !canonicalUUID.MatchString(uuid) {
-		return User{}, ErrInvalidRequest
+		return UserState{}, ErrInvalidRequest
 	}
-	var result User
+	var result UserState
 	err := client.request(ctx, http.MethodGet, "/v1/users/"+uuid, nil, http.StatusOK, &result)
-	if err == nil && (!validGatewayUser(result) || result.UUID != uuid) {
+	if err == nil && (!validGatewayUser(result.User) || result.UUID != uuid || result.Accepted && result.Suspended) {
 		err = ErrRemoteInvalid
 	}
 	return result, err

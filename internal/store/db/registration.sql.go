@@ -164,6 +164,58 @@ func (q *Queries) CompletePendingRegistrationDecision(ctx context.Context, arg C
 	return i, err
 }
 
+const insertOrLoadPendingRegistrationAdoption = `-- name: InsertOrLoadPendingRegistrationAdoption :one
+WITH inserted AS (
+    INSERT INTO public.pending_registrations (
+        authentik_user_id, authentik_subject, display_name, verified_email,
+        status, administration_revision, intake_at
+    ) VALUES (
+        $1, $2,
+        $3, $4,
+        'pending', 1, $5
+    )
+    ON CONFLICT DO NOTHING
+    RETURNING id, administration_revision, true AS inserted
+), existing AS (
+    SELECT pending.id, pending.administration_revision, false AS inserted
+    FROM public.pending_registrations AS pending
+    WHERE pending.authentik_user_id = $1
+      AND pending.authentik_subject = $2
+      AND pending.status = 'pending'
+)
+SELECT id, administration_revision, inserted FROM inserted
+UNION ALL
+SELECT id, administration_revision, inserted FROM existing
+LIMIT 1
+`
+
+type InsertOrLoadPendingRegistrationAdoptionParams struct {
+	AuthentikUserID  int64
+	AuthentikSubject pgtype.UUID
+	DisplayName      string
+	VerifiedEmail    string
+	IntakeAt         pgtype.Timestamptz
+}
+
+type InsertOrLoadPendingRegistrationAdoptionRow struct {
+	ID                     int64
+	AdministrationRevision int64
+	Inserted               bool
+}
+
+func (q *Queries) InsertOrLoadPendingRegistrationAdoption(ctx context.Context, arg InsertOrLoadPendingRegistrationAdoptionParams) (InsertOrLoadPendingRegistrationAdoptionRow, error) {
+	row := q.db.QueryRow(ctx, insertOrLoadPendingRegistrationAdoption,
+		arg.AuthentikUserID,
+		arg.AuthentikSubject,
+		arg.DisplayName,
+		arg.VerifiedEmail,
+		arg.IntakeAt,
+	)
+	var i InsertOrLoadPendingRegistrationAdoptionRow
+	err := row.Scan(&i.ID, &i.AdministrationRevision, &i.Inserted)
+	return i, err
+}
+
 const listPendingRegistrationsForAdministration = `-- name: ListPendingRegistrationsForAdministration :many
 WITH actor AS MATERIALIZED (
     SELECT forum_user.id
@@ -315,6 +367,129 @@ type LockRegistrationAdministratorParams struct {
 
 func (q *Queries) LockRegistrationAdministrator(ctx context.Context, arg LockRegistrationAdministratorParams) (int64, error) {
 	row := q.db.QueryRow(ctx, lockRegistrationAdministrator, arg.ActorUserID, arg.ObservedAt)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const matchPendingRegistrationCoordinates = `-- name: MatchPendingRegistrationCoordinates :many
+WITH actor AS MATERIALIZED (
+    SELECT forum_user.id
+    FROM public.users AS forum_user
+    WHERE forum_user.id = $1
+      AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
+      AND (
+          forum_user.suspended_at IS NULL
+          OR forum_user.suspended_at > $2::timestamptz
+          OR forum_user.suspended_until <= $2::timestamptz
+      )
+      AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
+), candidate AS MATERIALIZED (
+    SELECT pending.id, pending.authentik_user_id,
+           pending.authentik_subject::text AS authentik_subject
+    FROM actor
+    CROSS JOIN public.pending_registrations AS pending
+    WHERE pending.authentik_user_id = ANY($3::bigint[])
+       OR pending.authentik_subject::text = ANY($4::text[])
+    ORDER BY pending.id
+    LIMIT 103
+)
+SELECT EXISTS (SELECT 1 FROM actor)::boolean AS actor_present,
+       (candidate.id IS NOT NULL)::boolean AS registration_present,
+       COALESCE(candidate.id, 0)::bigint AS id,
+       COALESCE(candidate.authentik_user_id, 0)::bigint AS authentik_user_id,
+       COALESCE(candidate.authentik_subject, '')::text AS authentik_subject
+FROM (SELECT 1) AS seed
+LEFT JOIN candidate ON true
+ORDER BY candidate.id NULLS LAST
+`
+
+type MatchPendingRegistrationCoordinatesParams struct {
+	ActorUserID       int64
+	ObservedAt        pgtype.Timestamptz
+	AuthentikUserIds  []int64
+	AuthentikSubjects []string
+}
+
+type MatchPendingRegistrationCoordinatesRow struct {
+	ActorPresent        bool
+	RegistrationPresent bool
+	ID                  int64
+	AuthentikUserID     int64
+	AuthentikSubject    string
+}
+
+func (q *Queries) MatchPendingRegistrationCoordinates(ctx context.Context, arg MatchPendingRegistrationCoordinatesParams) ([]MatchPendingRegistrationCoordinatesRow, error) {
+	rows, err := q.db.Query(ctx, matchPendingRegistrationCoordinates,
+		arg.ActorUserID,
+		arg.ObservedAt,
+		arg.AuthentikUserIds,
+		arg.AuthentikSubjects,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []MatchPendingRegistrationCoordinatesRow{}
+	for rows.Next() {
+		var i MatchPendingRegistrationCoordinatesRow
+		if err := rows.Scan(
+			&i.ActorPresent,
+			&i.RegistrationPresent,
+			&i.ID,
+			&i.AuthentikUserID,
+			&i.AuthentikSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const recordPendingRegistrationAdoption = `-- name: RecordPendingRegistrationAdoption :one
+INSERT INTO public.moderation_actions (
+    actor_kind, actor_user_id, target_type, target_site, action_type,
+    reason, previous_state, resulting_state, request_id, created_at
+) VALUES (
+    'forum_user', $1, 'site', true,
+    'adopt_pending_registration', $2,
+    pg_catalog.jsonb_build_object(
+        'registration_ref', $3::text,
+        'status', 'remote_pending_orphan'::text
+    ),
+    pg_catalog.jsonb_build_object(
+        'registration_ref', $3::text,
+        'status', 'pending'::text,
+        'administration_revision', $4::bigint
+    ),
+    $5, $6::timestamptz
+)
+RETURNING id
+`
+
+type RecordPendingRegistrationAdoptionParams struct {
+	ActorUserID            pgtype.Int8
+	Reason                 pgtype.Text
+	RegistrationRef        string
+	AdministrationRevision int64
+	RequestID              pgtype.UUID
+	ObservedAt             pgtype.Timestamptz
+}
+
+func (q *Queries) RecordPendingRegistrationAdoption(ctx context.Context, arg RecordPendingRegistrationAdoptionParams) (int64, error) {
+	row := q.db.QueryRow(ctx, recordPendingRegistrationAdoption,
+		arg.ActorUserID,
+		arg.Reason,
+		arg.RegistrationRef,
+		arg.AdministrationRevision,
+		arg.RequestID,
+		arg.ObservedAt,
+	)
 	var id int64
 	err := row.Scan(&id)
 	return id, err

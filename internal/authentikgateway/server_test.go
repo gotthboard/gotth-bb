@@ -172,12 +172,15 @@ func TestMembershipPinsGroupAndResolvesUser(t *testing.T) {
 }
 
 func TestUserProjectionCarriesImmutableNumericKey(t *testing.T) {
-	remote := &fakeRemote{}
+	remote := &fakeRemote{member: true}
 	handler, _ := NewHandler(remote, testObjects(), time.Now)
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request(http.MethodGet, "/v1/users/"+testUser, ""))
 	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"id":17`) ||
-		!strings.Contains(response.Body.String(), `"uuid":"`+testUser+`"`) {
+		!strings.Contains(response.Body.String(), `"uuid":"`+testUser+`"`) ||
+		!strings.Contains(response.Body.String(), `"accepted":true`) ||
+		!strings.Contains(response.Body.String(), `"pending":true`) ||
+		!strings.Contains(response.Body.String(), `"suspended":true`) || remote.calls.Load() != 4 {
 		t.Fatalf("unexpected user projection: %d %q", response.Code, response.Body.String())
 	}
 
