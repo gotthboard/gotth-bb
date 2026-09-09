@@ -3017,9 +3017,10 @@ email stage but before accepted/pending group assignment. Its expression uses
 the documented Authentik `requests` session and one fixed blueprint URL with
 `GET`, `timeout=2`, `allow_redirects=False`, and no caller headers/body. The
 policy is deliberately a deny predicate: it returns false only for exact empty
-`204` and true for every other response or caught exception. Its stage binding
-sets `evaluate_on_plan=false`, `re_evaluate_policies=true`, `negate=false`, and
-`failure_result=true`. Authentik therefore always places the guard in the plan,
+`204` and true for every other response or caught exception. The
+`FlowStageBinding` sets `evaluate_on_plan=false` and
+`re_evaluate_policies=true`; its expression `PolicyBinding` sets
+`negate=false` and `failure_result=true`. Authentik therefore always places the guard in the plan,
 re-evaluates without cache when reached, removes it only on the false allow
 result, and executes the Deny stage on policy-engine failure or a true deny
 result. Deny-stage execution calls `stage_invalid` and cancels the plan. The

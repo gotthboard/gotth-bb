@@ -1418,8 +1418,9 @@ empty `404` policy denial, and empty `503` database/malformed-state denial.
 Mode changes before user creation/invitation
 consumption or before post-email Board-group assignment execute the conditional
 Deny stage; no result is reused. Blueprint/source evidence pins the guard's
-deny-predicate return values and `evaluate_on_plan=false`,
-`re_evaluate_policies=true`, `negate=false`, `failure_result=true` binding.
+deny-predicate return values, the `FlowStageBinding` values
+`evaluate_on_plan=false`/`re_evaluate_policies=true`, and the `PolicyBinding`
+values `negate=false`/`failure_result=true`.
 Tests inject false allow, true deny, caught network failure, and uncaught policy
 engine failure at every guard and prove `stage_invalid` cancels the plan without
 skipping forward into any critical stage.
