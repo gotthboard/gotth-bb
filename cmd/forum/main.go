@@ -352,7 +352,7 @@ func run(
 			return store.GetModerationUserStatus(moderationContext, queries, access, userID, time.Now())
 		},
 		func(moderationContext context.Context, access auth.AccessContext, userID int64, suspend bool, reason string, requestID pgtype.UUID) (moderationservice.UserSuspensionResult, error) {
-			return moderationservice.ChangeUserSuspension(moderationContext, pool, time.Now, access, userID, suspend, reason, requestID)
+			return registrationservice.ChangeUserSuspension(moderationContext, pool, registrationControl.Gateway, time.Now, access, userID, suspend, reason, requestID)
 		},
 		func(administrationContext context.Context, access auth.AccessContext) (administrationservice.AreaManagementPage, error) {
 			return administrationservice.LoadAreaManagement(administrationContext, queries, access)

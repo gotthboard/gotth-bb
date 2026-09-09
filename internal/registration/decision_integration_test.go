@@ -134,6 +134,53 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	if err != nil || replayedRevocation.Status != "revoked" || !replayedRevocation.Completed || gateway.deleteCalls != 1 {
 		t.Fatalf("invitation revocation replay = (%+v, %v, deletes %d)", replayedRevocation, err, gateway.deleteCalls)
 	}
+
+	controlledSubject := "33333333-3333-4333-8333-333333333333"
+	var controlledUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, authentik_sync_state) VALUES ('Controlled Member', 'member', 'accepted') RETURNING id`).Scan(&controlledUserID); err != nil {
+		t.Fatalf("insert controlled member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, controlledUserID, controlledSubject); err != nil {
+		t.Fatalf("insert controlled identity: %v", err)
+	}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 303, UUID: controlledSubject, Username: "controlled", Name: "Controlled Member", Email: "controlled@example.test", Active: true}, Suspended: true}
+	syncTime := baseTime.Add(4 * time.Hour)
+	syncClock := func() time.Time { return syncTime }
+	suspensionRequest := pgtype.UUID{Bytes: [16]byte{0xb6}, Valid: true}
+	controlledSuspension, err := ChangeUserSuspension(ctx, connection, gateway, syncClock, actor, controlledUserID, true, "Contain controlled identity", suspensionRequest)
+	if err != nil || !controlledSuspension.Suspended || controlledSuspension.Revision != 3 || controlledSuspension.AuditID <= 0 {
+		t.Fatalf("controlled suspension = (%+v, %v)", controlledSuspension, err)
+	}
+	var suspended, removalConfirmed bool
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL, authentik_sync_state = 'suspended' FROM public.users WHERE id = $1`, controlledUserID).Scan(&suspended, &removalConfirmed); err != nil || !suspended || !removalConfirmed {
+		t.Fatalf("controlled suspension state = (%t, %t, %v)", suspended, removalConfirmed, err)
+	}
+	if got := gateway.operations[len(gateway.operations)-3:]; strings.Join(got, ",") != "remove:accepted:"+controlledSubject+",remove:pending:"+controlledSubject+",add:suspended:"+controlledSubject {
+		t.Fatalf("suspension operations = %v", got)
+	}
+
+	gateway.state = authentikgateway.UserState{User: gateway.state.User, Suspended: true}
+	gateway.failNext = authentikgateway.ErrRemoteUnavailable
+	failedReinstatementRequest := pgtype.UUID{Bytes: [16]byte{0xa5}, Valid: true}
+	if _, err := ChangeUserSuspension(ctx, connection, gateway, syncClock, actor, controlledUserID, false, "Restore controlled identity", failedReinstatementRequest); !errors.Is(err, ErrRemote) {
+		t.Fatalf("failed controlled reinstatement error = %v", err)
+	}
+	var deniedAfterFailure bool
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL AND authentik_sync_state = 'grant_required' AND authentik_sync_failure_class = 'remote_unavailable' FROM public.users WHERE id = $1`, controlledUserID).Scan(&deniedAfterFailure); err != nil || !deniedAfterFailure {
+		t.Fatalf("failed reinstatement denial = (%t, %v)", deniedAfterFailure, err)
+	}
+
+	gateway.state = authentikgateway.UserState{User: gateway.state.User, Accepted: true}
+	reinstatementRequest := pgtype.UUID{Bytes: [16]byte{0x94}, Valid: true}
+	controlledReinstatement, err := ChangeUserSuspension(ctx, connection, gateway, syncClock, actor, controlledUserID, false, "Restore controlled identity", reinstatementRequest)
+	if err != nil || controlledReinstatement.Suspended || controlledReinstatement.Revision != 7 || controlledReinstatement.AuditID <= 0 {
+		t.Fatalf("controlled reinstatement = (%+v, %v)", controlledReinstatement, err)
+	}
+	var acceptedLocally bool
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NULL AND authentik_sync_state = 'accepted' AND authentik_sync_failure_class IS NULL FROM public.users WHERE id = $1`, controlledUserID).Scan(&acceptedLocally); err != nil || !acceptedLocally {
+		t.Fatalf("controlled reinstatement state = (%t, %v)", acceptedLocally, err)
+	}
 	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
 	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
 	adoptionHandle, err := issueAdoptionHandle(baseTime, key, adoptionUser.ID, adoptionUser.UUID)
@@ -179,6 +226,7 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 	if err := AcceptIntake(ctx, pgxIntakeStore{connection}, clock, intake); err == nil {
 		t.Fatal("coordinate-conflicting intake accepted")
 	}
+	gateway.operations = nil
 
 	approveSubject := "11111111-1111-4111-8111-111111111111"
 	approveID := insertPendingRegistration(t, ctx, connection, 101, approveSubject, "Approve Me", "approve@example.test")

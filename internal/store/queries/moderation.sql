@@ -67,6 +67,10 @@ WITH changed AS (
     SET suspended_at = GREATEST(sqlc.arg(suspended_at)::timestamptz, forum_user.created_at),
         suspended_until = NULL,
         suspension_reason = sqlc.arg(reason),
+        authentik_sync_state = 'removal_required',
+        authentik_sync_last_attempt_at = NULL,
+        authentik_sync_next_attempt_at = sqlc.arg(updated_at),
+        authentik_sync_failure_class = NULL,
         updated_at = GREATEST(sqlc.arg(updated_at)::timestamptz, forum_user.updated_at),
         administration_revision = forum_user.administration_revision + 1
     WHERE forum_user.id = sqlc.arg(user_id)
@@ -80,6 +84,14 @@ WITH changed AS (
     RETURNING forum_user.id, forum_user.suspended_at, forum_user.suspended_until,
               forum_user.suspension_reason, forum_user.updated_at,
               forum_user.administration_revision
+),
+revoked_sessions AS (
+    UPDATE public.sessions AS session
+    SET revoked_at = GREATEST(sqlc.arg(observed_at)::timestamptz, session.issued_at)
+    FROM changed
+    WHERE session.user_id = changed.id
+      AND session.revoked_at IS NULL
+    RETURNING session.id
 ),
 audit AS (
     INSERT INTO public.moderation_actions (
@@ -116,6 +128,7 @@ audit AS (
         sqlc.arg(request_id),
         changed.updated_at
     FROM changed
+    LEFT JOIN LATERAL (SELECT count(*)::bigint AS revoked_count FROM revoked_sessions) AS revoked ON true
     RETURNING id, target_user_id
 )
 SELECT changed.id AS user_id, changed.suspended_at, changed.suspended_until,

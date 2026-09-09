@@ -225,8 +225,8 @@ WHERE forum_user.id = $1`, memberID, reinstated.AuditID, suspendedAt).Scan(
 			exactPrevious, exactResulting, storedRequestID, auditedAt, auditCount, err)
 	}
 	sessionParams.ObservedAt = pgtype.Timestamptz{Time: reinstatedAt.Add(time.Minute), Valid: true}
-	if got, sessionErr := queries.GetActiveSession(ctx, sessionParams); sessionErr != nil || got.UserID != memberID {
-		t.Fatalf("reinstated GetActiveSession() = (%+v, %v)", got, sessionErr)
+	if got, sessionErr := queries.GetActiveSession(ctx, sessionParams); !errors.Is(sessionErr, pgx.ErrNoRows) || got.SessionID != 0 || got.UserID != 0 {
+		t.Fatalf("revoked suspension session became active after reinstatement = (%+v, %v)", got, sessionErr)
 	}
 	if status, statusErr := store.GetModerationUserStatus(ctx, queries, moderator, memberID, reinstatedAt.Add(time.Minute)); statusErr != nil || status.Suspended {
 		t.Fatalf("reinstated moderation status = (%+v, %v)", status, statusErr)
