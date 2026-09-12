@@ -83,6 +83,16 @@ func ListInvitations(ctx context.Context, querier invitationListQuerier, remote 
 	if len(rows) > 51 {
 		return InvitationPage{}, fmt.Errorf("%w: oversized invitation page", ErrUnavailable)
 	}
+	if !rows[0].InvitationPresent {
+		row := rows[0]
+		if len(rows) != 1 || row.IdempotencyKey.Valid || row.InvitationName != "" || row.TransitionState != "" || row.DeliveryState != "" || row.ExpiresAt.Valid || row.CreatedAt.Valid || row.AdministrationRevision != 0 || row.FailureClass.Valid {
+			return InvitationPage{}, fmt.Errorf("%w: malformed invitation page", ErrUnavailable)
+		}
+		// Authentik grants creator-scoped view permission only after the first
+		// invitation exists. The closed local sentinel is therefore the only
+		// honest empty-page proof that does not widen remote authority.
+		return InvitationPage{Invitations: []InvitationSummary{}}, nil
+	}
 	remoteInvitations, remoteMore, remoteErr := remote.Invitations(ctx)
 	if remoteErr != nil || len(remoteInvitations) > 51 {
 		return InvitationPage{}, fmt.Errorf("%w: reconcile invitations", ErrRemote)
@@ -105,10 +115,7 @@ func ListInvitations(ctx context.Context, querier invitationListQuerier, remote 
 			return InvitationPage{}, ErrDenied
 		}
 		if !row.InvitationPresent {
-			if len(rows) != 1 || index != 0 || row.IdempotencyKey.Valid || row.InvitationName != "" || row.TransitionState != "" || row.DeliveryState != "" || row.ExpiresAt.Valid || row.CreatedAt.Valid || row.AdministrationRevision != 0 || row.FailureClass.Valid {
-				return InvitationPage{}, fmt.Errorf("%w: malformed invitation page", ErrUnavailable)
-			}
-			return page, nil
+			return InvitationPage{}, fmt.Errorf("%w: malformed invitation page", ErrUnavailable)
 		}
 		if index == 50 {
 			continue

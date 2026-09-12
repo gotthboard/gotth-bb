@@ -25,6 +25,7 @@ type invitationGatewayStub struct {
 	invitations []authentikgateway.Invitation
 	more        bool
 	listErr     error
+	listCalls   int
 	retrieve    authentikgateway.Invitation
 	retrieveErr error
 	deleteErr   error
@@ -42,6 +43,7 @@ func (*invitationGatewayStub) CreateInvitation(context.Context, string, string, 
 	return authentikgateway.Invitation{}, nil
 }
 func (stub *invitationGatewayStub) Invitations(context.Context) ([]authentikgateway.Invitation, bool, error) {
+	stub.listCalls++
 	return stub.invitations, stub.more, stub.listErr
 }
 func (stub *invitationGatewayStub) Invitation(context.Context, string) (authentikgateway.Invitation, error) {
@@ -88,6 +90,23 @@ func TestInvitationListReconcilesRemoteAndIssuesFiniteHandle(t *testing.T) {
 	remote.invitations = append(remote.invitations, authentikgateway.Invitation{UUID: "77777777-7777-4777-8777-777777777777", Name: "untracked", Expires: expires.Format(time.RFC3339), SingleUse: true})
 	if _, err := ListInvitations(context.Background(), queries, remote, actor, now, key); !errors.Is(err, ErrRemote) {
 		t.Fatalf("untracked remote error = %v", err)
+	}
+}
+
+func TestInvitationListUsesClosedLocalEmptySentinelBeforeRemote(t *testing.T) {
+	now := time.Date(2026, 9, 12, 20, 0, 0, 0, time.UTC)
+	queries := &invitationQueryStub{rows: []db.ListRegistrationInvitationsForAdministrationRow{{ActorPresent: true}}}
+	remote := &invitationGatewayStub{listErr: authentikgateway.ErrRemoteUnavailable}
+	actor := policy.AccessContext{Authenticated: true, UserID: 7, Role: policy.RoleAdministrator}
+
+	page, err := ListInvitations(context.Background(), queries, remote, actor, now, [32]byte{0x51})
+	if err != nil || page.Invitations == nil || len(page.Invitations) != 0 || page.More || remote.listCalls != 0 {
+		t.Fatalf("empty page = (%+v, %v, remote calls %d)", page, err, remote.listCalls)
+	}
+
+	queries.rows[0].InvitationName = "malformed"
+	if _, err := ListInvitations(context.Background(), queries, remote, actor, now, [32]byte{0x51}); !errors.Is(err, ErrUnavailable) || remote.listCalls != 0 {
+		t.Fatalf("malformed sentinel = (%v, remote calls %d)", err, remote.listCalls)
 	}
 }
 
