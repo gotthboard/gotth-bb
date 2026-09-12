@@ -40,7 +40,7 @@ func New(configuration Settings, issuer url.URL, flowSlug string) (*Mailer, erro
 		(configuration.TLSMode != config.SMTPStartTLS && configuration.TLSMode != config.SMTPImplicitTLS && configuration.TLSMode != config.SMTPPlain) ||
 		strings.ContainsAny(configuration.Host+configuration.Username+configuration.From, "\r\n\x00") ||
 		(configuration.Username == "") != (configuration.PasswordFile == "") ||
-		issuer.Scheme != "https" || issuer.Host == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" || flowSlug == "" || strings.ContainsAny(flowSlug, "/?#") {
+		!validIssuer(issuer) || flowSlug == "" || strings.ContainsAny(flowSlug, "/?#") {
 		return nil, fmt.Errorf("SMTP delivery is invalid")
 	}
 	var password []byte
@@ -57,6 +57,18 @@ func New(configuration Settings, issuer url.URL, flowSlug string) (*Mailer, erro
 		configuration: configuration, password: password, flowBase: flowBase,
 		dial: dialer.DialContext,
 	}, nil
+}
+
+// validIssuer keeps production invitation links on HTTPS while permitting the
+// documented loopback-only standalone rehearsal used by the deployment gate.
+func validIssuer(issuer url.URL) bool {
+	if issuer.Host == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
+		return false
+	}
+	if issuer.Scheme == "https" {
+		return true
+	}
+	return issuer.Scheme == "http" && (issuer.Hostname() == "127.0.0.1" || issuer.Hostname() == "localhost")
 }
 
 func (mailer *Mailer) Close() {

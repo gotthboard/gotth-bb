@@ -35,6 +35,34 @@ func TestMailerQueuesFixedInvitationThroughSMTP(t *testing.T) {
 	}
 }
 
+func TestMailerIssuerTransportBoundary(t *testing.T) {
+	settings := Settings{Host: "localhost", Port: 2525, From: "board@example.test", TLSMode: config.SMTPPlain, Timeout: time.Second}
+	for _, test := range []struct {
+		name, issuer string
+		want         bool
+	}{
+		{name: "HTTPS", issuer: "https://auth.example/application/o/gotth-bb/", want: true},
+		{name: "IPv4 loopback HTTP", issuer: "http://127.0.0.1:39443/application/o/gotth-bb/", want: true},
+		{name: "localhost HTTP", issuer: "http://localhost:39443/application/o/gotth-bb/", want: true},
+		{name: "non-loopback HTTP", issuer: "http://auth.example/application/o/gotth-bb/"},
+		{name: "loopback lookalike HTTP", issuer: "http://127.0.0.1.example/application/o/gotth-bb/"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			issuer, err := url.Parse(test.issuer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mailer, err := New(settings, *issuer, "gotth-bb-invitation")
+			if (err == nil) != test.want {
+				t.Fatalf("New(%q) error = %v, want success %t", test.issuer, err, test.want)
+			}
+			if mailer != nil {
+				mailer.Close()
+			}
+		})
+	}
+}
+
 func TestMailerSubmitsFixedSelfAddressedTestMessage(t *testing.T) {
 	mailer, err := New(Settings{Host: "localhost", Port: 2525, From: "board@example.test", TLSMode: config.SMTPPlain, Timeout: 2 * time.Second}, url.URL{Scheme: "https", Host: "auth.example"}, "gotth-bb-invitation")
 	if err != nil {
