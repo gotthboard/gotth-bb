@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-12 — Complete B1-09 administrator controls
 
-Commit: current commit; hash assigned by Git after commit
+Implementation: f4996c20854872e0521f820ee6482d58db316b5f
 
 B1-09-04 wires the admitted runtime-control service into a strict
 administrator form and adds bounded local-session and email diagnostics.

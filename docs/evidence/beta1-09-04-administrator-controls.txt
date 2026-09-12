@@ -1,0 +1,155 @@
+B1-09-04 administrator controls evidence
+==========================================
+
+Candidate
+---------
+
+- reviewed implementation commit: f4996c20854872e0521f820ee6482d58db316b5f
+- reviewed tree: b79fd4d9782e036e5a89a99c723604fbd9ebedfa
+- B1-09-03 evidence predecessor: 2d7150e
+- branch: feature/beta-1-admin-control-plane
+- two fresh cold reviews of the reviewed commit/tree: CLEAN, CLEAN
+
+Environment
+-----------
+
+- local: Go 1.26.6-X:nodwarf5, Node 26.7.0, npm 12.0.2, Linux amd64
+- development evidence host: Go 1.26.5-X:nodwarf5, Node 26.5.1,
+  npm 12.0.2, Docker 29.7.1, Caddy 2.11.4,
+  Chromium 151.0.7922.71, Linux amd64
+- disposable database: PostgreSQL 17.10 in task-owned containers with
+  ephemeral storage and loopback-only random host ports
+- the live Beta.1.5 service, Authentik tenant, databases, Caddy,
+  configuration, data, and retained rollback candidate were not changed
+
+Exact gates
+-----------
+
+1. Deterministic source, asset, and repository gates on the exact reviewed
+   tree:
+
+     go tool templ generate
+     go tool sqlc generate --no-remote
+     npm run generate:css
+     test "$(sha256sum <current-css> | cut -d' ' -f1)" = 69b837842...
+     test "$(sha256sum <retained-css> | cut -d' ' -f1)" = 3f1bf5d289...
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     test -z "$(gofmt -l .)"
+     sh -n deploy/standalone/preflight.sh
+     git fsck --no-dangling
+
+   Templ, sqlc, and Tailwind generation were byte-clean. Both stylesheet
+   filenames match their actual SHA-256 content, the immediate predecessor
+   remains an independently embedded immutable route, and the worktree
+   remained clean.
+
+2. Complete ordinary, vet, and development-host race suites:
+
+     go vet ./...
+     go test -count=1 -p=2 ./...
+     go test -race -count=1 -p=2 -coverprofile=<scratch> ./...
+
+   Every package passed. Full race coverage was 67.2% of statements.
+
+3. Focused administration PostgreSQL 17.10 race coverage:
+
+     GOTTH_BB_TEST_DATABASE_URL=<ephemeral-postgresql-17.10> \
+       go test -race -count=1 -tags=integration \
+       -coverprofile=<scratch> ./internal/administration
+
+   The package covered 75.8% of statements. Focused function coverage was
+   85.7% for `LoadEmailTestState`, 73.0% for `TestEmail`, 77.6% for
+   `ListSessions`, 66.7% for each public revocation entry point, and 73.8%
+   for their shared transactional implementation.
+
+4. The PostgreSQL journey proved the 51-row session bound, finite-time
+   projection, effective idle cutoff, one/all atomic revocation and audit,
+   audit rollback, accepted/failed/unknown email completion, five-minute
+   reservation, canceled-browser terminal persistence, audit redaction, and
+   restricted runtime grants. An idle but otherwise unrevoked row was neither
+   listed, revoked, nor counted.
+
+5. Caddy/Chromium administration journey:
+
+     GOTTH_BB_BROWSER_CADDY=1 go test -race -count=1 -tags=integration \
+       -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+       ./internal/httpui
+
+   Empty and `/bb` base paths passed. Ordinary HTML and HTMX control,
+   session, and email actions remained keyboard operable and passed
+   320-pixel and 200%-zoom reflow with no horizontal overflow and zero Axe
+   violations. Axe retained its known incomplete gradient-contrast notices;
+   these are not reported as passes or violations.
+
+6. The second fresh review re-pinned the exact implementation commit/tree,
+   required a clean worktree, rechecked that the session projection contains
+   no token hash, IP prefix, or user-agent hash, verified current and retained
+   immutable stylesheet routes, and repeated the administration, control,
+   SMTP, and HTTP race suites without cache. It returned CLEAN without
+   changing the tree.
+
+Results
+-------
+
+- `GET|POST /admin/control` exposes the closed runtime-control fields through
+  one revision-guarded, ceiling-bounded, audited transaction. Registration
+  cannot leave `closed` without valid shared SMTP configuration.
+- Session pages select at most 51 effectively active local sessions at one
+  database time, render 50 plus an overflow sentinel, and expose only finite
+  issued, last-seen, last-validated, and expiry times.
+- Single-session actions use a five-minute HMAC handle derived under a
+  distinct domain from the exact current administrator session credential.
+  The handle binds actor, target user, target session, action domain, and
+  expiry and cannot authenticate a browser session.
+- Single and all-session revocation revalidate actor and target, apply the
+  configured idle cutoff in the mutation itself, and commit the mutation and
+  count audit atomically. Revoking the request's current session clears the
+  scoped browser cookie only after commit.
+- The email page exposes only `configured` or `disabled` plus the requesting
+  administrator's own bounded state. A test has no recipient field, snapshots
+  the current verified local address, reserves one server-generated UUID per
+  five minutes before SMTP, and commits one separate redacted terminal result.
+- Invitation and test mail share one concrete SMTP transport. Connection,
+  TLS, protocol, DATA write, and final acceptance remain under the configured
+  total timeout. The test message is fixed and contains no link, credential,
+  account data, or user text.
+- The complete administrator navigation and exact control/session/email route
+  metadata are present. Full-page and HTMX behavior share CSRF, revalidation,
+  body, method, base-path, focus, cache, and error boundaries.
+- Tailwind output moved to its actual content-addressed name. The immediately
+  preceding immutable URL remains served with its exact original bytes.
+
+Rejected intermediate work
+--------------------------
+
+- The first revocation SQL treated every unrevoked, unexpired row as active.
+  That could revoke and count an idle-expired session absent from the page.
+  The final SQL applies the same issued, last-seen, validated, expiry, and
+  configured-idle predicates inside each atomic mutation.
+- The first generated stylesheet update changed bytes under the existing
+  immutable filename. The final candidate rotates to the actual SHA-256 name
+  and pins generation to that digest.
+- The first rotation removed the immediately preceding immutable stylesheet
+  URL. The final handler retains and verifies it as a separate route; internal
+  cleanup is not allowed to break cached userspace.
+
+Coverage gaps
+-------------
+
+- Remaining uncovered service statements are injected malformed database
+  rows, clocks, random sources, transaction setup failures, and duplicate
+  race outcomes already represented by the shared administration error and
+  rollback machinery. Chasing nominal 100% package coverage would duplicate
+  infrastructure tests without adding a new user-visible invariant.
+- The complete real Authentik 2026.5.2 plus shared SMTP journey, restart,
+  dual-database backup/restore, package reproducibility, permission-negative
+  matrix, rollback, and forward recovery belong to B1-09-05.
+
+Boundary
+--------
+
+This evidence admits only B1-09-04. B1-09-05 remains required. It does not
+claim B1-09 completion, Beta completion, RC.1 admission, owner acceptance,
+merge, push, tag, package, release, deployment, or a live change. Beta.1.5
+remains untouched.

@@ -67,10 +67,10 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-003` | local roles/groups/memberships | AN-04 integrated evidence | implemented |
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
-| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; B1-09-04 administrator UI/browser evidence pending | blocked |
+| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
-| `ADMIN-008` | B1-09 bounded local-session views and revocation | B1-09-04 database/HTTP/security evidence | blocked |
-| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | B1-09-04 SMTP/HTTP evidence | blocked |
+| `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
+| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
 | `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |
