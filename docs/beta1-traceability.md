@@ -24,9 +24,9 @@ table and rejects omission, duplication, or invention in either direction.
 | `ID-011` | controlled Authentik enrollment redirect | registration handler/config tests and deployment blueprint validation | implemented |
 | `ID-012` | fail-closed registration activation gate | registration handler tests and deployed `REGISTRATION_ENABLED=false` state | implemented |
 | `ID-013` | independent setup and registration routes/state | setup/registration HTTP tests | implemented |
-| `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | `docs/evidence/beta1-09-01-control-settings.txt`; B1-09-03 HTTP/Auth evidence pending | blocked |
-| `ID-015` | B1-09 verified pending approval and flow-bound invitation lifecycle | B1-09-02/03 real Authentik and transition evidence | blocked |
-| `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry and live OIDC evidence | blocked |
+| `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
+| `ID-015` | B1-09 verified pending approval and flow-bound invitation lifecycle | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
+| `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry evidence complete; live OIDC evidence remains B1-09-05 | blocked |
 | `ACL-001` | closed visibility/posting policy types and constraints | policy tests and migration schema tests | implemented |
 | `ACL-002` | area-owned authorization predicates in topic/post paths | database access and HTTP leakage tests | implemented |
 | `ACL-003` | no topic-level visibility model | schema and route inventory | implemented |
@@ -68,7 +68,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
 | `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; B1-09-04 administrator UI/browser evidence pending | blocked |
-| `ADMIN-007` | B1-09 pending-registration and invitation administration | B1-09-03 Authentik/HTTP/browser evidence | blocked |
+| `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | B1-09-04 database/HTTP/security evidence | blocked |
 | `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | B1-09-04 SMTP/HTTP evidence | blocked |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
@@ -104,7 +104,7 @@ table and rejects omission, duplication, or invention in either direction.
 - B1-09 contract: admitted from commit
   `a1ff1eaef5aa16d18073fa5281cc16a3cea41d3d` / tree
   `0cc2556b3e7b0c9b64b6bb63265635a69c5b1c61` after two fresh CLEAN reviews;
-  implementation evidence remains pending. The disposable Authentik 2026.5.2
+  implementation evidence remains incomplete until B1-09-04/05. The disposable Authentik 2026.5.2
   permission test subsequently exposed creator-owned invitation `send_email`
   as inseparable from required view permission and the complete self-token
   lifecycle as available to every authenticated non-superuser despite absent
@@ -116,7 +116,10 @@ table and rejects omission, duplication, or invention in either direction.
   B1-09-02 implementation was admitted from commit
   `d4c14b90ca48d7486a0be71ba26b1f4fc159375d` / tree
   `503901b937359df4212e812ad8443ca243ba06c6` after two fresh CLEAN reviews,
-  with `docs/evidence/beta1-09-02-authentik-gateway.txt`.
+  with `docs/evidence/beta1-09-02-authentik-gateway.txt`. B1-09-03 was admitted
+  from commit `464f9b003c3b6294e181261d4e227e8bec346a51` / tree
+  `d20b6172df7254f02abadbabeef1741d2dc407f4` after two fresh CLEAN reviews,
+  with `docs/evidence/beta1-09-03-registration-reconciliation.txt`.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence

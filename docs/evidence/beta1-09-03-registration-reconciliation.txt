@@ -1,0 +1,164 @@
+B1-09-03 registration and identity reconciliation evidence
+============================================================
+
+Candidate
+---------
+
+- reviewed implementation commit: 464f9b003c3b6294e181261d4e227e8bec346a51
+- reviewed tree: d20b6172df7254f02abadbabeef1741d2dc407f4
+- B1-09-02 evidence predecessor: cff8e1b
+- branch: feature/beta-1-admin-control-plane
+- two fresh cold reviews of the reviewed commit/tree: CLEAN, CLEAN
+
+Environment
+-----------
+
+- local: Go 1.26.6-X:nodwarf5, Node 26.7.0, npm 12.0.2, Linux amd64
+- development evidence host: Go 1.26.5-X:nodwarf5, Node 26.5.1,
+  npm 12.0.2, Docker 29.7.1, Caddy 2.11.4,
+  Chromium 151.0.7922.71, Linux amd64
+- disposable database: PostgreSQL 17 in task-owned containers with ephemeral
+  storage and loopback-only random host ports
+- the live Beta.1.5 service, Authentik tenant, databases, Caddy,
+  configuration, data, and retained rollback candidate were not changed
+
+Exact gates
+-----------
+
+1. Deterministic source and repository gates on the exact reviewed tree:
+
+     make generate
+     git diff --exit-code
+     scripts/test-alpha3-evidence-custody.sh
+     test -z "$(gofmt -l .)"
+     sh -n deploy/standalone/preflight.sh
+     GOMAXPROCS=2 go vet ./...
+     git fsck --no-dangling
+
+   Generation was byte-clean and the worktree remained clean.
+
+2. Complete ordinary and development-host race suites:
+
+     GOMAXPROCS=2 go test -p=2 ./...
+     GOMAXPROCS=4 go test -p=2 -race -coverprofile=<scratch> ./...
+
+   Both passed. Full race coverage was 67.6% of statements.
+
+3. Complete PostgreSQL 17 integration race suite:
+
+     GOTTH_BB_TEST_DATABASE_URL=<ephemeral-postgresql-17> \
+       GOMAXPROCS=4 go test -p=2 -race -tags integration ./...
+
+   Every package passed against a clean PostgreSQL 17 container.
+
+4. Focused registration PostgreSQL/race coverage:
+
+     GOTTH_BB_TEST_DATABASE_URL=<ephemeral-postgresql-17> \
+       GOMAXPROCS=4 go test -p=2 -race -tags integration \
+       -coverprofile=<scratch> ./internal/registration
+
+   The package covered 76.0% of statements. Focused function coverage was
+   74.6% for `ReconcileExpiredSuspensions`, 72.5% for `CreateInvitation`,
+   70.6% for `resolveInvitation`, 71.4% for `recordInvitationFailure`, and
+   82.1% for `ReconcileIdentity`.
+
+5. Caddy/Chromium no-JavaScript administration journey:
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 go test -p=2 \
+       -tags integration \
+       -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+       -v ./internal/httpui
+
+   Empty and `/bb` base paths passed. The journey remained keyboard operable,
+   passed 320-pixel and 200%-zoom reflow with no horizontal overflow, and
+   reported zero Axe violations. Axe retained its known incomplete gradient
+   contrast notices; these are not reported as passes or violations.
+
+6. The second independent review re-pinned the exact commit/tree, required a
+   clean worktree, repeated route/invitation/runtime/deployment/SMTP focused
+   tests without cache, and returned CLEAN without changing the tree.
+
+Results
+-------
+
+- Public admission is a no-store, mode-exact, SMTP-gated read. Approval intake
+  accepts only a bounded, flow-bound, short-lived provider-signed assertion and
+  returns the fixed non-oracular response grammar before idempotent local
+  persistence.
+- OIDC session creation denies every non-approved pending identity. Pending
+  administration is bounded, exposes no immutable Authentik coordinates, and
+  adopts an orphan only after a signed-handle re-fetch proves exact numeric ID,
+  UUID, verified profile, active state, pending membership, and absence from
+  accepted and suspended groups.
+- Approval and rejection commit restrictive local intent before gateway work,
+  perform no remote I/O under a PostgreSQL transaction, verify exact final
+  accepted/pending/suspended membership, and commit terminal state only for the
+  same request and revision. Failure remains restrictive and retryable.
+- Invitation creation reserves a redacted HMAC fingerprint before remote work,
+  adopts only an exact remote name/flow/profile/expiry match, never resends mail
+  after ambiguity, and stores neither recipient nor invitation UUID/link.
+  Browser retries preserve one absolute expiry reference. The list is loaded
+  before mutation, so no post-commit remote read can suppress a newly created
+  one-time link. Revocation distinguishes confirmed deletion from an already
+  absent single-use token and from an ambiguous result.
+- Local suspension and all-session revocation commit before Authentik removal.
+  Reinstatement and finite expiry grant and verify Authentik first, while the
+  local `accepted` sync-state predicate continues denying access, and clear the
+  suspension only in the guarded completion transaction.
+- Explicit administrator reconciliation retries one restrictive identity.
+  The startup/60-second worker claims at most five finite expiries under a
+  transaction-scoped advisory lock, holds no database lock across gateway I/O,
+  retries failures no sooner than one minute, and records concurrent local
+  changes as superseding rather than overwriting them.
+- Every protected session, publication, report, moderation, site, and
+  administration authorization path now requires persisted Authentik sync
+  state `accepted`. PostgreSQL race tests prove stale `removal_required` and
+  `grant_required` staff cannot mutate or append an audit.
+- SMTP connection, implicit-TLS handshake, protocol, and DATA acceptance share
+  one total configured deadline. A silent implicit-TLS peer is proven to time
+  out. The standalone closed configuration carries all six exact empty SMTP
+  values; preflight rejects missing values or premature standalone enablement.
+
+Rejected intermediate work
+--------------------------
+
+- Authorization originally trusted a session actor after its persisted sync
+  state became restrictive. The final queries and transactional actor locks
+  require `accepted`; failure tests prove no mutation or audit occurs.
+- Early gateway membership mutations trusted an action acknowledgement. The
+  final gateway performs a filtered readback, and Board independently verifies
+  the complete three-group state before committing success.
+- Invitation form retries originally recomputed expiry from the retry time,
+  changing the request fingerprint. The final hidden canonical reference keeps
+  an identical submitted request identical.
+- Invitation POST originally listed remote state after successful creation.
+  That could hide the only returned bearer link if the follow-up read failed.
+  The final handler loads the bounded presentation before mutation.
+- Implicit SMTP TLS originally bounded TCP dial but not the TLS handshake. A
+  silent peer could hang the request. The final total deadline is installed on
+  the socket before the handshake and has a stalled-peer regression test.
+- The first standalone candidate required SMTP variables in application code
+  but omitted the disabled sentinel from its packaged environment. The final
+  example and preflight make a closed deployment startable while keeping shared
+  standalone SMTP wiring explicitly in B1-09-04.
+
+Coverage gaps
+-------------
+
+- This unit uses the already-admitted B1-09-02 real Authentik 2026.5.2 gateway
+  evidence plus deterministic gateway fakes for Board transition and failure
+  tests. The complete Board/Auth/SMTP journey, live OIDC behavior, restart,
+  backup/restore, rollback, and forward recovery belong to B1-09-05.
+- B1-09-04 still owns shared standalone SMTP wiring, session administration,
+  email-test state and controls, complete navigation/settings UI, and its full
+  browser matrix. The current standalone preflight deliberately refuses SMTP
+  enablement until that unit supplies both Board and Authentik from one
+  host-managed transport configuration.
+
+Boundary
+--------
+
+This evidence admits only B1-09-03. B1-09-04 and B1-09-05 remain required. It
+does not claim B1-09 completion, Beta completion, RC.1 admission, owner
+acceptance, merge, push, tag, package, release, or deployment. Beta.1.5 remains
+untouched.
