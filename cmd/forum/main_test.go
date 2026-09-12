@@ -606,6 +606,33 @@ func TestRunStartsAndStopsWithValidatedConfiguration(t *testing.T) {
 	}
 }
 
+func TestRequestAdmissionTrustsOnlyProductionOrSeparateLoopbackTestProxy(t *testing.T) {
+	directValues := validEnvironment("127.0.0.1:8080")
+	direct, err := config.Load(mapLookup(directValues))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestAdmissionTrustsProxy(direct) {
+		t.Fatal("direct test listener trusted forwarded identity")
+	}
+
+	proxyValues := validEnvironment("127.0.0.1:38082")
+	proxyValues["PUBLIC_BASE_URL"] = "http://127.0.0.1:38443/bb"
+	proxy, err := config.Load(mapLookup(proxyValues))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !requestAdmissionTrustsProxy(proxy) {
+		t.Fatal("separate loopback test proxy rejected")
+	}
+
+	production := direct
+	production.Environment = config.EnvironmentProduction
+	if !requestAdmissionTrustsProxy(production) {
+		t.Fatal("production proxy rejected")
+	}
+}
+
 func TestRunRejectsInvalidDependenciesAndRedactsConfigFailure(t *testing.T) {
 	const secret = "do-not-expose-service-secret"
 	validPool := returnPool(&fakeDatabasePool{})

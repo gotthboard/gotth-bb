@@ -588,7 +588,7 @@ func run(
 	if err != nil {
 		return fmt.Errorf("construct footer load-time boundary: %w", err)
 	}
-	applicationHandler, err = httpui.NewRequestAdmissionHandler(applicationHandler, requestLimiter, abuseObserver, configured.Environment == config.EnvironmentProduction)
+	applicationHandler, err = httpui.NewRequestAdmissionHandler(applicationHandler, requestLimiter, abuseObserver, requestAdmissionTrustsProxy(configured))
 	if err != nil {
 		return fmt.Errorf("construct request admission boundary: %w", err)
 	}
@@ -637,4 +637,17 @@ func run(
 	}
 	logger.InfoContext(context.Background(), "service stopped")
 	return nil
+}
+
+// requestAdmissionTrustsProxy distinguishes the documented loopback Caddy
+// rehearsal from a direct test listener by its separate public authority.
+func requestAdmissionTrustsProxy(configured config.Config) bool {
+	if configured.Environment == config.EnvironmentProduction {
+		return true
+	}
+	if configured.Environment != config.EnvironmentTest || configured.PublicBaseURL.Scheme != "http" {
+		return false
+	}
+	host := configured.PublicBaseURL.Hostname()
+	return (host == "127.0.0.1" || host == "localhost") && configured.PublicBaseURL.Host != configured.ListenAddr.String()
 }

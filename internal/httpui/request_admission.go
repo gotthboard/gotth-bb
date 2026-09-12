@@ -15,7 +15,7 @@ import (
 
 // NewRequestAdmissionHandler applies the closed health/static exemption and
 // charges every other request before session, body, router, or database work.
-func NewRequestAdmissionHandler(next http.Handler, limiter *abuse.RequestLimiter, observer abuse.Observer, production bool) (http.Handler, error) {
+func NewRequestAdmissionHandler(next http.Handler, limiter *abuse.RequestLimiter, observer abuse.Observer, trustedProxy bool) (http.Handler, error) {
 	if next == nil || limiter == nil || observer == nil {
 		return nil, fmt.Errorf("request admission dependencies are required")
 	}
@@ -25,7 +25,7 @@ func NewRequestAdmissionHandler(next http.Handler, limiter *abuse.RequestLimiter
 			return
 		}
 		request.Pattern = "request-admission"
-		address, err := admittedClientAddress(request, production)
+		address, err := admittedClientAddress(request, trustedProxy)
 		if err != nil {
 			writeAdmissionFailure(response, http.StatusBadRequest, 0, "bad request")
 			return
@@ -53,7 +53,7 @@ func NewRequestAdmissionHandler(next http.Handler, limiter *abuse.RequestLimiter
 	}), nil
 }
 
-func admittedClientAddress(request *http.Request, production bool) (netip.Addr, error) {
+func admittedClientAddress(request *http.Request, trustedProxy bool) (netip.Addr, error) {
 	host, _, err := net.SplitHostPort(request.RemoteAddr)
 	if err != nil {
 		return netip.Addr{}, fmt.Errorf("invalid peer")
@@ -67,7 +67,7 @@ func admittedClientAddress(request *http.Request, production bool) (netip.Addr, 
 	if len(request.Header.Values("Forwarded")) != 0 || len(request.Header.Values("X-Real-IP")) != 0 {
 		return netip.Addr{}, fmt.Errorf("alternative forwarded identity is forbidden")
 	}
-	if !production {
+	if !trustedProxy {
 		if len(forwarded) != 0 {
 			return netip.Addr{}, fmt.Errorf("forwarded identity is forbidden")
 		}
