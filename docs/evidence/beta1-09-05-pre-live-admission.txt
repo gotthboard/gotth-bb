@@ -1,0 +1,220 @@
+B1-09-05 pre-live integrated admission evidence
+================================================
+
+Candidate
+---------
+
+- reviewed implementation commit: 5034527ffad5a57db014805fbb42d3756d1e31c5
+- reviewed tree: 53afd3b3ac334dca719c5a44ccb5b56afc4da115
+- B1-09-04 evidence predecessor: 360d5061da37ae3cc40943a46ca796a28c33b245
+- branch: feature/beta-1-admin-control-plane
+- two fresh cold reviews of the reviewed commit/tree: CLEAN, CLEAN
+- final review changed neither the implementation commit nor its tree
+
+Environment
+-----------
+
+- development evidence host: Go toolchain 1.26.6, Node 26.7.0,
+  npm 12.0.2, Docker 29.7.1, Caddy 2.11.4,
+  Chromium 151.0.7922.71, Linux amd64
+- Board database: PostgreSQL 17.10
+- Authentik database: PostgreSQL 16.14, as pinned by the standalone stack
+- Authentik application: pinned 2026.5.2 standalone image
+- all listeners, databases, SMTP capture, files, and containers were
+  task-owned on `development`; the Board and Authentik browser origins were
+  loopback-only HTTP for this disposable `APP_ENV=test` rehearsal
+- the live Beta.1.5 application, Authentik tenant, databases, Caddy,
+  configuration, data, and rollback artifacts were not read for mutation or
+  changed
+
+Exact final-tree gates
+----------------------
+
+1. Pinned deterministic generation, repository integrity, static analysis,
+   ordinary tests, and repository-wide race coverage:
+
+     PATH=<task-node-26.7.0>:$PATH GOMAXPROCS=4 make verify
+
+   Templ, sqlc, Tailwind, custody, generated-diff, gofmt, vet, and
+   repository-wide `go test -race -cover` gates passed. Log SHA-256:
+   `de829a0d0026049941fb5e783cc0ed229f865cf4ef89b83a79f465351794666b`.
+
+2. Full disposable PostgreSQL 17 integration/race suite:
+
+     GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-task-dsn> \
+       GOMAXPROCS=4 go test -mod=readonly -tags=integration -count=1 \
+       -p=2 -race -covermode=atomic ./...
+
+   Every package passed. Integration coverage included administration 75.8%,
+   authentication 94.4%, control 83.1%, forum 91.0%, governance 100%,
+   moderation 84.3%, readiness 97.2%, registration 76.3%, store 97.1%, and
+   migrations 100%. Log SHA-256:
+   `1e1693bc1d952885efbc6c51f2a0162bc00b16f816d100dec993e13e2a21af25`.
+
+3. Changed-surface race repetition:
+
+     GOMAXPROCS=4 go test -mod=readonly -race -count=20 -p=2 \
+       ./cmd/forum ./internal/authentikcontrol ./internal/httpui \
+       ./internal/registration ./internal/smtpdelivery
+
+   All twenty repetitions passed. Log SHA-256:
+   `aa46810dc4d4c456e4db476d24b378342b676b486c85696e74ab0cfac6bb8e79`.
+
+4. Caddy/Chromium administration matrix, five exact-head repetitions:
+
+     GOTTH_BB_BROWSER_CADDY=1 GOMAXPROCS=4 \
+       go test -mod=readonly -tags=integration \
+       -run '^TestAdministrationKeyboardAndNoScriptThroughCaddy$' \
+       -count=5 -v ./internal/httpui
+
+   Root and `/bb` passed ordinary HTML, HTMX history, no-JavaScript,
+   keyboard/focus, 320-CSS-pixel, 200%-zoom, responsive administration,
+   session, control, email, and accessibility checks. Axe reported zero
+   violations. Its already documented gradient-background contrast cases
+   remained incomplete, not passes or violations. Log SHA-256:
+   `570e83177855930ca72a0d5b10ecb48b3febbe4390c1880e80e5ad84d93b9c56`.
+
+5. Representative PostgreSQL 17 population, forced plans, cancellation,
+   coexistence, and resources:
+
+     GOTTH_BB_TEST_DATABASE_URL=<redacted-loopback-task-dsn> \
+       GOTTH_BB_RUN_AN04_ADMISSION_EVIDENCE=1 GOMAXPROCS=4 \
+       go test -mod=readonly -tags=integration \
+       -run '^TestDiscoveryPlansOnPostgreSQL17$' -count=1 -v \
+       ./internal/store/db
+
+   The exact candidate passed with 25,000 accounts, groups, and areas;
+   100,000 ordinary topics; 1,000,000 ordinary posts; and one 250,001-node,
+   depth-32 topic. Custom and generic authorization-first plans passed.
+   Authentication, ordinary read, activity, moderation, mark-read,
+   first-unread, publication, administration, and search completed together.
+   Cancellation passed and database connections returned from one to one.
+   Final database size was 815,478,451 bytes; posts were 730,710,016 bytes;
+   Go heap was 2,241,448 bytes; process RSS was 19,912 KiB. Log SHA-256:
+   `baafe7e0b08756fe0a553dfa046969f59918e38394eb98142e7d8e1c10d80236`.
+
+Standalone Authentik, SMTP, and Board rehearsal
+-----------------------------------------------
+
+- Two byte-identical packages from the product candidate used for the full
+  cross-system rehearsal had archive SHA-256
+  `e2af505bfae907bdbae0563b94bb6eee7d4d1dc5d2c98fa8dd029ce0c5c25c91`.
+  The corresponding verified image ID was
+  `sha256:8512c0cf5363497270328997ef2861fb6817b655dd961a43f604c3b1df495368`.
+- The only later candidate changes were the two admission-harness repairs
+  named below. A path-limited Git comparison proved no product, deployment,
+  migration, package, or runtime source difference between the rehearsed
+  product commit and the final reviewed implementation commit.
+- The pinned Authentik blueprint applied twice without drift. The raw-token
+  permission-negative matrix returned
+  `AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EXCESSES_OK`: the required
+  closed user/group/invitation set worked, forbidden generic operations
+  remained denied, and the already documented creator invitation-email and
+  self-token excesses remained isolated behind the Unix-socket gateway.
+- Authentik and Board used one task SMTP capture service. Authentik mail,
+  invitation mail, and Board's fixed self-addressed test mail were accepted
+  as three distinct messages. The Board email state completed as
+  `accepted`, with configured and five-minute-next-attempt state true. No
+  credential, raw token, recipient input, or arbitrary relay operation was
+  exposed to the Board control gateway.
+- The first invitation page rendered from the closed local never-created
+  sentinel without widening Authentik permissions. Creation through Caddy
+  returned the one-time link only to the authenticated administrator and
+  persisted one `active`/`not_requested` local row at revision two.
+- With Authentik server and worker stopped, Authentik health returned 502,
+  Board readiness remained 200, invitation creation returned 503, and the
+  local invitation count remained unchanged. After restart, a retry that
+  crossed the remote-commit acknowledgement boundary recorded
+  `unknown`/`remote_unavailable` locally and returned 503 rather than claiming
+  success. The stack then recovered to healthy without manual data repair.
+
+Backup and recovery rehearsal
+-----------------------------
+
+- Board, gateway, Authentik server, worker, and Caddy writers were stopped
+  before backup. The packaged logical helpers produced:
+  - Board dump: 114,899 bytes, SHA-256
+    `3c6501c47c2dfa790682f35bf9e1c7cd8c2ad85a1a045eabeaefa7d3f9687439`.
+  - Authentik dump: 3,184,641 bytes, SHA-256
+    `999991873545af9d11ed9961ccceede0c53d679c7ed3f191be41ee578eda670a`.
+- Both dumps restored with packaged helpers into separate clean pinned
+  PostgreSQL containers. Original/restored critical counts matched exactly:
+  Board users/sessions/invitations/moderation-actions `1/1/2/6`; Authentik
+  migrations/users/groups/invitations `717/4/5/2`.
+- The original task stack restarted healthy after backup and restore. This is
+  a same-host disposable recovery proof; it is not a production RPO, RTO,
+  retention, encryption, scheduling, off-host durability, or alerting claim.
+
+Final reproducible artifact
+---------------------------
+
+- Two independent final exact-commit Linux/amd64 package builds were
+  byte-identical.
+- Version: `1.0.0-beta.1.6`.
+- Commit embedded in `RELEASE.txt`, binaries, and image labels:
+  `5034527ffad5a57db014805fbb42d3756d1e31c5`.
+- Archive SHA-256:
+  `0dc109947469978afa6daefe46ecb6c0fa1ffb111fd9a294f2f4f56fe6b09486`.
+- `SHA256SUMS` file SHA-256:
+  `b0634841bbe535cb3051f25a842225ec07bf4ace329e89d720ea7846706bd408`.
+- Verified image ID:
+  `sha256:be47cd3bca455c9ed3c338bd1a7bf6afa25629d63c2ef7e9992abbcefe55083a`.
+- The final image replaced only the task stack's application and isolated
+  gateway containers. Both became healthy and Caddy returned 200 for live and
+  ready. Package scope scans contained no rehearsal hostname, address, or
+  password marker. Deployment files were byte-identical to those used by the
+  full cross-system rehearsal.
+
+Rejected intermediate work and repairs
+--------------------------------------
+
+- The documented loopback rehearsal was initially impossible because the
+  control descriptor/client, registration and invitation constructors, and
+  SMTP mailer independently reimposed HTTPS after configuration had admitted
+  test-only loopback HTTP. The final candidate admits only exact
+  `127.0.0.1` or `localhost` HTTP issuers at those internal boundaries;
+  production configuration still requires HTTPS.
+- Test-mode request admission initially rejected Caddy's forwarded identity.
+  The final candidate trusts it only for production or a test-only loopback
+  public authority distinct from the numeric listen authority. Direct test
+  listeners still reject forwarded identity.
+- Authentik grants creator-scoped invitation view only after the creator has
+  made its first invitation. The first-page implementation initially called
+  remote list and could never create that first object. The final candidate
+  trusts only the structurally closed local never-created sentinel, and calls
+  remote reconciliation once any local invitation has existed.
+- The first five-pass browser run exposed a race where the harness clicked
+  newly swapped group pagination before HTMX completed request/swap/settle.
+  The final harness waits for those explicit lifecycle classes to clear. Ten
+  repair repetitions and five final exact-head repetitions passed.
+- The representative fixture predated B1-09 and created its administrator in
+  the new fail-closed `unknown` identity state. The repaired fixture models
+  accepted actors and suspended identities explicitly.
+- The resource harness demanded that PostgreSQL remove every closed backend
+  from `pg_stat_activity` in the same instant the client socket closed. Under
+  mixed million-row load, one backend could remain briefly visible. The final
+  gate polls for at most two seconds and still requires the exact baseline;
+  the admitted run returned one to one.
+
+Cold reviews
+------------
+
+- Review one re-read the complete B1-09-05 delta from the admitted B1-09-04
+  predecessor, the configuration-to-constructor issuer chain, forwarded-peer
+  boundary, invitation sentinel and reconciliation path, SMTP ownership,
+  failure ordering, tests, and all exact-head logs. Verdict: CLEAN.
+- Review two independently checked production HTTPS preservation, direct-test
+  forwarded-header rejection, non-loopback HTTP denial, creator-scoped
+  permission containment, no false remote-success transition, package/image
+  identity, rehearsal-to-final product equivalence, secret-marker absence,
+  clean worktree, and prohibited-side-effect boundary. Verdict: CLEAN.
+
+Boundary and remaining work
+---------------------------
+
+This record admits the local pre-live portion of B1-09-05 only. It does not
+claim B1-09-05 completion, B1-09 completion, Beta.1 completion, owner physical
+acceptance, feature merge, BB push, tag, release, deployment, live smoke, live
+rollback, or a known-good production reference. Those steps remain blocked on
+the unresolved B1-08G/Beta.1.5 predecessor and explicit owner authorization.
+The live service remains untouched.

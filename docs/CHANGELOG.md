@@ -5,6 +5,33 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-12 — Rehearse B1-09 pre-live integrated admission
+
+Implementation: `5034527ffad5a57db014805fbb42d3756d1e31c5`
+
+The pre-live half of B1-09-05 now has one disposable standalone rehearsal for
+the Board application, isolated Authentik control gateway, pinned Authentik
+2026.5.2, separate Board/Auth PostgreSQL databases, shared SMTP transport,
+and Caddy. The blueprint and raw permission-negative matrix pass; Board email
+testing and first invitation creation work; Authentik outage and ambiguous
+recovery remain fail-closed; and both databases restore with exact critical
+row-count parity.
+
+The admission pass repaired four test-only loopback seams without weakening
+production HTTPS, one first-invitation permission bootstrap deadlock, and two
+stale browser/resource harness assumptions. The exact final implementation
+passes deterministic generation, vet, repository-wide and PostgreSQL race
+suites, changed-surface race repetition, five Caddy/Chromium repetitions at
+root and `/bb`, and the 25,000-account / 100,000-topic / 1,000,000-post
+representative gate. Two final packages are byte-identical and the verified
+candidate image is healthy in the task stack.
+
+The canonical record is
+`docs/evidence/beta1-09-05-pre-live-admission.txt`. This is not full B1-09-05
+or B1-09 completion. No BB merge, push, tag, release, deployment, or live
+change occurred; guarded delivery, live smoke/rollback, and owner acceptance
+remain pending.
+
 ### 2026-09-12 — Complete B1-09 administrator controls
 
 Implementation: current commit; hash assigned by Git after commit

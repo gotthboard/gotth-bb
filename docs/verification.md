@@ -1341,6 +1341,16 @@ image, schema, and configuration identities. The candidate becomes known-good
 only after the owner confirms the real browser workflow. Beta.1 completion
 stops before RC.1; no migration or artifact freeze is implied.
 
+Pre-live status on 2026-09-12: implementation commit
+`5034527ffad5a57db014805fbb42d3756d1e31c5` / tree
+`53afd3b3ac334dca719c5a44ccb5b56afc4da115` passed the disposable Authentik,
+SMTP, cross-system failure, dual-database recovery, exact-head source/race,
+PostgreSQL 17, browser/accessibility, representative-resource, reproducible
+package, image, and two-CLEAN-review portion of this gate. The exact record is
+`docs/evidence/beta1-09-05-pre-live-admission.txt`. Guarded merge/push/tag,
+release, live deployment/smoke/rollback, and owner confirmation have not run
+and are not admitted by that record.
+
 ### 23.6 Standalone-stack corrective admission
 
 The Beta.1 standalone successor proves one six-service Compose project with

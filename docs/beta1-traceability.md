@@ -26,7 +26,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ID-013` | independent setup and registration routes/state | setup/registration HTTP tests | implemented |
 | `ID-014` | B1-09 durable four-mode policy and direct Authentik flow admission | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
 | `ID-015` | B1-09 verified pending approval and flow-bound invitation lifecycle | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
-| `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry evidence complete; live OIDC evidence remains B1-09-05 | blocked |
+| `ID-016` | B1-09 restrictive local/Auth group suspension reconciliation | B1-09-03 failure/retry and B1-09-05 disposable cross-system evidence complete; live OIDC evidence remains | blocked |
 | `ACL-001` | closed visibility/posting policy types and constraints | policy tests and migration schema tests | implemented |
 | `ACL-002` | area-owned authorization predicates in topic/post paths | database access and HTTP leakage tests | implemented |
 | `ACL-003` | no topic-level visibility model | schema and route inventory | implemented |
@@ -67,10 +67,10 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-003` | local roles/groups/memberships | AN-04 integrated evidence | implemented |
 | `ADMIN-004` | singleton presentation/rules settings | AN-04 and AN-05 settings-policy evidence | implemented |
 | `ADMIN-005` | exact administrator dashboard counts | AN-04 population/plan evidence | implemented |
-| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
-| `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt` | implemented |
-| `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
-| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | `docs/evidence/beta1-09-04-administrator-controls.txt` | implemented |
+| `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
+| `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
+| `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
+| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
 | `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |
@@ -86,9 +86,9 @@ table and rejects omission, duplication, or invention in either direction.
 | `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000013 and `docs/evidence/beta1-09-01-control-settings.txt` | implemented |
 | `OPS-002` | bounded public liveness/readiness | readiness and deployed health tests | implemented |
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
-| `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 packaged-helper, live-copy upgrade, Beta backup/clean-restore, readiness, and rollback rehearsal complete; live release record pending B1-05 | blocked |
+| `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 and B1-09-05 packaged-helper backup/clean-restore rehearsals complete; live release record pending B1-05 | blocked |
 | `OPS-005` | fail-closed identity/session/access validation | auth/policy/readiness/failure tests | implemented |
-| `OPS-006` | standalone pinned Caddy/Auth/Board stack with separate databases | B1-08 exact candidate Compose, identity-cutover, recovery, isolation, restart, OIDC, and outage evidence complete; guarded delivery and live shared-host deployment evidence pending | blocked |
+| `OPS-006` | standalone pinned Caddy/Auth/Board stack with separate databases | B1-08 candidate and B1-09-05 pre-live Auth/SMTP/failure/recovery evidence complete; guarded delivery and live shared-host evidence pending | blocked |
 
 ## Existing retained evidence
 
@@ -104,7 +104,7 @@ table and rejects omission, duplication, or invention in either direction.
 - B1-09 contract: admitted from commit
   `a1ff1eaef5aa16d18073fa5281cc16a3cea41d3d` / tree
   `0cc2556b3e7b0c9b64b6bb63265635a69c5b1c61` after two fresh CLEAN reviews;
-  integrated implementation evidence remains incomplete until B1-09-05. The disposable Authentik 2026.5.2
+  integrated implementation evidence remained incomplete until B1-09-05. The disposable Authentik 2026.5.2
   permission test subsequently exposed creator-owned invitation `send_email`
   as inseparable from required view permission and the complete self-token
   lifecycle as available to every authenticated non-superuser despite absent
@@ -122,7 +122,12 @@ table and rejects omission, duplication, or invention in either direction.
   with `docs/evidence/beta1-09-03-registration-reconciliation.txt`. B1-09-04
   was admitted from commit `1ef2b637a7674bbedfcc5cd5d363d658b5d9e8f8` /
   tree `dcc0a0e26d5c9fa49ca2e1c335ad79479feba20e` after two fresh CLEAN
-  reviews, with `docs/evidence/beta1-09-04-administrator-controls.txt`.
+  reviews, with `docs/evidence/beta1-09-04-administrator-controls.txt`. The
+  B1-09-05 pre-live implementation was admitted from commit
+  `5034527ffad5a57db014805fbb42d3756d1e31c5` / tree
+  `53afd3b3ac334dca719c5a44ccb5b56afc4da115` after two fresh CLEAN reviews,
+  with `docs/evidence/beta1-09-05-pre-live-admission.txt`. Guarded delivery,
+  live smoke/rollback, and owner acceptance remain incomplete.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence
