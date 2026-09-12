@@ -108,6 +108,8 @@ func TestChangeUserSuspensionRevalidatesLockedActorAndOrdersUserLocks(t *testing
 	suspendedActor := suspendedTarget(50, "administrator")
 	mutedActor := activeActor
 	mutedActor.MutedUntil = pgtype.Timestamptz{Time: testModerationNow().Add(time.Hour), Valid: true}
+	unreconciledActor := activeActor
+	unreconciledActor.AuthentikSyncState = "grant_required"
 	futureUpdatedTarget := target
 	futureUpdatedTarget.UpdatedAt = pgtype.Timestamptz{Time: testModerationNow().Add(2 * time.Hour), Valid: true}
 	expiredActor := expiredSuspensionTarget(50, "administrator")
@@ -121,6 +123,7 @@ func TestChangeUserSuspensionRevalidatesLockedActorAndOrdersUserLocks(t *testing
 		{name: "role changed", actor: activeSuspensionTarget(50, "member", testCreatedAt(), testCreatedAt()), wantDenied: true},
 		{name: "suspended", actor: suspendedActor, wantDenied: true},
 		{name: "muted", actor: mutedActor, wantDenied: true},
+		{name: "identity not accepted", actor: unreconciledActor, wantDenied: true},
 		{name: "future target update cannot expire mute", actor: mutedActor, target: futureUpdatedTarget, wantDenied: true},
 		{name: "expired restrictions", actor: expiredActor},
 		{name: "active", actor: activeActor},
@@ -322,7 +325,7 @@ func storedRole(role policy.Role) string {
 
 func activeSuspensionTarget(id int64, role string, createdAt, updatedAt time.Time) db.LockUserForSuspensionRow {
 	return db.LockUserForSuspensionRow{
-		ID: id, Role: role, AdministrationRevision: 1,
+		ID: id, Role: role, AdministrationRevision: 1, AuthentikSyncState: "accepted",
 		CreatedAt: pgtype.Timestamptz{Time: createdAt, Valid: true},
 		UpdatedAt: pgtype.Timestamptz{Time: updatedAt, Valid: true},
 	}
@@ -407,7 +410,7 @@ func (tx *userSuspensionTestTx) QueryRow(_ context.Context, query string, argume
 		if tx.failure == "invalid-role" && step == "target" {
 			user.Role = "invented"
 		}
-		return userModerationTestRow{values: []any{user.ID, user.Role, user.SuspendedAt, user.SuspendedUntil, user.SuspensionReason, user.MutedUntil, user.CreatedAt, user.UpdatedAt, user.AdministrationRevision}}
+		return userModerationTestRow{values: []any{user.ID, user.Role, user.SuspendedAt, user.SuspendedUntil, user.SuspensionReason, user.MutedUntil, user.CreatedAt, user.UpdatedAt, user.AdministrationRevision, user.AuthentikSyncState}}
 	case strings.Contains(query, "CountActiveAdministrators"):
 		tx.steps = append(tx.steps, "count")
 		if tx.failure == "count" {

@@ -94,6 +94,7 @@ func requestAdmissionExempt(method, path string) bool {
 	switch path {
 	case "/health/live", "/health/ready",
 		"/static/" + appStylesheetFilename,
+		"/static/" + priorAppStylesheetFilename,
 		"/static/" + previousAppStylesheetFilename,
 		"/static/" + olderAppStylesheetFilename,
 		"/static/" + legacyAppStylesheetFilename,

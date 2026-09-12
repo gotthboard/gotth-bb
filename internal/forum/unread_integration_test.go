@@ -70,13 +70,13 @@ func TestMarkTopicReadTransactionsOnPostgreSQL17(t *testing.T) {
 	connection := connections[0]
 
 	var ownerID, readerID, otherID int64
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Owner', 'administrator', 'accepted') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert owner: %v", err)
 	}
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Reader') RETURNING id`).Scan(&readerID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Reader', 'accepted') RETURNING id`).Scan(&readerID); err != nil {
 		t.Fatalf("insert reader: %v", err)
 	}
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Other') RETURNING id`).Scan(&otherID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Other', 'accepted') RETURNING id`).Scan(&otherID); err != nil {
 		t.Fatalf("insert other author: %v", err)
 	}
 	var groupID int64

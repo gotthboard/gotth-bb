@@ -5,6 +5,7 @@ package registration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -30,6 +31,8 @@ type recordingGateway struct {
 	invitations []authentikgateway.Invitation
 	createCalls int
 	deleteCalls int
+	afterUser   func() error
+	userState   func(string) authentikgateway.UserState
 }
 
 func (gateway *recordingGateway) AddUser(_ context.Context, group, subject string) error {
@@ -52,8 +55,21 @@ func (gateway *recordingGateway) PendingUsers(context.Context) ([]authentikgatew
 	return gateway.pending, false, gateway.takeFailure()
 }
 
-func (gateway *recordingGateway) User(context.Context, string) (authentikgateway.UserState, error) {
-	return gateway.state, gateway.takeFailure()
+func (gateway *recordingGateway) User(_ context.Context, subject string) (authentikgateway.UserState, error) {
+	if err := gateway.takeFailure(); err != nil {
+		return authentikgateway.UserState{}, err
+	}
+	if gateway.afterUser != nil {
+		after := gateway.afterUser
+		gateway.afterUser = nil
+		if err := after(); err != nil {
+			return authentikgateway.UserState{}, err
+		}
+	}
+	if gateway.userState != nil {
+		return gateway.userState(subject), nil
+	}
+	return gateway.state, nil
 }
 func (gateway *recordingGateway) CreateInvitation(_ context.Context, name, expires, email, displayName string) (authentikgateway.Invitation, error) {
 	gateway.createCalls++
@@ -135,10 +151,46 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("invitation revocation replay = (%+v, %v, deletes %d)", replayedRevocation, err, gateway.deleteCalls)
 	}
 
+	failedInvitationRequest := pgtype.UUID{Bytes: [16]byte{0xe6}, Valid: true}
+	failedInvitationExpiry := baseTime.Add(2 * time.Hour)
+	failedInvitationInput := InvitationInput{
+		Email: "retry-invitee@example.test", DisplayName: "Retry Invitee", Reason: "Retry an uncertain invitation",
+		ExpiresAt: failedInvitationExpiry, RequestID: failedInvitationRequest,
+	}
+	gateway.failNext = authentikgateway.ErrRemoteUnavailable
+	failedInvitation, err := CreateInvitation(ctx, connection, gateway, nil, clock, actor, failedInvitationInput, key, "99999999-9999-4999-8999-999999999999")
+	if !errors.Is(err, ErrRemote) || failedInvitation != (InvitationResult{}) || gateway.createCalls != 2 {
+		t.Fatalf("failed invitation creation = (%+v, %v, calls %d)", failedInvitation, err, gateway.createCalls)
+	}
+	var failedInvitationUnknown bool
+	var failedInvitationAudits int
+	if err := connection.QueryRow(ctx, `SELECT
+		transition_state = 'unknown' AND delivery_state = 'not_requested' AND failure_class = 'remote_unavailable' AND administration_revision = 2,
+		(SELECT count(*) FROM public.moderation_actions WHERE request_id = $1 AND action_type IN ('request_create_invitation', 'record_invitation_result'))
+		FROM public.registration_invitations WHERE idempotency_key = $1`, failedInvitationRequest).Scan(&failedInvitationUnknown, &failedInvitationAudits); err != nil || !failedInvitationUnknown || failedInvitationAudits != 2 {
+		t.Fatalf("failed invitation persistence = (unknown %t, audits %d, %v)", failedInvitationUnknown, failedInvitationAudits, err)
+	}
+	const adoptedInvitationUUID = "67676767-6767-4767-8767-676767676767"
+	gateway.invitations = []authentikgateway.Invitation{{
+		UUID: adoptedInvitationUUID, Name: invitationName(failedInvitationRequest), Expires: failedInvitationExpiry.Format(time.RFC3339),
+		Email: failedInvitationInput.Email, DisplayName: failedInvitationInput.DisplayName, SingleUse: true,
+	}}
+	adoptedInvitation, err := CreateInvitation(ctx, connection, gateway, nil, clock, actor, failedInvitationInput, key, "99999999-9999-4999-8999-999999999999")
+	if err != nil || adoptedInvitation.Status != "active" || adoptedInvitation.Delivery != "unknown" || adoptedInvitation.TokenUUID != "" || adoptedInvitation.Revision != 3 || gateway.createCalls != 2 {
+		t.Fatalf("adopted invitation retry = (%+v, %v, calls %d)", adoptedInvitation, err, gateway.createCalls)
+	}
+	terminalInvitation, err := CreateInvitation(ctx, connection, gateway, nil, clock, actor, InvitationInput{
+		Email: "changed@example.test", Reason: "Replay completed uncertain invitation", ExpiresAt: failedInvitationExpiry, RequestID: failedInvitationRequest,
+	}, key, "99999999-9999-4999-8999-999999999999")
+	if err != nil || !terminalInvitation.Completed || terminalInvitation.Status != "active" || terminalInvitation.Delivery != "unknown" || terminalInvitation.TokenUUID != "" || gateway.createCalls != 2 {
+		t.Fatalf("terminal invitation replay = (%+v, %v, calls %d)", terminalInvitation, err, gateway.createCalls)
+	}
+
 	controlledSubject := "33333333-3333-4333-8333-333333333333"
 	var controlledUserID int64
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users
-		(display_name, role, authentik_sync_state) VALUES ('Controlled Member', 'member', 'accepted') RETURNING id`).Scan(&controlledUserID); err != nil {
+		(display_name, role, created_at, updated_at, last_login_at, authentik_sync_state)
+		VALUES ('Controlled Member', 'member', $1, $1, $1, 'accepted') RETURNING id`, baseTime).Scan(&controlledUserID); err != nil {
 		t.Fatalf("insert controlled member: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, controlledUserID, controlledSubject); err != nil {
@@ -171,15 +223,79 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("failed reinstatement denial = (%t, %v)", deniedAfterFailure, err)
 	}
 
+	gateway.failNext = authentikgateway.ErrRemoteUnavailable
+	failedReconciliationRequest := pgtype.UUID{Bytes: [16]byte{0x93}, Valid: true}
+	if _, err := ReconcileIdentity(ctx, connection, gateway, syncClock, actor, controlledUserID, "Retry controlled identity", failedReconciliationRequest); !errors.Is(err, ErrRemote) {
+		t.Fatalf("failed manual reconciliation error = %v", err)
+	}
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL AND authentik_sync_state = 'grant_required' AND authentik_sync_failure_class = 'remote_unavailable' AND administration_revision = 7 FROM public.users WHERE id = $1`, controlledUserID).Scan(&deniedAfterFailure); err != nil || !deniedAfterFailure {
+		t.Fatalf("failed manual reconciliation denial = (%t, %v)", deniedAfterFailure, err)
+	}
+
 	gateway.state = authentikgateway.UserState{User: gateway.state.User, Accepted: true}
 	reinstatementRequest := pgtype.UUID{Bytes: [16]byte{0x94}, Valid: true}
-	controlledReinstatement, err := ChangeUserSuspension(ctx, connection, gateway, syncClock, actor, controlledUserID, false, "Restore controlled identity", reinstatementRequest)
-	if err != nil || controlledReinstatement.Suspended || controlledReinstatement.Revision != 7 || controlledReinstatement.AuditID <= 0 {
-		t.Fatalf("controlled reinstatement = (%+v, %v)", controlledReinstatement, err)
+	controlledReconciliation, err := ReconcileIdentity(ctx, connection, gateway, syncClock, actor, controlledUserID, "Retry controlled identity", reinstatementRequest)
+	if err != nil || controlledReconciliation.SyncState != "accepted" || controlledReconciliation.UserID != controlledUserID || controlledReconciliation.Revision != 9 || controlledReconciliation.AuditID <= 0 {
+		t.Fatalf("controlled reconciliation = (%+v, %v)", controlledReconciliation, err)
 	}
 	var acceptedLocally bool
 	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NULL AND authentik_sync_state = 'accepted' AND authentik_sync_failure_class IS NULL FROM public.users WHERE id = $1`, controlledUserID).Scan(&acceptedLocally); err != nil || !acceptedLocally {
-		t.Fatalf("controlled reinstatement state = (%t, %v)", acceptedLocally, err)
+		t.Fatalf("controlled reconciliation state = (%t, %v)", acceptedLocally, err)
+	}
+	beforeConflict := len(gateway.operations)
+	if _, err := ReconcileIdentity(ctx, connection, gateway, syncClock, actor, controlledUserID, "Retry controlled identity", pgtype.UUID{Bytes: [16]byte{0x95}, Valid: true}); !errors.Is(err, ErrConflict) || len(gateway.operations) != beforeConflict {
+		t.Fatalf("terminal reconciliation retry = (error %v, operations %v)", err, gateway.operations[beforeConflict:])
+	}
+
+	actorRaceSubject := "abababab-abab-4bab-8bab-abababababab"
+	var actorRaceUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspension_reason, authentik_sync_state)
+		VALUES ('Actor Race', 'member', $1, $1, $1, $2, 'Retry after actor revocation', 'grant_required') RETURNING id`, syncTime.Add(-2*time.Hour), syncTime.Add(-time.Hour)).Scan(&actorRaceUserID); err != nil {
+		t.Fatalf("insert actor-race member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, actorRaceUserID, actorRaceSubject); err != nil {
+		t.Fatalf("insert actor-race identity: %v", err)
+	}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 313, UUID: actorRaceSubject, Username: "actor-race", Name: "Actor Race", Email: "actor-race@example.test", Active: true}, Accepted: true}
+	gateway.afterUser = func() error {
+		_, updateErr := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'unknown' WHERE id = $1`, administratorID)
+		return updateErr
+	}
+	actorRaceResult, err := ReconcileIdentity(ctx, connection, gateway, syncClock, actor, actorRaceUserID, "Retry after actor revocation", pgtype.UUID{Bytes: [16]byte{0x97}, Valid: true})
+	if !errors.Is(err, ErrDenied) || actorRaceResult != (IdentityReconciliationResult{}) {
+		t.Fatalf("actor-revoked reconciliation = (%+v, %v)", actorRaceResult, err)
+	}
+	var actorRaceRevision int64
+	var actorRaceRequests, actorRaceResults int
+	if err := connection.QueryRow(ctx, `SELECT administration_revision,
+		(SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1 AND action_type = 'request_identity_reconciliation'),
+		(SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1 AND action_type = 'reconcile_identity_access')
+		FROM public.users WHERE id = $1 AND authentik_sync_state = 'grant_required'`, actorRaceUserID).Scan(&actorRaceRevision, &actorRaceRequests, &actorRaceResults); err != nil || actorRaceRevision != 2 || actorRaceRequests != 1 || actorRaceResults != 0 {
+		t.Fatalf("actor-revoked state = (revision %d, requests %d, results %d, %v)", actorRaceRevision, actorRaceRequests, actorRaceResults, err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'accepted' WHERE id = $1`, administratorID); err != nil {
+		t.Fatalf("restore administrator identity: %v", err)
+	}
+	actorRaceResult, err = ReconcileIdentity(ctx, connection, gateway, syncClock, actor, actorRaceUserID, "Retry after actor revocation", pgtype.UUID{Bytes: [16]byte{0x98}, Valid: true})
+	if err != nil || actorRaceResult.SyncState != "accepted" || actorRaceResult.Revision != 4 || actorRaceResult.AuditID <= 0 {
+		t.Fatalf("actor-restored reconciliation = (%+v, %v)", actorRaceResult, err)
+	}
+
+	removalSubject := "77777777-7777-4777-8777-777777777777"
+	var removalUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspension_reason, authentik_sync_state)
+		VALUES ('Removal Retry', 'member', $1, $1, $1, $1, 'Manual removal retry', 'removal_required') RETURNING id`, syncTime).Scan(&removalUserID); err != nil {
+		t.Fatalf("insert removal retry member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, removalUserID, removalSubject); err != nil {
+		t.Fatalf("insert removal retry identity: %v", err)
+	}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 707, UUID: removalSubject, Username: "removal", Name: "Removal Retry", Email: "removal@example.test", Active: true}, Suspended: true}
+	removalResult, err := ReconcileIdentity(ctx, connection, gateway, syncClock, actor, removalUserID, "Retry identity removal", pgtype.UUID{Bytes: [16]byte{0x96}, Valid: true})
+	if err != nil || removalResult.SyncState != "suspended" || removalResult.UserID != removalUserID || removalResult.Revision != 3 || removalResult.AuditID <= 0 {
+		t.Fatalf("removal reconciliation = (%+v, %v)", removalResult, err)
 	}
 
 	expiredSubject := "88888888-8888-4888-8888-888888888888"
@@ -218,9 +334,106 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("failed expiry reconciliation = (%+v, %v)", expiryResult, err)
 	}
 	var expiryDenied bool
-	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL AND authentik_sync_state = 'grant_required' AND authentik_sync_failure_class = 'remote_unavailable' AND administration_revision = 3 FROM public.users WHERE id = $1`, failedExpiryUserID).Scan(&expiryDenied); err != nil || !expiryDenied {
-		t.Fatalf("failed expiry denial = (%t, %v)", expiryDenied, err)
+	var expiryNextAttempt time.Time
+	if err := connection.QueryRow(ctx, `SELECT suspended_at IS NOT NULL AND authentik_sync_state = 'grant_required' AND authentik_sync_failure_class = 'remote_unavailable' AND administration_revision = 3, authentik_sync_next_attempt_at FROM public.users WHERE id = $1`, failedExpiryUserID).Scan(&expiryDenied, &expiryNextAttempt); err != nil || !expiryDenied || !expiryNextAttempt.Equal(syncTime.Add(time.Minute)) {
+		t.Fatalf("failed expiry denial = (%t, next %s, %v)", expiryDenied, expiryNextAttempt, err)
 	}
+
+	raceSubject := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	var raceUserID int64
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users
+		(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspended_until, suspension_reason, authentik_sync_state)
+		VALUES ('Concurrent Expiry', 'member', $1, $1, $1, $2, $3, 'Finite suspension', 'suspended') RETURNING id`, syncTime.Add(-2*time.Hour), syncTime.Add(-time.Hour), syncTime.Add(-time.Minute)).Scan(&raceUserID); err != nil {
+		t.Fatalf("insert concurrent expiry member: %v", err)
+	}
+	if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, raceUserID, raceSubject); err != nil {
+		t.Fatalf("insert concurrent expiry identity: %v", err)
+	}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 909, UUID: raceSubject, Username: "concurrent", Name: "Concurrent Expiry", Email: "concurrent@example.test", Active: true}, Accepted: true}
+	gateway.afterUser = func() error {
+		_, updateErr := connection.Exec(ctx, `UPDATE public.users
+			SET suspended_at = NULL, suspended_until = NULL, suspension_reason = NULL,
+			    authentik_sync_state = 'accepted', administration_revision = administration_revision + 1
+			WHERE id = $1`, raceUserID)
+		return updateErr
+	}
+	expiryResult, err = ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader(strings.Repeat("t", 16)))
+	if err != nil || expiryResult != (ExpiryReconciliationResult{Claimed: 1, Superseded: 1}) {
+		t.Fatalf("concurrent expiry reconciliation = (%+v, %v)", expiryResult, err)
+	}
+	var raceAccepted bool
+	var requestAudits, resultAudits, supersededAudits int
+	if err := connection.QueryRow(ctx, `SELECT
+			suspended_at IS NULL AND suspended_until IS NULL AND authentik_sync_state = 'accepted' AND administration_revision = 3,
+			(SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1 AND action_type = 'request_identity_reconciliation'),
+			(SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1 AND action_type = 'reconcile_identity_access'),
+			(SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1 AND action_type = 'reconcile_identity_access' AND resulting_state->>'result' = 'superseded')
+		FROM public.users WHERE id = $1`, raceUserID).Scan(&raceAccepted, &requestAudits, &resultAudits, &supersededAudits); err != nil || !raceAccepted || requestAudits != 1 || resultAudits != 1 || supersededAudits != 1 {
+		t.Fatalf("concurrent expiry state = (accepted %t, request %d, result %d, superseded %d, %v)", raceAccepted, requestAudits, resultAudits, supersededAudits, err)
+	}
+
+	workerConfig, err := pgx.ParseConfig(os.Getenv("GOTTH_BB_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("parse worker database URL: %v", err)
+	}
+	workerConfig.Database = decisionTestDatabase
+	workerConnection, err := pgx.ConnectConfig(ctx, workerConfig)
+	if err != nil {
+		t.Fatalf("connect second expiry worker: %v", err)
+	}
+	t.Cleanup(func() { _ = workerConnection.Close(context.Background()) })
+	guard, err := connection.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin advisory-lock guard: %v", err)
+	}
+	if _, err := guard.Exec(ctx, `SELECT pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtext('gotth-bb'), pg_catalog.hashtext('expired-identity-reconciliation'))`); err != nil {
+		_ = guard.Rollback(ctx)
+		t.Fatalf("hold expiry advisory lock: %v", err)
+	}
+	lockedResult, err := ReconcileExpiredSuspensions(ctx, workerConnection, gateway, syncClock, strings.NewReader(strings.Repeat("u", 16)))
+	if rollbackErr := guard.Rollback(ctx); rollbackErr != nil {
+		t.Fatalf("release expiry advisory lock: %v", rollbackErr)
+	}
+	if err != nil || lockedResult != (ExpiryReconciliationResult{}) {
+		t.Fatalf("advisory-locked expiry reconciliation = (%+v, %v)", lockedResult, err)
+	}
+
+	batchSubjects := []string{
+		"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+		"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+		"dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+		"eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+		"ffffffff-ffff-4fff-8fff-ffffffffffff",
+		"12121212-1212-4212-8212-121212121212",
+	}
+	for index, subject := range batchSubjects {
+		var userID int64
+		if err := connection.QueryRow(ctx, `INSERT INTO public.users
+			(display_name, role, created_at, updated_at, last_login_at, suspended_at, suspended_until, suspension_reason, authentik_sync_state)
+			VALUES ($1, 'member', $2, $2, $2, $3, $4, 'Finite suspension batch', 'suspended') RETURNING id`, fmt.Sprintf("Expiry Batch %d", index), syncTime.Add(-2*time.Hour), syncTime.Add(-time.Hour), syncTime.Add(-time.Minute)).Scan(&userID); err != nil {
+			t.Fatalf("insert expiry batch member %d: %v", index, err)
+		}
+		if _, err := connection.Exec(ctx, `INSERT INTO public.external_identities (user_id, issuer, subject) VALUES ($1, 'https://auth.example.test/application/o/gotth-bb/', $2)`, userID, subject); err != nil {
+			t.Fatalf("insert expiry batch identity %d: %v", index, err)
+		}
+	}
+	gateway.userState = func(subject string) authentikgateway.UserState {
+		return authentikgateway.UserState{User: authentikgateway.User{UUID: subject, Active: true}, Accepted: true}
+	}
+	firstBatchRandom := "0000000000000001" + "0000000000000002" + "0000000000000003" + "0000000000000004" + "0000000000000005"
+	firstBatch, err := ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader(firstBatchRandom))
+	if err != nil || firstBatch != (ExpiryReconciliationResult{Claimed: 5, Completed: 5}) {
+		t.Fatalf("first bounded expiry batch = (%+v, %v)", firstBatch, err)
+	}
+	secondBatch, err := ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader("0000000000000006"))
+	if err != nil || secondBatch != (ExpiryReconciliationResult{Claimed: 1, Completed: 1}) {
+		t.Fatalf("second bounded expiry batch = (%+v, %v)", secondBatch, err)
+	}
+	emptyBatch, err := ReconcileExpiredSuspensions(ctx, connection, gateway, syncClock, strings.NewReader(strings.Repeat("x", 16)))
+	if err != nil || emptyBatch != (ExpiryReconciliationResult{}) {
+		t.Fatalf("empty expiry batch = (%+v, %v)", emptyBatch, err)
+	}
+	gateway.userState = nil
 	adoptionUser := authentikgateway.User{ID: 105, UUID: "55555555-5555-4555-8555-555555555555", Username: "orphan", Name: "Recovered Member", Email: "recovered@example.test", Active: true}
 	gateway.state = authentikgateway.UserState{User: adoptionUser, Pending: true}
 	adoptionHandle, err := issueAdoptionHandle(baseTime, key, adoptionUser.ID, adoptionUser.UUID)
@@ -275,6 +488,7 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("pending list = (%+v, %v)", page, err)
 	}
 	approveRequest := pgtype.UUID{Bytes: [16]byte{0xa1}, Valid: true}
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 101, UUID: approveSubject, Username: "approve", Name: "Approve Me", Email: "approve@example.test", Active: true}, Accepted: true}
 	approved, err := Decide(ctx, connection, gateway, clock, actor, DecisionInput{
 		RegistrationID: approveID, Revision: 1, Decision: Approve,
 		Reason: "Verified applicant", RequestID: approveRequest,
@@ -297,6 +511,7 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 
 	rejectSubject := "22222222-2222-4222-8222-222222222222"
 	rejectID := insertPendingRegistration(t, ctx, connection, 102, rejectSubject, "Reject Me", "reject@example.test")
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 102, UUID: rejectSubject, Username: "reject", Name: "Reject Me", Email: "reject@example.test", Active: true}}
 	rejected, err := Decide(ctx, connection, gateway, clock, actor, DecisionInput{
 		RegistrationID: rejectID, Revision: 1, Decision: Reject,
 		Reason: "Application rejected", RequestID: pgtype.UUID{Bytes: [16]byte{0xb2}, Valid: true},
@@ -322,6 +537,7 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("remote failure = (%+v, %v)", failed, err)
 	}
 	assertRegistrationState(t, ctx, connection, retryID, "approval_required", 3, "remote_unavailable")
+	gateway.state = authentikgateway.UserState{User: authentikgateway.User{ID: 103, UUID: retrySubject, Username: "retry", Name: "Retry Me", Email: "retry@example.test", Active: true}, Accepted: true}
 	recovered, err := Decide(ctx, connection, gateway, clock, actor, DecisionInput{
 		RegistrationID: retryID, Revision: 1, Decision: Approve,
 		Reason: "Retry a bounded failure", RequestID: retryRequest,
@@ -330,7 +546,7 @@ func TestRegistrationDecisionsOnPostgreSQL17(t *testing.T) {
 		t.Fatalf("recovered decision = (%+v, %v)", recovered, err)
 	}
 
-	for _, forbidden := range []string{"approve@example.test", "Approve Me", approveSubject, "authentik_user_id"} {
+	for _, forbidden := range []string{"approve@example.test", "Approve Me", failedInvitationInput.Email, failedInvitationInput.DisplayName, adoptedInvitationUUID, approveSubject, controlledSubject, actorRaceSubject, removalSubject, "authentik_user_id"} {
 		var count int
 		if err := connection.QueryRow(ctx, `SELECT count(*) FROM public.moderation_actions
 			WHERE previous_state::text LIKE '%' || $1 || '%' OR resulting_state::text LIKE '%' || $1 || '%'`, forbidden).Scan(&count); err != nil || count != 0 {

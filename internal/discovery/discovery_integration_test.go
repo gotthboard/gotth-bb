@@ -209,7 +209,7 @@ func TestDiscoveryAuthorizationCursorAndDirectPostOnPostgreSQL17(t *testing.T) {
 func insertDiscoveryUser(t *testing.T, ctx context.Context, connection *pgx.Conn, name, role string) int64 {
 	t.Helper()
 	var id int64
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ($1, $2) RETURNING id`, name, role).Scan(&id); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ($1, $2, 'accepted') RETURNING id`, name, role).Scan(&id); err != nil {
 		t.Fatal(err)
 	}
 	return id

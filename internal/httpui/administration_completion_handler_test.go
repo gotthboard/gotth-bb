@@ -33,7 +33,7 @@ func TestAdministrationCompletionGETRoutesRenderBoundedPages(t *testing.T) {
 	}{
 		{path: "/admin", wants: []string{"Board administration", "Reports in review", "2026-09-08T12:00:00Z"}},
 		{path: "/admin/accounts", wants: []string{"Accounts", "Local Member", "/bb/admin/accounts/2"}},
-		{path: "/admin/accounts/2", wants: []string{"Local Member", "Change role", "Members", "Group membership", "/bb/admin/accounts/2/groups/4"}, forbids: []string{`name="group_id"`}},
+		{path: "/admin/accounts/2", wants: []string{"Local Member", "Change role", "Members", "Group membership", "identity accepted", "/bb/admin/accounts/2/groups/4"}, forbids: []string{`name="group_id"`, "/identity/reconcile"}},
 		{path: "/admin/groups", wants: []string{"Groups", "Create group", "Members"}},
 		{path: "/admin/areas", wants: []string{"Areas", "Create area", "Existing areas", "General", "/bb/admin/areas/3", `sm:grid-cols-2`, `sm:grid-cols-3`, `w-full min-w-0 rounded-md border border-slate-700`, `focus-visible:outline-2`, `maxlength="4000"`, "Initial access group ID"}, forbids: []string{`class="bg-slate-950"`}},
 		{path: "/admin/areas/3", wants: []string{"General", "Area settings", "Update area", "Group access", "Members", "/bb/admin/areas/3/groups/4", `sm:grid-cols-3`, `sm:grid-cols-[minmax(0,1fr)_auto]`, `w-full min-w-0 rounded-md border border-slate-700`, `focus-visible:outline-2`, `type="hidden" name="initial_group_id" value=""`}, forbids: []string{`name="group_id"`, `name="slug"`, `class="bg-slate-950"`}},
@@ -93,6 +93,44 @@ func TestAdministrationCompletionMutationUsesStrictFormAndHTMXNavigation(t *test
 	if badResponse.Code != http.StatusBadRequest || calls != 1 {
 		t.Fatalf("bad form = (%d,%d,%q)", badResponse.Code, calls, badResponse.Body.String())
 	}
+}
+
+func TestAdministrationIdentityReconciliationIsExactAndBounded(t *testing.T) {
+	t.Parallel()
+	services := administrationCompletionTestServices()
+	services.LoadAccount = func(context.Context, auth.AccessContext, int64) (administration.AccountSummary, error) {
+		return administration.AccountSummary{ID: 2, DisplayName: "Local Member", Role: policy.RoleMember, Suspended: true, Revision: 5, AuthentikSyncState: "grant_required"}, nil
+	}
+	calls := 0
+	services.ReconcileIdentity = func(_ context.Context, actor auth.AccessContext, userID int64, reason string, requestID pgtype.UUID) (registration.IdentityReconciliationResult, error) {
+		calls++
+		if actor.UserID != 1 || userID != 2 || reason != "Retry restricted identity" || !requestID.Valid {
+			t.Fatalf("reconcile args = (%+v, %d, %q, %+v)", actor, userID, reason, requestID)
+		}
+		return registration.IdentityReconciliationResult{UserID: 2, Revision: 7, AuditID: 11, SyncState: "accepted"}, nil
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	getResponse := httptest.NewRecorder()
+	handler.ServeHTTP(getResponse, areaAdministrationTestRequest(http.MethodGet, "/admin/accounts/2", nil, admin))
+	for _, want := range []string{"identity grant_required", "/bb/admin/accounts/2/identity/reconcile", "Retry identity reconciliation"} {
+		if getResponse.Code != http.StatusOK || !strings.Contains(getResponse.Body.String(), want) {
+			t.Fatalf("account reconciliation page missing %q: (%d, %q)", want, getResponse.Code, getResponse.Body.String())
+		}
+	}
+	form := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Retry restricted identity"}}
+	request := areaAdministrationTestRequest(http.MethodPost, "/admin/accounts/2/identity/reconcile", form, admin)
+	request.Header.Set("HX-Request", "true")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || response.Header().Get("HX-Location") != `{"path":"/bb/admin/accounts/2","target":"#main-content","swap":"outerHTML"}` || calls != 1 {
+		t.Fatalf("identity reconciliation = (%d, %q, %d, %q)", response.Code, response.Header().Get("HX-Location"), calls, response.Body.String())
+	}
+	assertAdministrationRejectedForms(t, handler, "/admin/accounts/2/identity/reconcile", form, admin, &calls)
 }
 
 func TestRegistrationAdministrationRendersAndDecidesExactPendingRow(t *testing.T) {
@@ -160,11 +198,14 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 	t.Parallel()
 	services := administrationCompletionTestServices()
 	now := time.Date(2026, 9, 9, 20, 0, 0, 0, time.UTC)
+	clockNow := now
 	handle := strings.Repeat("A", 87)
 	listCalls, createCalls, revokeCalls := 0, 0, 0
+	invitationCalls := make([]string, 0, 5)
 	services.Invitations = &InvitationAdministrationHTTPServices{
 		List: func(_ context.Context, actor auth.AccessContext) (registration.InvitationPage, error) {
 			listCalls++
+			invitationCalls = append(invitationCalls, "list")
 			if actor.UserID != 1 {
 				t.Fatalf("list actor = %+v", actor)
 			}
@@ -172,10 +213,11 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 		},
 		Create: func(_ context.Context, actor auth.AccessContext, input registration.InvitationInput) (registration.InvitationResult, error) {
 			createCalls++
+			invitationCalls = append(invitationCalls, "create")
 			if actor.UserID != 1 || input.Email != "invitee@example.test" || input.DisplayName != "Invited Member" || input.Reason != "Invite participant" || input.ExpiresAt != now.Add(time.Hour) || input.Deliver || !input.RequestID.Valid {
 				t.Fatalf("create args = (%+v, %+v)", actor, input)
 			}
-			return registration.InvitationResult{Status: "active", TokenUUID: "66666666-6666-4666-8666-666666666666", Revision: 2, AuditID: 3}, nil
+			return registration.InvitationResult{Status: "active", Delivery: "not_requested", TokenUUID: "66666666-6666-4666-8666-666666666666", Revision: 2, AuditID: 3, Completed: true}, nil
 		},
 		Revoke: func(_ context.Context, actor auth.AccessContext, input registration.InvitationRevocationInput) (registration.InvitationRevocationResult, error) {
 			revokeCalls++
@@ -184,7 +226,7 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 			}
 			return registration.InvitationRevocationResult{Status: "revoked", Result: "confirmed", Revision: 4, AuditID: 5, Completed: true}, nil
 		},
-		Clock: func() time.Time { return now }, Issuer: url.URL{Scheme: "https", Host: "auth.example.test"}, FlowSlug: "gotth-bb-invitation", SMTPConfigured: true,
+		Clock: func() time.Time { return clockNow }, Issuer: url.URL{Scheme: "https", Host: "auth.example.test"}, FlowSlug: "gotth-bb-invitation", SMTPConfigured: true,
 	}
 	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
 	if err != nil {
@@ -194,17 +236,24 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
 	getResponse := httptest.NewRecorder()
 	handler.ServeHTTP(getResponse, areaAdministrationTestRequest(http.MethodGet, "/admin/invitations", nil, admin))
-	for _, want := range []string{"Invitations", "gotth-bb-invitation", "/bb/admin/invitations/" + handle + "/revoke", `name="idempotency_key"`} {
+	for _, want := range []string{"Invitations", "gotth-bb-invitation", "/bb/admin/invitations/" + handle + "/revoke", `name="idempotency_key"`, `name="expires_reference" value="2026-09-09T20:00:00Z"`} {
 		if getResponse.Code != http.StatusOK || !strings.Contains(getResponse.Body.String(), want) {
 			t.Fatalf("invitation page missing %q: (%d, %q)", want, getResponse.Code, getResponse.Body.String())
 		}
 	}
-	createForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "email": {"invitee@example.test"}, "display_name": {"Invited Member"}, "expires_minutes": {"60"}, "delivery": {"none"}, "reason": {"Invite participant"}, "idempotency_key": {strings.Repeat("11", 16)}}
+	clockNow = now.Add(5 * time.Minute)
+	createForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "email": {"invitee@example.test"}, "display_name": {"Invited Member"}, "expires_minutes": {"60"}, "expires_reference": {now.Format(time.RFC3339)}, "delivery": {"none"}, "reason": {"Invite participant"}, "idempotency_key": {strings.Repeat("11", 16)}}
 	createResponse := httptest.NewRecorder()
 	handler.ServeHTTP(createResponse, areaAdministrationTestRequest(http.MethodPost, "/admin/invitations", createForm, admin))
 	wantLink := "https://auth.example.test/if/flow/gotth-bb-invitation/?itoken=66666666-6666-4666-8666-666666666666"
-	if createResponse.Code != http.StatusOK || !strings.Contains(createResponse.Body.String(), wantLink) || createCalls != 1 || listCalls != 2 {
-		t.Fatalf("create invitation = (%d, create %d, list %d, %q)", createResponse.Code, createCalls, listCalls, createResponse.Body.String())
+	if createResponse.Code != http.StatusOK || !strings.Contains(createResponse.Body.String(), wantLink) || createCalls != 1 || listCalls != 2 || strings.Join(invitationCalls, ",") != "list,list,create" {
+		t.Fatalf("create invitation = (%d, create %d, list %d, calls %v, %q)", createResponse.Code, createCalls, listCalls, invitationCalls, createResponse.Body.String())
+	}
+	clockNow = now.Add(10 * time.Minute)
+	retryResponse := httptest.NewRecorder()
+	handler.ServeHTTP(retryResponse, areaAdministrationTestRequest(http.MethodPost, "/admin/invitations", createForm, admin))
+	if retryResponse.Code != http.StatusOK || createCalls != 2 || listCalls != 3 || strings.Join(invitationCalls, ",") != "list,list,create,list,create" {
+		t.Fatalf("retried invitation form = (%d, create %d, list %d, calls %v, %q)", retryResponse.Code, createCalls, listCalls, invitationCalls, retryResponse.Body.String())
 	}
 	revokeForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Withdraw invitation"}}
 	revokeRequest := areaAdministrationTestRequest(http.MethodPost, "/admin/invitations/"+handle+"/revoke", revokeForm, admin)
@@ -409,6 +458,9 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 	services.ChangeRole = func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error) {
 		panic("role mutation called")
 	}
+	services.ReconcileIdentity = func(context.Context, auth.AccessContext, int64, string, pgtype.UUID) (registration.IdentityReconciliationResult, error) {
+		panic("identity reconciliation called")
+	}
 	services.CreateArea = func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error) {
 		panic("area mutation called")
 	}
@@ -437,6 +489,8 @@ func TestAdministrationCompletionRejectsBeforeReadingMutationBodies(t *testing.T
 		{name: "invalid header csrf", path: "/admin/accounts/2/role", authentication: admin, header: validCSRFTokenForTest(0x52), wantStatus: http.StatusForbidden},
 		{name: "parameterized content type", path: "/admin/accounts/2/role", authentication: admin, header: token, contentType: "application/x-www-form-urlencoded; charset=utf-8", wantStatus: http.StatusBadRequest},
 		{name: "small form declared oversized", path: "/admin/accounts/2/role", authentication: admin, header: token, contentLength: maximumAdministrationSmallFormBytes + 1, wantStatus: http.StatusBadRequest},
+		{name: "identity missing session", path: "/admin/accounts/2/identity/reconcile", wantStatus: http.StatusSeeOther},
+		{name: "identity invalid header csrf", path: "/admin/accounts/2/identity/reconcile", authentication: admin, header: validCSRFTokenForTest(0x52), wantStatus: http.StatusForbidden},
 		{name: "area form declared oversized", path: "/admin/areas", authentication: admin, header: token, contentLength: maximumAdministrationAreaFormBytes + 1, wantStatus: http.StatusBadRequest},
 	} {
 		test := test
@@ -618,7 +672,7 @@ func TestAdministrationPreflightRejectsBeforeBodyOrDelegation(t *testing.T) {
 	t.Parallel()
 	calls := 0
 	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ })
-	for _, target := range []string{"/admin/accounts?after=01", "/admin/accounts?after=1&after=2", "/admin/accounts?after=%zz", "/admin/areas/01", "/admin/areas/2/unknown", "/admin/accounts/2/groups/04", "/admin/areas/2/groups/04", "/admin?x=1"} {
+	for _, target := range []string{"/admin/accounts?after=01", "/admin/accounts?after=1&after=2", "/admin/accounts?after=%zz", "/admin/areas/01", "/admin/areas/2/unknown", "/admin/accounts/2/groups/04", "/admin/areas/2/groups/04", "/admin/accounts/2/identity/unknown", "/admin/accounts/02/identity/reconcile", "/admin?x=1"} {
 		body := &countingAdministrationBody{Reader: bytes.NewBufferString("secret")}
 		request := httptest.NewRequest(http.MethodPost, target, body)
 		response := httptest.NewRecorder()
@@ -650,7 +704,7 @@ func administrationCompletionTestServices() AdministrationHTTPServices {
 			return administration.AccountPage{Accounts: []administration.AccountSummary{{ID: 2, DisplayName: "Local Member", Role: policy.RoleMember, Revision: 3}}}, nil
 		},
 		LoadAccount: func(context.Context, auth.AccessContext, int64) (administration.AccountSummary, error) {
-			return administration.AccountSummary{ID: 2, DisplayName: "Local Member", Role: policy.RoleMember, Revision: 3}, nil
+			return administration.AccountSummary{ID: 2, DisplayName: "Local Member", Role: policy.RoleMember, Revision: 3, AuthentikSyncState: "accepted"}, nil
 		},
 		ListAccountGroups: func(context.Context, auth.AccessContext, int64, int64) (administration.AccountGroupPage, error) {
 			return administration.AccountGroupPage{Groups: []administration.AccountGroup{{ID: 4, Name: "Members", Member: true}}}, nil
@@ -669,6 +723,9 @@ func administrationCompletionTestServices() AdministrationHTTPServices {
 		},
 		ChangeRole: func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error) {
 			return administration.AccountMutationResult{UserID: 2, Revision: 4, AuditID: 1}, nil
+		},
+		ReconcileIdentity: func(context.Context, auth.AccessContext, int64, string, pgtype.UUID) (registration.IdentityReconciliationResult, error) {
+			return registration.IdentityReconciliationResult{UserID: 2, Revision: 4, AuditID: 1, SyncState: "accepted"}, nil
 		},
 		ListAreas: func(context.Context, auth.AccessContext, int32, int64) (administration.AreaPage, error) {
 			return administration.AreaPage{Areas: []administration.AreaSummary{{ID: 3, Slug: "general", Name: "General", Visibility: policy.VisibilityPublic, PostingMode: policy.PostingNormal, Revision: 2}}}, nil

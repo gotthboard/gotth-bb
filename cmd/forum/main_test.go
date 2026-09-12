@@ -95,6 +95,45 @@ func TestNewLoggedInitialAdministratorClaimerRejectsMissingDependencies(t *testi
 	}
 }
 
+func TestExpiryReconcilerRunsImmediatelyAndOnEachMinuteTick(t *testing.T) {
+	if expiryReconciliationInterval != time.Minute {
+		t.Fatalf("expiry reconciliation interval = %s, want 1m", expiryReconciliationInterval)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	ticks := make(chan time.Time)
+	calls := make(chan int, 2)
+	done := make(chan struct{})
+	callCount := 0
+	go func() {
+		defer close(done)
+		runExpiryReconcilerLoop(ctx, ticks, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)), func(context.Context) (registration.ExpiryReconciliationResult, error) {
+			callCount++
+			calls <- callCount
+			return registration.ExpiryReconciliationResult{}, nil
+		})
+	}()
+	for want := 1; want <= 2; want++ {
+		if want == 2 {
+			ticks <- time.Now()
+		}
+		select {
+		case got := <-calls:
+			if got != want {
+				t.Fatalf("reconciliation call = %d, want %d", got, want)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for reconciliation call %d", want)
+		}
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("reconciler did not stop after cancellation")
+	}
+}
+
 type notifyingListener struct {
 	net.Listener
 	once      sync.Once

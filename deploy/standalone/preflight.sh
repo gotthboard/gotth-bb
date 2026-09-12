@@ -199,7 +199,7 @@ IFS=$old_ifs
 expected_public=$GOTTH_BB_PUBLIC_BASE_URL
 expected_issuer=$GOTTH_BB_AUTH_PUBLIC_BASE_URL/application/o/gotth-bb/
 expected_registration=$GOTTH_BB_AUTH_PUBLIC_BASE_URL/if/flow/gotth-bb-enrollment/
-unset APP_ENV PUBLIC_BASE_URL BASE_PATH OIDC_ISSUER_URL OIDC_CLIENT_ID AUTHENTIK_CONTROL_TOKEN_FILE AUTHENTIK_CONTROL_OBJECTS_FILE AUTHENTIK_CONTROL_SOCKET INVITATION_FINGERPRINT_KEY_FILE REGISTRATION_URL
+unset APP_ENV PUBLIC_BASE_URL BASE_PATH OIDC_ISSUER_URL OIDC_CLIENT_ID AUTHENTIK_CONTROL_TOKEN_FILE AUTHENTIK_CONTROL_OBJECTS_FILE AUTHENTIK_CONTROL_SOCKET INVITATION_FINGERPRINT_KEY_FILE REGISTRATION_URL SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_FROM SMTP_TLS_MODE SMTP_TIMEOUT SMTP_PASSWORD_FILE
 set -a
 . "$GOTTH_BB_ENV_FILE"
 set +a
@@ -212,6 +212,13 @@ set +a
 [ "${AUTHENTIK_CONTROL_SOCKET-}" = "/run/gotth-bb-control/authentik-control.sock" ] || fail "app Authentik control socket path differs"
 [ "${INVITATION_FINGERPRINT_KEY_FILE-}" = "/run/secrets/invitation_fingerprint_key" ] || fail "app invitation fingerprint key path differs"
 [ "${REGISTRATION_URL-}" = "$expected_registration" ] || fail "app registration URL differs from dedicated Authentik"
+for name in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_FROM SMTP_TLS_MODE SMTP_TIMEOUT; do
+	eval "present=\${$name+x}"
+	[ "$present" = x ] || fail "app $name is required, including the empty disabled sentinel"
+done
+smtp_tuple=$SMTP_HOST$SMTP_PORT$SMTP_USERNAME$SMTP_FROM$SMTP_TLS_MODE$SMTP_TIMEOUT
+[ -z "$smtp_tuple" ] || fail "standalone SMTP enablement remains outside B1-09-03"
+[ -z "${SMTP_PASSWORD_FILE-}" ] || fail "app SMTP password must be absent while SMTP is disabled"
 case "${APP_ENV-}:$expected_public" in
 	production:https://*) ;;
 	test:http://127.0.0.1:* | test:http://localhost:*) ;;

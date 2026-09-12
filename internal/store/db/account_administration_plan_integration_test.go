@@ -57,7 +57,7 @@ func TestAccountAdministrationPlansOnPostgreSQL17(t *testing.T) {
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 
 	var actorID, targetID int64
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Plan Administrator', 'administrator') RETURNING id`).Scan(&actorID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Plan Administrator', 'administrator', 'accepted') RETURNING id`).Scan(&actorID); err != nil {
 		t.Fatal(err)
 	}
 	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Plan Target') RETURNING id`).Scan(&targetID); err != nil {

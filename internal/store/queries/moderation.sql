@@ -56,7 +56,8 @@ SELECT
     forum_user.muted_until,
     forum_user.created_at,
     forum_user.updated_at,
-    forum_user.administration_revision
+    forum_user.administration_revision,
+    forum_user.authentik_sync_state
 FROM public.users AS forum_user
 WHERE forum_user.id = sqlc.arg(user_id)
 FOR UPDATE OF forum_user;
@@ -150,8 +151,21 @@ SELECT
     target.updated_at,
     target.last_login_at
 FROM public.users AS target
+JOIN public.users AS actor
+  ON actor.id = sqlc.arg(actor_user_id)
+ AND actor.authentik_sync_state = 'accepted'
+ AND (
+     (sqlc.arg(is_administrator)::boolean AND actor.role = 'administrator')
+     OR (sqlc.arg(is_moderator)::boolean AND actor.role = 'moderator')
+ )
+ AND (
+     actor.suspended_at IS NULL
+     OR actor.suspended_at > sqlc.arg(observed_at)::timestamptz
+     OR actor.suspended_until <= sqlc.arg(observed_at)::timestamptz
+ )
+ AND (actor.muted_until IS NULL OR actor.muted_until <= sqlc.arg(observed_at)::timestamptz)
 WHERE target.id = sqlc.arg(target_user_id)
-  AND target.id <> sqlc.arg(actor_user_id)
+  AND target.id <> actor.id
   AND (
       sqlc.arg(is_administrator)::boolean
       OR (sqlc.arg(is_moderator)::boolean AND target.role = 'member')

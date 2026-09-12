@@ -127,6 +127,7 @@ VALUES ('Established account', clock_timestamp() - interval '2 days', clock_time
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, muted_until) VALUES ('Muted account', clock_timestamp() + interval '1 hour') RETURNING id`).Scan(&mutedID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], ownerID, newID, establishedID, mutedID)
 	if _, err := connections[0].Exec(ctx, `INSERT INTO public.areas (slug, name, posting_mode, created_by, updated_by)
 VALUES ('normal', 'Normal', 'normal', $1, $1), ('staff-only', 'Staff only', 'read_only', $1, $1)`, ownerID); err != nil {
 		t.Fatal(err)
@@ -152,6 +153,7 @@ clock_timestamp(), 1
 ) RETURNING id`).Scan(&dynamicID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], dynamicID)
 	if _, err := connections[0].Exec(ctx, `UPDATE public.site_settings
 SET publish_rate_limit=1, new_account_publish_rate_limit=1,
     administration_revision=administration_revision+1`); err != nil {
@@ -200,6 +202,7 @@ SET publish_rate_limit=2, administration_revision=administration_revision+1`)
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, created_at) VALUES ('Year one account', '0001-01-01 00:00:00+00') RETURNING id`).Scan(&yearOneID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], yearOneID)
 	yearOneActor := policy.AccessContext{Authenticated: true, UserID: yearOneID, Role: policy.RoleMember}
 	if _, err := CreateTopic(ctx, connections[0], limits, testDestinationPolicy, yearOneActor, "normal", "Finite year one", "body"); err != nil {
 		t.Fatalf("finite PostgreSQL year-one publication: %v", err)
@@ -246,6 +249,7 @@ SET publish_rate_limit=2, administration_revision=administration_revision+1`)
 VALUES ('Empty concurrent account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&emptyConcurrentID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], emptyConcurrentID)
 	emptyActor := policy.AccessContext{Authenticated: true, UserID: emptyConcurrentID, Role: policy.RoleMember}
 	emptySucceeded, emptyLimited := runConcurrentPublicationBatch(t, ctx, testConfig, limits, emptyActor, first, 8)
 	if emptySucceeded != 3 || emptyLimited != 5 {
@@ -268,6 +272,7 @@ VALUES ('Empty concurrent account', clock_timestamp() - interval '2 days', clock
 VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp(), 3) RETURNING id`, "Limited "+role, role).Scan(&roleID); err != nil {
 			t.Fatal(err)
 		}
+		admitPublicationUsers(t, ctx, connections[0], roleID)
 		roleValue, valid := publishingRole(role)
 		if !valid {
 			t.Fatalf("test role %q is invalid", role)
@@ -296,6 +301,7 @@ VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - inter
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Suspended account') RETURNING id`).Scan(&suspendedID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], suspendedID)
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET suspended_at=clock_timestamp(), suspended_until=clock_timestamp()+interval '1 hour', suspension_reason='Publication test' WHERE id=$1`, suspendedID); err != nil {
 		t.Fatal(err)
 	}
@@ -310,6 +316,7 @@ VALUES ($1, $2, clock_timestamp() - interval '2 days', clock_timestamp() - inter
 VALUES ('Concurrent suspension account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&transitionID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], transitionID)
 	transitionActor := policy.AccessContext{Authenticated: true, UserID: transitionID, Role: policy.RoleMember}
 	transitionLocker, err := connections[0].Begin(ctx)
 	if err != nil {
@@ -361,6 +368,7 @@ VALUES ('Concurrent suspension account', clock_timestamp() - interval '2 days', 
 VALUES ('Unknown commit account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&unknownCommitID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], unknownCommitID)
 	unknownCommitActor := policy.AccessContext{Authenticated: true, UserID: unknownCommitID, Role: policy.RoleMember}
 	lostAcknowledgement := errors.New("simulated lost publication commit acknowledgement")
 	if result, err := CreateTopic(ctx, publicationUnknownCommitBeginner{connection: connections[0], commitErr: lostAcknowledgement}, limits, testDestinationPolicy, unknownCommitActor, "normal", "Unknown commit publication", "body"); result != (PublishResult{}) || !errors.Is(err, lostAcknowledgement) || !strings.Contains(err.Error(), "outcome unknown") {
@@ -415,6 +423,7 @@ CREATE TRIGGER reject_publication_test BEFORE INSERT ON public.posts FOR EACH RO
 VALUES ('Independent account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&independentID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], independentID)
 	independentActor := policy.AccessContext{Authenticated: true, UserID: independentID, Role: policy.RoleMember}
 	independentLocker, err := connections[0].Begin(ctx)
 	if err != nil {
@@ -440,6 +449,7 @@ VALUES ('Independent account', clock_timestamp() - interval '2 days', clock_time
 VALUES ('FK coexistence account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&coexistID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], coexistID)
 	coexistActor := policy.AccessContext{Authenticated: true, UserID: coexistID, Role: policy.RoleMember}
 	topicLocker, err := connections[0].Begin(ctx)
 	if err != nil {
@@ -483,6 +493,7 @@ VALUES ('FK coexistence account', clock_timestamp() - interval '2 days', clock_t
 VALUES ('Publication membership account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&membershipID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], membershipID)
 	if _, err := connections[0].Exec(ctx, `INSERT INTO public.areas (slug, name, visibility, posting_mode, created_by, updated_by)
 VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, ownerID); err != nil {
 		t.Fatal(err)
@@ -627,6 +638,7 @@ VALUES ('publication-group', 'Publication group', 'groups', 'normal', $1, $1)`, 
 VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days') RETURNING id`).Scan(&canceledID); err != nil {
 		t.Fatal(err)
 	}
+	admitPublicationUsers(t, ctx, connections[0], canceledID)
 	canceledActor := policy.AccessContext{Authenticated: true, UserID: canceledID, Role: policy.RoleMember}
 	cancelLocker, err := connections[0].Begin(ctx)
 	if err != nil {
@@ -648,6 +660,13 @@ VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timesta
 		t.Fatalf("canceled publication error = %v", canceledErr)
 	}
 	assertPublicationTuple(t, ctx, connections[0], canceledID, 0)
+}
+
+func admitPublicationUsers(t *testing.T, ctx context.Context, connection *pgx.Conn, userIDs ...int64) {
+	t.Helper()
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'accepted' WHERE id = ANY($1::bigint[])`, userIDs); err != nil {
+		t.Fatalf("admit publication users: %v", err)
+	}
 }
 
 func runConcurrentPublicationBatch(t *testing.T, ctx context.Context, config *pgx.ConnConfig, limits abuse.PublicationPolicy, actor policy.AccessContext, target PublishResult, requests int) (int, int) {

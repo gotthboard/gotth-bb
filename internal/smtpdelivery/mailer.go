@@ -70,16 +70,15 @@ func (mailer *Mailer) SendInvitation(ctx context.Context, recipient, displayName
 	if mailer == nil || ctx == nil || recipient == "" || strings.ContainsAny(recipient, "\r\n") || strings.ContainsAny(displayName, "\r\n") || tokenUUID == "" || strings.ContainsAny(tokenUUID, "\r\n/?#") || expires.IsZero() {
 		return "failed", fmt.Errorf("invitation email input is invalid")
 	}
+	operationContext, cancel := context.WithTimeout(ctx, mailer.configuration.Timeout)
+	defer cancel()
 	address := net.JoinHostPort(mailer.configuration.Host, fmt.Sprintf("%d", mailer.configuration.Port))
-	connection, err := mailer.dialConnection(ctx, address)
+	connection, err := mailer.dialConnection(operationContext, address)
 	if err != nil {
 		return "failed", fmt.Errorf("SMTP connection failed")
 	}
 	defer connection.Close()
-	deadline := time.Now().Add(mailer.configuration.Timeout)
-	if contextDeadline, ok := ctx.Deadline(); ok && contextDeadline.Before(deadline) {
-		deadline = contextDeadline
-	}
+	deadline, _ := operationContext.Deadline()
 	if err := connection.SetDeadline(deadline); err != nil {
 		return "failed", fmt.Errorf("SMTP deadline failed")
 	}
@@ -128,6 +127,11 @@ func (mailer *Mailer) dialConnection(ctx context.Context, address string) (net.C
 	raw, err := mailer.dial(ctx, "tcp", address)
 	if err != nil {
 		return nil, err
+	}
+	deadline, ok := ctx.Deadline()
+	if !ok || raw.SetDeadline(deadline) != nil {
+		raw.Close()
+		return nil, fmt.Errorf("SMTP TLS deadline failed")
 	}
 	connection := tls.Client(raw, &tls.Config{ServerName: mailer.configuration.Host, MinVersion: tls.VersionTLS12})
 	if err := connection.HandshakeContext(ctx); err != nil {

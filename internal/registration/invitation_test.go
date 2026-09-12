@@ -131,3 +131,25 @@ func TestRemoteInvitationRevocationClassifiesConfirmedAbsentAndAmbiguous(t *test
 		})
 	}
 }
+
+func TestInvitationDeliveryPreservesOnlyHonestMailerResults(t *testing.T) {
+	failure := errors.New("SMTP failed")
+	for _, test := range []struct {
+		name, delivery string
+		err            error
+		want           string
+	}{
+		{name: "accepted", delivery: "queued", want: "queued"},
+		{name: "definite failure", delivery: "failed", err: failure, want: "failed"},
+		{name: "ambiguous failure", delivery: "unknown", err: failure, want: "unknown"},
+		{name: "failure without error", delivery: "failed", want: "unknown"},
+		{name: "success with error", delivery: "queued", err: failure, want: "unknown"},
+		{name: "invented result", delivery: "sent", want: "unknown"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := classifyInvitationDelivery(test.delivery, test.err); got != test.want {
+				t.Fatalf("classifyInvitationDelivery(%q, %v) = %q, want %q", test.delivery, test.err, got, test.want)
+			}
+		})
+	}
+}

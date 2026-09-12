@@ -294,6 +294,7 @@ func TestRequestAdmissionExemptionIsClosed(t *testing.T) {
 	}
 	paths := []string{
 		"/health/live", "/health/ready", "/static/" + appStylesheetFilename,
+		"/static/" + priorAppStylesheetFilename,
 		"/static/" + previousAppStylesheetFilename,
 		"/static/" + olderAppStylesheetFilename,
 		"/static/" + legacyAppStylesheetFilename,

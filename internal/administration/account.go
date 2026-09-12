@@ -37,13 +37,14 @@ var (
 )
 
 type AccountSummary struct {
-	ID          int64
-	DisplayName string
-	Role        policy.Role
-	Suspended   bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	Revision    int64
+	ID                 int64
+	DisplayName        string
+	Role               policy.Role
+	Suspended          bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Revision           int64
+	AuthentikSyncState string
 }
 
 type AccountPage struct {
@@ -612,7 +613,8 @@ func lockAdministrationUsers(ctx context.Context, queries *db.Queries, actorUser
 
 func validLockedAdministrator(row db.LockAdministrationUserRow, actor policy.AccessContext, observedAt time.Time) bool {
 	if !validLockedAdministrationUser(row, actor.UserID) || effectiveSuspended(row, observedAt) ||
-		row.MutedUntil.Valid && row.MutedUntil.Time.After(observedAt) || row.Role != "administrator" {
+		row.MutedUntil.Valid && row.MutedUntil.Time.After(observedAt) || row.Role != "administrator" ||
+		row.AuthentikSyncState != "accepted" {
 		return false
 	}
 	return actor.Role == policy.RoleAdministrator
@@ -661,10 +663,21 @@ func accountFromRow(row db.ListAccountsForAdministrationRow) (AccountSummary, bo
 }
 
 func loadedAccountFromRow(row db.LoadAccountForAdministrationRow) (AccountSummary, bool) {
-	return accountFromRow(db.ListAccountsForAdministrationRow{
+	account, valid := accountFromRow(db.ListAccountsForAdministrationRow{
 		AccountPresent: row.AccountPresent, ID: row.ID, DisplayName: row.DisplayName, Role: row.Role,
 		Suspended: row.Suspended, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, AdministrationRevision: row.AdministrationRevision,
 	})
+	account.AuthentikSyncState = row.AuthentikSyncState
+	return account, valid && validAuthentikSyncState(row.AuthentikSyncState)
+}
+
+func validAuthentikSyncState(state string) bool {
+	switch state {
+	case "unknown", "accepted", "removal_required", "grant_required", "suspended":
+		return true
+	default:
+		return false
+	}
 }
 
 func groupFromRow(row db.ListGroupsForAdministrationRow) (GroupSummary, bool) {
@@ -685,7 +698,7 @@ func emptyAccountRow(row db.ListAccountsForAdministrationRow) bool {
 }
 
 func emptyLoadedAccountRow(row db.LoadAccountForAdministrationRow) bool {
-	return row.ID == 0 && row.DisplayName == "" && row.Role == "" && !row.Suspended && !row.CreatedAt.Valid && !row.UpdatedAt.Valid && row.AdministrationRevision == 0
+	return row.ID == 0 && row.DisplayName == "" && row.Role == "" && !row.Suspended && !row.CreatedAt.Valid && !row.UpdatedAt.Valid && row.AdministrationRevision == 0 && row.AuthentikSyncState == ""
 }
 
 func emptyGroupRow(row db.ListGroupsForAdministrationRow) bool {

@@ -40,6 +40,44 @@ WITH changed AS (
 SELECT changed.administration_revision, audit.id AS audit_id
 FROM changed JOIN audit ON true;
 
+-- name: BeginManualIdentityReconciliation :one
+WITH target AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.authentik_sync_state,
+           forum_user.administration_revision, identity.subject
+    FROM public.users AS forum_user
+    JOIN public.external_identities AS identity ON identity.user_id = forum_user.id
+    WHERE forum_user.id = sqlc.arg(user_id)
+      AND forum_user.authentik_sync_state IN ('removal_required', 'grant_required')
+      AND forum_user.suspended_at <= sqlc.arg(observed_at)::timestamptz
+      AND (forum_user.suspended_until IS NULL OR forum_user.suspended_until > sqlc.arg(observed_at)::timestamptz)
+      AND forum_user.administration_revision < 9223372036854775807
+    FOR UPDATE OF forum_user
+), changed AS (
+    UPDATE public.users AS forum_user
+    SET authentik_sync_last_attempt_at = sqlc.arg(observed_at),
+        authentik_sync_next_attempt_at = sqlc.arg(observed_at),
+        authentik_sync_failure_class = NULL,
+        administration_revision = forum_user.administration_revision + 1
+    FROM target
+    WHERE forum_user.id = target.id
+    RETURNING forum_user.id, forum_user.authentik_sync_state,
+              forum_user.administration_revision, target.subject
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, actor_user_id, target_type, target_user_id, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'forum_user', sqlc.arg(actor_user_id), 'user', changed.id,
+           'request_identity_reconciliation', sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('sync_state', changed.authentik_sync_state, 'administration_revision', changed.administration_revision - 1),
+           pg_catalog.jsonb_build_object('sync_state', changed.authentik_sync_state, 'administration_revision', changed.administration_revision),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM changed RETURNING id
+)
+SELECT changed.subject, changed.authentik_sync_state,
+       changed.administration_revision, audit.id AS audit_id
+FROM changed JOIN audit ON true;
+
 -- name: RecordIdentityReconciliationFailure :one
 WITH changed AS (
     UPDATE public.users AS forum_user
@@ -280,3 +318,26 @@ WITH changed AS (
 )
 SELECT changed.administration_revision, audit.id AS audit_id
 FROM changed JOIN audit ON true;
+
+-- name: RecordExpiredIdentityReconciliationSuperseded :one
+WITH current_state AS MATERIALIZED (
+    SELECT forum_user.id, forum_user.authentik_sync_state,
+           forum_user.administration_revision
+    FROM public.users AS forum_user
+    WHERE forum_user.id = sqlc.arg(user_id)
+      AND forum_user.administration_revision <> sqlc.arg(expected_revision)
+), audit AS (
+    INSERT INTO public.moderation_actions (
+        actor_kind, operator_identifier, target_type, target_user_id, action_type,
+        reason, previous_state, resulting_state, request_id, created_at
+    )
+    SELECT 'operator', 'gotth-bb-expiry-reconciler', 'user', current_state.id,
+           'reconcile_identity_access', sqlc.arg(reason),
+           pg_catalog.jsonb_build_object('sync_state', 'grant_required'::text, 'administration_revision', sqlc.arg(expected_revision)::bigint),
+           pg_catalog.jsonb_build_object('sync_state', current_state.authentik_sync_state, 'administration_revision', current_state.administration_revision, 'result', 'superseded'::text),
+           sqlc.arg(request_id), sqlc.arg(observed_at)::timestamptz
+    FROM current_state RETURNING id
+)
+SELECT current_state.authentik_sync_state,
+       current_state.administration_revision, audit.id AS audit_id
+FROM current_state JOIN audit ON true;

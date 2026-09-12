@@ -105,19 +105,33 @@ SELECT
     target.updated_at,
     target.last_login_at
 FROM public.users AS target
-WHERE target.id = $1
-  AND target.id <> $2
+JOIN public.users AS actor
+  ON actor.id = $1
+ AND actor.authentik_sync_state = 'accepted'
+ AND (
+     ($2::boolean AND actor.role = 'administrator')
+     OR ($3::boolean AND actor.role = 'moderator')
+ )
+ AND (
+     actor.suspended_at IS NULL
+     OR actor.suspended_at > $4::timestamptz
+     OR actor.suspended_until <= $4::timestamptz
+ )
+ AND (actor.muted_until IS NULL OR actor.muted_until <= $4::timestamptz)
+WHERE target.id = $5
+  AND target.id <> actor.id
   AND (
-      $3::boolean
-      OR ($4::boolean AND target.role = 'member')
+      $2::boolean
+      OR ($3::boolean AND target.role = 'member')
   )
 `
 
 type GetModerationUserStatusParams struct {
-	TargetUserID    int64
 	ActorUserID     int64
 	IsAdministrator bool
 	IsModerator     bool
+	ObservedAt      pgtype.Timestamptz
+	TargetUserID    int64
 }
 
 type GetModerationUserStatusRow struct {
@@ -135,10 +149,11 @@ type GetModerationUserStatusRow struct {
 
 func (q *Queries) GetModerationUserStatus(ctx context.Context, arg GetModerationUserStatusParams) (GetModerationUserStatusRow, error) {
 	row := q.db.QueryRow(ctx, getModerationUserStatus,
-		arg.TargetUserID,
 		arg.ActorUserID,
 		arg.IsAdministrator,
 		arg.IsModerator,
+		arg.ObservedAt,
+		arg.TargetUserID,
 	)
 	var i GetModerationUserStatusRow
 	err := row.Scan(
@@ -186,7 +201,8 @@ SELECT
     forum_user.muted_until,
     forum_user.created_at,
     forum_user.updated_at,
-    forum_user.administration_revision
+    forum_user.administration_revision,
+    forum_user.authentik_sync_state
 FROM public.users AS forum_user
 WHERE forum_user.id = $1
 FOR UPDATE OF forum_user
@@ -202,6 +218,7 @@ type LockUserForSuspensionRow struct {
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
 	AdministrationRevision int64
+	AuthentikSyncState     string
 }
 
 func (q *Queries) LockUserForSuspension(ctx context.Context, userID int64) (LockUserForSuspensionRow, error) {
@@ -217,6 +234,7 @@ func (q *Queries) LockUserForSuspension(ctx context.Context, userID int64) (Lock
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AdministrationRevision,
+		&i.AuthentikSyncState,
 	)
 	return i, err
 }

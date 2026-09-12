@@ -20,6 +20,7 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/registration"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
 	"github.com/gotthboard/gotth-bb/internal/site"
 	"github.com/gotthboard/gotth-bb/internal/store"
@@ -62,7 +63,8 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 	publicBase := fmt.Sprintf("http://127.0.0.1:%d%s", port, basePath)
 	builder := mustAbsoluteURLBuilder(t, publicBase, basePath)
 	services := administrationCompletionTestServices()
-	var changed atomic.Bool
+	var changed, identityReconciliationRequired, identityReconciled atomic.Bool
+	identityReconciliationRequired.Store(true)
 	var emptyDashboard, membership, areaAssigned, memberSession, sessionRevoked atomic.Bool
 	membership.Store(true)
 	areaAssigned.Store(true)
@@ -104,13 +106,17 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 	}
 	services.LoadAccount = func(_ context.Context, _ auth.AccessContext, userID int64) (administration.AccountSummary, error) {
 		if userID == 1 {
-			return administration.AccountSummary{ID: 1, DisplayName: "Browser Administrator", Role: policy.RoleAdministrator, Revision: 2}, nil
+			return administration.AccountSummary{ID: 1, DisplayName: "Browser Administrator", Role: policy.RoleAdministrator, Revision: 2, AuthentikSyncState: "accepted"}, nil
 		}
 		displayName := "Local Member"
 		if changed.Load() {
 			displayName = "Updated Member"
 		}
-		return administration.AccountSummary{ID: 2, DisplayName: displayName, Role: policy.RoleMember, Revision: memberRevision.Load()}, nil
+		syncState := "accepted"
+		if identityReconciliationRequired.Load() {
+			syncState = "grant_required"
+		}
+		return administration.AccountSummary{ID: 2, DisplayName: displayName, Role: policy.RoleMember, Revision: memberRevision.Load(), AuthentikSyncState: syncState}, nil
 	}
 	services.ListAccountGroups = func(context.Context, auth.AccessContext, int64, int64) (administration.AccountGroupPage, error) {
 		return administration.AccountGroupPage{Groups: []administration.AccountGroup{{ID: 4, Name: groupName.Load().(string), Member: membership.Load()}}}, nil
@@ -129,6 +135,14 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 		changed.Store(true)
 		memberRevision.Store(4)
 		return administration.AccountMutationResult{UserID: 2, Revision: memberRevision.Load(), AuditID: 9}, nil
+	}
+	services.ReconcileIdentity = func(_ context.Context, actor auth.AccessContext, userID int64, reason string, requestID pgtype.UUID) (registration.IdentityReconciliationResult, error) {
+		if actor.UserID != 1 || userID != 2 || reason != "Retry browser identity" || !requestID.Valid || !identityReconciliationRequired.Load() {
+			return registration.IdentityReconciliationResult{}, fmt.Errorf("unexpected identity reconciliation")
+		}
+		identityReconciliationRequired.Store(false)
+		identityReconciled.Store(true)
+		return registration.IdentityReconciliationResult{UserID: userID, Revision: memberRevision.Load(), AuditID: 17, SyncState: "accepted"}, nil
 	}
 	services.ChangeMembership = func(_ context.Context, _ auth.AccessContext, userID, groupID int64, grant bool, reason string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
 		wantReason := "Grant browser membership"
@@ -338,8 +352,8 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 		t.Fatalf("administration Chromium evidence failed: %v group=%q group_revision=%d area_mode=%q area_revision=%d assigned=%t site=%q session_revoked=%t\n%s",
 			err, groupName.Load(), groupRevision.Load(), areaMode.Load(), areaRevision.Load(), areaAssigned.Load(), siteName.Load(), sessionRevoked.Load(), output)
 	}
-	if !changed.Load() {
-		t.Fatal("keyboard role form did not invoke the server mutation")
+	if !changed.Load() || !identityReconciled.Load() {
+		t.Fatalf("keyboard account mutations incomplete: role=%t identity=%t", changed.Load(), identityReconciled.Load())
 	}
 	if groupName.Load().(string) != "Renamed Browser Operators" || areaMode.Load().(policy.PostingMode) != policy.PostingNormal || !areaAssigned.Load() ||
 		siteName.Load().(string) != "Updated Browser Board" || rulesMarkdown.Load().(string) != "# Updated browser rules" || !sessionRevoked.Load() {

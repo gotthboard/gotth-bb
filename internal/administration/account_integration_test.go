@@ -69,10 +69,10 @@ func TestAccountAdministrationGovernanceOnPostgreSQL17(t *testing.T) {
 	createdAt := observedAt.Add(-time.Hour)
 	var actorID, secondAdministratorID, memberID int64
 	if err := connections[0].QueryRow(ctx, `
-INSERT INTO public.users (display_name, role, created_at) VALUES
-    ('Governance Administrator', 'administrator', $1),
-    ('Continuity Administrator', 'administrator', $1),
-    ('Local Member', 'member', $1)
+INSERT INTO public.users (display_name, role, created_at, authentik_sync_state) VALUES
+    ('Governance Administrator', 'administrator', $1, 'accepted'),
+    ('Continuity Administrator', 'administrator', $1, 'accepted'),
+    ('Local Member', 'member', $1, 'unknown')
 RETURNING id`, createdAt).Scan(&actorID); err != nil {
 		t.Fatalf("insert first account: %v", err)
 	}
@@ -206,6 +206,18 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); er
 	}
 	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET muted_until = NULL WHERE id = $1`, actorID); err != nil {
 		t.Fatalf("unmute restricted-runtime actor: %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'unknown' WHERE id = $1`, actorID); err != nil {
+		t.Fatalf("make administrator identity unconfirmed: %v", err)
+	}
+	if _, err := CreateGroup(ctx, connections[0], func() time.Time { return observedAt.Add(7 * time.Second) }, actor, "Unconfirmed Group", "Reject unconfirmed administrator", testAdministrationRequestID(17)); !errors.Is(err, ErrAccountAdministrationDenied) {
+		t.Fatalf("unconfirmed administrator CreateGroup() error = %v", err)
+	}
+	if _, err := ListAccounts(ctx, querier, actor, observedAt.Add(7*time.Second), 0); !errors.Is(err, ErrAccountAdministrationDenied) {
+		t.Fatalf("unconfirmed administrator ListAccounts() error = %v", err)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'accepted' WHERE id = $1`, actorID); err != nil {
+		t.Fatalf("restore administrator identity confirmation: %v", err)
 	}
 
 	roleIdentifier := pgx.Identifier{accountAdministrationTestRole}.Sanitize()

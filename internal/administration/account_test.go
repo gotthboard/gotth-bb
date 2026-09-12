@@ -62,6 +62,13 @@ func TestAccountAdministrationDetailAndGroupsDistinguishDeniedFromMissing(t *tes
 	if _, err := LoadAccount(context.Background(), accountReadTestQuerier{loadErr: pgx.ErrNoRows}, actor, observedAt, 41); !errors.Is(err, ErrAccountAdministrationDenied) {
 		t.Fatalf("absent actor detail error = %v", err)
 	}
+	loaded, err := LoadAccount(context.Background(), accountReadTestQuerier{load: db.LoadAccountForAdministrationRow{AccountPresent: true, ID: 41, DisplayName: "Pending sync", Role: "member", CreatedAt: pgtype.Timestamptz{Time: observedAt, Valid: true}, UpdatedAt: pgtype.Timestamptz{Time: observedAt, Valid: true}, AdministrationRevision: 3, AuthentikSyncState: "grant_required"}}, actor, observedAt, 41)
+	if err != nil || loaded.AuthentikSyncState != "grant_required" {
+		t.Fatalf("identity sync projection = (%+v, %v)", loaded, err)
+	}
+	if _, err := LoadAccount(context.Background(), accountReadTestQuerier{load: db.LoadAccountForAdministrationRow{AccountPresent: true, ID: 41, DisplayName: "Malformed sync", Role: "member", CreatedAt: pgtype.Timestamptz{Time: observedAt, Valid: true}, UpdatedAt: pgtype.Timestamptz{Time: observedAt, Valid: true}, AdministrationRevision: 3, AuthentikSyncState: "invented"}}, actor, observedAt, 41); !errors.Is(err, ErrAccountAdministrationUnavailable) {
+		t.Fatalf("malformed identity sync error = %v", err)
+	}
 }
 
 func TestAccountAdministrationClosedInputGrammars(t *testing.T) {

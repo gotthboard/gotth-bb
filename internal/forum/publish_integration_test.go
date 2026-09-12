@@ -68,10 +68,10 @@ func TestPublishingTransactionsOnPostgreSQL17(t *testing.T) {
 		t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	}
 	var ownerID, memberID int64
-	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Owner', 'administrator', 'accepted') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert owner: %v", err)
 	}
-	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Member') RETURNING id`).Scan(&memberID); err != nil {
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Member', 'accepted') RETURNING id`).Scan(&memberID); err != nil {
 		t.Fatalf("insert member: %v", err)
 	}
 	for _, area := range []struct{ slug, postingMode string }{{"normal", "normal"}, {"staff-only", "read_only"}} {

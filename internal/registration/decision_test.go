@@ -26,6 +26,9 @@ func (panicGateway) AddUser(context.Context, string, string) error {
 func (panicGateway) RemoveUser(context.Context, string, string) error {
 	panic("gateway must not be called")
 }
+func (panicGateway) User(context.Context, string) (authentikgateway.UserState, error) {
+	panic("gateway must not be called")
+}
 
 func TestDecideRejectsInvalidBoundaryBeforeSideEffects(t *testing.T) {
 	actor := policy.AccessContext{Authenticated: true, UserID: 1, Role: policy.RoleAdministrator}
@@ -87,5 +90,53 @@ func TestRemoteFailureClassIsClosed(t *testing.T) {
 	}
 }
 
+func TestRemoteDecisionRequiresExactFinalMembershipState(t *testing.T) {
+	const subject = "11111111-1111-4111-8111-111111111111"
+	tests := []struct {
+		name     string
+		decision Decision
+		state    authentikgateway.UserState
+		wantErr  bool
+	}{
+		{"approved exact state", Approve, decisionUserState(subject, true, false, false), false},
+		{"approval remains pending", Approve, decisionUserState(subject, true, true, false), true},
+		{"approval remains suspended", Approve, decisionUserState(subject, true, false, true), true},
+		{"rejected exact state", Reject, decisionUserState(subject, false, false, false), false},
+		{"rejection remains accepted", Reject, decisionUserState(subject, true, false, false), true},
+		{"wrong identity", Approve, decisionUserState("22222222-2222-4222-8222-222222222222", true, false, false), true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := applyRemoteDecision(context.Background(), &decisionGateway{state: test.state}, test.decision, subject)
+			if test.wantErr && !errors.Is(err, authentikgateway.ErrRemoteConflict) {
+				t.Fatalf("applyRemoteDecision() error = %v, want remote conflict", err)
+			}
+			if !test.wantErr && err != nil {
+				t.Fatalf("applyRemoteDecision() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+type decisionGateway struct {
+	state authentikgateway.UserState
+}
+
+func (*decisionGateway) AddUser(context.Context, string, string) error    { return nil }
+func (*decisionGateway) RemoveUser(context.Context, string, string) error { return nil }
+func (gateway *decisionGateway) User(context.Context, string) (authentikgateway.UserState, error) {
+	return gateway.state, nil
+}
+
+func decisionUserState(subject string, accepted, pending, suspended bool) authentikgateway.UserState {
+	return authentikgateway.UserState{
+		User:      authentikgateway.User{UUID: subject, Active: true},
+		Accepted:  accepted,
+		Pending:   pending,
+		Suspended: suspended,
+	}
+}
+
 var _ transactionBeginner = panicBeginner{}
 var _ Gateway = panicGateway{}
+var _ Gateway = (*decisionGateway)(nil)

@@ -41,7 +41,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const shutdownTimeout = 15 * time.Second
+const (
+	shutdownTimeout              = 15 * time.Second
+	expiryReconciliationInterval = time.Minute
+)
 
 type databasePool interface {
 	auth.SessionDatabase
@@ -66,22 +69,28 @@ type approvalIntakeVerifier interface {
 }
 
 func runExpiryReconciler(ctx context.Context, pool databasePool, gateway registrationservice.ControlGateway, logger *slog.Logger) {
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(expiryReconciliationInterval)
 	defer ticker.Stop()
+	runExpiryReconcilerLoop(ctx, ticker.C, logger, func(reconcileContext context.Context) (registrationservice.ExpiryReconciliationResult, error) {
+		return registrationservice.ReconcileExpiredSuspensions(reconcileContext, pool, gateway, time.Now, rand.Reader)
+	})
+}
+
+func runExpiryReconcilerLoop(ctx context.Context, ticks <-chan time.Time, logger *slog.Logger, reconcile func(context.Context) (registrationservice.ExpiryReconciliationResult, error)) {
 	for {
-		result, err := registrationservice.ReconcileExpiredSuspensions(ctx, pool, gateway, time.Now, rand.Reader)
+		result, err := reconcile(ctx)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
 			}
 			logger.ErrorContext(context.Background(), "expired identity reconciliation failed")
 		} else if result.Claimed != 0 {
-			logger.InfoContext(context.Background(), "expired identity reconciliation completed", "claimed", result.Claimed, "completed", result.Completed, "failed", result.Failed)
+			logger.InfoContext(context.Background(), "expired identity reconciliation completed", "claimed", result.Claimed, "completed", result.Completed, "failed", result.Failed, "superseded", result.Superseded)
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-ticks:
 		}
 	}
 }
@@ -471,6 +480,9 @@ func run(
 				},
 				ChangeRole: func(adminContext context.Context, access auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administrationservice.AccountMutationResult, error) {
 					return administrationservice.ChangeAccountRole(adminContext, pool, time.Now, access, userID, role, expected, reason, revision, requestID)
+				},
+				ReconcileIdentity: func(adminContext context.Context, access auth.AccessContext, userID int64, reason string, requestID pgtype.UUID) (registrationservice.IdentityReconciliationResult, error) {
+					return registrationservice.ReconcileIdentity(adminContext, pool, registrationControl.Gateway, time.Now, access, userID, reason, requestID)
 				},
 				ListAreas: func(adminContext context.Context, access auth.AccessContext, afterOrder int32, afterID int64) (administrationservice.AreaPage, error) {
 					return administrationservice.ListAreaPage(adminContext, queries, access, time.Now(), afterOrder, afterID)

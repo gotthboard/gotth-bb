@@ -140,6 +140,13 @@ func changeTopicState(
 
 	result := TopicTransitionResult{}
 	err := store.WithinTx(ctx, beginner, func(queries *db.Queries) error {
+		persisted, err := queries.LockUserForSuspension(ctx, actor.UserID)
+		if err != nil {
+			return fmt.Errorf("lock topic moderation actor: %w", err)
+		}
+		if !persistedStaffMatches(persisted, actor, now) {
+			return ErrTopicModerationDenied
+		}
 		current, err := queries.LockTopicForModeration(ctx, topicID)
 		if err != nil {
 			return fmt.Errorf("lock topic for moderation: %w", err)

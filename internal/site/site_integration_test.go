@@ -69,7 +69,7 @@ func TestSiteSettingsMutationIsAtomicAuditedAndRevisionSerialized(t *testing.T) 
 
 	observedAt := time.Date(2026, time.September, 8, 14, 0, 0, 123456000, time.UTC)
 	var actorID int64
-	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role, created_at, updated_at) VALUES ('Settings Administrator', 'administrator', $1, $1) RETURNING id`, observedAt.Add(-time.Hour)).Scan(&actorID); err != nil {
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name, role, created_at, updated_at, authentik_sync_state) VALUES ('Settings Administrator', 'administrator', $1, $1, 'accepted') RETURNING id`, observedAt.Add(-time.Hour)).Scan(&actorID); err != nil {
 		t.Fatalf("insert administrator: %v", err)
 	}
 	actor := policy.AccessContext{Authenticated: true, UserID: actorID, Role: policy.RoleAdministrator}

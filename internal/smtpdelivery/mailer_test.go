@@ -60,6 +60,26 @@ func TestMailerClassifiesDefiniteAndAmbiguousFailure(t *testing.T) {
 	}
 }
 
+func TestImplicitTLSHandshakeUsesTotalSMTPTimeout(t *testing.T) {
+	mailer, err := New(Settings{Host: "localhost", Port: 2465, From: "board@example.test", TLSMode: config.SMTPImplicitTLS, Timeout: time.Second}, url.URL{Scheme: "https", Host: "auth.example"}, "invitation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mailer.Close()
+	client, server := net.Pipe()
+	defer server.Close()
+	mailer.dial = func(context.Context, string, string) (net.Conn, error) { return client, nil }
+
+	started := time.Now()
+	state, err := mailer.SendInvitation(context.Background(), "invitee@example.test", "", "77777777-7777-4777-8777-777777777777", time.Now().Add(time.Hour))
+	if err == nil || state != "failed" {
+		t.Fatalf("stalled TLS handshake = (%q, %v)", state, err)
+	}
+	if elapsed := time.Since(started); elapsed < 900*time.Millisecond || elapsed > 2*time.Second {
+		t.Fatalf("stalled TLS handshake elapsed %s", elapsed)
+	}
+}
+
 func serveSMTPConversation(connection net.Conn, captured chan<- string, rejectRecipient, failAfterData bool) {
 	defer connection.Close()
 	reader := bufio.NewReader(connection)

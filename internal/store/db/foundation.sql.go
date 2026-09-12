@@ -196,6 +196,7 @@ const countActiveAdministrators = `-- name: CountActiveAdministrators :one
 SELECT count(*)::bigint
 FROM public.users
 WHERE role = 'administrator'
+  AND authentik_sync_state = 'accepted'
   AND (
       suspended_at IS NULL
       OR suspended_at > $1::timestamptz

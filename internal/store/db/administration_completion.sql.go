@@ -93,6 +93,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (forum_user.suspended_at IS NULL OR forum_user.suspended_at > $2::timestamptz OR forum_user.suspended_until <= $2::timestamptz)
       AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), target AS MATERIALIZED (
@@ -174,6 +175,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (forum_user.suspended_at IS NULL OR forum_user.suspended_at > $2::timestamptz OR forum_user.suspended_until <= $2::timestamptz)
       AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), candidate AS MATERIALIZED (
@@ -272,6 +274,7 @@ WITH observed AS MATERIALIZED (
     CROSS JOIN observed
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > observed.at_time
@@ -334,6 +337,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (forum_user.suspended_at IS NULL OR forum_user.suspended_at > $2::timestamptz OR forum_user.suspended_until <= $2::timestamptz)
       AND (forum_user.muted_until IS NULL OR forum_user.muted_until <= $2::timestamptz)
 ), target AS MATERIALIZED (

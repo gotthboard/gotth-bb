@@ -77,7 +77,7 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 		name, role string
 		id         *int64
 	}{{"Moderator", "moderator", &moderatorID}, {"Reporter", "member", &reporterID}, {"Target", "member", &targetUserID}} {
-		if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at) VALUES ($1,$2,$3,$3,$3) RETURNING id`, user.name, user.role, createdAt).Scan(user.id); err != nil {
+		if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, created_at, updated_at, last_login_at, authentik_sync_state) VALUES ($1,$2,$3,$3,$3,'accepted') RETURNING id`, user.name, user.role, createdAt).Scan(user.id); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -149,6 +149,18 @@ func TestReportWorkflowAndExtendedModerationOnPostgreSQL17(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := func(value byte) pgtype.UUID { return pgtype.UUID{Bytes: [16]byte{value}, Valid: true} }
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state='grant_required' WHERE id=$1`, moderatorID); err != nil {
+		t.Fatal(err)
+	}
+	if denied, deniedErr := ProcessReport(ctx, connection, time.Now, staff, report.ReportID, ClaimReport, "", request(30)); denied != (ReportActionResult{}) || !errors.Is(deniedErr, ErrReportDenied) {
+		t.Fatalf("unreconciled report actor = (%+v, %v), want denied", denied, deniedErr)
+	}
+	if denied, deniedErr := ApplyExtendedAction(ctx, connection, time.Now, staff, ExtendedActionInput{Action: PinTopic, TargetID: topic.TopicID, Reason: "Stale identity"}, request(31)); denied != (ExtendedActionResult{}) || !errors.Is(deniedErr, ErrUserModerationDenied) {
+		t.Fatalf("unreconciled extended actor = (%+v, %v), want denied", denied, deniedErr)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state='accepted' WHERE id=$1`, moderatorID); err != nil {
+		t.Fatal(err)
+	}
 	claimed, err := ProcessReport(ctx, connection, func() time.Time { return createdAt.Add(5 * time.Minute) }, staff, report.ReportID, ClaimReport, "", request(1))
 	if err != nil || claimed.Status != "in_review" {
 		t.Fatalf("claim = (%+v, %v)", claimed, err)

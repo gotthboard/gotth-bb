@@ -116,6 +116,7 @@ FROM public.governance_state;
 SELECT count(*)::bigint
 FROM public.users
 WHERE role = 'administrator'
+  AND authentik_sync_state = 'accepted'
   AND (
       suspended_at IS NULL
       OR suspended_at > sqlc.arg(at_time)::timestamptz

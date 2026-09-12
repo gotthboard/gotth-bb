@@ -60,14 +60,14 @@ func TestModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T) {
 				int64(42), "Local member", "member", previousAt, previousUntil, previousReason,
 				pgtype.Timestamptz{}, atTime, updatedAt, updatedAt,
 			},
-			wantArgs: []any{int64(42), int64(11), true, false},
+			wantArgs: []any{int64(11), true, false, observedAt, int64(42)},
 			required: []string{
-				"FROM public.users AS target", "target.id = $1", "target.id <> $2",
-				"$3::boolean", "$4::boolean AND target.role = 'member'",
+				"FROM public.users AS target", "actor.id = $1", "actor.authentik_sync_state = 'accepted'",
+				"target.id = $5", "target.id <> actor.id", "$2::boolean", "$3::boolean AND target.role = 'member'",
 			},
 			invoke: func(q *Queries) (any, error) {
 				return q.GetModerationUserStatus(context.Background(), GetModerationUserStatusParams{
-					TargetUserID: 42, ActorUserID: 11, IsAdministrator: true,
+					TargetUserID: 42, ActorUserID: 11, IsAdministrator: true, ObservedAt: observedAt,
 				})
 			},
 			wantResult: GetModerationUserStatusRow{
@@ -77,11 +77,11 @@ func TestModerationQueriesBindScanAndPreserveAuditTransaction(t *testing.T) {
 			},
 		},
 		{
-			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime, int64(7)},
+			name: "lock user", rowValues: []any{int64(42), "member", previousAt, previousUntil, previousReason, pgtype.Timestamptz{}, atTime, atTime, int64(7), "accepted"},
 			wantArgs:   []any{int64(42)},
 			required:   []string{"FROM public.users AS forum_user", "FOR UPDATE OF forum_user"},
 			invoke:     func(q *Queries) (any, error) { return q.LockUserForSuspension(context.Background(), 42) },
-			wantResult: LockUserForSuspensionRow{ID: 42, Role: "member", SuspendedAt: previousAt, SuspendedUntil: previousUntil, SuspensionReason: previousReason, CreatedAt: atTime, UpdatedAt: atTime, AdministrationRevision: 7},
+			wantResult: LockUserForSuspensionRow{ID: 42, Role: "member", SuspendedAt: previousAt, SuspendedUntil: previousUntil, SuspensionReason: previousReason, CreatedAt: atTime, UpdatedAt: atTime, AdministrationRevision: 7, AuthentikSyncState: "accepted"},
 		},
 		{
 			name:      "suspend user and audit",

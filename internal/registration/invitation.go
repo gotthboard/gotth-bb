@@ -218,11 +218,15 @@ func CreateInvitation(ctx context.Context, beginner transactionBeginner, remote 
 
 	invitation, adopted, remoteErr := resolveInvitation(ctx, remote, reserved, input)
 	if remoteErr != nil {
+		failureAt, clockErr := observedAt(clock)
+		if clockErr != nil {
+			return InvitationResult{}, clockErr
+		}
 		failure := remoteFailureClass(remoteErr)
 		if errors.Is(remoteErr, authentikgateway.ErrRemoteConflict) {
 			failure = "operator_required"
 		}
-		if recordErr := recordInvitationFailure(ctx, beginner, actor.UserID, input, reserved, reference, failure, "not_requested", now); recordErr != nil {
+		if recordErr := recordInvitationFailure(ctx, beginner, actor.UserID, input, reserved, reference, failure, "not_requested", failureAt); recordErr != nil {
 			return InvitationResult{}, fmt.Errorf("%w: remote %s; record failure", ErrUnavailable, failure)
 		}
 		return InvitationResult{}, fmt.Errorf("%w: %s", ErrRemote, failure)
@@ -233,9 +237,7 @@ func CreateInvitation(ctx context.Context, beginner transactionBeginner, remote 
 		delivery, resultClass = "unknown", "adopted"
 	} else if input.Deliver {
 		delivery, err = mailer.SendInvitation(ctx, input.Email, input.DisplayName, invitation.UUID, expires)
-		if err != nil || (delivery != "queued" && delivery != "failed" && delivery != "unknown") {
-			delivery = "unknown"
-		}
+		delivery = classifyInvitationDelivery(delivery, err)
 	}
 	resultAt, err := observedAt(clock)
 	if err != nil {
@@ -268,6 +270,13 @@ func CreateInvitation(ctx context.Context, beginner transactionBeginner, remote 
 		return InvitationResult{}, fmt.Errorf("complete invitation: %w", err)
 	}
 	return result, nil
+}
+
+func classifyInvitationDelivery(delivery string, err error) string {
+	if err == nil && delivery == "queued" || err != nil && (delivery == "failed" || delivery == "unknown") {
+		return delivery
+	}
+	return "unknown"
 }
 
 func RevokeInvitation(ctx context.Context, beginner transactionBeginner, remote ControlGateway, clock func() time.Time, actor policy.AccessContext, input InvitationRevocationInput, key [32]byte) (InvitationRevocationResult, error) {

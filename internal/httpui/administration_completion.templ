@@ -35,9 +35,10 @@ templ administrationInvitationsBody(page administrationInvitationsView) {
 		<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-8 grid min-w-0 gap-5 rounded-xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
 			<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
 			<input type="hidden" name="idempotency_key" value={ page.IdempotencyKey }/>
+			<input type="hidden" name="expires_reference" value={ page.ExpiryReference }/>
 			<label class="grid gap-2 text-sm font-semibold">Email<input required type="email" name="email" maxlength="320" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
 			<label class="grid gap-2 text-sm font-semibold">Display name <span class="text-xs font-normal text-slate-400">Optional</span><input name="display_name" maxlength="80" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
-			<label class="grid gap-2 text-sm font-semibold">Expires in minutes<input required type="number" min="15" max="10080" value="1440" name="expires_minutes" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid gap-2 text-sm font-semibold">Expires in minutes<input required type="number" min="16" max="10079" value="1440" name="expires_minutes" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
 			<label class="grid gap-2 text-sm font-semibold">
 				Delivery
 				<select name="delivery" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
@@ -174,7 +175,13 @@ templ administrationAccountsBody(page administrationAccountsView) {
 }
 
 templ administrationAccountBody(page administrationAccountView) {
-	<section aria-labelledby="account-title"><h1 id="account-title" class="text-3xl font-bold text-white">{ page.DisplayName }</h1><p class="mt-2 text-slate-300">{ page.Role } · { page.Status }</p>
+	<section aria-labelledby="account-title"><h1 id="account-title" class="text-3xl font-bold text-white">{ page.DisplayName }</h1><p class="mt-2 text-slate-300">{ page.Role } · { page.Status } · identity { page.AuthentikSyncState }</p>
+		if page.ReconcileAction != "" {
+			<form method="post" action={ page.ReconcileAction } hx-post={ page.ReconcileAction } class="mt-6 grid gap-3 rounded-lg border border-amber-700 bg-slate-900 p-5">
+				<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+				<label class="grid gap-2 text-sm font-semibold text-slate-200">Audit reason <input required maxlength="2000" autocomplete="off" name="reason" class="min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"/></label><button class="min-h-11 w-fit rounded-md border border-amber-700 px-4 py-2 font-semibold text-amber-100 hover:border-amber-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300">Retry identity reconciliation</button>
+			</form>
+		}
 		<form method="post" action={ page.RoleAction } hx-post={ page.RoleAction } class="mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-5">
 			<input type="hidden" name="_csrf" value={ page.CSRFToken }/><input type="hidden" name="expected_role" value={ page.Role }/><input type="hidden" name="revision" value={ page.Revision }/>
 		<label>Role <select name="role" class="bg-slate-950"><option selected?={ page.Role == "member" } value="member">member</option><option selected?={ page.Role == "moderator" } value="moderator">moderator</option><option selected?={ page.Role == "administrator" } value="administrator">administrator</option></select></label>

@@ -60,10 +60,10 @@ func TestTopicTransitionsOnPostgreSQL17(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = connection.Close(context.Background()) })
 	var moderatorID, memberID int64
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Moderator', 'moderator') RETURNING id`).Scan(&moderatorID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Moderator', 'moderator', 'accepted') RETURNING id`).Scan(&moderatorID); err != nil {
 		t.Fatalf("insert moderator: %v", err)
 	}
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Member') RETURNING id`).Scan(&memberID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Member', 'accepted') RETURNING id`).Scan(&memberID); err != nil {
 		t.Fatalf("insert member: %v", err)
 	}
 	if _, err := connection.Exec(ctx, `INSERT INTO public.areas (slug, name, created_by, updated_by) VALUES ('moderation', 'Moderation', $1, $1)`, moderatorID); err != nil {
@@ -134,11 +134,23 @@ WHERE topic.id = $1`, topic.TopicID, locked.AuditID).Scan(
 	if repeated, repeatedErr := ChangeTopicLock(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat", pgtype.UUID{Bytes: [16]byte{0x52}, Valid: true}); repeated != (TopicTransitionResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
 		t.Fatalf("repeated lock = (%+v, %v), want conflict", repeated, repeatedErr)
 	}
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state='removal_required' WHERE id=$1`, moderatorID); err != nil {
+		t.Fatalf("mark moderator unreconciled: %v", err)
+	}
+	if denied, deniedErr := ChangeTopicLock(ctx, connection, time.Now, moderator, topic.TopicID, false, "stale identity", pgtype.UUID{Bytes: [16]byte{0x53}, Valid: true}); denied != (TopicTransitionResult{}) || !errors.Is(deniedErr, ErrTopicModerationDenied) {
+		t.Fatalf("unreconciled moderator unlock = (%+v, %v), want denied", denied, deniedErr)
+	}
+	if err := connection.QueryRow(ctx, `SELECT state, (SELECT count(*) FROM public.moderation_actions) FROM public.topics WHERE id=$1`, topic.TopicID).Scan(&state, &auditCount); err != nil || state != "locked" || auditCount != 1 {
+		t.Fatalf("unreconciled moderator persistence = (%q, count %d, %v)", state, auditCount, err)
+	}
+	if _, err := connection.Exec(ctx, `UPDATE public.users SET authentik_sync_state='accepted' WHERE id=$1`, moderatorID); err != nil {
+		t.Fatalf("restore moderator identity state: %v", err)
+	}
 	member := policy.AccessContext{Authenticated: true, UserID: memberID, Role: policy.RoleMember}
-	if denied, deniedErr := ChangeTopicLock(ctx, connection, time.Now, member, topic.TopicID, false, "not allowed", pgtype.UUID{Bytes: [16]byte{0x53}, Valid: true}); denied != (TopicTransitionResult{}) || !errors.Is(deniedErr, ErrTopicModerationDenied) {
+	if denied, deniedErr := ChangeTopicLock(ctx, connection, time.Now, member, topic.TopicID, false, "not allowed", pgtype.UUID{Bytes: [16]byte{0x54}, Valid: true}); denied != (TopicTransitionResult{}) || !errors.Is(deniedErr, ErrTopicModerationDenied) {
 		t.Fatalf("member unlock = (%+v, %v), want denied", denied, deniedErr)
 	}
-	unlocked, err := ChangeTopicLock(ctx, connection, func() time.Time { return createdAt.Add(time.Hour) }, moderator, topic.TopicID, false, "Review complete", pgtype.UUID{Bytes: [16]byte{0x54}, Valid: true})
+	unlocked, err := ChangeTopicLock(ctx, connection, func() time.Time { return createdAt.Add(time.Hour) }, moderator, topic.TopicID, false, "Review complete", pgtype.UUID{Bytes: [16]byte{0x55}, Valid: true})
 	if err != nil || unlocked.State != policy.TopicOpen || unlocked.AuditID <= locked.AuditID {
 		t.Fatalf("ChangeTopicLock(unlock) = (%+v, %v)", unlocked, err)
 	}
@@ -156,7 +168,7 @@ WHERE topic.id = $1`, topic.TopicID, unlocked.AuditID).Scan(
 		t.Fatalf("persisted unlock = (%q, %s, %d/%d, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, actorID, targetID, action, reason, previous, resulting, auditedAt, auditCount, err)
 	}
 	hiddenAt := createdAt.Add(2 * time.Hour)
-	hidden, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return hiddenAt }, moderator, topic.TopicID, true, "Remove from view", pgtype.UUID{Bytes: [16]byte{0x55}, Valid: true})
+	hidden, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return hiddenAt }, moderator, topic.TopicID, true, "Remove from view", pgtype.UUID{Bytes: [16]byte{0x56}, Valid: true})
 	if err != nil || hidden.State != policy.TopicHidden || hidden.AuditID <= unlocked.AuditID {
 		t.Fatalf("ChangeTopicVisibility(hide) = (%+v, %v)", hidden, err)
 	}
@@ -180,11 +192,11 @@ WHERE topic.id = $1`, topic.TopicID, hidden.AuditID).Scan(
 		action != "hide_topic" || reason != "Remove from view" || previous != "open" || resulting != "hidden" || !auditedAt.Equal(updatedAt) || auditCount != 3 {
 		t.Fatalf("persisted hide = (%q, %s, %d/%d, %q, %q, %q->%q, %s, count %d, %v)", state, updatedAt, actorID, targetID, action, reason, previous, resulting, auditedAt, auditCount, err)
 	}
-	if repeated, repeatedErr := ChangeTopicVisibility(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat hide", pgtype.UUID{Bytes: [16]byte{0x56}, Valid: true}); repeated != (TopicTransitionResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
+	if repeated, repeatedErr := ChangeTopicVisibility(ctx, connection, time.Now, moderator, topic.TopicID, true, "repeat hide", pgtype.UUID{Bytes: [16]byte{0x57}, Valid: true}); repeated != (TopicTransitionResult{}) || !errors.Is(repeatedErr, ErrTopicModerationConflict) {
 		t.Fatalf("repeated hide = (%+v, %v), want conflict", repeated, repeatedErr)
 	}
 	restoredAt := createdAt.Add(3 * time.Hour)
-	restored, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return restoredAt }, moderator, topic.TopicID, false, "Return to view", pgtype.UUID{Bytes: [16]byte{0x57}, Valid: true})
+	restored, err := ChangeTopicVisibility(ctx, connection, func() time.Time { return restoredAt }, moderator, topic.TopicID, false, "Return to view", pgtype.UUID{Bytes: [16]byte{0x58}, Valid: true})
 	if err != nil || restored.State != policy.TopicOpen || restored.AuditID <= hidden.AuditID {
 		t.Fatalf("ChangeTopicVisibility(restore) = (%+v, %v)", restored, err)
 	}

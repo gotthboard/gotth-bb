@@ -243,9 +243,17 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
 
   accessibility = await send("Accessibility.getFullAXTree", {}, sessionId);
   namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${String(node.name?.value || '').replace(/\s+/g, ' ').trim()}`);
-  for (const expected of ["heading:Local Member", "combobox:Role", "textbox:Audit reason", "button:Change role", "button:Revoke"]) {
+  for (const expected of ["heading:Local Member", "combobox:Role", "textbox:Audit reason", "button:Retry identity reconciliation", "button:Change role", "button:Revoke"]) {
     assert(namedRoles.includes(expected), `account accessibility tree lacks ${expected}`);
   }
+
+  await tabTo(send, sessionId, "document.activeElement?.matches('form[action$=\"/identity/reconcile\"] input[name=\"reason\"]')", "identity reconciliation audit reason");
+  await assertVisibleFocus(send, sessionId);
+  await send("Input.insertText", { text: "Retry browser identity" }, sessionId);
+  await tabTo(send, sessionId, "document.activeElement?.textContent?.trim() === 'Retry identity reconciliation'", "Retry identity reconciliation button");
+  await assertVisibleFocus(send, sessionId);
+  await pressEnter(send, sessionId);
+  await waitFor(send, sessionId, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('identity accepted') && !document.querySelector('form[action$=\"/identity/reconcile\"]')");
 
   await tabTo(send, sessionId, "document.activeElement?.matches('form[action$=\"/role\"] input[name=\"reason\"]')", "role audit reason");
   await assertVisibleFocus(send, sessionId);

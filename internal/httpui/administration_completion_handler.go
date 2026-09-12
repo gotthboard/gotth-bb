@@ -36,6 +36,7 @@ type AdministrationHTTPServices struct {
 	RenameGroup       func(context.Context, auth.AccessContext, int64, string, string, int64, pgtype.UUID) (administration.GroupMutationResult, error)
 	ChangeMembership  func(context.Context, auth.AccessContext, int64, int64, bool, string, int64, pgtype.UUID) (administration.AccountMutationResult, error)
 	ChangeRole        func(context.Context, auth.AccessContext, int64, policy.Role, policy.Role, string, int64, pgtype.UUID) (administration.AccountMutationResult, error)
+	ReconcileIdentity func(context.Context, auth.AccessContext, int64, string, pgtype.UUID) (registration.IdentityReconciliationResult, error)
 	ListAreas         func(context.Context, auth.AccessContext, int32, int64) (administration.AreaPage, error)
 	LoadArea          func(context.Context, auth.AccessContext, int64, int64) (administration.AreaDetail, error)
 	CreateArea        func(context.Context, auth.AccessContext, administration.AreaCoreInput, pgtype.UUID) (administration.AreaCompletionResult, error)
@@ -77,8 +78,8 @@ type administrationMembershipView struct {
 	Name, Action, Label, ActionURL string
 }
 type administrationAccountView struct {
-	DisplayName, Role, Status, Revision, RoleAction, CSRFToken, NextGroupsURL string
-	Groups                                                                    []administrationMembershipView
+	DisplayName, Role, Status, Revision, RoleAction, ReconcileAction, AuthentikSyncState, CSRFToken, NextGroupsURL string
+	Groups                                                                                                         []administrationMembershipView
 }
 type administrationGroupItemView struct{ Name, Revision, ActionURL string }
 type administrationGroupsView struct {
@@ -114,19 +115,20 @@ type administrationInvitationView struct {
 	Name, Status, Delivery, Failure, ExpiresAt, RevokeURL string
 }
 type administrationInvitationsView struct {
-	Invitations                                      []administrationInvitationView
-	ActionURL, CSRFToken, IdempotencyKey, OneTimeURL string
-	More                                             bool
-	SMTPConfigured                                   bool
+	Invitations                                                       []administrationInvitationView
+	ActionURL, CSRFToken, IdempotencyKey, ExpiryReference, OneTimeURL string
+	More                                                              bool
+	SMTPConfigured                                                    bool
 }
 
 var administrationAdoptionHandle = regexp.MustCompile(`^[A-Za-z0-9_-]{87}$`)
+var administrationInvitationToken = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
 	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil && services.Registrations.Adopt != nil
 	invitationsValid := services.Invitations == nil || services.Invitations.List != nil && services.Invitations.Create != nil && services.Invitations.Revoke != nil && services.Invitations.Clock != nil && services.Invitations.Issuer.Scheme == "https" && services.Invitations.Issuer.Host != "" && registrationFlowSlug.MatchString(services.Invitations.FlowSlug)
 	return registrationsValid && invitationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
-		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil &&
+		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil && services.ReconcileIdentity != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
 }
 
@@ -348,70 +350,83 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		})
 	}
 	if services.Invitations != nil {
-		invitationPage := func(response http.ResponseWriter, request *http.Request, oneTimeURL string) {
-			actor, ok := authorized(response, request)
-			if !ok {
-				return
-			}
+		loadInvitationPage := func(request *http.Request, actor auth.AccessContext) (administrationInvitationsView, error) {
 			page, loadErr := services.Invitations.List(request.Context(), actor)
 			if loadErr != nil {
-				serveAdministrationServiceError(response, request, views["invitations"], loadErr)
-				return
+				return administrationInvitationsView{}, loadErr
 			}
 			requestID, requestErr := moderationRequestUUID(request.Context())
 			if requestErr != nil {
-				serveAdministrationServiceError(response, request, views["invitations"], requestErr)
-				return
+				return administrationInvitationsView{}, requestErr
 			}
-			presentation := administrationInvitationsView{Invitations: make([]administrationInvitationView, len(page.Invitations)), ActionURL: views["invitations"].CanonicalURL, CSRFToken: csrfTokenFromContext(request.Context()), IdempotencyKey: fmt.Sprintf("%x", requestID.Bytes), OneTimeURL: oneTimeURL, More: page.More, SMTPConfigured: services.Invitations.SMTPConfigured}
+			reference := services.Invitations.Clock().UTC().Truncate(time.Second)
+			if reference.IsZero() {
+				return administrationInvitationsView{}, errors.New("invalid invitation clock")
+			}
+			presentation := administrationInvitationsView{Invitations: make([]administrationInvitationView, len(page.Invitations)), ActionURL: views["invitations"].CanonicalURL, CSRFToken: csrfTokenFromContext(request.Context()), IdempotencyKey: fmt.Sprintf("%x", requestID.Bytes), ExpiryReference: reference.Format(time.RFC3339), More: page.More, SMTPConfigured: services.Invitations.SMTPConfigured}
 			for index, invitation := range page.Invitations {
 				revokeURL := ""
 				if invitation.Handle != "" {
 					revokeURL, requestErr = builder.Path("admin", "invitations", invitation.Handle, "revoke")
 					if requestErr != nil {
-						serveAdministrationServiceError(response, request, views["invitations"], requestErr)
-						return
+						return administrationInvitationsView{}, requestErr
 					}
 				}
 				presentation.Invitations[index] = administrationInvitationView{Name: invitation.Name, Status: invitation.Status, Delivery: invitation.Delivery, Failure: invitation.Failure, ExpiresAt: invitation.ExpiresAt.Format(time.RFC3339), RevokeURL: revokeURL}
 			}
-			render(response, request, views["invitations"], administrationInvitationsBody(presentation))
+			return presentation, nil
 		}
 		router.Get("/admin/invitations", func(response http.ResponseWriter, request *http.Request) {
-			invitationPage(response, request, "")
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			presentation, loadErr := loadInvitationPage(request, actor)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["invitations"], loadErr)
+				return
+			}
+			render(response, request, views["invitations"], administrationInvitationsBody(presentation))
 		})
 		router.Post("/admin/invitations", func(response http.ResponseWriter, request *http.Request) {
 			actor, ok := authorized(response, request)
 			if !ok {
 				return
 			}
-			form, ok := parseAdministrationForm(response, request, views["invitations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "email", "display_name", "expires_minutes", "delivery", "reason", "idempotency_key"})
+			form, ok := parseAdministrationForm(response, request, views["invitations"], maximumAdministrationSmallFormBytes, []string{"_csrf", "email", "display_name", "expires_minutes", "expires_reference", "delivery", "reason", "idempotency_key"})
 			if !ok {
 				return
 			}
 			requestID, parseErr := decodeModerationRequestID(form.Get("idempotency_key"))
 			minutes, minutesErr := strconv.ParseInt(form.Get("expires_minutes"), 10, 32)
+			reference, referenceErr := time.Parse(time.RFC3339, form.Get("expires_reference"))
 			deliver := form.Get("delivery") == "email"
-			if parseErr != nil || minutesErr != nil || minutes < 15 || minutes > 7*24*60 || strconv.FormatInt(minutes, 10) != form.Get("expires_minutes") || (!deliver && form.Get("delivery") != "none") || deliver && !services.Invitations.SMTPConfigured {
+			if parseErr != nil || minutesErr != nil || referenceErr != nil || reference.Location() != time.UTC || reference.Format(time.RFC3339) != form.Get("expires_reference") ||
+				minutes < 16 || minutes > 7*24*60-1 || strconv.FormatInt(minutes, 10) != form.Get("expires_minutes") || (!deliver && form.Get("delivery") != "none") || deliver && !services.Invitations.SMTPConfigured {
 				renderAdministrationError(response, request, views["invitations"], http.StatusBadRequest, "Invalid form", "Check the invitation fields and try again.")
 				return
 			}
-			now := services.Invitations.Clock().UTC().Truncate(time.Second)
-			if now.IsZero() {
-				serveAdministrationServiceError(response, request, views["invitations"], errors.New("invalid invitation clock"))
+			presentation, loadErr := loadInvitationPage(request, actor)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["invitations"], loadErr)
 				return
 			}
-			result, createErr := services.Invitations.Create(request.Context(), actor, registration.InvitationInput{Email: form.Get("email"), DisplayName: form.Get("display_name"), Reason: form.Get("reason"), ExpiresAt: now.Add(time.Duration(minutes) * time.Minute), Deliver: deliver, RequestID: requestID})
+			result, createErr := services.Invitations.Create(request.Context(), actor, registration.InvitationInput{Email: form.Get("email"), DisplayName: form.Get("display_name"), Reason: form.Get("reason"), ExpiresAt: reference.Add(time.Duration(minutes) * time.Minute), Deliver: deliver, RequestID: requestID})
 			if createErr != nil {
 				serveAdministrationMutationError(response, request, views["invitations"], createErr)
 				return
 			}
-			oneTimeURL := ""
+			validDelivery := result.Delivery == "not_requested" || result.Delivery == "queued" || result.Delivery == "failed" || result.Delivery == "unknown"
+			if result.Status != "active" || !result.Completed || !validDelivery || result.Revision <= 0 || result.AuditID < 0 ||
+				result.TokenUUID != "" && (result.AuditID == 0 || !administrationInvitationToken.MatchString(result.TokenUUID)) {
+				serveAdministrationServiceError(response, request, views["invitations"], errors.New("invalid invitation creation result"))
+				return
+			}
 			if result.TokenUUID != "" {
 				target := url.URL{Scheme: services.Invitations.Issuer.Scheme, Host: services.Invitations.Issuer.Host, Path: "/if/flow/" + services.Invitations.FlowSlug + "/", RawQuery: url.Values{"itoken": {result.TokenUUID}}.Encode()}
-				oneTimeURL = target.String()
+				presentation.OneTimeURL = target.String()
 			}
-			invitationPage(response, request, oneTimeURL)
+			render(response, request, views["invitations"], administrationInvitationsBody(presentation))
 		})
 		router.Post("/admin/invitations/{handle}/revoke", func(response http.ResponseWriter, request *http.Request) {
 			actor, ok := authorized(response, request)
@@ -459,11 +474,15 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		}
 		target, _ := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10))
 		roleAction := target + "/role"
+		reconcileAction := ""
+		if account.AuthentikSyncState == "removal_required" || account.AuthentikSyncState == "grant_required" {
+			reconcileAction = target + "/identity/reconcile"
+		}
 		status := "active"
 		if account.Suspended {
 			status = "suspended"
 		}
-		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(groups.Groups))}
+		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, ReconcileAction: reconcileAction, AuthentikSyncState: account.AuthentikSyncState, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(groups.Groups))}
 		for index, group := range groups.Groups {
 			action, label := "grant", "Grant"
 			if group.Member {
@@ -476,6 +495,33 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			presentation.NextGroupsURL, _ = builder.PathWithQuery([]string{"admin", "accounts", strconv.FormatInt(userID, 10)}, url.Values{"groups_after": {strconv.FormatInt(groups.NextAfter, 10)}})
 		}
 		render(response, request, views["account"], administrationAccountBody(presentation))
+	})
+	router.Post("/admin/accounts/{userID}/identity/reconcile", func(response http.ResponseWriter, request *http.Request) {
+		actor, ok := authorized(response, request)
+		if !ok {
+			return
+		}
+		userID, _ := parseCanonicalPositiveID(chi.URLParam(request, "userID"))
+		form, ok := parseAdministrationForm(response, request, views["account"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason"})
+		if !ok {
+			return
+		}
+		requestID, err := moderationRequestUUID(request.Context())
+		if err != nil {
+			serveAdministrationServiceError(response, request, views["account"], err)
+			return
+		}
+		result, err := services.ReconcileIdentity(request.Context(), actor, userID, form.Get("reason"), requestID)
+		if err != nil {
+			serveAdministrationMutationError(response, request, views["account"], err)
+			return
+		}
+		if result.UserID != userID || result.Revision <= 0 || result.AuditID <= 0 || result.SyncState != "accepted" && result.SyncState != "suspended" {
+			serveAdministrationServiceError(response, request, views["account"], errors.New("invalid identity reconciliation result"))
+			return
+		}
+		destination, _ := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10))
+		serveMutationNavigation(response, request, destination)
 	})
 	router.Post("/admin/accounts/{userID}/role", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
@@ -997,6 +1043,9 @@ func administrationRouteValid(request *http.Request) bool {
 	}
 	if len(parts) == 3 {
 		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt") || revocation
+	}
+	if parts[0] == "accounts" && parts[2] == "identity" && parts[3] == "reconcile" {
+		return true
 	}
 	if parts[2] != "groups" || (parts[0] != "accounts" && parts[0] != "areas") {
 		return false

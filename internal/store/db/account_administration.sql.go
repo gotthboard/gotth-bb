@@ -248,6 +248,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > $2::timestamptz
@@ -341,6 +342,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $2
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > $1::timestamptz
@@ -435,6 +437,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $1
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > $2::timestamptz
@@ -518,6 +521,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = $2
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > $1::timestamptz
@@ -528,7 +532,8 @@ WITH actor AS MATERIALIZED (
     SELECT forum_user.id, forum_user.display_name, forum_user.role,
            forum_user.suspended_at, forum_user.suspended_until,
            forum_user.created_at, forum_user.updated_at,
-           forum_user.administration_revision
+           forum_user.administration_revision,
+           forum_user.authentik_sync_state
     FROM actor
     JOIN public.users AS forum_user ON forum_user.id = $3
 )
@@ -539,7 +544,8 @@ SELECT (target.id IS NOT NULL)::boolean AS account_present,
        COALESCE(target.suspended_at <= $1::timestamptz
                 AND (target.suspended_until IS NULL OR target.suspended_until > $1::timestamptz), false)::boolean AS suspended,
        target.created_at, target.updated_at,
-       COALESCE(target.administration_revision, 0)::bigint AS administration_revision
+       COALESCE(target.administration_revision, 0)::bigint AS administration_revision,
+       COALESCE(target.authentik_sync_state, '')::text AS authentik_sync_state
 FROM actor
 LEFT JOIN target ON true
 `
@@ -559,6 +565,7 @@ type LoadAccountForAdministrationRow struct {
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
 	AdministrationRevision int64
+	AuthentikSyncState     string
 }
 
 func (q *Queries) LoadAccountForAdministration(ctx context.Context, arg LoadAccountForAdministrationParams) (LoadAccountForAdministrationRow, error) {
@@ -573,6 +580,7 @@ func (q *Queries) LoadAccountForAdministration(ctx context.Context, arg LoadAcco
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AdministrationRevision,
+		&i.AuthentikSyncState,
 	)
 	return i, err
 }
@@ -604,7 +612,7 @@ const lockAdministrationUser = `-- name: LockAdministrationUser :one
 SELECT forum_user.id, forum_user.display_name, forum_user.role,
        forum_user.suspended_at, forum_user.suspended_until,
        forum_user.muted_until, forum_user.created_at, forum_user.updated_at,
-       forum_user.administration_revision
+       forum_user.administration_revision, forum_user.authentik_sync_state
 FROM public.users AS forum_user
 WHERE forum_user.id = $1
 FOR UPDATE OF forum_user
@@ -620,6 +628,7 @@ type LockAdministrationUserRow struct {
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
 	AdministrationRevision int64
+	AuthentikSyncState     string
 }
 
 func (q *Queries) LockAdministrationUser(ctx context.Context, userID int64) (LockAdministrationUserRow, error) {
@@ -635,6 +644,7 @@ func (q *Queries) LockAdministrationUser(ctx context.Context, userID int64) (Loc
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AdministrationRevision,
+		&i.AuthentikSyncState,
 	)
 	return i, err
 }

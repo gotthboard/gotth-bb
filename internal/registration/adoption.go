@@ -25,7 +25,6 @@ const (
 type ControlGateway interface {
 	Gateway
 	PendingUsers(context.Context) ([]authentikgateway.User, bool, error)
-	User(context.Context, string) (authentikgateway.UserState, error)
 	CreateInvitation(context.Context, string, string, string, string) (authentikgateway.Invitation, error)
 	Invitations(context.Context) ([]authentikgateway.Invitation, bool, error)
 	Invitation(context.Context, string) (authentikgateway.Invitation, error)
@@ -178,15 +177,19 @@ func Adopt(ctx context.Context, beginner transactionBeginner, remote ControlGate
 	if err != nil || state.ID != userID || !state.Active || !state.Pending || state.Accepted || state.Suspended {
 		return AdoptionResult{}, fmt.Errorf("%w: pending identity changed", ErrConflict)
 	}
+	resultAt, err := observedAt(clock)
+	if err != nil {
+		return AdoptionResult{}, err
+	}
 	subjectUUID, _ := parseCanonicalUUID(subject)
 	var result AdoptionResult
 	err = inDecisionTx(ctx, beginner, func(txctx context.Context, queries *db.Queries) error {
-		if err := lockAdministrator(txctx, queries, actor.UserID, now); err != nil {
+		if err := lockAdministrator(txctx, queries, actor.UserID, resultAt); err != nil {
 			return err
 		}
 		row, insertErr := queries.InsertOrLoadPendingRegistrationAdoption(txctx, db.InsertOrLoadPendingRegistrationAdoptionParams{
 			AuthentikUserID: userID, AuthentikSubject: subjectUUID, DisplayName: displayName,
-			VerifiedEmail: state.Email, IntakeAt: finiteTime(now),
+			VerifiedEmail: state.Email, IntakeAt: finiteTime(resultAt),
 		})
 		if errors.Is(insertErr, pgx.ErrNoRows) {
 			return ErrConflict
@@ -201,7 +204,7 @@ func Adopt(ctx context.Context, beginner transactionBeginner, remote ControlGate
 		auditID, auditErr := queries.RecordPendingRegistrationAdoption(txctx, db.RecordPendingRegistrationAdoptionParams{
 			ActorUserID: pgtype.Int8{Int64: actor.UserID, Valid: true}, Reason: pgtype.Text{String: input.Reason, Valid: true},
 			RegistrationRef: registrationReference(key, row.ID), AdministrationRevision: row.AdministrationRevision,
-			RequestID: input.RequestID, ObservedAt: finiteTime(now),
+			RequestID: input.RequestID, ObservedAt: finiteTime(resultAt),
 		})
 		if auditErr != nil || auditID <= 0 {
 			return fmt.Errorf("%w: audit pending adoption", ErrUnavailable)

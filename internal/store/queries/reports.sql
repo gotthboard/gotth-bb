@@ -114,6 +114,7 @@ WHERE report.status IN ('open', 'in_review')
       WHERE actor.id = sqlc.arg(actor_user_id)
         AND actor.role = sqlc.arg(actor_role)
         AND actor.role IN ('moderator', 'administrator')
+        AND actor.authentik_sync_state = 'accepted'
         AND (actor.suspended_at IS NULL OR actor.suspended_at > sqlc.arg(observed_at)::timestamptz OR actor.suspended_until <= sqlc.arg(observed_at)::timestamptz)
         AND (actor.muted_until IS NULL OR actor.muted_until <= sqlc.arg(observed_at)::timestamptz)
   )
@@ -166,6 +167,7 @@ WHERE report.id = sqlc.arg(report_id)
       WHERE actor.id = sqlc.arg(actor_user_id)
         AND actor.role = sqlc.arg(actor_role)
         AND actor.role IN ('moderator', 'administrator')
+        AND actor.authentik_sync_state = 'accepted'
         AND (actor.suspended_at IS NULL OR actor.suspended_at > sqlc.arg(observed_at)::timestamptz OR actor.suspended_until <= sqlc.arg(observed_at)::timestamptz)
         AND (actor.muted_until IS NULL OR actor.muted_until <= sqlc.arg(observed_at)::timestamptz)
   );
@@ -182,6 +184,7 @@ JOIN public.users AS actor
   ON actor.id = sqlc.arg(actor_user_id)
  AND actor.role = sqlc.arg(actor_role)
  AND actor.role IN ('moderator', 'administrator')
+ AND actor.authentik_sync_state = 'accepted'
  AND (actor.suspended_at IS NULL OR actor.suspended_at > sqlc.arg(observed_at)::timestamptz OR actor.suspended_until <= sqlc.arg(observed_at)::timestamptz)
  AND (actor.muted_until IS NULL OR actor.muted_until <= sqlc.arg(observed_at)::timestamptz)
 LEFT JOIN public.report_notes AS note ON note.report_id = report.id

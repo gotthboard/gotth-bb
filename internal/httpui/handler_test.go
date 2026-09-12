@@ -173,6 +173,7 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 		{name: "readiness", method: http.MethodGet, path: "/health/ready", wantStatus: http.StatusServiceUnavailable, wantType: "text/plain; charset=utf-8", bodyContains: "not ready\n"},
 		{name: "stylesheet", method: http.MethodGet, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "focus"},
 		{name: "previous stylesheet", method: http.MethodGet, path: "/static/" + previousAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "sm\\:grid-cols-2"},
+		{name: "prior stylesheet", method: http.MethodGet, path: "/static/" + priorAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "min-h-11"},
 		{name: "older stylesheet", method: http.MethodGet, path: "/static/" + olderAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "sm\\:grid-cols-2"},
 		{name: "legacy stylesheet", method: http.MethodGet, path: "/static/" + legacyAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8", bodyContains: "grid-cols-2"},
 		{name: "HTMX", method: http.MethodGet, path: "/static/htmx-2.0.10.min.js", wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "htmx"},
@@ -180,6 +181,7 @@ func TestHealthAndStaticRoutes(t *testing.T) {
 		{name: "Markdown toolbar", method: http.MethodGet, path: "/static/" + markdownToolbarFilename, wantStatus: http.StatusOK, wantType: "text/javascript; charset=utf-8", bodyContains: "gotthMarkdownToolbar"},
 		{name: "stylesheet HEAD", method: http.MethodHead, path: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 		{name: "previous stylesheet HEAD", method: http.MethodHead, path: "/static/" + previousAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
+		{name: "prior stylesheet HEAD", method: http.MethodHead, path: "/static/" + priorAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 		{name: "older stylesheet HEAD", method: http.MethodHead, path: "/static/" + olderAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 		{name: "legacy stylesheet HEAD", method: http.MethodHead, path: "/static/" + legacyAppStylesheetFilename, wantStatus: http.StatusOK, wantType: "text/css; charset=utf-8"},
 	}

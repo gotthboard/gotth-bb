@@ -132,7 +132,8 @@ func ChangeUserSuspension(
 		observedAt := pgtype.Timestamptz{Time: now, Valid: true}
 		actorRole, roleValid := roleFromStorage(actorUser.Role)
 		if !roleValid || actorRole != actor.Role || userSuspendedAt(actorUser, now) ||
-			actorUser.MutedUntil.Valid && actorUser.MutedUntil.Time.After(now) {
+			actorUser.MutedUntil.Valid && actorUser.MutedUntil.Time.After(now) ||
+			actorUser.AuthentikSyncState != "accepted" {
 			return ErrUserModerationDenied
 		}
 		if actor.Role == policy.RoleModerator && target.Role != "member" {
@@ -226,6 +227,7 @@ func validSuspensionReason(reason string) bool {
 // and auxiliary space is tight Theta(1).
 func validSuspensionTarget(target db.LockUserForSuspensionRow, expectedID int64) bool {
 	if target.ID != expectedID || target.ID <= 0 || !validUserRole(target.Role) || target.AdministrationRevision <= 0 ||
+		!validAuthentikSyncState(target.AuthentikSyncState) ||
 		!finiteTimestamp(target.CreatedAt) || !finiteTimestamp(target.UpdatedAt) ||
 		target.UpdatedAt.Time.Before(target.CreatedAt.Time) ||
 		target.MutedUntil.Valid && (!finiteTimestamp(target.MutedUntil) || !target.MutedUntil.Time.After(target.CreatedAt.Time)) {
@@ -237,6 +239,15 @@ func validSuspensionTarget(target db.LockUserForSuspensionRow, expectedID int64)
 	return finiteTimestamp(target.SuspendedAt) && !target.SuspendedAt.Time.Before(target.CreatedAt.Time) &&
 		target.SuspensionReason.Valid && validSuspensionReason(target.SuspensionReason.String) &&
 		(!target.SuspendedUntil.Valid || finiteTimestamp(target.SuspendedUntil) && target.SuspendedUntil.Time.After(target.SuspendedAt.Time))
+}
+
+func validAuthentikSyncState(state string) bool {
+	switch state {
+	case "unknown", "accepted", "suspended", "removal_required", "grant_required":
+		return true
+	default:
+		return false
+	}
 }
 
 // userSuspendedAt evaluates the schema's effective local suspension state at

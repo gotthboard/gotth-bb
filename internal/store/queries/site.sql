@@ -15,6 +15,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = sqlc.arg(actor_user_id)
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
@@ -49,6 +50,7 @@ SELECT forum_user.id
 FROM public.users AS forum_user
 WHERE forum_user.id = sqlc.arg(actor_user_id)
   AND forum_user.role = 'administrator'
+  AND forum_user.authentik_sync_state = 'accepted'
   AND (
       forum_user.suspended_at IS NULL
       OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz

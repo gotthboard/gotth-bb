@@ -5,6 +5,47 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-12 — Complete B1-09 registration and identity reconciliation
+
+Commit: current commit; hash assigned by Git after commit
+
+B1-09-03 completes Board-owned registration admission, signed verified intake,
+bounded pending-registration and invitation administration, pending-orphan
+adoption, approval/rejection decisions, invitation creation/revocation, and
+local suspension/reinstatement through the isolated Authentik gateway.
+Cross-system mutations persist restrictive local intent before remote work,
+verify the final three-group identity state, and append redacted request/result
+audits in short transactions without holding database locks across HTTP.
+
+Every protected authorization query now requires an `accepted` Authentik sync
+state. An explicit administrator action retries one `removal_required` or
+`grant_required` identity, while the startup/60-second expiry worker claims at
+most five finite suspensions under a transaction-scoped advisory lock. Failed
+work remains denied with a one-minute retry bound; concurrent manual changes
+are recorded as superseding the worker result instead of producing a false
+failure or overwriting newer state.
+
+The account page exposes only the closed sync-state value and renders the
+reconciliation form only when action is required. The form is covered by the
+existing no-JavaScript keyboard journey through Caddy at empty and `/bb` base
+paths. The generated stylesheet moved to its actual content-addressed name;
+all prior immutable stylesheet URLs remain served.
+
+Invitation forms carry a canonical absolute expiry reference so an identical
+browser or transport retry preserves the original request fingerprint. The
+bounded invitation list is loaded before creation, leaving one-time link
+delivery independent of any post-commit remote read.
+
+The standalone application environment now carries the exact empty SMTP
+sentinel required for a closed deployment to start. Preflight rejects missing
+values or premature SMTP enablement; shared standalone SMTP wiring remains in
+B1-09-04.
+
+The exact PostgreSQL 17, failure/retry, race, browser, generation, and review
+record is `docs/evidence/beta1-09-03-registration-reconciliation.txt`. This
+unit does not merge, tag, package, release, deploy, or modify the live
+Beta.1.5 service. B1-09-04 and B1-09-05 remain.
+
 ### 2026-09-09 — Add the isolated Authentik control gateway
 
 Commit: current commit; hash assigned by Git after commit

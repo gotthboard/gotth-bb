@@ -381,7 +381,8 @@ func persistedStaffMatches(row db.LockUserForSuspensionRow, actor policy.AccessC
 	active := !userSuspendedAt(row, now) &&
 		(!row.MutedUntil.Valid || !row.MutedUntil.Time.After(now))
 	staff := role == policy.RoleModerator || role == policy.RoleAdministrator
-	return validSuspensionTarget(row, actor.UserID) && valid && role == actor.Role && active && staff
+	return validSuspensionTarget(row, actor.UserID) && row.AuthentikSyncState == "accepted" &&
+		valid && role == actor.Role && active && staff
 }
 
 func validExtendedInput(input ExtendedActionInput) bool {

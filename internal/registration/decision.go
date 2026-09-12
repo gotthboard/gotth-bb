@@ -55,6 +55,7 @@ type DecisionResult struct {
 type Gateway interface {
 	AddUser(context.Context, string, string) error
 	RemoveUser(context.Context, string, string) error
+	User(context.Context, string) (authentikgateway.UserState, error)
 }
 
 type transactionBeginner interface {
@@ -213,7 +214,19 @@ func applyRemoteDecision(ctx context.Context, remote Gateway, decision Decision,
 	} else if err := remote.RemoveUser(ctx, "accepted", subject); err != nil {
 		return err
 	}
-	return remote.RemoveUser(ctx, "pending", subject)
+	if err := remote.RemoveUser(ctx, "pending", subject); err != nil {
+		return err
+	}
+	state, err := remote.User(ctx, subject)
+	if err != nil {
+		return err
+	}
+	if state.UUID != subject || !state.Active || state.Pending ||
+		decision == Approve && (!state.Accepted || state.Suspended) ||
+		decision == Reject && state.Accepted {
+		return authentikgateway.ErrRemoteConflict
+	}
+	return nil
 }
 
 func recordDecisionFailure(ctx context.Context, beginner transactionBeginner, actorID int64, input DecisionInput, names decisionNames, reference string, phaseRevision int64, failure string, at time.Time) error {

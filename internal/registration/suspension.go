@@ -16,6 +16,95 @@ import (
 
 const manualReconciliationBackoff = time.Minute
 
+type IdentityReconciliationResult struct {
+	UserID, Revision, AuditID int64
+	SyncState                 string
+}
+
+func ReconcileIdentity(ctx context.Context, beginner transactionBeginner, remote ControlGateway, clock func() time.Time, actor policy.AccessContext, targetUserID int64, reason string, requestID pgtype.UUID) (IdentityReconciliationResult, error) {
+	if ctx == nil || beginner == nil || remote == nil || clock == nil || !policy.CanAdminister(actor) {
+		return IdentityReconciliationResult{}, ErrDenied
+	}
+	if targetUserID <= 0 || targetUserID == actor.UserID || !validReason(reason) || !inputRequestID(requestID) {
+		return IdentityReconciliationResult{}, ErrInput
+	}
+	now, err := observedAt(clock)
+	if err != nil {
+		return IdentityReconciliationResult{}, err
+	}
+	var begun db.BeginManualIdentityReconciliationRow
+	err = inDecisionTx(ctx, beginner, func(txctx context.Context, queries *db.Queries) error {
+		if err := lockAdministrator(txctx, queries, actor.UserID, now); err != nil {
+			return err
+		}
+		var beginErr error
+		begun, beginErr = queries.BeginManualIdentityReconciliation(txctx, db.BeginManualIdentityReconciliationParams{
+			UserID: targetUserID, ObservedAt: finiteTime(now), ActorUserID: pgtype.Int8{Int64: actor.UserID, Valid: true},
+			Reason: pgtype.Text{String: reason, Valid: true}, RequestID: requestID,
+		})
+		if errors.Is(beginErr, pgx.ErrNoRows) {
+			return ErrConflict
+		}
+		if beginErr != nil || begun.AdministrationRevision <= 1 || begun.AuditID <= 0 || (begun.AuthentikSyncState != "removal_required" && begun.AuthentikSyncState != "grant_required") {
+			return fmt.Errorf("%w: begin manual identity reconciliation", ErrUnavailable)
+		}
+		return nil
+	})
+	if err != nil {
+		return IdentityReconciliationResult{}, err
+	}
+	if _, parseErr := parseCanonicalUUID(begun.Subject); parseErr != nil {
+		return IdentityReconciliationResult{}, fmt.Errorf("%w: malformed identity subject", ErrUnavailable)
+	}
+	var remoteErr error
+	if begun.AuthentikSyncState == "removal_required" {
+		remoteErr = applyIdentityRemoval(ctx, remote, begun.Subject)
+	} else {
+		remoteErr = applyIdentityGrant(ctx, remote, begun.Subject)
+	}
+	completedAt, clockErr := observedAt(clock)
+	if clockErr != nil {
+		return IdentityReconciliationResult{}, clockErr
+	}
+	if remoteErr != nil {
+		failure := remoteFailureClass(remoteErr)
+		if recordErr := recordManualIdentityFailure(ctx, beginner, actor.UserID, targetUserID, begun.AuthentikSyncState, begun.AdministrationRevision, reason, requestID, completedAt, failure); recordErr != nil {
+			return IdentityReconciliationResult{}, recordErr
+		}
+		return IdentityReconciliationResult{}, fmt.Errorf("%w: %s", ErrRemote, failure)
+	}
+	result := IdentityReconciliationResult{UserID: targetUserID}
+	err = inDecisionTx(ctx, beginner, func(txctx context.Context, queries *db.Queries) error {
+		if err := lockAdministrator(txctx, queries, actor.UserID, completedAt); err != nil {
+			return err
+		}
+		if begun.AuthentikSyncState == "removal_required" {
+			row, completeErr := queries.CompleteIdentityRemoval(txctx, db.CompleteIdentityRemovalParams{ObservedAt: finiteTime(completedAt), UserID: targetUserID, ExpectedRevision: begun.AdministrationRevision, ActorUserID: pgtype.Int8{Int64: actor.UserID, Valid: true}, Reason: pgtype.Text{String: reason, Valid: true}, RequestID: requestID})
+			if errors.Is(completeErr, pgx.ErrNoRows) {
+				return ErrConflict
+			}
+			if completeErr != nil || row.AdministrationRevision != begun.AdministrationRevision+1 || row.AuditID <= 0 {
+				return fmt.Errorf("%w: complete manual identity removal", ErrUnavailable)
+			}
+			result.Revision, result.AuditID, result.SyncState = row.AdministrationRevision, row.AuditID, "suspended"
+			return nil
+		}
+		row, completeErr := queries.CompleteIdentityReinstatement(txctx, db.CompleteIdentityReinstatementParams{ActorUserID: actor.UserID, ActorRole: "administrator", ObservedAt: finiteTime(completedAt), UserID: targetUserID, ExpectedRevision: begun.AdministrationRevision, Reason: pgtype.Text{String: reason, Valid: true}, RequestID: requestID})
+		if errors.Is(completeErr, pgx.ErrNoRows) {
+			return ErrConflict
+		}
+		if completeErr != nil || row.UserID != targetUserID || row.AdministrationRevision != begun.AdministrationRevision+1 || row.ReconciliationAuditID <= 0 || row.ReinstatementAuditID <= 0 {
+			return fmt.Errorf("%w: complete manual identity grant", ErrUnavailable)
+		}
+		result.Revision, result.AuditID, result.SyncState = row.AdministrationRevision, row.ReconciliationAuditID, "accepted"
+		return nil
+	})
+	if err != nil {
+		return IdentityReconciliationResult{}, fmt.Errorf("complete manual identity reconciliation: %w", err)
+	}
+	return result, nil
+}
+
 // ChangeUserSuspension preserves local denial before any remote operation.
 // Reinstatement does the inverse: it grants and verifies Authentik first and
 // clears the local suspension only in the final audited transaction.
@@ -168,7 +257,7 @@ func applyIdentityRemoval(ctx context.Context, remote ControlGateway, subject st
 	if err != nil {
 		return err
 	}
-	if !state.Active || state.Accepted || state.Pending || !state.Suspended {
+	if state.UUID != subject || !state.Active || state.Accepted || state.Pending || !state.Suspended {
 		return authentikgateway.ErrRemoteConflict
 	}
 	return nil
@@ -188,7 +277,7 @@ func applyIdentityGrant(ctx context.Context, remote ControlGateway, subject stri
 	if err != nil {
 		return err
 	}
-	if !state.Active || !state.Accepted || state.Pending || state.Suspended {
+	if state.UUID != subject || !state.Active || !state.Accepted || state.Pending || state.Suspended {
 		return authentikgateway.ErrRemoteConflict
 	}
 	return nil

@@ -81,7 +81,7 @@ func CreateReport(
 		if err != nil {
 			return fmt.Errorf("lock report author: %w", err)
 		}
-		if !validSuspensionTarget(persisted, actor.UserID) {
+		if !validSuspensionTarget(persisted, actor.UserID) || persisted.AuthentikSyncState != "accepted" {
 			return fmt.Errorf("report author row is invalid")
 		}
 		role, valid := roleFromStorage(persisted.Role)
@@ -223,7 +223,7 @@ func ProcessReport(
 		role, valid := roleFromStorage(persisted.Role)
 		persistedStaffRole := role == policy.RoleModerator || role == policy.RoleAdministrator
 		persistedMuted := persisted.MutedUntil.Valid && persisted.MutedUntil.Time.After(now)
-		if !validSuspensionTarget(persisted, actor.UserID) || !valid || role != actor.Role ||
+		if !validSuspensionTarget(persisted, actor.UserID) || persisted.AuthentikSyncState != "accepted" || !valid || role != actor.Role ||
 			userSuspendedAt(persisted, now) || persistedMuted || !persistedStaffRole {
 			return ErrReportDenied
 		}

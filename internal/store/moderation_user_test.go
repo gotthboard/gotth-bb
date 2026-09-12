@@ -42,19 +42,19 @@ func TestGetModerationUserStatusReturnsExactAuthorizedState(t *testing.T) {
 			name: "moderator member", row: base,
 			actor:      policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator},
 			observedAt: moderationStatusTime(12).Add(999 * time.Nanosecond), wantRole: policy.RoleMember,
-			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 11, IsModerator: true},
+			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 11, IsModerator: true, ObservedAt: moderationStatusTimestamp(moderationStatusTime(12))},
 		},
 		{
 			name: "administrator suspended member", row: suspended,
 			actor:      policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleAdministrator},
 			observedAt: moderationStatusTime(12), wantSuspended: true, wantRole: policy.RoleMember,
-			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 12, IsAdministrator: true},
+			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 12, IsAdministrator: true, ObservedAt: moderationStatusTimestamp(moderationStatusTime(12))},
 		},
 		{
 			name: "expired suspension", row: expired,
 			actor:      policy.AccessContext{Authenticated: true, UserID: 12, Role: policy.RoleAdministrator},
 			observedAt: moderationStatusTime(12), wantRole: policy.RoleMember,
-			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 12, IsAdministrator: true},
+			wantParams: db.GetModerationUserStatusParams{TargetUserID: 41, ActorUserID: 12, IsAdministrator: true, ObservedAt: moderationStatusTimestamp(moderationStatusTime(12))},
 		},
 	} {
 		test := test

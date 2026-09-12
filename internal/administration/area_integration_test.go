@@ -74,7 +74,7 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO `+areaAdmini
 		t.Fatalf("grant restricted runtime privileges: %v", err)
 	}
 	var administratorID, groupID int64
-	if err := owner.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Administrator', 'administrator') RETURNING id`).Scan(&administratorID); err != nil {
+	if err := owner.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Administrator', 'administrator', 'accepted') RETURNING id`).Scan(&administratorID); err != nil {
 		t.Fatalf("insert administrator: %v", err)
 	}
 	if err := owner.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Members', $1) RETURNING id`, administratorID).Scan(&groupID); err != nil {

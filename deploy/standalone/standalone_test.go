@@ -207,6 +207,9 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		`contains NUL, CR, or LF framing`,
 		`app must not receive an Authentik control token path`,
 		`invitation fingerprint key must contain exactly 32 bytes`,
+		`app $name is required, including the empty disabled sentinel`,
+		`standalone SMTP enablement remains outside B1-09-03`,
+		`app SMTP password must be absent while SMTP is disabled`,
 		`65533:65531:750 directory`,
 		`app OIDC issuer differs from dedicated Authentik`,
 		`docker compose --env-file "$deployment_env"`,
@@ -215,6 +218,19 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		if !strings.Contains(preflight, required) {
 			t.Errorf("preflight.sh lacks %q", required)
 		}
+	}
+}
+
+func TestStandaloneAppEnvironmentCarriesDisabledSMTPSentinel(t *testing.T) {
+	t.Parallel()
+	applicationEnvironment := readContractFile(t, "app.env.example")
+	for _, name := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_FROM", "SMTP_TLS_MODE", "SMTP_TIMEOUT"} {
+		if !strings.Contains(applicationEnvironment, "\n"+name+"=\n") {
+			t.Errorf("app.env.example lacks the empty %s sentinel", name)
+		}
+	}
+	if strings.Contains(applicationEnvironment, "\nSMTP_PASSWORD_FILE=") {
+		t.Fatal("disabled app environment invents an SMTP password path")
 	}
 }
 

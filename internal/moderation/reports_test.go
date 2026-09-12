@@ -43,6 +43,26 @@ func TestProcessReportClaimsStrictly(t *testing.T) {
 	}
 }
 
+func TestReportAndExtendedModerationDenyUnacceptedActor(t *testing.T) {
+	t.Parallel()
+
+	actorRow := activeSuspensionTarget(11, "moderator", testCreatedAt(), testCreatedAt())
+	actorRow.AuthentikSyncState = "grant_required"
+	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}
+
+	reportTx := &reportServiceTestTx{mode: "claim", actor: actorRow, reportID: 71}
+	result, err := ProcessReport(context.Background(), reportServiceTestBeginner{reportTx}, testModerationNow, actor, 71, ClaimReport, "", pgtype.UUID{Bytes: [16]byte{1}, Valid: true})
+	if result != (ReportActionResult{}) || !errors.Is(err, ErrReportDenied) || reportTx.committed || !reportTx.rolledBack {
+		t.Fatalf("ProcessReport(unaccepted actor) = (%+v, %v), tx %+v", result, err, reportTx)
+	}
+
+	extendedTx := &reportServiceTestTx{mode: "pin", actor: actorRow, targetID: 41}
+	extended, err := ApplyExtendedAction(context.Background(), reportServiceTestBeginner{extendedTx}, testModerationNow, actor, ExtendedActionInput{Action: PinTopic, TargetID: 41, Reason: "Important"}, pgtype.UUID{Bytes: [16]byte{2}, Valid: true})
+	if extended != (ExtendedActionResult{}) || !errors.Is(err, ErrUserModerationDenied) || extendedTx.committed || !extendedTx.rolledBack {
+		t.Fatalf("ApplyExtendedAction(unaccepted actor) = (%+v, %v), tx %+v", extended, err, extendedTx)
+	}
+}
+
 func TestReportBoundariesRejectMalformedInputBeforeTransaction(t *testing.T) {
 	t.Parallel()
 	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleMember}
@@ -134,7 +154,7 @@ type reportServiceTestTx struct {
 
 func (tx *reportServiceTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	if strings.Contains(query, "LockUserForSuspension") {
-		return reportTestRow{values: []any{tx.actor.ID, tx.actor.Role, tx.actor.SuspendedAt, tx.actor.SuspendedUntil, tx.actor.SuspensionReason, tx.actor.MutedUntil, tx.actor.CreatedAt, tx.actor.UpdatedAt, tx.actor.AdministrationRevision}}
+		return reportTestRow{values: []any{tx.actor.ID, tx.actor.Role, tx.actor.SuspendedAt, tx.actor.SuspendedUntil, tx.actor.SuspensionReason, tx.actor.MutedUntil, tx.actor.CreatedAt, tx.actor.UpdatedAt, tx.actor.AdministrationRevision, tx.actor.AuthentikSyncState}}
 	}
 	if strings.Contains(query, "CountActiveReportsByReporter") {
 		return reportTestRow{values: []any{tx.activeReports}}

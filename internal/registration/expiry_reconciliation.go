@@ -2,11 +2,13 @@ package registration
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/store/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -16,7 +18,7 @@ const (
 )
 
 type ExpiryReconciliationResult struct {
-	Claimed, Completed, Failed int
+	Claimed, Completed, Failed, Superseded int
 }
 
 type claimedExpiryIdentity struct {
@@ -72,11 +74,16 @@ func ReconcileExpiredSuspensions(ctx context.Context, beginner transactionBeginn
 			return result, clockErr
 		}
 		if remoteErr == nil {
+			superseded := false
 			err = inDecisionTx(ctx, beginner, func(txctx context.Context, queries *db.Queries) error {
 				row, completeErr := queries.CompleteExpiredIdentityReconciliation(txctx, db.CompleteExpiredIdentityReconciliationParams{
 					ObservedAt: finiteTime(completedAt), UserID: claim.UserID, ExpectedRevision: claim.AdministrationRevision,
 					Reason: pgtype.Text{String: "Finite suspension expired", Valid: true}, RequestID: claim.requestID,
 				})
+				if errors.Is(completeErr, pgx.ErrNoRows) {
+					superseded = true
+					return recordExpiredIdentitySuperseded(txctx, queries, claim, completedAt)
+				}
 				if completeErr != nil || row.AdministrationRevision != claim.AdministrationRevision+1 || row.AuditID <= 0 {
 					return fmt.Errorf("%w: complete expired identity", ErrUnavailable)
 				}
@@ -85,16 +92,25 @@ func ReconcileExpiredSuspensions(ctx context.Context, beginner transactionBeginn
 			if err != nil {
 				return result, err
 			}
-			result.Completed++
+			if superseded {
+				result.Superseded++
+			} else {
+				result.Completed++
+			}
 			continue
 		}
 		failure := remoteFailureClass(remoteErr)
+		superseded := false
 		err = inDecisionTx(ctx, beginner, func(txctx context.Context, queries *db.Queries) error {
 			row, recordErr := queries.RecordExpiredIdentityReconciliationFailure(txctx, db.RecordExpiredIdentityReconciliationFailureParams{
 				ObservedAt: finiteTime(completedAt), NextAttemptAt: finiteTime(completedAt.Add(expiryRetryBackoff)),
 				FailureClass: pgtype.Text{String: failure, Valid: true}, UserID: claim.UserID, ExpectedRevision: claim.AdministrationRevision,
 				Reason: pgtype.Text{String: "Finite suspension expired", Valid: true}, RequestID: claim.requestID,
 			})
+			if errors.Is(recordErr, pgx.ErrNoRows) {
+				superseded = true
+				return recordExpiredIdentitySuperseded(txctx, queries, claim, completedAt)
+			}
 			if recordErr != nil || row.AdministrationRevision != claim.AdministrationRevision+1 || row.AuditID <= 0 {
 				return fmt.Errorf("%w: record expired identity failure", ErrUnavailable)
 			}
@@ -103,9 +119,33 @@ func ReconcileExpiredSuspensions(ctx context.Context, beginner transactionBeginn
 		if err != nil {
 			return result, err
 		}
-		result.Failed++
+		if superseded {
+			result.Superseded++
+		} else {
+			result.Failed++
+		}
 	}
 	return result, nil
+}
+
+func recordExpiredIdentitySuperseded(ctx context.Context, queries *db.Queries, claim claimedExpiryIdentity, at time.Time) error {
+	row, err := queries.RecordExpiredIdentityReconciliationSuperseded(ctx, db.RecordExpiredIdentityReconciliationSupersededParams{
+		ObservedAt: finiteTime(at), UserID: claim.UserID, ExpectedRevision: claim.AdministrationRevision,
+		Reason: pgtype.Text{String: "Finite suspension expired", Valid: true}, RequestID: claim.requestID,
+	})
+	if err != nil || row.AdministrationRevision <= claim.AdministrationRevision || row.AuditID <= 0 || !validIdentitySyncState(row.AuthentikSyncState) {
+		return fmt.Errorf("%w: record superseded expired identity", ErrUnavailable)
+	}
+	return nil
+}
+
+func validIdentitySyncState(state string) bool {
+	switch state {
+	case "unknown", "accepted", "removal_required", "grant_required", "suspended":
+		return true
+	default:
+		return false
+	}
 }
 
 func randomRequestID(source io.Reader) (pgtype.UUID, error) {

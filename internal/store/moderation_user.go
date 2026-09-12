@@ -77,6 +77,7 @@ func GetModerationUserStatus(
 		ActorUserID:     actor.UserID,
 		IsAdministrator: actor.Role == policy.RoleAdministrator,
 		IsModerator:     actor.Role == policy.RoleModerator,
+		ObservedAt:      pgtype.Timestamptz{Time: observedAt, Valid: true},
 	})
 	if err != nil {
 		return ModerationUserStatus{}, fmt.Errorf("query moderation user status: %w", err)

@@ -326,8 +326,14 @@ WHERE get_byte(state_hash, 0) IN (204, 221, 238)`).Scan(&consumedAttempts, &unco
 	if governanceRows, err := queries.CountGovernanceRows(ctx); err != nil || governanceRows != 1 {
 		t.Fatalf("CountGovernanceRows() = (%d, %v), want (1, nil)", governanceRows, err)
 	}
+	if activeAdministrators, err := queries.CountActiveAdministrators(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true}); err != nil || activeAdministrators != 0 {
+		t.Fatalf("CountActiveAdministrators(unconfirmed) = (%d, %v), want (0, nil)", activeAdministrators, err)
+	}
+	if _, err := conn.Exec(ctx, `UPDATE public.users SET authentik_sync_state = 'accepted' WHERE id = $1`, administratorID); err != nil {
+		t.Fatalf("confirm administrator identity: %v", err)
+	}
 	if activeAdministrators, err := queries.CountActiveAdministrators(ctx, pgtype.Timestamptz{Time: time.Now(), Valid: true}); err != nil || activeAdministrators != 1 {
-		t.Fatalf("CountActiveAdministrators() = (%d, %v), want (1, nil)", activeAdministrators, err)
+		t.Fatalf("CountActiveAdministrators(confirmed) = (%d, %v), want (1, nil)", activeAdministrators, err)
 	}
 	identityUser, err := queries.GetUserByExternalIdentity(ctx, db.GetUserByExternalIdentityParams{
 		Issuer:  "https://auth.example.test/application/o/forum/",

@@ -474,6 +474,7 @@ WHERE report.id = $1
       WHERE actor.id = $2
         AND actor.role = $3
         AND actor.role IN ('moderator', 'administrator')
+        AND actor.authentik_sync_state = 'accepted'
         AND (actor.suspended_at IS NULL OR actor.suspended_at > $4::timestamptz OR actor.suspended_until <= $4::timestamptz)
         AND (actor.muted_until IS NULL OR actor.muted_until <= $4::timestamptz)
   )
@@ -566,6 +567,7 @@ WHERE report.status IN ('open', 'in_review')
       WHERE actor.id = $1
         AND actor.role = $2
         AND actor.role IN ('moderator', 'administrator')
+        AND actor.authentik_sync_state = 'accepted'
         AND (actor.suspended_at IS NULL OR actor.suspended_at > $3::timestamptz OR actor.suspended_until <= $3::timestamptz)
         AND (actor.muted_until IS NULL OR actor.muted_until <= $3::timestamptz)
   )
@@ -648,6 +650,7 @@ JOIN public.users AS actor
   ON actor.id = $1
  AND actor.role = $2
  AND actor.role IN ('moderator', 'administrator')
+ AND actor.authentik_sync_state = 'accepted'
  AND (actor.suspended_at IS NULL OR actor.suspended_at > $3::timestamptz OR actor.suspended_until <= $3::timestamptz)
  AND (actor.muted_until IS NULL OR actor.muted_until <= $3::timestamptz)
 LEFT JOIN public.report_notes AS note ON note.report_id = report.id

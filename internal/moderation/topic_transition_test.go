@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gotthboard/gotth-bb/internal/policy"
+	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -61,7 +62,7 @@ func TestChangeTopicVisibilityCommitsTypedTransitionAndAudit(t *testing.T) {
 			t.Parallel()
 			tx := &topicLockTestTx{topicID: 41, current: test.current, resulting: test.resulting, auditID: 81}
 			result, err := ChangeTopicVisibility(context.Background(), topicLockTestBeginner{tx: tx}, func() time.Time { return at },
-				policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleAdministrator}, 41, test.hide, "visibility reason", requestID)
+				policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, test.hide, "visibility reason", requestID)
 			if err != nil || result != (TopicTransitionResult{TopicID: 41, State: policy.TopicState(test.resulting), AuditID: 81}) {
 				t.Fatalf("ChangeTopicVisibility() = (%+v, %v)", result, err)
 			}
@@ -113,6 +114,14 @@ func TestChangeTopicLockDeniesAuthorityAndWrongState(t *testing.T) {
 		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, true, "reason", requestID)
 	if result != (TopicTransitionResult{}) || !errors.Is(err, ErrTopicModerationConflict) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
 		t.Fatalf("wrong state = (%+v, %v, tx %+v)", result, err, tx)
+	}
+	unaccepted := activeSuspensionTarget(11, "moderator", testCreatedAt(), testCreatedAt())
+	unaccepted.AuthentikSyncState = "removal_required"
+	tx = &topicLockTestTx{actor: unaccepted, topicID: 41, current: "open", resulting: "locked", auditID: 71}
+	result, err = ChangeTopicLock(context.Background(), topicLockTestBeginner{tx: tx}, time.Now,
+		policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}, 41, true, "reason", requestID)
+	if result != (TopicTransitionResult{}) || !errors.Is(err, ErrTopicModerationDenied) || tx.changeCalls != 0 || tx.committed || !tx.rolledBack {
+		t.Fatalf("unaccepted actor = (%+v, %v, tx %+v)", result, err, tx)
 	}
 }
 
@@ -217,7 +226,7 @@ func TestChangeTopicLockFailsClosedAtTransactionStages(t *testing.T) {
 
 	actor := policy.AccessContext{Authenticated: true, UserID: 11, Role: policy.RoleModerator}
 	requestID := pgtype.UUID{Bytes: [16]byte{1}, Valid: true}
-	for _, failure := range []string{"begin", "lock", "invalid-lock", "change", "invalid-change", "commit"} {
+	for _, failure := range []string{"begin", "actor-lock", "lock", "invalid-lock", "change", "invalid-change", "commit"} {
 		failure := failure
 		t.Run(failure, func(t *testing.T) {
 			t.Parallel()
@@ -249,6 +258,7 @@ func (beginner topicLockTestBeginner) Begin(context.Context) (pgx.Tx, error) {
 type topicLockTestTx struct {
 	pgx.Tx
 	topicID, auditID, actorID int64
+	actor                     db.LockUserForSuspensionRow
 	current, resulting        string
 	previous, resultingArg    string
 	action, reason            string
@@ -261,6 +271,15 @@ type topicLockTestTx struct {
 
 func (tx *topicLockTestTx) QueryRow(_ context.Context, query string, arguments ...any) pgx.Row {
 	switch {
+	case strings.Contains(query, "LockUserForSuspension"):
+		if tx.failure == "actor-lock" {
+			return moderationTestRow{err: errModerationTest}
+		}
+		actor := tx.actor
+		if actor.ID == 0 {
+			actor = activeSuspensionTarget(11, "moderator", testCreatedAt(), testCreatedAt())
+		}
+		return moderationTestRow{values: []any{actor.ID, actor.Role, actor.SuspendedAt, actor.SuspendedUntil, actor.SuspensionReason, actor.MutedUntil, actor.CreatedAt, actor.UpdatedAt, actor.AdministrationRevision, actor.AuthentikSyncState}}
 	case strings.Contains(query, "LockTopicForModeration"):
 		if tx.failure == "lock" {
 			return moderationTestRow{err: errModerationTest}
@@ -316,6 +335,8 @@ func (row moderationTestRow) Scan(destinations ...any) error {
 			*destination = value.(string)
 		case *pgtype.Timestamptz:
 			*destination = value.(pgtype.Timestamptz)
+		case *pgtype.Text:
+			*destination = value.(pgtype.Text)
 		default:
 			panic("unexpected moderation scan destination")
 		}

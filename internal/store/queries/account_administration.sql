@@ -4,6 +4,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = sqlc.arg(actor_user_id)
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
@@ -45,6 +46,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = sqlc.arg(actor_user_id)
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
@@ -55,7 +57,8 @@ WITH actor AS MATERIALIZED (
     SELECT forum_user.id, forum_user.display_name, forum_user.role,
            forum_user.suspended_at, forum_user.suspended_until,
            forum_user.created_at, forum_user.updated_at,
-           forum_user.administration_revision
+           forum_user.administration_revision,
+           forum_user.authentik_sync_state
     FROM actor
     JOIN public.users AS forum_user ON forum_user.id = sqlc.arg(target_user_id)
 )
@@ -66,7 +69,8 @@ SELECT (target.id IS NOT NULL)::boolean AS account_present,
        COALESCE(target.suspended_at <= sqlc.arg(observed_at)::timestamptz
                 AND (target.suspended_until IS NULL OR target.suspended_until > sqlc.arg(observed_at)::timestamptz), false)::boolean AS suspended,
        target.created_at, target.updated_at,
-       COALESCE(target.administration_revision, 0)::bigint AS administration_revision
+       COALESCE(target.administration_revision, 0)::bigint AS administration_revision,
+       COALESCE(target.authentik_sync_state, '')::text AS authentik_sync_state
 FROM actor
 LEFT JOIN target ON true;
 
@@ -76,6 +80,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = sqlc.arg(actor_user_id)
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
@@ -120,6 +125,7 @@ WITH actor AS MATERIALIZED (
     FROM public.users AS forum_user
     WHERE forum_user.id = sqlc.arg(actor_user_id)
       AND forum_user.role = 'administrator'
+      AND forum_user.authentik_sync_state = 'accepted'
       AND (
           forum_user.suspended_at IS NULL
           OR forum_user.suspended_at > sqlc.arg(observed_at)::timestamptz
@@ -152,7 +158,7 @@ ORDER BY candidate.id NULLS LAST;
 SELECT forum_user.id, forum_user.display_name, forum_user.role,
        forum_user.suspended_at, forum_user.suspended_until,
        forum_user.muted_until, forum_user.created_at, forum_user.updated_at,
-       forum_user.administration_revision
+       forum_user.administration_revision, forum_user.authentik_sync_state
 FROM public.users AS forum_user
 WHERE forum_user.id = sqlc.arg(user_id)
 FOR UPDATE OF forum_user;
