@@ -56,6 +56,11 @@ async function waitFor(send, sessionId, expression) {
   throw new Error(`browser condition timed out: ${expression}${detail}; state=${state}`);
 }
 
+async function waitForNavigationReady(send, sessionId) {
+  await waitFor(send, sessionId, `document.readyState === "complete" &&
+    !document.querySelector(".htmx-request, .htmx-swapping, .htmx-settling")`);
+}
+
 async function tabTo(send, sessionId, expression, label) {
   for (let attempt = 0; attempt < 80; attempt++) {
     await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 }, sessionId);
@@ -284,8 +289,10 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await navigate(send, sessionId, `${target}/groups`, "document.body.textContent.includes('Groups') && typeof htmx !== 'undefined'");
   await submitForm(send, sessionId, `form[action$="/admin/groups"]`, { name: "Browser Operators", reason: "Create browser group" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Browser Operators'");
+  await waitForNavigationReady(send, sessionId);
   await submitForm(send, sessionId, `form[action$="/admin/groups/4"]`, { name: "Renamed Browser Operators", reason: "Rename browser group" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/groups/4\"] input[name=\"name\"]')?.value === 'Renamed Browser Operators'");
+  await waitForNavigationReady(send, sessionId);
   assert.equal(await evaluate(send, sessionId, "document.querySelectorAll('main li').length === 50 && document.body.textContent.includes('Next groups')"), true);
   assert.equal(await evaluate(send, sessionId, `(() => { const link = [...document.querySelectorAll("main a")].find((node) => node.textContent.trim() === "Next groups"); link.click(); return true; })()`), true);
   await waitFor(send, sessionId, "location.search === '?after=53' && document.querySelector('form[action$=\"/admin/groups/54\"] input[name=\"name\"]')?.value === 'Continuation Group'");
