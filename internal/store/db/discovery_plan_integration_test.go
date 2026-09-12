@@ -95,13 +95,13 @@ func TestDiscoveryPlansOnPostgreSQL17(t *testing.T) {
 	t.Logf("postgres=%s database=%s admission=%t topics=%d posts=%d posts_per_topic=%d", serverVersion, population.database, population.admission, population.topics, population.posts, population.postsPerTopic)
 
 	var ownerID, authorID, readerID, groupID, publicAreaID, authenticatedAreaID, groupAreaID int64
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role) VALUES ('Owner', 'administrator') RETURNING id`).Scan(&ownerID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, role, authentik_sync_state) VALUES ('Owner', 'administrator', 'accepted') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Author') RETURNING id`).Scan(&authorID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Author', 'accepted') RETURNING id`).Scan(&authorID); err != nil {
 		t.Fatal(err)
 	}
-	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Reader') RETURNING id`).Scan(&readerID); err != nil {
+	if err := connection.QueryRow(ctx, `INSERT INTO public.users (display_name, authentik_sync_state) VALUES ('Reader', 'accepted') RETURNING id`).Scan(&readerID); err != nil {
 		t.Fatal(err)
 	}
 	if err := connection.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by) VALUES ('Plan Group', $1) RETURNING id`, ownerID).Scan(&groupID); err != nil {
@@ -576,9 +576,10 @@ func populateAdministrationCheckpoint(t *testing.T, ctx context.Context, connect
 	t.Helper()
 	started := time.Now()
 	if _, err := connection.Exec(ctx, `INSERT INTO public.users
-    (display_name, role, suspended_at, suspended_until, suspension_reason, created_at, updated_at, last_login_at)
+    (display_name, role, authentik_sync_state, suspended_at, suspended_until, suspension_reason, created_at, updated_at, last_login_at)
 SELECT 'Admission Account ' || value,
        CASE value % 100 WHEN 0 THEN 'moderator' WHEN 1 THEN 'administrator' ELSE 'member' END,
+       CASE WHEN value % 127 = 0 THEN 'suspended' ELSE 'accepted' END,
        CASE WHEN value % 127 = 0 THEN '2026-01-01T00:00:00Z'::timestamptz END,
        CASE WHEN value % 127 = 0 THEN '2027-01-01T00:00:00Z'::timestamptz END,
        CASE WHEN value % 127 = 0 THEN 'admission suspension' END,
