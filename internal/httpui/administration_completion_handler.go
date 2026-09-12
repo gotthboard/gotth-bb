@@ -16,6 +16,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/config"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/registration"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -44,6 +46,9 @@ type AdministrationHTTPServices struct {
 	ChangeAreaGroup   func(context.Context, auth.AccessContext, int64, int64, bool, string, int64, pgtype.UUID) (administration.AreaCompletionResult, error)
 	Registrations     *RegistrationAdministrationHTTPServices
 	Invitations       *InvitationAdministrationHTTPServices
+	Control           *ControlAdministrationHTTPServices
+	Sessions          *SessionAdministrationHTTPServices
+	Email             *EmailAdministrationHTTPServices
 }
 
 type RegistrationAdministrationHTTPServices struct {
@@ -62,6 +67,26 @@ type InvitationAdministrationHTTPServices struct {
 	SMTPConfigured bool
 }
 
+type ControlAdministrationHTTPServices struct {
+	Load   func(context.Context, auth.AccessContext) (control.EditableSettings, error)
+	Update func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error)
+}
+
+type SessionAdministrationHTTPServices struct {
+	List       func(context.Context, auth.AccessContext, int64) (administration.SessionPage, error)
+	RevokeOne  func(context.Context, auth.AccessContext, int64, int64, string, pgtype.UUID) (administration.SessionMutationResult, error)
+	RevokeAll  func(context.Context, auth.AccessContext, int64, int64, string, pgtype.UUID) (administration.SessionMutationResult, error)
+	Clock      func() time.Time
+	CookieName string
+	Secure     bool
+}
+
+type EmailAdministrationHTTPServices struct {
+	Load       func(context.Context, auth.AccessContext) (administration.EmailTestState, error)
+	Test       func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error)
+	Configured bool
+}
+
 type administrationDashboardView struct {
 	ObservedAt                                                              string
 	Users, Members, Moderators, Administrators, ActiveUsers, SuspendedUsers int64
@@ -78,8 +103,30 @@ type administrationMembershipView struct {
 	Name, Action, Label, ActionURL string
 }
 type administrationAccountView struct {
-	DisplayName, Role, Status, Revision, RoleAction, ReconcileAction, AuthentikSyncState, CSRFToken, NextGroupsURL string
-	Groups                                                                                                         []administrationMembershipView
+	DisplayName, Role, Status, Revision, RoleAction, ReconcileAction, AuthentikSyncState, CSRFToken, NextGroupsURL, SessionsURL string
+	Groups                                                                                                                      []administrationMembershipView
+}
+
+type administrationControlView struct {
+	ActionURL, CSRFToken, Registration, MaintenanceMessage, PublishLimit,
+	NewAccountLimit, PublishWindow, NewAccountPeriod, SessionIdle,
+	AuthRevalidate, Revision string
+	MaintenanceEnabled bool
+}
+
+type administrationSessionView struct {
+	IssuedAt, LastSeenAt, ValidatedAt, ExpiresAt, RevokeURL string
+}
+
+type administrationSessionsView struct {
+	DisplayName, RevokeAllURL, Revision, CSRFToken string
+	Sessions                                       []administrationSessionView
+	More                                           bool
+}
+
+type administrationEmailView struct {
+	Configured                                                            bool
+	Status, RequestedAt, CompletedAt, NextAllowedAt, ActionURL, CSRFToken string
 }
 type administrationGroupItemView struct{ Name, Revision, ActionURL string }
 type administrationGroupsView struct {
@@ -127,7 +174,14 @@ var administrationInvitationToken = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
 	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil && services.Registrations.Adopt != nil
 	invitationsValid := services.Invitations == nil || services.Invitations.List != nil && services.Invitations.Create != nil && services.Invitations.Revoke != nil && services.Invitations.Clock != nil && services.Invitations.Issuer.Scheme == "https" && services.Invitations.Issuer.Host != "" && registrationFlowSlug.MatchString(services.Invitations.FlowSlug)
-	return registrationsValid && invitationsValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
+	controlValid := services.Control == nil || services.Control.Load != nil && services.Control.Update != nil
+	sessionsValid := services.Sessions == nil || services.Sessions.List != nil && services.Sessions.RevokeOne != nil && services.Sessions.RevokeAll != nil && services.Sessions.Clock != nil
+	if sessionsValid && services.Sessions != nil {
+		name, err := config.ParseSessionCookieName(services.Sessions.CookieName)
+		sessionsValid = err == nil && name == services.Sessions.CookieName
+	}
+	emailValid := services.Email == nil || services.Email.Load != nil && services.Email.Test != nil
+	return registrationsValid && invitationsValid && controlValid && sessionsValid && emailValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
 		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil && services.ReconcileIdentity != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
 }
@@ -161,6 +215,9 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		{key: "area", title: "Area"},
 		{key: "registrations", title: "Pending registrations", segments: []string{"admin", "registrations"}},
 		{key: "invitations", title: "Invitations", segments: []string{"admin", "invitations"}},
+		{key: "control", title: "Control settings", segments: []string{"admin", "control"}},
+		{key: "sessions", title: "Sessions"},
+		{key: "email", title: "Email", segments: []string{"admin", "email"}},
 	} {
 		view, viewErr := newPageView(builder, definition.title, definition.segments...)
 		if viewErr != nil {
@@ -190,6 +247,42 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			view.InvitationsURL = invitationsURL
 			views[key] = view
 		}
+	}
+	if services.Control != nil {
+		controlURL, buildErr := builder.Path("admin", "control")
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		for key, view := range views {
+			view.ControlURL = controlURL
+			views[key] = view
+		}
+	}
+	if services.Email != nil {
+		emailURL, buildErr := builder.Path("admin", "email")
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		for key, view := range views {
+			view.EmailURL = emailURL
+			views[key] = view
+		}
+	}
+	var expireSession func(http.ResponseWriter)
+	if services.Sessions != nil {
+		cookiePath, buildErr := builder.CookiePath()
+		if buildErr != nil {
+			return nil, buildErr
+		}
+		expired := http.Cookie{
+			Name: services.Sessions.CookieName, Path: cookiePath,
+			Expires: time.Unix(1, 0).UTC(), MaxAge: -1, HttpOnly: true,
+			Secure: services.Sessions.Secure, SameSite: http.SameSiteLaxMode,
+		}
+		if buildErr := expired.Valid(); buildErr != nil {
+			return nil, fmt.Errorf("administration expired session cookie is invalid: %w", buildErr)
+		}
+		expireSession = func(response http.ResponseWriter) { http.SetCookie(response, &expired) }
 	}
 	authorized := func(response http.ResponseWriter, request *http.Request) (auth.AccessContext, bool) {
 		response.Header().Set("Cache-Control", "private, no-store")
@@ -455,6 +548,216 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			serveMutationNavigation(response, request, destination)
 		})
 	}
+	if services.Control != nil {
+		router.Get("/admin/control", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			editable, loadErr := services.Control.Load(request.Context(), actor)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["control"], loadErr)
+				return
+			}
+			render(response, request, views["control"], administrationControlBody(controlPresentation(views["control"].CanonicalURL, csrfTokenFromContext(request.Context()), editable.Settings)))
+		})
+		router.Post("/admin/control", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["control"], maximumAdministrationSmallFormBytes, []string{
+				"_csrf", "registration_mode", "maintenance_enabled", "maintenance_message",
+				"publish_rate_limit", "new_account_publish_rate_limit", "publish_window_seconds",
+				"new_account_period_seconds", "session_idle_seconds", "auth_revalidate_seconds",
+				"revision", "reason",
+			})
+			if !ok {
+				return
+			}
+			input, parseErr := parseControlInput(form)
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if parseErr != nil || requestErr != nil {
+				renderAdministrationError(response, request, views["control"], http.StatusBadRequest, "Invalid form", "Reload control settings and try again.")
+				return
+			}
+			result, updateErr := services.Control.Update(request.Context(), actor, input, requestID)
+			if updateErr != nil {
+				serveAdministrationMutationError(response, request, views["control"], updateErr)
+				return
+			}
+			if result.Revision <= input.Revision || result.AuditID <= 0 {
+				serveAdministrationServiceError(response, request, views["control"], errors.New("invalid control settings mutation result"))
+				return
+			}
+			serveMutationNavigation(response, request, views["control"].CanonicalURL)
+		})
+	}
+	if services.Sessions != nil {
+		router.Get("/admin/accounts/{userID}/sessions", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			userID, _ := parseCanonicalPositiveID(chi.URLParam(request, "userID"))
+			page, loadErr := services.Sessions.List(request.Context(), actor, userID)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["sessions"], loadErr)
+				return
+			}
+			now := services.Sessions.Clock().UTC().Truncate(time.Second)
+			key := administrationSessionActionKeyFromContext(request.Context())
+			if now.IsZero() || key == ([32]byte{}) {
+				serveAdministrationServiceError(response, request, views["sessions"], errors.New("session action authority unavailable"))
+				return
+			}
+			target, buildErr := builder.Path("admin", "accounts", strconv.FormatInt(userID, 10), "sessions")
+			if buildErr != nil {
+				serveAdministrationServiceError(response, request, views["sessions"], buildErr)
+				return
+			}
+			presentation := administrationSessionsView{
+				DisplayName: page.DisplayName, RevokeAllURL: target + "/revoke",
+				Revision:  strconv.FormatInt(page.Revision, 10),
+				CSRFToken: csrfTokenFromContext(request.Context()),
+				Sessions:  make([]administrationSessionView, len(page.Sessions)), More: page.More,
+			}
+			for index, session := range page.Sessions {
+				handle, handleErr := issueAdministrationSessionHandle(now, key, actor.UserID, userID, session.ID)
+				if handleErr != nil {
+					serveAdministrationServiceError(response, request, views["sessions"], handleErr)
+					return
+				}
+				revokeURL, buildErr := builder.Path("admin", "sessions", handle, "revoke")
+				if buildErr != nil {
+					serveAdministrationServiceError(response, request, views["sessions"], buildErr)
+					return
+				}
+				presentation.Sessions[index] = administrationSessionView{
+					IssuedAt:    session.IssuedAt.Format(time.RFC3339),
+					LastSeenAt:  session.LastSeenAt.Format(time.RFC3339),
+					ValidatedAt: session.ValidatedAt.Format(time.RFC3339),
+					ExpiresAt:   session.ExpiresAt.Format(time.RFC3339), RevokeURL: revokeURL,
+				}
+			}
+			view := views["sessions"]
+			view.CanonicalURL = target
+			render(response, request, view, administrationSessionsBody(presentation))
+		})
+		router.Post("/admin/sessions/{handle}/revoke", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["sessions"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason"})
+			if !ok {
+				return
+			}
+			now := services.Sessions.Clock().UTC().Truncate(time.Second)
+			targetUserID, sessionID, handleErr := verifyAdministrationSessionHandle(
+				chi.URLParam(request, "handle"), now,
+				administrationSessionActionKeyFromContext(request.Context()), actor.UserID,
+			)
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if handleErr != nil || requestErr != nil {
+				renderAdministrationError(response, request, views["sessions"], http.StatusBadRequest, "Invalid session action", "Reload the session page and try again.")
+				return
+			}
+			result, revokeErr := services.Sessions.RevokeOne(request.Context(), actor, targetUserID, sessionID, form.Get("reason"), requestID)
+			if revokeErr != nil {
+				serveAdministrationMutationError(response, request, views["sessions"], revokeErr)
+				return
+			}
+			if result.Revoked != 1 || result.SessionID != sessionID || result.TargetUserID != targetUserID || result.AuditID <= 0 {
+				serveAdministrationServiceError(response, request, views["sessions"], errors.New("invalid session revocation result"))
+				return
+			}
+			if sessionID == sessionAuthenticationFromContext(request.Context()).SessionID {
+				expireSession(response)
+				serveSessionRedirect(response, request, loginURL)
+				return
+			}
+			destination, _ := builder.Path("admin", "accounts", strconv.FormatInt(targetUserID, 10), "sessions")
+			serveMutationNavigation(response, request, destination)
+		})
+		router.Post("/admin/accounts/{userID}/sessions/revoke", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			targetUserID, _ := parseCanonicalPositiveID(chi.URLParam(request, "userID"))
+			form, ok := parseAdministrationForm(response, request, views["sessions"], maximumAdministrationSmallFormBytes, []string{"_csrf", "revision", "reason"})
+			if !ok {
+				return
+			}
+			revision, revisionErr := parsePositiveFormID(form.Get("revision"))
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if revisionErr != nil || requestErr != nil {
+				renderAdministrationError(response, request, views["sessions"], http.StatusBadRequest, "Invalid session action", "Reload the session page and try again.")
+				return
+			}
+			result, revokeErr := services.Sessions.RevokeAll(request.Context(), actor, targetUserID, revision, form.Get("reason"), requestID)
+			if revokeErr != nil {
+				serveAdministrationMutationError(response, request, views["sessions"], revokeErr)
+				return
+			}
+			if result.Revoked <= 0 || result.SessionID != 0 || result.TargetUserID != targetUserID || result.AuditID <= 0 {
+				serveAdministrationServiceError(response, request, views["sessions"], errors.New("invalid all-session revocation result"))
+				return
+			}
+			if targetUserID == actor.UserID {
+				expireSession(response)
+				serveSessionRedirect(response, request, loginURL)
+				return
+			}
+			destination, _ := builder.Path("admin", "accounts", strconv.FormatInt(targetUserID, 10), "sessions")
+			serveMutationNavigation(response, request, destination)
+		})
+	}
+	if services.Email != nil {
+		router.Get("/admin/email", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			state, loadErr := services.Email.Load(request.Context(), actor)
+			if loadErr != nil {
+				serveAdministrationServiceError(response, request, views["email"], loadErr)
+				return
+			}
+			presentation := emailPresentation(views["email"].CanonicalURL, csrfTokenFromContext(request.Context()), services.Email.Configured, state)
+			render(response, request, views["email"], administrationEmailBody(presentation))
+		})
+		router.Post("/admin/email/test", func(response http.ResponseWriter, request *http.Request) {
+			actor, ok := authorized(response, request)
+			if !ok {
+				return
+			}
+			form, ok := parseAdministrationForm(response, request, views["email"], maximumAdministrationSmallFormBytes, []string{"_csrf", "reason"})
+			if !ok {
+				return
+			}
+			if !services.Email.Configured {
+				renderAdministrationError(response, request, views["email"], http.StatusConflict, "Email disabled", "Configure the shared SMTP transport before testing email.")
+				return
+			}
+			requestID, requestErr := moderationRequestUUID(request.Context())
+			if requestErr != nil {
+				serveAdministrationServiceError(response, request, views["email"], requestErr)
+				return
+			}
+			result, testErr := services.Email.Test(request.Context(), actor, form.Get("reason"), requestID)
+			if testErr != nil {
+				serveAdministrationMutationError(response, request, views["email"], testErr)
+				return
+			}
+			if !validEmailTestResult(result) {
+				serveAdministrationServiceError(response, request, views["email"], errors.New("invalid email test result"))
+				return
+			}
+			serveMutationNavigation(response, request, views["email"].CanonicalURL)
+		})
+	}
 	router.Get("/admin/accounts/{userID}", func(response http.ResponseWriter, request *http.Request) {
 		actor, ok := authorized(response, request)
 		if !ok {
@@ -478,11 +781,15 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 		if account.AuthentikSyncState == "removal_required" || account.AuthentikSyncState == "grant_required" {
 			reconcileAction = target + "/identity/reconcile"
 		}
+		sessionsURL := ""
+		if services.Sessions != nil {
+			sessionsURL = target + "/sessions"
+		}
 		status := "active"
 		if account.Suspended {
 			status = "suspended"
 		}
-		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, ReconcileAction: reconcileAction, AuthentikSyncState: account.AuthentikSyncState, CSRFToken: csrfTokenFromContext(request.Context()), Groups: make([]administrationMembershipView, len(groups.Groups))}
+		presentation := administrationAccountView{DisplayName: account.DisplayName, Role: administrationRoleName(account.Role), Status: status, Revision: strconv.FormatInt(account.Revision, 10), RoleAction: roleAction, ReconcileAction: reconcileAction, AuthentikSyncState: account.AuthentikSyncState, CSRFToken: csrfTokenFromContext(request.Context()), SessionsURL: sessionsURL, Groups: make([]administrationMembershipView, len(groups.Groups))}
 		for index, group := range groups.Groups {
 			action, label := "grant", "Grant"
 			if group.Member {
@@ -973,7 +1280,7 @@ func renderAdministrationError(response http.ResponseWriter, request *http.Reque
 }
 func serveAdministrationServiceError(response http.ResponseWriter, request *http.Request, view pageView, err error) {
 	switch {
-	case errors.Is(err, administration.ErrAdministrationDenied), errors.Is(err, administration.ErrAccountAdministrationDenied), errors.Is(err, registration.ErrDenied):
+	case errors.Is(err, administration.ErrAdministrationDenied), errors.Is(err, administration.ErrAccountAdministrationDenied), errors.Is(err, registration.ErrDenied), errors.Is(err, control.ErrDenied):
 		renderAdministrationError(response, request, view, 403, "Administration denied", "Your current account cannot administer this board.")
 	case errors.Is(err, administration.ErrAdministrationNotFound), errors.Is(err, administration.ErrAccountAdministrationNotFound):
 		renderAdministrationError(response, request, view, 404, "Page not found", "The requested administration target does not exist.")
@@ -983,13 +1290,107 @@ func serveAdministrationServiceError(response http.ResponseWriter, request *http
 }
 func serveAdministrationMutationError(response http.ResponseWriter, request *http.Request, view pageView, err error) {
 	switch {
-	case errors.Is(err, administration.ErrAdministrationInput), errors.Is(err, administration.ErrAccountAdministrationInput), errors.Is(err, registration.ErrInput):
+	case errors.Is(err, administration.ErrEmailTestRateLimited):
+		response.Header().Set("Retry-After", "300")
+		renderAdministrationError(response, request, view, http.StatusTooManyRequests, "Email test rate limited", "Wait five minutes before requesting another email test.")
+	case errors.Is(err, administration.ErrAdministrationInput), errors.Is(err, administration.ErrAccountAdministrationInput), errors.Is(err, registration.ErrInput), errors.Is(err, control.ErrInput):
 		renderAdministrationError(response, request, view, 422, "Invalid change", "Check every field and try again.")
-	case errors.Is(err, administration.ErrAdministrationConflict), errors.Is(err, administration.ErrAccountAdministrationConflict), errors.Is(err, administration.ErrAccountAdministratorContinuity), errors.Is(err, registration.ErrConflict):
+	case errors.Is(err, administration.ErrAdministrationConflict), errors.Is(err, administration.ErrAccountAdministrationConflict), errors.Is(err, administration.ErrAccountAdministratorContinuity), errors.Is(err, registration.ErrConflict), errors.Is(err, control.ErrConflict):
 		renderAdministrationError(response, request, view, 409, "Change conflict", "The target changed, the change was a no-op, or administrator continuity would be lost. Reload and try again.")
 	default:
 		serveAdministrationServiceError(response, request, view, err)
 	}
+}
+
+func controlPresentation(action, csrf string, settings control.Settings) administrationControlView {
+	publishLimit, newAccountLimit, publishWindow, newAccountPeriod := settings.Publication.Parameters()
+	return administrationControlView{
+		ActionURL: action, CSRFToken: csrf, Registration: string(settings.Registration),
+		MaintenanceEnabled: settings.MaintenanceEnabled, MaintenanceMessage: settings.MaintenanceMessage,
+		PublishLimit:     strconv.FormatUint(uint64(publishLimit), 10),
+		NewAccountLimit:  strconv.FormatUint(uint64(newAccountLimit), 10),
+		PublishWindow:    strconv.FormatInt(int64(publishWindow/time.Second), 10),
+		NewAccountPeriod: strconv.FormatInt(int64(newAccountPeriod/time.Second), 10),
+		SessionIdle:      strconv.FormatInt(int64(settings.SessionIdle/time.Second), 10),
+		AuthRevalidate:   strconv.FormatInt(int64(settings.AuthRevalidate/time.Second), 10),
+		Revision:         strconv.FormatInt(settings.Revision, 10),
+	}
+}
+
+func parseControlInput(form url.Values) (control.Input, error) {
+	parsePositive := func(name string, maximum uint64) (uint64, error) {
+		raw := form.Get(name)
+		value, err := strconv.ParseUint(raw, 10, 64)
+		if err != nil || value == 0 || value > maximum || strconv.FormatUint(value, 10) != raw {
+			return 0, fmt.Errorf("invalid %s", name)
+		}
+		return value, nil
+	}
+	publishLimit, err := parsePositive("publish_rate_limit", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	newAccountLimit, err := parsePositive("new_account_publish_rate_limit", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	publishWindow, err := parsePositive("publish_window_seconds", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	newAccountPeriod, err := parsePositive("new_account_period_seconds", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	sessionIdle, err := parsePositive("session_idle_seconds", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	authRevalidate, err := parsePositive("auth_revalidate_seconds", uint64(^uint32(0)>>1))
+	if err != nil {
+		return control.Input{}, err
+	}
+	revision, err := parsePositiveFormID(form.Get("revision"))
+	if err != nil {
+		return control.Input{}, err
+	}
+	mode := control.RegistrationMode(form.Get("registration_mode"))
+	if !mode.Valid() {
+		return control.Input{}, fmt.Errorf("invalid registration mode")
+	}
+	maintenance := form.Get("maintenance_enabled")
+	if maintenance != "enabled" && maintenance != "disabled" {
+		return control.Input{}, fmt.Errorf("invalid maintenance state")
+	}
+	return control.Input{
+		Registration: mode, MaintenanceEnabled: maintenance == "enabled",
+		MaintenanceMessage: form.Get("maintenance_message"),
+		PublishLimit:       uint32(publishLimit), NewAccountLimit: uint32(newAccountLimit),
+		PublishWindow:    time.Duration(publishWindow) * time.Second,
+		NewAccountPeriod: time.Duration(newAccountPeriod) * time.Second,
+		SessionIdle:      time.Duration(sessionIdle) * time.Second,
+		AuthRevalidate:   time.Duration(authRevalidate) * time.Second,
+		Revision:         revision, Reason: form.Get("reason"),
+	}, nil
+}
+
+func emailPresentation(action, csrf string, configured bool, state administration.EmailTestState) administrationEmailView {
+	view := administrationEmailView{Configured: configured, Status: state.Status, ActionURL: action + "/test", CSRFToken: csrf}
+	if !state.RequestedAt.IsZero() {
+		view.RequestedAt = state.RequestedAt.Format(time.RFC3339)
+	}
+	if !state.CompletedAt.IsZero() {
+		view.CompletedAt = state.CompletedAt.Format(time.RFC3339)
+	}
+	if !state.NextAllowedAt.IsZero() {
+		view.NextAllowedAt = state.NextAllowedAt.Format(time.RFC3339)
+	}
+	return view
+}
+
+func validEmailTestResult(result administration.EmailTestResult) bool {
+	return (result.Status == "accepted" || result.Status == "failed" || result.Status == "unknown") &&
+		!result.RequestedAt.IsZero() && !result.CompletedAt.Before(result.RequestedAt) && result.AuditID > 0
 }
 
 func administrationRouteValid(request *http.Request) bool {
@@ -1004,6 +1405,12 @@ func administrationRouteValid(request *http.Request) bool {
 	}
 	if path == "/admin" {
 		return method == http.MethodGet && len(query) == 0
+	}
+	if path == "/admin/control" || path == "/admin/email" {
+		return (method == http.MethodGet || path == "/admin/control" && method == http.MethodPost) && len(query) == 0
+	}
+	if path == "/admin/email/test" {
+		return method == http.MethodPost && len(query) == 0
 	}
 	if path == "/admin/accounts" || path == "/admin/groups" || path == "/admin/areas" || path == "/admin/registrations" || path == "/admin/invitations" {
 		if method == http.MethodGet {
@@ -1020,12 +1427,17 @@ func administrationRouteValid(request *http.Request) bool {
 	if len(parts) < 2 || len(parts) > 4 {
 		return false
 	}
-	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" && parts[0] != "invitations" {
+	if parts[0] != "accounts" && parts[0] != "groups" && parts[0] != "areas" && parts[0] != "registrations" && parts[0] != "invitations" && parts[0] != "sessions" {
 		return false
 	}
 	adoption := parts[0] == "registrations" && len(parts) == 3 && parts[2] == "adopt"
 	revocation := parts[0] == "invitations" && len(parts) == 3 && parts[2] == "revoke"
+	sessionRevocation := parts[0] == "sessions" && len(parts) == 3 && parts[2] == "revoke"
 	if adoption || revocation {
+		if !administrationAdoptionHandle.MatchString(parts[1]) {
+			return false
+		}
+	} else if sessionRevocation {
 		if !administrationAdoptionHandle.MatchString(parts[1]) {
 			return false
 		}
@@ -1033,6 +1445,9 @@ func administrationRouteValid(request *http.Request) bool {
 		return false
 	}
 	if method == http.MethodGet {
+		if len(parts) == 3 && parts[0] == "accounts" && parts[2] == "sessions" {
+			return len(query) == 0
+		}
 		return len(parts) == 2 && (parts[0] == "accounts" || parts[0] == "areas") && func() bool { _, err := parseAdministrationCursor(query, "groups_after"); return err == nil }()
 	}
 	if method != http.MethodPost || len(query) != 0 {
@@ -1042,7 +1457,10 @@ func administrationRouteValid(request *http.Request) bool {
 		return parts[0] == "groups" || parts[0] == "areas"
 	}
 	if len(parts) == 3 {
-		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt") || revocation
+		return parts[0] == "accounts" && parts[2] == "role" || parts[0] == "registrations" && (parts[2] == "approve" || parts[2] == "reject" || parts[2] == "adopt") || revocation || sessionRevocation
+	}
+	if parts[0] == "accounts" && parts[2] == "sessions" && parts[3] == "revoke" {
+		return true
 	}
 	if parts[0] == "accounts" && parts[2] == "identity" && parts[3] == "reconcile" {
 		return true

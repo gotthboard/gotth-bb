@@ -23,7 +23,7 @@ type sessionAuthenticator func(context.Context, string) (auth.SessionAuthenticat
 // bytes and delegated authentication cost A, request time is O(c+A), Omega(c),
 // with no tighter Theta bound because A may perform PostgreSQL I/O. Request
 // auxiliary space is O(c), owned primarily by net/http cookie parsing, plus at
-// most two fixed context nodes. No authentication operation is retried or
+// most three fixed context nodes. No authentication operation is retried or
 // detached.
 func newSessionAuthenticationHandler(
 	next http.Handler,
@@ -68,6 +68,7 @@ func newSessionAuthenticationHandler(
 		cookies := request.CookiesNamed(cookieName)
 		authentication := auth.SessionAuthentication{}
 		csrfToken := ""
+		administrationSessionActionKey := [32]byte{}
 		expireBrowserState := false
 		if len(cookies) == 1 && !cookies[0].Quoted {
 			resolved, authenticationErr := authenticate(request.Context(), cookies[0].Value)
@@ -86,6 +87,13 @@ func newSessionAuthenticationHandler(
 					http.Error(response, "authentication failed", http.StatusInternalServerError)
 					return
 				}
+				administrationSessionActionKey, authenticationErr = deriveAdministrationSessionActionKey(cookies[0].Value)
+				if authenticationErr != nil {
+					http.SetCookie(response, &expiredCookie)
+					response.Header().Set("Cache-Control", "no-store")
+					http.Error(response, "authentication failed", http.StatusInternalServerError)
+					return
+				}
 			}
 		} else if len(cookies) != 0 {
 			expireBrowserState = true
@@ -96,6 +104,7 @@ func newSessionAuthenticationHandler(
 		requestContext := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, authentication)
 		if csrfToken != "" {
 			requestContext = context.WithValue(requestContext, csrfTokenContextKey{}, csrfToken)
+			requestContext = context.WithValue(requestContext, administrationSessionActionKeyContextKey{}, administrationSessionActionKey)
 		}
 		downstreamRequest := request.WithContext(requestContext)
 		if enforceMaintenance(response, downstreamRequest, authentication, maintenanceView) {

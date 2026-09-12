@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/registration"
 	contentrender "github.com/gotthboard/gotth-bb/internal/render"
@@ -65,7 +67,7 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 	services := administrationCompletionTestServices()
 	var changed, identityReconciliationRequired, identityReconciled atomic.Bool
 	identityReconciliationRequired.Store(true)
-	var emptyDashboard, membership, areaAssigned, memberSession, sessionRevoked atomic.Bool
+	var emptyDashboard, membership, areaAssigned, memberSession, memberLocalSessionRevoked, sessionRevoked, emailTested, controlChanged atomic.Bool
 	membership.Store(true)
 	areaAssigned.Store(true)
 	var groupName, areaMode, siteName, siteDescription, siteTheme, rulesMarkdown atomic.Value
@@ -124,10 +126,6 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 	services.ChangeRole = func(_ context.Context, actor auth.AccessContext, userID int64, role, expected policy.Role, reason string, revision int64, requestID pgtype.UUID) (administration.AccountMutationResult, error) {
 		if actor.UserID != 1 || !requestID.Valid {
 			return administration.AccountMutationResult{}, fmt.Errorf("unexpected keyboard role form: actor=%+v user=%d role=%d expected=%d reason=%q revision=%d request=%+v", actor, userID, role, expected, reason, revision, requestID)
-		}
-		if userID == 1 && role == policy.RoleMember && expected == policy.RoleAdministrator && reason == "Revoke browser session" && revision == 2 {
-			sessionRevoked.Store(true)
-			return administration.AccountMutationResult{UserID: 1, Revision: 3, AuditID: 10}, nil
 		}
 		if userID != 2 || role != policy.RoleMember || expected != policy.RoleMember || reason != "Keyboard administration evidence" || revision != 3 {
 			return administration.AccountMutationResult{}, fmt.Errorf("unexpected keyboard role target: user=%d role=%d expected=%d reason=%q revision=%d", userID, role, expected, reason, revision)
@@ -204,6 +202,75 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 		areaAssigned.Store(grant)
 		areaRevision.Add(1)
 		return administration.AreaCompletionResult{AreaID: areaID, Revision: areaRevision.Load(), AuditID: 15}, nil
+	}
+	publication, err := abuse.NewPublicationPolicy(8, 3, time.Minute, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("construct browser control policy: %v", err)
+	}
+	services.Control = &ControlAdministrationHTTPServices{
+		Load: func(context.Context, auth.AccessContext) (control.EditableSettings, error) {
+			mode := control.RegistrationAdministratorApproval
+			revision := int64(4)
+			if controlChanged.Load() {
+				mode, revision = control.RegistrationInvitationOnly, 5
+			}
+			return control.EditableSettings{Settings: control.Settings{Registration: mode, MaintenanceMessage: "Browser maintenance", Publication: publication, SessionIdle: 30 * time.Minute, AuthRevalidate: 15 * time.Minute, Revision: revision}}, nil
+		},
+		Update: func(_ context.Context, actor auth.AccessContext, input control.Input, requestID pgtype.UUID) (control.MutationResult, error) {
+			if actor.UserID != 1 || input.Registration != control.RegistrationInvitationOnly || input.MaintenanceEnabled || input.MaintenanceMessage != "Browser maintenance" || input.PublishLimit != 8 || input.NewAccountLimit != 3 || input.PublishWindow != time.Minute || input.NewAccountPeriod != 24*time.Hour || input.SessionIdle != 30*time.Minute || input.AuthRevalidate != 15*time.Minute || input.Revision != 4 || input.Reason != "Update browser control" || !requestID.Valid {
+				return control.MutationResult{}, fmt.Errorf("unexpected browser control mutation: %+v", input)
+			}
+			controlChanged.Store(true)
+			return control.MutationResult{Revision: 5, AuditID: 18}, nil
+		},
+	}
+	services.Sessions = &SessionAdministrationHTTPServices{
+		List: func(_ context.Context, actor auth.AccessContext, target int64) (administration.SessionPage, error) {
+			if actor.UserID != 1 || target != 1 && target != 2 {
+				return administration.SessionPage{}, fmt.Errorf("unexpected browser session target %d", target)
+			}
+			name, revision, sessionID := "Browser Administrator", int64(2), int64(7)
+			if target == 2 {
+				name, revision, sessionID = "Updated Member", memberRevision.Load(), 13
+				if memberLocalSessionRevoked.Load() {
+					return administration.SessionPage{DisplayName: name, Revision: revision}, nil
+				}
+			}
+			observed := time.Date(2026, 9, 12, 19, 0, 0, 0, time.UTC)
+			return administration.SessionPage{DisplayName: name, Revision: revision, Sessions: []administration.SessionSummary{{ID: sessionID, IssuedAt: observed.Add(-time.Hour), LastSeenAt: observed.Add(-time.Minute), ValidatedAt: observed.Add(-2 * time.Minute), ExpiresAt: observed.Add(time.Hour)}}}, nil
+		},
+		RevokeOne: func(_ context.Context, actor auth.AccessContext, target, session int64, reason string, requestID pgtype.UUID) (administration.SessionMutationResult, error) {
+			if actor.UserID != 1 || target != 2 || session != 13 || reason != "Revoke browser member session" || !requestID.Valid {
+				return administration.SessionMutationResult{}, fmt.Errorf("unexpected browser single-session revocation")
+			}
+			memberLocalSessionRevoked.Store(true)
+			return administration.SessionMutationResult{TargetUserID: 2, SessionID: 13, Revoked: 1, AuditID: 19}, nil
+		},
+		RevokeAll: func(_ context.Context, actor auth.AccessContext, target, revision int64, reason string, requestID pgtype.UUID) (administration.SessionMutationResult, error) {
+			if actor.UserID != 1 || target != 1 || revision != 2 || reason != "Revoke browser administrator sessions" || !requestID.Valid {
+				return administration.SessionMutationResult{}, fmt.Errorf("unexpected browser all-session revocation")
+			}
+			sessionRevoked.Store(true)
+			return administration.SessionMutationResult{TargetUserID: 1, Revoked: 1, AuditID: 20}, nil
+		},
+		Clock: func() time.Time { return time.Date(2026, 9, 12, 19, 0, 0, 0, time.UTC) }, CookieName: "gotth_bb_session", Secure: false,
+	}
+	services.Email = &EmailAdministrationHTTPServices{
+		Load: func(context.Context, auth.AccessContext) (administration.EmailTestState, error) {
+			if !emailTested.Load() {
+				return administration.EmailTestState{}, nil
+			}
+			requested := time.Date(2026, 9, 12, 19, 0, 0, 0, time.UTC)
+			return administration.EmailTestState{Status: "accepted", RequestedAt: requested, CompletedAt: requested.Add(time.Second), NextAllowedAt: requested.Add(5 * time.Minute)}, nil
+		},
+		Test: func(_ context.Context, actor auth.AccessContext, reason string, requestID pgtype.UUID) (administration.EmailTestResult, error) {
+			if actor.UserID != 1 || reason != "Verify browser email" || !requestID.Valid {
+				return administration.EmailTestResult{}, fmt.Errorf("unexpected browser email test")
+			}
+			emailTested.Store(true)
+			requested := time.Date(2026, 9, 12, 19, 0, 0, 0, time.UTC)
+			return administration.EmailTestResult{Status: "accepted", RequestedAt: requested, CompletedAt: requested.Add(time.Second), AuditID: 21}, nil
+		}, Configured: true,
 	}
 	inner, err := newAdministrationCompletionHandler(builder, services)
 	if err != nil {
@@ -306,6 +373,7 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 			}
 			ctx := context.WithValue(request.Context(), sessionAuthenticationContextKey{}, authentication)
 			ctx = context.WithValue(ctx, csrfTokenContextKey{}, token)
+			ctx = context.WithValue(ctx, administrationSessionActionKeyContextKey{}, [32]byte{0x41})
 			request = request.WithContext(ctx)
 			switch request.URL.Path {
 			case "/rules":
@@ -356,7 +424,7 @@ func runAdministrationKeyboardAndNoScriptThroughCaddy(t *testing.T, basePath str
 		t.Fatalf("keyboard account mutations incomplete: role=%t identity=%t", changed.Load(), identityReconciled.Load())
 	}
 	if groupName.Load().(string) != "Renamed Browser Operators" || areaMode.Load().(policy.PostingMode) != policy.PostingNormal || !areaAssigned.Load() ||
-		siteName.Load().(string) != "Updated Browser Board" || rulesMarkdown.Load().(string) != "# Updated browser rules" || !sessionRevoked.Load() {
+		siteName.Load().(string) != "Updated Browser Board" || rulesMarkdown.Load().(string) != "# Updated browser rules" || !controlChanged.Load() || !emailTested.Load() || !memberLocalSessionRevoked.Load() || !sessionRevoked.Load() {
 		t.Fatalf("browser matrix did not complete: group=%q area_mode=%q assigned=%t site=%q rules=%q session_revoked=%t",
 			groupName.Load(), areaMode.Load(), areaAssigned.Load(), siteName.Load(), rulesMarkdown.Load(), sessionRevoked.Load())
 	}

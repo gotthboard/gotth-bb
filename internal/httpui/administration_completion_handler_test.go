@@ -3,6 +3,7 @@ package httpui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
 	"github.com/gotthboard/gotth-bb/internal/administration"
 	"github.com/gotthboard/gotth-bb/internal/auth"
+	"github.com/gotthboard/gotth-bb/internal/control"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/registration"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -672,7 +675,7 @@ func TestAdministrationPreflightRejectsBeforeBodyOrDelegation(t *testing.T) {
 	t.Parallel()
 	calls := 0
 	next := http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ })
-	for _, target := range []string{"/admin/accounts?after=01", "/admin/accounts?after=1&after=2", "/admin/accounts?after=%zz", "/admin/areas/01", "/admin/areas/2/unknown", "/admin/accounts/2/groups/04", "/admin/areas/2/groups/04", "/admin/accounts/2/identity/unknown", "/admin/accounts/02/identity/reconcile", "/admin?x=1"} {
+	for _, target := range []string{"/admin/accounts?after=01", "/admin/accounts?after=1&after=2", "/admin/accounts?after=%zz", "/admin/areas/01", "/admin/areas/2/unknown", "/admin/accounts/2/groups/04", "/admin/areas/2/groups/04", "/admin/accounts/2/identity/unknown", "/admin/accounts/02/identity/reconcile", "/admin/accounts/02/sessions", "/admin/accounts/2/sessions?probe=1", "/admin/accounts/2/sessions/unknown", "/admin/sessions/not-a-handle/revoke", "/admin/email?probe=1", "/admin/control?probe=1", "/admin?x=1"} {
 		body := &countingAdministrationBody{Reader: bytes.NewBufferString("secret")}
 		request := httptest.NewRequest(http.MethodPost, target, body)
 		response := httptest.NewRecorder()
@@ -681,6 +684,267 @@ func TestAdministrationPreflightRejectsBeforeBodyOrDelegation(t *testing.T) {
 			t.Fatalf("preflight %s = (%d,calls %d,reads %d)", target, response.Code, calls, body.reads)
 		}
 	}
+}
+
+func TestAdministrationControlSessionAndEmailGETRoutes(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 12, 19, 0, 0, 0, time.UTC)
+	services := administrationControlSessionEmailTestServices(t, now)
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	for _, test := range []struct {
+		path      string
+		wants     []string
+		forbidden []string
+	}{
+		{path: "/admin/control", wants: []string{"Control settings", `name="registration_mode"`, `name="session_idle_seconds"`, `name="revision" value="4"`, "/bb/admin/email"}},
+		{path: "/admin/accounts/2/sessions", wants: []string{"Local sessions for Local Member", "2026-09-12T18:00:00Z", "More active sessions exist", "/bb/admin/sessions/", "/bb/admin/accounts/2/sessions/revoke"}, forbidden: []string{"token_hash", "user_agent", "ip_address", "192.0.2.1"}},
+		{path: "/admin/email", wants: []string{"Shared SMTP transport is configured", "accepted", "2026-09-12T19:00:00Z", "Send test to my verified address", "/bb/admin/email/test"}, forbidden: []string{"administrator@example.test", "SMTP password"}},
+	} {
+		test := test
+		t.Run(test.path, func(t *testing.T) {
+			request := administrationPrivilegedTestRequest(http.MethodGet, test.path, nil, admin)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "private, no-store" {
+				t.Fatalf("GET %s = (%d, %q, %q)", test.path, response.Code, response.Header().Get("Cache-Control"), response.Body.String())
+			}
+			for _, want := range test.wants {
+				if !strings.Contains(response.Body.String(), want) {
+					t.Fatalf("GET %s missing %q: %q", test.path, want, response.Body.String())
+				}
+			}
+			for _, forbidden := range test.forbidden {
+				if strings.Contains(response.Body.String(), forbidden) {
+					t.Fatalf("GET %s leaked %q: %q", test.path, forbidden, response.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestAdministrationControlSessionAndEmailMutations(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 12, 19, 0, 0, 0, time.UTC)
+	services := administrationControlSessionEmailTestServices(t, now)
+	controlCalls, oneCalls, allCalls, emailCalls := 0, 0, 0, 0
+	services.Control.Update = func(_ context.Context, actor auth.AccessContext, input control.Input, requestID pgtype.UUID) (control.MutationResult, error) {
+		controlCalls++
+		if actor.UserID != 1 || input.Registration != control.RegistrationAdministratorApproval || !input.MaintenanceEnabled || input.MaintenanceMessage != "Brief maintenance" || input.PublishLimit != 8 || input.NewAccountLimit != 3 || input.PublishWindow != time.Minute || input.NewAccountPeriod != 24*time.Hour || input.SessionIdle != 30*time.Minute || input.AuthRevalidate != 15*time.Minute || input.Revision != 4 || input.Reason != "Apply bounded policy" || !requestID.Valid {
+			t.Fatalf("control input = (%+v, %+v, %+v)", actor, input, requestID)
+		}
+		return control.MutationResult{Revision: 5, AuditID: 10}, nil
+	}
+	services.Sessions.RevokeOne = func(_ context.Context, actor auth.AccessContext, target, session int64, reason string, requestID pgtype.UUID) (administration.SessionMutationResult, error) {
+		oneCalls++
+		if actor.UserID != 1 || target != 2 || session != 13 || reason != "Revoke compromised session" || !requestID.Valid {
+			t.Fatalf("revoke one input = (%+v, %d, %d, %q, %+v)", actor, target, session, reason, requestID)
+		}
+		return administration.SessionMutationResult{TargetUserID: target, SessionID: session, Revoked: 1, AuditID: 11}, nil
+	}
+	services.Sessions.RevokeAll = func(_ context.Context, actor auth.AccessContext, target, revision int64, reason string, requestID pgtype.UUID) (administration.SessionMutationResult, error) {
+		allCalls++
+		if actor.UserID != 1 || target != 1 || revision != 4 || reason != "Revoke my local sessions" || !requestID.Valid {
+			t.Fatalf("revoke all input = (%+v, %d, %d, %q, %+v)", actor, target, revision, reason, requestID)
+		}
+		return administration.SessionMutationResult{TargetUserID: target, Revoked: 2, AuditID: 12}, nil
+	}
+	services.Email.Test = func(_ context.Context, actor auth.AccessContext, reason string, requestID pgtype.UUID) (administration.EmailTestResult, error) {
+		emailCalls++
+		if actor.UserID != 1 || reason != "Verify delivery" || !requestID.Valid {
+			t.Fatalf("email input = (%+v, %q, %+v)", actor, reason, requestID)
+		}
+		return administration.EmailTestResult{Status: "accepted", RequestedAt: now, CompletedAt: now.Add(time.Second), AuditID: 13}, nil
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+
+	controlForm := url.Values{
+		"_csrf": {validCSRFTokenForTest(0x51)}, "registration_mode": {"administrator_approval"},
+		"maintenance_enabled": {"enabled"}, "maintenance_message": {"Brief maintenance"},
+		"publish_rate_limit": {"8"}, "new_account_publish_rate_limit": {"3"},
+		"publish_window_seconds": {"60"}, "new_account_period_seconds": {"86400"},
+		"session_idle_seconds": {"1800"}, "auth_revalidate_seconds": {"900"},
+		"revision": {"4"}, "reason": {"Apply bounded policy"},
+	}
+	controlRequest := administrationPrivilegedTestRequest(http.MethodPost, "/admin/control", controlForm, admin)
+	controlRequest.Header.Set("HX-Request", "true")
+	controlResponse := httptest.NewRecorder()
+	handler.ServeHTTP(controlResponse, controlRequest)
+	if controlResponse.Code != http.StatusNoContent || controlResponse.Header().Get("HX-Location") != `{"path":"https://forum.example/bb/admin/control","target":"#main-content","swap":"outerHTML"}` || controlCalls != 1 {
+		t.Fatalf("control response = (%d, %q, calls %d, %q)", controlResponse.Code, controlResponse.Header().Get("HX-Location"), controlCalls, controlResponse.Body.String())
+	}
+	services.Control.Update = func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error) {
+		return control.MutationResult{Revision: 4}, nil
+	}
+	invalidControlResponse := httptest.NewRecorder()
+	handler.ServeHTTP(invalidControlResponse, administrationPrivilegedTestRequest(http.MethodPost, "/admin/control", controlForm, admin))
+	if invalidControlResponse.Code != http.StatusServiceUnavailable {
+		t.Fatalf("invalid control result response = (%d, %q)", invalidControlResponse.Code, invalidControlResponse.Body.String())
+	}
+
+	handle, err := issueAdministrationSessionHandle(now, [32]byte{0x41}, 1, 2, 13)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oneResponse := httptest.NewRecorder()
+	handler.ServeHTTP(oneResponse, administrationPrivilegedTestRequest(http.MethodPost, "/admin/sessions/"+handle+"/revoke", url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Revoke compromised session"}}, admin))
+	if oneResponse.Code != http.StatusSeeOther || oneResponse.Header().Get("Location") != "/bb/admin/accounts/2/sessions" || oneCalls != 1 {
+		t.Fatalf("revoke one response = (%d, %q, calls %d, %q)", oneResponse.Code, oneResponse.Header().Get("Location"), oneCalls, oneResponse.Body.String())
+	}
+
+	allResponse := httptest.NewRecorder()
+	handler.ServeHTTP(allResponse, administrationPrivilegedTestRequest(http.MethodPost, "/admin/accounts/1/sessions/revoke", url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "revision": {"4"}, "reason": {"Revoke my local sessions"}}, admin))
+	cookies := allResponse.Result().Cookies()
+	if allResponse.Code != http.StatusSeeOther || allResponse.Header().Get("Location") != "/bb/login?return=%2Fbb%2Fadmin" || allCalls != 1 || len(cookies) != 1 || cookies[0].Name != "gotth_bb_session" || cookies[0].MaxAge != -1 || cookies[0].Path != "/bb/" {
+		t.Fatalf("revoke all response = (%d, %q, calls %d, cookies %+v)", allResponse.Code, allResponse.Header().Get("Location"), allCalls, cookies)
+	}
+
+	emailRequest := administrationPrivilegedTestRequest(http.MethodPost, "/admin/email/test", url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Verify delivery"}}, admin)
+	emailRequest.Header.Set("HX-Request", "true")
+	emailResponse := httptest.NewRecorder()
+	handler.ServeHTTP(emailResponse, emailRequest)
+	if emailResponse.Code != http.StatusNoContent || emailResponse.Header().Get("HX-Location") != `{"path":"https://forum.example/bb/admin/email","target":"#main-content","swap":"outerHTML"}` || emailCalls != 1 {
+		t.Fatalf("email response = (%d, %q, calls %d, %q)", emailResponse.Code, emailResponse.Header().Get("HX-Location"), emailCalls, emailResponse.Body.String())
+	}
+}
+
+func TestAdministrationDisabledAndRateLimitedEmailRemainCSRFProtected(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 12, 19, 0, 0, 0, time.UTC)
+	services := administrationControlSessionEmailTestServices(t, now)
+	calls := 0
+	services.Email.Configured = false
+	services.Email.Test = func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error) {
+		calls++
+		return administration.EmailTestResult{}, errors.New("must not run")
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	missingCSRF := administrationPrivilegedTestRequest(http.MethodPost, "/admin/email/test", url.Values{"reason": {"Hidden"}}, admin)
+	missingResponse := httptest.NewRecorder()
+	handler.ServeHTTP(missingResponse, missingCSRF)
+	if missingResponse.Code != http.StatusForbidden || calls != 0 {
+		t.Fatalf("disabled missing CSRF = (%d, calls %d)", missingResponse.Code, calls)
+	}
+	disabledResponse := httptest.NewRecorder()
+	handler.ServeHTTP(disabledResponse, administrationPrivilegedTestRequest(http.MethodPost, "/admin/email/test", url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Check disabled"}}, admin))
+	if disabledResponse.Code != http.StatusConflict || calls != 0 {
+		t.Fatalf("disabled valid request = (%d, calls %d)", disabledResponse.Code, calls)
+	}
+
+	services.Email.Configured = true
+	services.Email.Test = func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error) {
+		calls++
+		return administration.EmailTestResult{}, administration.ErrEmailTestRateLimited
+	}
+	handler, err = newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	rateResponse := httptest.NewRecorder()
+	handler.ServeHTTP(rateResponse, administrationPrivilegedTestRequest(http.MethodPost, "/admin/email/test", url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "reason": {"Too soon"}}, admin))
+	if rateResponse.Code != http.StatusTooManyRequests || rateResponse.Header().Get("Retry-After") != "300" || calls != 1 {
+		t.Fatalf("rate response = (%d, retry %q, calls %d)", rateResponse.Code, rateResponse.Header().Get("Retry-After"), calls)
+	}
+}
+
+func TestParseControlInputRequiresCanonicalClosedValues(t *testing.T) {
+	t.Parallel()
+	valid := url.Values{
+		"registration_mode": {"closed"}, "maintenance_enabled": {"disabled"}, "maintenance_message": {""},
+		"publish_rate_limit": {"8"}, "new_account_publish_rate_limit": {"3"},
+		"publish_window_seconds": {"60"}, "new_account_period_seconds": {"86400"},
+		"session_idle_seconds": {"1800"}, "auth_revalidate_seconds": {"900"},
+		"revision": {"4"}, "reason": {"Canonical control form"},
+	}
+	input, err := parseControlInput(valid)
+	if err != nil || input.Registration != control.RegistrationClosed || input.MaintenanceEnabled || input.Revision != 4 {
+		t.Fatalf("valid control input = (%+v, %v)", input, err)
+	}
+	for _, field := range []string{"publish_rate_limit", "new_account_publish_rate_limit", "publish_window_seconds", "new_account_period_seconds", "session_idle_seconds", "auth_revalidate_seconds"} {
+		field := field
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			malformed := cloneValues(valid)
+			malformed.Set(field, "0")
+			if _, err := parseControlInput(malformed); err == nil {
+				t.Fatalf("zero %s accepted", field)
+			}
+		})
+	}
+	for _, test := range []struct{ name, field, value string }{
+		{name: "noncanonical number", field: "publish_rate_limit", value: "08"},
+		{name: "overflow", field: "publish_rate_limit", value: "2147483648"},
+		{name: "revision", field: "revision", value: "04"},
+		{name: "registration", field: "registration_mode", value: "open"},
+		{name: "maintenance", field: "maintenance_enabled", value: "false"},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			malformed := cloneValues(valid)
+			malformed.Set(test.field, test.value)
+			if _, err := parseControlInput(malformed); err == nil {
+				t.Fatalf("malformed %s=%q accepted", test.field, test.value)
+			}
+		})
+	}
+}
+
+func administrationControlSessionEmailTestServices(t *testing.T, now time.Time) AdministrationHTTPServices {
+	t.Helper()
+	services := administrationCompletionTestServices()
+	publication, err := abuse.NewPublicationPolicy(8, 3, time.Minute, 24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	services.Control = &ControlAdministrationHTTPServices{
+		Load: func(context.Context, auth.AccessContext) (control.EditableSettings, error) {
+			return control.EditableSettings{Settings: control.Settings{Registration: control.RegistrationAdministratorApproval, MaintenanceEnabled: true, MaintenanceMessage: "Brief maintenance", Publication: publication, SessionIdle: 30 * time.Minute, AuthRevalidate: 15 * time.Minute, Revision: 4}}, nil
+		},
+		Update: func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error) {
+			return control.MutationResult{Revision: 5, AuditID: 1}, nil
+		},
+	}
+	services.Sessions = &SessionAdministrationHTTPServices{
+		List: func(context.Context, auth.AccessContext, int64) (administration.SessionPage, error) {
+			return administration.SessionPage{DisplayName: "Local Member", Revision: 4, More: true, Sessions: []administration.SessionSummary{{ID: 13, IssuedAt: now.Add(-time.Hour), LastSeenAt: now.Add(-time.Minute), ValidatedAt: now.Add(-2 * time.Minute), ExpiresAt: now.Add(time.Hour)}}}, nil
+		},
+		RevokeOne: func(context.Context, auth.AccessContext, int64, int64, string, pgtype.UUID) (administration.SessionMutationResult, error) {
+			return administration.SessionMutationResult{TargetUserID: 2, SessionID: 13, Revoked: 1, AuditID: 1}, nil
+		},
+		RevokeAll: func(context.Context, auth.AccessContext, int64, int64, string, pgtype.UUID) (administration.SessionMutationResult, error) {
+			return administration.SessionMutationResult{TargetUserID: 2, Revoked: 1, AuditID: 1}, nil
+		},
+		Clock: func() time.Time { return now }, CookieName: "gotth_bb_session", Secure: true,
+	}
+	services.Email = &EmailAdministrationHTTPServices{
+		Load: func(context.Context, auth.AccessContext) (administration.EmailTestState, error) {
+			return administration.EmailTestState{Status: "accepted", RequestedAt: now, CompletedAt: now.Add(time.Second), NextAllowedAt: now.Add(5 * time.Minute)}, nil
+		},
+		Test: func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error) {
+			return administration.EmailTestResult{Status: "accepted", RequestedAt: now, CompletedAt: now.Add(time.Second), AuditID: 1}, nil
+		}, Configured: true,
+	}
+	return services
+}
+
+func administrationPrivilegedTestRequest(method, target string, form url.Values, authentication auth.SessionAuthentication) *http.Request {
+	request := areaAdministrationTestRequest(method, target, form, authentication)
+	return request.WithContext(context.WithValue(request.Context(), administrationSessionActionKeyContextKey{}, [32]byte{0x41}))
 }
 
 type countingAdministrationBody struct {

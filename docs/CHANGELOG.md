@@ -5,6 +5,34 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-12 — Complete B1-09 administrator controls
+
+Commit: current commit; hash assigned by Git after commit
+
+B1-09-04 wires the admitted runtime-control service into a strict
+administrator form and adds bounded local-session and email diagnostics.
+Session pages select at most 51 current local rows, render 50 plus an overflow
+notice, expose only finite timestamps, and use five-minute HMAC action handles
+derived under a distinct domain from the current administrator session.
+Single and all-session revocation remain atomic with their audits; revoking the
+request's current session expires its browser cookie after commit.
+
+The email page exposes only `configured` or `disabled` and the requesting
+administrator's own closed test state. A test has no recipient field, reserves
+one attempt per administrator per five minutes, sends fixed non-secret text to
+the current verified local address through the shared SMTP transport, and
+records `accepted`, `failed`, or `unknown` in a separate completion transaction.
+Once reserved, completion uses a fresh bounded context so a browser disconnect
+cannot strand the outcome in `requested`. Audits contain only the closed result
+and an idempotency digest.
+
+The six exact control/session/email routes support ordinary HTML and HTMX,
+strict CSRF and form boundaries, no-JavaScript operation, keyboard focus, and
+320-pixel/200%-zoom reflow at both root and `/bb`. Standalone readiness now
+reports the same shared SMTP configuration used by invitation and test email.
+This unit does not merge, tag, package, release, deploy, or modify the live
+Beta.1.5 service. B1-09-05 remains.
+
 ### 2026-09-12 — Complete B1-09 registration and identity reconciliation
 
 Commit: current commit; hash assigned by Git after commit

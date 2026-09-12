@@ -21,6 +21,8 @@ type pageView struct {
 	AdminURL             string
 	RegistrationsURL     string
 	InvitationsURL       string
+	ControlURL           string
+	EmailURL             string
 	ReportsURL           string
 	SearchURL            string
 	ActivityURL          string

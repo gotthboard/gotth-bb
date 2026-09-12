@@ -19,6 +19,12 @@ templ administrationContent(view pageView, body templ.Component) {
 			if view.InvitationsURL != "" {
 				<a href={ view.InvitationsURL } hx-get={ view.InvitationsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Invitations</a>
 			}
+			if view.ControlURL != "" {
+				<a href={ view.ControlURL } hx-get={ view.ControlURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Control</a>
+			}
+			if view.EmailURL != "" {
+				<a href={ view.EmailURL } hx-get={ view.EmailURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Email</a>
+			}
 			<a href={ view.AdminURL + "/settings" } hx-get={ view.AdminURL + "/settings" } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true" class="text-cyan-200">Settings</a>
 		</nav>
 		@body
@@ -176,6 +182,9 @@ templ administrationAccountsBody(page administrationAccountsView) {
 
 templ administrationAccountBody(page administrationAccountView) {
 	<section aria-labelledby="account-title"><h1 id="account-title" class="text-3xl font-bold text-white">{ page.DisplayName }</h1><p class="mt-2 text-slate-300">{ page.Role } · { page.Status } · identity { page.AuthentikSyncState }</p>
+		if page.SessionsURL != "" {
+			<a class="mt-5 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200" href={ page.SessionsURL } hx-get={ page.SessionsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">Manage local sessions</a>
+		}
 		if page.ReconcileAction != "" {
 			<form method="post" action={ page.ReconcileAction } hx-post={ page.ReconcileAction } class="mt-6 grid gap-3 rounded-lg border border-amber-700 bg-slate-900 p-5">
 				<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
@@ -195,6 +204,117 @@ templ administrationAccountBody(page administrationAccountView) {
 		</ul>
 		if page.NextGroupsURL != "" {
 			<a class="mt-6 inline-block text-cyan-200" href={ page.NextGroupsURL } hx-get={ page.NextGroupsURL } hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">Next groups</a>
+		}
+	</section>
+}
+
+templ administrationControlBody(page administrationControlView) {
+	<section aria-labelledby="control-title">
+		<h1 id="control-title" class="text-3xl font-bold text-white">Control settings</h1>
+		<p class="mt-3 max-w-3xl text-slate-300">Change bounded registration, maintenance, publication, and session policy. Deployment ceilings cannot be raised here.</p>
+		<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-8 grid min-w-0 gap-5 rounded-xl border border-slate-800 bg-slate-900 p-4 sm:p-6">
+			<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+			<input type="hidden" name="revision" value={ page.Revision }/>
+			<label class="grid gap-2 font-semibold text-slate-200">Registration mode
+				<select name="registration_mode" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
+					<option value="closed" selected?={ page.Registration == "closed" }>Closed</option>
+					<option value="verified_email_open" selected?={ page.Registration == "verified_email_open" }>Verified email open</option>
+					<option value="administrator_approval" selected?={ page.Registration == "administrator_approval" }>Administrator approval</option>
+					<option value="invitation_only" selected?={ page.Registration == "invitation_only" }>Invitation only</option>
+				</select>
+			</label>
+			<label class="grid gap-2 font-semibold text-slate-200">Maintenance
+				<select name="maintenance_enabled" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
+					<option value="disabled" selected?={ !page.MaintenanceEnabled }>Disabled</option>
+					<option value="enabled" selected?={ page.MaintenanceEnabled }>Enabled</option>
+				</select>
+			</label>
+			<label class="grid gap-2 font-semibold text-slate-200">Maintenance message
+				<input name="maintenance_message" value={ page.MaintenanceMessage } maxlength="280" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/>
+			</label>
+			<div class="grid min-w-0 gap-5 sm:grid-cols-2">
+				@administrationControlNumber("Established account publish limit", "publish_rate_limit", page.PublishLimit)
+				@administrationControlNumber("New account publish limit", "new_account_publish_rate_limit", page.NewAccountLimit)
+				@administrationControlNumber("Publish window (seconds)", "publish_window_seconds", page.PublishWindow)
+				@administrationControlNumber("New account period (seconds)", "new_account_period_seconds", page.NewAccountPeriod)
+				@administrationControlNumber("Session idle limit (seconds)", "session_idle_seconds", page.SessionIdle)
+				@administrationControlNumber("Authentication revalidation interval (seconds)", "auth_revalidate_seconds", page.AuthRevalidate)
+			</div>
+			<label class="grid gap-2 font-semibold text-slate-200">Audit reason
+				<input required name="reason" maxlength="2000" autocomplete="off" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/>
+			</label>
+			<button class="min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Save control settings</button>
+		</form>
+	</section>
+}
+
+templ administrationControlNumber(label, name, value string) {
+	<label class="grid min-w-0 gap-2 font-semibold text-slate-200">{ label }
+		<input required type="number" min="1" name={ name } value={ value } class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/>
+	</label>
+}
+
+templ administrationSessionsBody(page administrationSessionsView) {
+	<section aria-labelledby="sessions-title">
+		<h1 id="sessions-title" class="break-words text-3xl font-bold text-white">Local sessions for { page.DisplayName }</h1>
+		<p class="mt-3 max-w-3xl text-slate-300">Only finite local session times are shown. Network addresses, user agents, credentials, and Authentik sessions are never exposed.</p>
+		if len(page.Sessions) == 0 {
+			<p class="mt-6 rounded-lg border border-slate-800 bg-slate-900 p-5 text-slate-300">No active local sessions.</p>
+		} else {
+			<ul class="mt-6 grid gap-4">
+				for _, session := range page.Sessions {
+					<li class="min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4">
+						<dl class="grid gap-2 text-sm sm:grid-cols-2">
+							<div><dt class="text-slate-400">Issued</dt><dd class="break-words text-white">{ session.IssuedAt }</dd></div>
+							<div><dt class="text-slate-400">Last seen</dt><dd class="break-words text-white">{ session.LastSeenAt }</dd></div>
+							<div><dt class="text-slate-400">Last validated</dt><dd class="break-words text-white">{ session.ValidatedAt }</dd></div>
+							<div><dt class="text-slate-400">Expires</dt><dd class="break-words text-white">{ session.ExpiresAt }</dd></div>
+						</dl>
+						<form method="post" action={ session.RevokeURL } hx-post={ session.RevokeURL } class="mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+							<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+							<label class="grid min-w-0 gap-2 text-sm font-semibold">Audit reason<input required name="reason" maxlength="2000" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+							<button class="min-h-11 rounded-md border border-rose-700 px-4 py-2 font-semibold text-rose-100">Revoke session</button>
+						</form>
+					</li>
+				}
+			</ul>
+			if page.More {
+				<p class="mt-4 text-sm text-amber-200">More active sessions exist than this bounded page can show.</p>
+			}
+			<form method="post" action={ page.RevokeAllURL } hx-post={ page.RevokeAllURL } class="mt-8 grid min-w-0 gap-3 rounded-lg border border-rose-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+				<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+				<input type="hidden" name="revision" value={ page.Revision }/>
+				<label class="grid min-w-0 gap-2 text-sm font-semibold">Audit reason for revoking all sessions<input required name="reason" maxlength="2000" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+				<button class="min-h-11 rounded-md bg-rose-900 px-4 py-2 font-semibold text-rose-100">Revoke all sessions</button>
+			</form>
+		}
+	</section>
+}
+
+templ administrationEmailBody(page administrationEmailView) {
+	<section aria-labelledby="email-title">
+		<h1 id="email-title" class="text-3xl font-bold text-white">Email</h1>
+		if page.Configured {
+			<p role="status" class="mt-4 text-emerald-200">Shared SMTP transport is configured.</p>
+		} else {
+			<p role="status" class="mt-4 text-amber-200">Email is disabled.</p>
+		}
+		if page.Status != "" {
+			<dl class="mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm sm:grid-cols-2">
+				<div><dt class="text-slate-400">Last result</dt><dd class="text-white">{ page.Status }</dd></div>
+				<div><dt class="text-slate-400">Requested</dt><dd class="break-words text-white">{ page.RequestedAt }</dd></div>
+				if page.CompletedAt != "" {
+					<div><dt class="text-slate-400">Completed</dt><dd class="break-words text-white">{ page.CompletedAt }</dd></div>
+				}
+				<div><dt class="text-slate-400">Next allowed</dt><dd class="break-words text-white">{ page.NextAllowedAt }</dd></div>
+			</dl>
+		}
+		if page.Configured {
+			<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-8 grid min-w-0 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+				<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+				<label class="grid min-w-0 gap-2 text-sm font-semibold">Audit reason<input required name="reason" maxlength="2000" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+				<button class="min-h-11 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Send test to my verified address</button>
+			</form>
 		}
 	</section>
 }

@@ -312,6 +312,7 @@ func run(
 	defer registrationControl.Close()
 	authentikObjects := registrationControl.Objects
 	var invitationMailer registrationservice.InvitationMailer
+	var sharedMailer *smtpdelivery.Mailer
 	if configured.SMTP.Configured() {
 		mailer, mailerErr := smtpdelivery.New(smtpdelivery.Settings{
 			Host: configured.SMTP.Host, Port: configured.SMTP.Port, Username: configured.SMTP.Username,
@@ -319,9 +320,10 @@ func run(
 			TLSMode: configured.SMTP.TLSMode, Timeout: configured.SMTP.Timeout,
 		}, configured.OIDCIssuerURL, authentikObjects.Flows.Invitation.Slug)
 		if mailerErr != nil {
-			return fmt.Errorf("construct invitation mailer failed")
+			return fmt.Errorf("construct SMTP mailer failed")
 		}
 		defer mailer.Close()
+		sharedMailer = mailer
 		invitationMailer = mailer
 	}
 	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
@@ -330,7 +332,7 @@ func run(
 	}
 	readinessChecker, err := readiness.New(pool, func(readinessContext context.Context) error {
 		return releaseMigrations.Verify(readinessContext, pool)
-	}, time.Now, controlCeilings, false)
+	}, time.Now, controlCeilings, configured.SMTP.Configured())
 	if err != nil {
 		return fmt.Errorf("construct readiness checker: %w", err)
 	}
@@ -521,6 +523,36 @@ func run(
 						return registrationservice.RevokeInvitation(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
 					},
 					Clock: time.Now, Issuer: configured.OIDCIssuerURL, FlowSlug: authentikObjects.Flows.Invitation.Slug, SMTPConfigured: configured.SMTP.Configured(),
+				},
+				Control: &httpui.ControlAdministrationHTTPServices{
+					Load: func(adminContext context.Context, access auth.AccessContext) (control.EditableSettings, error) {
+						return control.LoadEditable(adminContext, queries, access, time.Now(), controlCeilings)
+					},
+					Update: func(adminContext context.Context, access auth.AccessContext, input control.Input, requestID pgtype.UUID) (control.MutationResult, error) {
+						return control.Update(adminContext, pool, time.Now, access, input, controlCeilings, configured.SMTP.Configured(), requestID)
+					},
+				},
+				Sessions: &httpui.SessionAdministrationHTTPServices{
+					List: func(adminContext context.Context, access auth.AccessContext, userID int64) (administrationservice.SessionPage, error) {
+						return administrationservice.ListSessions(adminContext, queries, access, time.Now(), userID)
+					},
+					RevokeOne: func(adminContext context.Context, access auth.AccessContext, userID, sessionID int64, reason string, requestID pgtype.UUID) (administrationservice.SessionMutationResult, error) {
+						return administrationservice.RevokeOneSession(adminContext, pool, time.Now, access, userID, sessionID, reason, requestID)
+					},
+					RevokeAll: func(adminContext context.Context, access auth.AccessContext, userID, revision int64, reason string, requestID pgtype.UUID) (administrationservice.SessionMutationResult, error) {
+						return administrationservice.RevokeAllSessions(adminContext, pool, time.Now, access, userID, revision, reason, requestID)
+					},
+					Clock: time.Now, CookieName: configured.SessionCookieName,
+					Secure: configured.PublicBaseURL.Scheme == "https",
+				},
+				Email: &httpui.EmailAdministrationHTTPServices{
+					Load: func(adminContext context.Context, access auth.AccessContext) (administrationservice.EmailTestState, error) {
+						return administrationservice.LoadEmailTestState(adminContext, queries, access, time.Now())
+					},
+					Test: func(adminContext context.Context, access auth.AccessContext, reason string, requestID pgtype.UUID) (administrationservice.EmailTestResult, error) {
+						return administrationservice.TestEmail(adminContext, pool, sharedMailer, time.Now, rand.Reader, access, reason, requestID)
+					},
+					Configured: configured.SMTP.Configured(),
 				},
 			},
 		},

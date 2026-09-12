@@ -42,6 +42,10 @@ func TestSessionAuthenticationHandlerLoadsExactCookieIntoContext(t *testing.T) {
 			if got := csrfTokenFromContext(request.Context()); got != wantCSRF {
 				t.Fatalf("downstream CSRF token = %q, want %q", got, wantCSRF)
 			}
+			wantActionKey, keyErr := deriveAdministrationSessionActionKey(token)
+			if got := administrationSessionActionKeyFromContext(request.Context()); keyErr != nil || got != wantActionKey {
+				t.Fatalf("downstream session action key = (%x, %v), want %x", got, keyErr, wantActionKey)
+			}
 			request.Pattern = "GET /topics/{topicID}"
 			response.WriteHeader(http.StatusAccepted)
 		}),
@@ -100,6 +104,9 @@ func TestSessionAuthenticationHandlerUsesAnonymousContextWithoutCookie(t *testin
 			}
 			if got := csrfTokenFromContext(request.Context()); got != "" {
 				t.Fatalf("anonymous CSRF token = %q, want empty", got)
+			}
+			if got := administrationSessionActionKeyFromContext(request.Context()); got != ([32]byte{}) {
+				t.Fatalf("anonymous session action key = %x, want empty", got)
 			}
 		}),
 		func(context.Context, string) (auth.SessionAuthentication, error) {
@@ -181,6 +188,10 @@ func TestSessionAuthenticationHandlerKeepsParallelRequestsIsolated(t *testing.T)
 			wantCSRF, err := deriveCSRFToken(cookies[0].Value)
 			if got := csrfTokenFromContext(request.Context()); err != nil || got != wantCSRF {
 				t.Errorf("downstream CSRF token = (%q, %v), want %q", got, err, wantCSRF)
+			}
+			wantActionKey, keyErr := deriveAdministrationSessionActionKey(cookies[0].Value)
+			if got := administrationSessionActionKeyFromContext(request.Context()); keyErr != nil || got != wantActionKey {
+				t.Errorf("downstream session action key = (%x, %v), want %x", got, keyErr, wantActionKey)
 			}
 		}),
 		func(ctx context.Context, _ string) (auth.SessionAuthentication, error) {

@@ -3,6 +3,7 @@
 package administration
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -69,10 +70,10 @@ func TestAccountAdministrationGovernanceOnPostgreSQL17(t *testing.T) {
 	createdAt := observedAt.Add(-time.Hour)
 	var actorID, secondAdministratorID, memberID int64
 	if err := connections[0].QueryRow(ctx, `
-INSERT INTO public.users (display_name, role, created_at, authentik_sync_state) VALUES
-    ('Governance Administrator', 'administrator', $1, 'accepted'),
-    ('Continuity Administrator', 'administrator', $1, 'accepted'),
-    ('Local Member', 'member', $1, 'unknown')
+INSERT INTO public.users (display_name, email, role, created_at, authentik_sync_state) VALUES
+    ('Governance Administrator', 'administrator@example.test', 'administrator', $1, 'accepted'),
+    ('Continuity Administrator', NULL, 'administrator', $1, 'accepted'),
+    ('Local Member', NULL, 'member', $1, 'unknown')
 RETURNING id`, createdAt).Scan(&actorID); err != nil {
 		t.Fatalf("insert first account: %v", err)
 	}
@@ -92,6 +93,50 @@ RETURNING id`, createdAt).Scan(&actorID); err != nil {
 	detail, err := LoadAccount(ctx, querier, actor, observedAt, memberID)
 	if err != nil || detail.ID != memberID || detail.Role != policy.RoleMember || detail.Revision != 1 {
 		t.Fatalf("LoadAccount() = (%+v, %v)", detail, err)
+	}
+
+	emailState, err := LoadEmailTestState(ctx, querier, actor, observedAt)
+	if err != nil || emailState != (EmailTestState{}) {
+		t.Fatalf("LoadEmailTestState(absent) = (%+v, %v)", emailState, err)
+	}
+	mailer := &administrationEmailTestMailer{status: "accepted"}
+	mailClock := administrationSequenceClock(observedAt, observedAt.Add(time.Second))
+	emailResult, err := TestEmail(ctx, connections[0], mailer, mailClock, bytes.NewReader(bytes.Repeat([]byte{0x31}, 16)), actor, "Verify the shared SMTP transport", testAdministrationRequestID(30))
+	if err != nil || emailResult.Status != "accepted" || emailResult.AuditID <= 0 || len(mailer.recipients) != 1 || mailer.recipients[0] != "administrator@example.test" {
+		t.Fatalf("TestEmail(accepted) = (%+v, %v, recipients %v)", emailResult, err, mailer.recipients)
+	}
+	emailState, err = LoadEmailTestState(ctx, querier, actor, observedAt.Add(2*time.Second))
+	if err != nil || emailState.Status != "accepted" || !emailState.RequestedAt.Equal(observedAt) || !emailState.CompletedAt.Equal(observedAt.Add(time.Second)) || !emailState.NextAllowedAt.Equal(observedAt.Add(5*time.Minute)) {
+		t.Fatalf("LoadEmailTestState(accepted) = (%+v, %v)", emailState, err)
+	}
+	if _, err := TestEmail(ctx, connections[0], mailer, func() time.Time { return observedAt.Add(4 * time.Minute) }, bytes.NewReader(bytes.Repeat([]byte{0x32}, 16)), actor, "Reject an early retry", testAdministrationRequestID(31)); !errors.Is(err, ErrEmailTestRateLimited) || len(mailer.recipients) != 1 {
+		t.Fatalf("TestEmail(rate limit) = (error %v, recipients %v)", err, mailer.recipients)
+	}
+	mailer.status, mailer.err = "failed", errors.New("recipient rejected")
+	mailClock = administrationSequenceClock(observedAt.Add(5*time.Minute), observedAt.Add(5*time.Minute+time.Second))
+	emailResult, err = TestEmail(ctx, connections[0], mailer, mailClock, bytes.NewReader(bytes.Repeat([]byte{0x33}, 16)), actor, "Record a definite SMTP failure", testAdministrationRequestID(32))
+	if err != nil || emailResult.Status != "failed" || len(mailer.recipients) != 2 {
+		t.Fatalf("TestEmail(failed) = (%+v, %v, recipients %v)", emailResult, err, mailer.recipients)
+	}
+	var emailAuditCount int64
+	var emailAuditText string
+	if err := connections[0].QueryRow(ctx, `
+SELECT count(*), string_agg(previous_state::text || resulting_state::text, '')
+FROM public.moderation_actions
+WHERE actor_user_id = $1 AND action_type IN ('request_test_email', 'test_email')`, actorID).Scan(&emailAuditCount, &emailAuditText); err != nil || emailAuditCount != 4 || strings.Contains(emailAuditText, "administrator@example.test") || strings.Contains(emailAuditText, strings.Repeat("31", 16)) || strings.Contains(emailAuditText, strings.Repeat("33", 16)) {
+		t.Fatalf("email audit projection = (count %d, text %q, %v)", emailAuditCount, emailAuditText, err)
+	}
+	canceledContext, cancelEmailRequest := context.WithCancel(ctx)
+	mailer.status, mailer.err, mailer.cancel = "unknown", context.Canceled, cancelEmailRequest
+	canceledAt := observedAt.Add(10 * time.Minute)
+	emailResult, err = TestEmail(canceledContext, connections[0], mailer, administrationSequenceClock(canceledAt, canceledAt.Add(time.Second)), bytes.NewReader(bytes.Repeat([]byte{0x34}, 16)), actor, "Finish state after browser cancellation", testAdministrationRequestID(33))
+	mailer.cancel = nil
+	if err != nil || emailResult.Status != "unknown" || !errors.Is(canceledContext.Err(), context.Canceled) {
+		t.Fatalf("TestEmail(canceled after submission) = (%+v, %v, context %v)", emailResult, err, canceledContext.Err())
+	}
+	emailState, err = LoadEmailTestState(ctx, querier, actor, canceledAt.Add(2*time.Second))
+	if err != nil || emailState.Status != "unknown" || !emailState.CompletedAt.Equal(canceledAt.Add(time.Second)) {
+		t.Fatalf("LoadEmailTestState(canceled terminal) = (%+v, %v)", emailState, err)
 	}
 
 	created, err := CreateGroup(ctx, connections[0], func() time.Time { return observedAt }, actor, "Members", "Create the member access group", testAdministrationRequestID(1))
@@ -165,6 +210,47 @@ FOR EACH ROW EXECUTE FUNCTION public.reject_account_administration_audit()`); er
 	var activeSessions, auditCount int64
 	if err := connections[0].QueryRow(ctx, `SELECT role, (SELECT count(*) FROM public.sessions WHERE user_id = $1 AND revoked_at IS NULL), (SELECT count(*) FROM public.moderation_actions WHERE target_user_id = $1) FROM public.users WHERE id = $1`, memberID).Scan(&role, &activeSessions, &auditCount); err != nil || role != "moderator" || activeSessions != 0 || auditCount != 3 {
 		t.Fatalf("persisted account governance = (%q, sessions %d, audits %d, %v)", role, activeSessions, auditCount, err)
+	}
+
+	if _, err := connections[0].Exec(ctx, `
+INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at)
+SELECT decode(lpad(to_hex(value), 64, '0'), 'hex'), $1, $2, $2, $2, $3
+FROM generate_series(1, 51) AS value`, memberID, observedAt.Add(10*time.Second), observedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("insert session page fixture: %v", err)
+	}
+	sessions, err := ListSessions(ctx, querier, actor, observedAt.Add(20*time.Second), memberID)
+	if err != nil || sessions.DisplayName != "Local Member" || sessions.Revision != 4 || len(sessions.Sessions) != 50 || !sessions.More {
+		t.Fatalf("ListSessions(51 boundary) = (%+v, %v)", sessions, err)
+	}
+	if _, err := connections[0].Exec(ctx, `
+CREATE FUNCTION public.reject_session_administration_audit()
+RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'reject session administration audit'; END; $$;
+CREATE TRIGGER reject_session_administration_audit
+BEFORE INSERT ON public.moderation_actions
+FOR EACH ROW WHEN (NEW.action_type = 'revoke_session')
+EXECUTE FUNCTION public.reject_session_administration_audit()`); err != nil {
+		t.Fatalf("create rejecting session audit trigger: %v", err)
+	}
+	if _, err := RevokeOneSession(ctx, connections[0], func() time.Time { return observedAt.Add(21 * time.Second) }, actor, memberID, sessions.Sessions[0].ID, "Exercise atomic session audit rollback", testAdministrationRequestID(40)); err == nil {
+		t.Fatal("audit-rejected session revocation returned no error")
+	}
+	var rolledBackSession bool
+	if err := connections[0].QueryRow(ctx, `SELECT revoked_at IS NULL FROM public.sessions WHERE id = $1`, sessions.Sessions[0].ID).Scan(&rolledBackSession); err != nil || !rolledBackSession {
+		t.Fatalf("session audit rollback = (%t, %v)", rolledBackSession, err)
+	}
+	if _, err := connections[0].Exec(ctx, `DROP TRIGGER reject_session_administration_audit ON public.moderation_actions; DROP FUNCTION public.reject_session_administration_audit()`); err != nil {
+		t.Fatalf("drop rejecting session audit trigger: %v", err)
+	}
+	one, err := RevokeOneSession(ctx, connections[0], func() time.Time { return observedAt.Add(22 * time.Second) }, actor, memberID, sessions.Sessions[0].ID, "Revoke one local session", testAdministrationRequestID(41))
+	if err != nil || one.Revoked != 1 || one.SessionID != sessions.Sessions[0].ID || one.AuditID <= 0 {
+		t.Fatalf("RevokeOneSession() = (%+v, %v)", one, err)
+	}
+	all, err := RevokeAllSessions(ctx, connections[0], func() time.Time { return observedAt.Add(23 * time.Second) }, actor, memberID, sessions.Revision, "Revoke remaining local sessions", testAdministrationRequestID(42))
+	if err != nil || all.Revoked != 50 || all.SessionID != 0 || all.AuditID <= one.AuditID {
+		t.Fatalf("RevokeAllSessions() = (%+v, %v)", all, err)
+	}
+	if err := connections[0].QueryRow(ctx, `SELECT count(*) FROM public.sessions WHERE user_id = $1 AND revoked_at IS NULL`, memberID).Scan(&activeSessions); err != nil || activeSessions != 0 {
+		t.Fatalf("remaining active sessions = (%d, %v)", activeSessions, err)
 	}
 
 	secondActor := policy.AccessContext{Authenticated: true, UserID: secondAdministratorID, Role: policy.RoleAdministrator}
@@ -256,6 +342,10 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 	if err := connections[0].QueryRow(ctx, `INSERT INTO public.users (display_name) VALUES ('Restricted Runtime Member') RETURNING id`).Scan(&runtimeTargetID); err != nil {
 		t.Fatalf("insert restricted runtime target: %v", err)
 	}
+	var runtimeSessionID int64
+	if err := connections[0].QueryRow(ctx, `INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at) VALUES (decode(repeat('44', 32), 'hex'), $1, $2, $2, $2, $3) RETURNING id`, runtimeTargetID, observedAt, observedAt.Add(time.Hour)).Scan(&runtimeSessionID); err != nil {
+		t.Fatalf("insert restricted runtime session: %v", err)
+	}
 	if _, err := connections[0].Exec(ctx, "SET ROLE "+roleIdentifier); err != nil {
 		t.Fatalf("assume restricted runtime role: %v", err)
 	}
@@ -272,15 +362,60 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 	if runtimeErr != nil || runtimeMembership.Revision != 2 {
 		t.Fatalf("restricted runtime ChangeGroupMembership() = (%+v, %v)", runtimeMembership, runtimeErr)
 	}
-	runtimeRole, runtimeErr := ChangeAccountRole(ctx, connections[0], func() time.Time { return runtimeAt.Add(3 * time.Second) }, actor, runtimeTargetID, policy.RoleModerator, policy.RoleMember, "Change role through the packaged runtime grant", runtimeMembership.Revision, testAdministrationRequestID(23))
+	runtimeSessions, runtimeErr := ListSessions(ctx, querier, actor, runtimeAt.Add(3*time.Second), runtimeTargetID)
+	if runtimeErr != nil || len(runtimeSessions.Sessions) != 1 || runtimeSessions.Sessions[0].ID != runtimeSessionID {
+		t.Fatalf("restricted runtime ListSessions() = (%+v, %v)", runtimeSessions, runtimeErr)
+	}
+	runtimeRevocation, runtimeErr := RevokeOneSession(ctx, connections[0], func() time.Time { return runtimeAt.Add(4 * time.Second) }, actor, runtimeTargetID, runtimeSessionID, "Revoke through the packaged runtime grant", testAdministrationRequestID(50))
+	if runtimeErr != nil || runtimeRevocation.Revoked != 1 {
+		t.Fatalf("restricted runtime RevokeOneSession() = (%+v, %v)", runtimeRevocation, runtimeErr)
+	}
+	runtimeRole, runtimeErr := ChangeAccountRole(ctx, connections[0], func() time.Time { return runtimeAt.Add(5 * time.Second) }, actor, runtimeTargetID, policy.RoleModerator, policy.RoleMember, "Change role through the packaged runtime grant", runtimeMembership.Revision, testAdministrationRequestID(23))
 	if runtimeErr != nil || runtimeRole.Role != policy.RoleModerator || runtimeRole.Revision != 3 {
 		t.Fatalf("restricted runtime ChangeAccountRole() = (%+v, %v)", runtimeRole, runtimeErr)
+	}
+	runtimeEmailAt := observedAt.Add(16 * time.Minute)
+	runtimeEmailState, runtimeErr := LoadEmailTestState(ctx, querier, actor, runtimeEmailAt)
+	if runtimeErr != nil || runtimeEmailState.Status != "unknown" {
+		t.Fatalf("restricted runtime LoadEmailTestState() = (%+v, %v)", runtimeEmailState, runtimeErr)
+	}
+	mailer.status, mailer.err = "accepted", nil
+	runtimeEmailResult, runtimeErr := TestEmail(ctx, connections[0], mailer, administrationSequenceClock(runtimeEmailAt, runtimeEmailAt.Add(time.Second)), bytes.NewReader(bytes.Repeat([]byte{0x51}, 16)), actor, "Test through the packaged runtime grant", testAdministrationRequestID(51))
+	if runtimeErr != nil || runtimeEmailResult.Status != "accepted" {
+		t.Fatalf("restricted runtime TestEmail() = (%+v, %v)", runtimeEmailResult, runtimeErr)
 	}
 	if _, err := connections[0].Exec(ctx, `DELETE FROM public.forum_groups WHERE id = $1`, runtimeGroup.GroupID); err == nil {
 		t.Fatal("restricted runtime role deleted a forum group")
 	}
 	if _, err := connections[0].Exec(ctx, "RESET ROLE"); err != nil {
 		t.Fatalf("reset restricted runtime role: %v", err)
+	}
+}
+
+type administrationEmailTestMailer struct {
+	status     string
+	err        error
+	recipients []string
+	cancel     context.CancelFunc
+}
+
+func (mailer *administrationEmailTestMailer) SendTest(_ context.Context, recipient string) (string, error) {
+	mailer.recipients = append(mailer.recipients, recipient)
+	if mailer.cancel != nil {
+		mailer.cancel()
+	}
+	return mailer.status, mailer.err
+}
+
+func administrationSequenceClock(values ...time.Time) func() time.Time {
+	index := 0
+	return func() time.Time {
+		if index >= len(values) {
+			return time.Time{}
+		}
+		value := values[index]
+		index++
+		return value
 	}
 }
 
@@ -304,4 +439,12 @@ func (querier accountRuntimeQuerier) ListAccountGroupsForAdministration(ctx cont
 
 func (querier accountRuntimeQuerier) ListGroupsForAdministration(ctx context.Context, parameters db.ListGroupsForAdministrationParams) ([]db.ListGroupsForAdministrationRow, error) {
 	return db.New(querier.connection).ListGroupsForAdministration(ctx, parameters)
+}
+
+func (querier accountRuntimeQuerier) ListSessionsForAdministration(ctx context.Context, parameters db.ListSessionsForAdministrationParams) ([]db.ListSessionsForAdministrationRow, error) {
+	return db.New(querier.connection).ListSessionsForAdministration(ctx, parameters)
+}
+
+func (querier accountRuntimeQuerier) LoadEmailTestStateForAdministration(ctx context.Context, parameters db.LoadEmailTestStateForAdministrationParams) (db.LoadEmailTestStateForAdministrationRow, error) {
+	return db.New(querier.connection).LoadEmailTestStateForAdministration(ctx, parameters)
 }

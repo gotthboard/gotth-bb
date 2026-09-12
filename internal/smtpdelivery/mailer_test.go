@@ -35,6 +35,52 @@ func TestMailerQueuesFixedInvitationThroughSMTP(t *testing.T) {
 	}
 }
 
+func TestMailerSubmitsFixedSelfAddressedTestMessage(t *testing.T) {
+	mailer, err := New(Settings{Host: "localhost", Port: 2525, From: "board@example.test", TLSMode: config.SMTPPlain, Timeout: 2 * time.Second}, url.URL{Scheme: "https", Host: "auth.example"}, "gotth-bb-invitation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mailer.Close()
+	client, server := net.Pipe()
+	mailer.dial = func(context.Context, string, string) (net.Conn, error) { return client, nil }
+	message := make(chan string, 1)
+	go serveSMTPConversation(server, message, false, false)
+	state, err := mailer.SendTest(context.Background(), "administrator@example.test")
+	if err != nil || state != "accepted" {
+		t.Fatalf("delivery = (%q, %v)", state, err)
+	}
+	raw := <-message
+	for _, want := range []string{
+		"From: board@example.test", "To: administrator@example.test",
+		"Subject: GOTTH Board email test",
+		"This message confirms that GOTTH Board can submit mail through the configured transport.",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Fatalf("message missing %q: %q", want, raw)
+		}
+	}
+	for _, forbidden := range []string{"itoken", "auth.example", "Invited Member"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("test message contains invitation material %q: %q", forbidden, raw)
+		}
+	}
+}
+
+func TestMailerRejectsInjectedTestRecipientBeforeDial(t *testing.T) {
+	mailer, err := New(Settings{Host: "localhost", Port: 2525, From: "board@example.test", TLSMode: config.SMTPPlain, Timeout: time.Second}, url.URL{Scheme: "https", Host: "auth.example"}, "invitation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mailer.Close()
+	mailer.dial = func(context.Context, string, string) (net.Conn, error) {
+		t.Fatal("dial called for malformed recipient")
+		return nil, nil
+	}
+	if state, err := mailer.SendTest(context.Background(), "admin@example.test\r\nBcc: attacker@example.test"); err == nil || state != "failed" {
+		t.Fatalf("injected recipient = (%q, %v)", state, err)
+	}
+}
+
 func TestMailerClassifiesDefiniteAndAmbiguousFailure(t *testing.T) {
 	for _, test := range []struct {
 		name, want                     string

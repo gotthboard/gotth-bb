@@ -88,6 +88,13 @@ state and read markers are explicit mutations but are not moderation audits.
 | `GET` | `/admin/areas/{areaID}` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
 | `POST` | `/admin/areas/{areaID}` | current/revalidated administrator | yes | `private, no-store` | yes / area / yes | equivalent `404`/conflict/error |
 | `POST` | `/admin/areas/{areaID}/groups/{groupID}` | current/revalidated administrator | yes | `private, no-store` | yes / area membership / yes | equivalent `404`/conflict/error |
+| `GET` | `/admin/control` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/control` | current/revalidated administrator | yes | `private, no-store` | yes / control settings / yes | fixed `403`/conflict/field error |
+| `GET` | `/admin/accounts/{userID}/sessions` | current/revalidated administrator | no | `private, no-store` | yes / no / no | equivalent `404`/fixed `403` |
+| `POST` | `/admin/sessions/{handle}/revoke` | current/revalidated administrator plus expiring session-bound handle | yes | `private, no-store` | yes / one local session / yes | fixed `403`/conflict/error |
+| `POST` | `/admin/accounts/{userID}/sessions/revoke` | current/revalidated administrator plus target revision | yes | `private, no-store` | yes / all current local sessions / yes | equivalent `404`/conflict/error |
+| `GET` | `/admin/email` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/email/test` | current/revalidated administrator | yes | `private, no-store` | yes / email-test state / yes | fixed `403`/rate limit/SMTP result |
 
 All other method/path/query/raw-path forms go through the bounded not-found or
 method-denial behavior and must not reach an inner session, body, or database
@@ -95,23 +102,7 @@ boundary when preflight rejects them. Future RSS, notification, related-topic,
 API, federation, media, and attachment routes do not exist in version 1.0 and
 are explicitly outside the applicable Beta leakage set.
 
-## B1-09 admitted route delta
-
-These are exact planned additions, deliberately kept out of the current
-machine-checked table until their production registrations exist. B1-09-03/04
-must add each route and its complete metadata to the table in the same commit
-as the implementation; route-inventory tests reject either an invented row or
-an unrecorded registration. The two public B1-09-03 machine routes have moved
-into the table above because their production dispatch now exists.
-
-- `GET /admin/control` and `POST /admin/control` — current/revalidated
-  administrator; settings read or revision-guarded audited update.
-- `GET /admin/accounts/{userID}/sessions`,
-  `POST /admin/sessions/{handle}/revoke`, and
-  `POST /admin/accounts/{userID}/sessions/revoke` — bounded non-secret local
-  session view and one/all audited revocation.
-- `GET /admin/email` and `POST /admin/email/test` — bounded configured/test
-  status and one rate-limited self-addressed test.
+## B1-09 route boundary
 
 Every B1-09 administrator POST uses the existing current-session,
 revalidation, CSRF, bounded-body, request-ID, private/no-store, and audit rules.

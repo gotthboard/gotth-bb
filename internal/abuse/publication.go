@@ -60,6 +60,12 @@ func (policy PublicationPolicy) Valid() bool {
 		policy.newAccountPeriod >= time.Minute && policy.newAccountPeriod <= 30*24*time.Hour
 }
 
+// Parameters returns the already-validated database-backed limits for bounded
+// administrator presentation. The value remains immutable.
+func (policy PublicationPolicy) Parameters() (uint32, uint32, time.Duration, time.Duration) {
+	return policy.establishedLimit, policy.newAccountLimit, policy.window, policy.newAccountPeriod
+}
+
 // DecidePublication validates one database-owned tuple and computes its one
 // replacement or bounded rejection. Database timestamps must be finite before
 // calling this pure boundary.

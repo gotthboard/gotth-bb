@@ -225,7 +225,7 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
 
   let accessibility = await send("Accessibility.getFullAXTree", {}, sessionId);
   let namedRoles = accessibility.nodes.map((node) => `${node.role?.value || ''}:${String(node.name?.value || '').replace(/\s+/g, ' ').trim()}`);
-  for (const expected of ["heading:Board administration", "link:Overview", "link:Accounts", "link:Groups", "link:Areas", "link:Settings"]) {
+  for (const expected of ["heading:Board administration", "link:Overview", "link:Accounts", "link:Groups", "link:Areas", "link:Control", "link:Email", "link:Settings"]) {
     assert(namedRoles.includes(expected), `accessibility tree lacks ${expected}`);
   }
   assert.equal(await evaluate(send, sessionId, "document.querySelector('script') !== null"), true);
@@ -300,12 +300,19 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/accounts/2/groups/4\"] button')?.textContent.trim() === 'Grant' && document.querySelector('form[action$=\"/admin/accounts/2/role\"] input[name=\"revision\"]')?.value === '5'");
   await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Page not found')");
   await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Updated Member')");
+
+  await navigate(send, sessionId, `${target}/accounts/2/sessions`, "document.body.textContent.includes('Local sessions for Updated Member') && document.querySelector('form[action*=\"/admin/sessions/\"]') !== null");
+  await auditAccessibility(send, sessionId, evaluate, "administration member sessions", false);
+  await auditReflow(send, sessionId, evaluate, "administration member sessions");
+  await submitForm(send, sessionId, `form[action*="/admin/sessions/"]`, { reason: "Revoke browser member session" });
+  await waitFor(send, sessionId, "location.pathname.endsWith('/admin/accounts/2/sessions') && document.body.textContent.includes('No active local sessions')");
+  await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Updated Member')");
   await submitForm(send, sessionId, `form[action$="/admin/accounts/2/groups/4"]`, { action: "grant", reason: "Grant browser membership" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/accounts/2/groups/4\"] button')?.textContent.trim() === 'Revoke' && document.querySelector('form[action$=\"/admin/accounts/2/role\"] input[name=\"revision\"]')?.value === '6'");
   await navigate(send, sessionId, `${root}/__test/member`, "location.pathname.endsWith('/areas/restricted') && document.body.textContent.includes('Restricted browser area')");
   await navigate(send, sessionId, `${root}/__test/admin`, "location.pathname.endsWith('/admin/accounts/2') && document.body.textContent.includes('Updated Member')");
 
-  await navigate(send, sessionId, `${target}/areas`, "document.body.textContent.includes('Create area') && document.querySelector('[data-area-identity-fields]')");
+  await navigate(send, sessionId, `${target}/areas`, "document.body.textContent.includes('Create area') && document.querySelector('[data-area-identity-fields]') !== null");
   await auditAccessibility(send, sessionId, evaluate, "administration area create", false);
   await auditAreaFormPresentation(send, sessionId, "administration area create", `form[action$="/admin/areas"]`, ["[data-area-identity-fields]", "[data-area-policy-fields]"]);
   await auditReflow(send, sessionId, evaluate, "administration area create");
@@ -328,6 +335,29 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await submitForm(send, sessionId, areaGroupSelector, { reason: "Grant browser area access" });
   await waitFor(send, sessionId, "document.querySelector('form[action$=\"/admin/areas/3/groups/4\"] button')?.textContent.trim() === 'Revoke' && document.querySelector('form[action$=\"/admin/areas/3\"] input[name=\"revision\"]')?.value === '6'");
 
+  await navigate(send, sessionId, `${target}/control`, "document.body.textContent.includes('Control settings') && document.querySelector('form[action$=\"/admin/control\"]') !== null");
+  await auditAccessibility(send, sessionId, evaluate, "administration control settings", false);
+  await auditReflow(send, sessionId, evaluate, "administration control settings");
+  await submitForm(send, sessionId, `form[action$="/admin/control"]`, {
+    registration_mode: "invitation_only",
+    maintenance_enabled: "disabled",
+    maintenance_message: "Browser maintenance",
+    publish_rate_limit: "8",
+    new_account_publish_rate_limit: "3",
+    publish_window_seconds: "60",
+    new_account_period_seconds: "86400",
+    session_idle_seconds: "1800",
+    auth_revalidate_seconds: "900",
+    reason: "Update browser control",
+  });
+  await waitFor(send, sessionId, "document.querySelector('select[name=\"registration_mode\"]')?.value === 'invitation_only' && document.querySelector('input[name=\"revision\"]')?.value === '5'");
+
+  await navigate(send, sessionId, `${target}/email`, "document.body.textContent.includes('Shared SMTP transport is configured') && document.querySelector('form[action$=\"/admin/email/test\"]') !== null");
+  await auditAccessibility(send, sessionId, evaluate, "administration email", false);
+  await auditReflow(send, sessionId, evaluate, "administration email");
+  await submitForm(send, sessionId, `form[action$="/admin/email/test"]`, { reason: "Verify browser email" });
+  await waitFor(send, sessionId, "location.pathname.endsWith('/admin/email') && document.body.textContent.includes('Last result') && document.body.textContent.includes('accepted')");
+
   await navigate(send, sessionId, `${target}/settings`, "document.body.textContent.includes('Site settings')");
   await submitForm(send, sessionId, `form[action$="/admin/settings"]`, {
     site_name: "Updated Browser Board",
@@ -339,7 +369,9 @@ test("administration remains keyboard operable without JavaScript", async (t) =>
   await waitFor(send, sessionId, "document.body.textContent.includes('Updated Browser Board') && document.documentElement.dataset.brandTheme === 'rose'");
   await navigate(send, sessionId, `${root}/rules`, "document.body.textContent.includes('Updated browser rules') && document.body.textContent.includes('Updated Browser Board')");
 
-  await navigate(send, sessionId, `${target}/accounts/1`, "document.body.textContent.includes('Browser Administrator')");
-  await submitForm(send, sessionId, `form[action$="/admin/accounts/1/role"]`, { role: "member", reason: "Revoke browser session" });
+  await navigate(send, sessionId, `${target}/accounts/1/sessions`, "document.body.textContent.includes('Local sessions for Browser Administrator')");
+  await auditAccessibility(send, sessionId, evaluate, "administration current sessions", false);
+  await auditReflow(send, sessionId, evaluate, "administration current sessions");
+  await submitForm(send, sessionId, `form[action$="/admin/accounts/1/sessions/revoke"]`, { reason: "Revoke browser administrator sessions" });
   await waitFor(send, sessionId, "location.pathname.endsWith('/login')");
 });

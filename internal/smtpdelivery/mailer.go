@@ -41,14 +41,14 @@ func New(configuration Settings, issuer url.URL, flowSlug string) (*Mailer, erro
 		strings.ContainsAny(configuration.Host+configuration.Username+configuration.From, "\r\n\x00") ||
 		(configuration.Username == "") != (configuration.PasswordFile == "") ||
 		issuer.Scheme != "https" || issuer.Host == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" || flowSlug == "" || strings.ContainsAny(flowSlug, "/?#") {
-		return nil, fmt.Errorf("SMTP invitation delivery is invalid")
+		return nil, fmt.Errorf("SMTP delivery is invalid")
 	}
 	var password []byte
 	var err error
 	if configuration.Username != "" {
 		password, err = loadPassword(configuration.PasswordFile)
 		if err != nil {
-			return nil, fmt.Errorf("SMTP invitation delivery is invalid")
+			return nil, fmt.Errorf("SMTP delivery is invalid")
 		}
 	}
 	flowBase := url.URL{Scheme: issuer.Scheme, Host: issuer.Host, Path: "/if/flow/" + flowSlug + "/"}
@@ -70,6 +70,21 @@ func (mailer *Mailer) SendInvitation(ctx context.Context, recipient, displayName
 	if mailer == nil || ctx == nil || recipient == "" || strings.ContainsAny(recipient, "\r\n") || strings.ContainsAny(displayName, "\r\n") || tokenUUID == "" || strings.ContainsAny(tokenUUID, "\r\n/?#") || expires.IsZero() {
 		return "failed", fmt.Errorf("invitation email input is invalid")
 	}
+	status, err := mailer.send(ctx, recipient, mailer.invitationMessage(recipient, displayName, tokenUUID, expires))
+	if status == "accepted" {
+		return "queued", nil
+	}
+	return status, err
+}
+
+func (mailer *Mailer) SendTest(ctx context.Context, recipient string) (string, error) {
+	if mailer == nil || ctx == nil || recipient == "" || strings.ContainsAny(recipient, "\r\n") {
+		return "failed", fmt.Errorf("email test input is invalid")
+	}
+	return mailer.send(ctx, recipient, mailer.testMessage(recipient))
+}
+
+func (mailer *Mailer) send(ctx context.Context, recipient, message string) (string, error) {
 	operationContext, cancel := context.WithTimeout(ctx, mailer.configuration.Timeout)
 	defer cancel()
 	address := net.JoinHostPort(mailer.configuration.Host, fmt.Sprintf("%d", mailer.configuration.Port))
@@ -108,7 +123,6 @@ func (mailer *Mailer) SendInvitation(ctx context.Context, recipient, displayName
 	if err != nil {
 		return "failed", fmt.Errorf("SMTP DATA rejected")
 	}
-	message := mailer.message(recipient, displayName, tokenUUID, expires)
 	if _, err := io.WriteString(writer, message); err != nil {
 		_ = writer.Close()
 		return "unknown", fmt.Errorf("SMTP DATA write ambiguous")
@@ -117,7 +131,7 @@ func (mailer *Mailer) SendInvitation(ctx context.Context, recipient, displayName
 		return "unknown", fmt.Errorf("SMTP DATA acceptance ambiguous")
 	}
 	_ = client.Quit()
-	return "queued", nil
+	return "accepted", nil
 }
 
 func (mailer *Mailer) dialConnection(ctx context.Context, address string) (net.Conn, error) {
@@ -141,7 +155,7 @@ func (mailer *Mailer) dialConnection(ctx context.Context, address string) (net.C
 	return connection, nil
 }
 
-func (mailer *Mailer) message(recipient, displayName, tokenUUID string, expires time.Time) string {
+func (mailer *Mailer) invitationMessage(recipient, displayName, tokenUUID string, expires time.Time) string {
 	invitation := mailer.flowBase
 	invitation.RawQuery = url.Values{"itoken": {tokenUUID}}.Encode()
 	greeting := "Hello,"
@@ -155,6 +169,15 @@ func (mailer *Mailer) message(recipient, displayName, tokenUUID string, expires 
 		"Content-Transfer-Encoding: 8bit\r\n\r\n" +
 		greeting + "\r\n\r\nUse this single-use link to join GOTTH Board:\r\n" + invitation.String() +
 		"\r\n\r\nThis invitation expires at " + expires.UTC().Format(time.RFC3339) + ".\r\n"
+}
+
+func (mailer *Mailer) testMessage(recipient string) string {
+	return "From: " + mailer.configuration.From + "\r\n" +
+		"To: " + recipient + "\r\n" +
+		"Subject: GOTTH Board email test\r\n" +
+		"Content-Type: text/plain; charset=UTF-8\r\n" +
+		"Content-Transfer-Encoding: 8bit\r\n\r\n" +
+		"This message confirms that GOTTH Board can submit mail through the configured transport.\r\n"
 }
 
 func loadPassword(path string) ([]byte, error) {
