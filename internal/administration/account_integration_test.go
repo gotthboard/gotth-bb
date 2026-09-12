@@ -218,9 +218,19 @@ SELECT decode(lpad(to_hex(value), 64, '0'), 'hex'), $1, $2, $2, $2, $3
 FROM generate_series(1, 51) AS value`, memberID, observedAt.Add(10*time.Second), observedAt.Add(time.Hour)); err != nil {
 		t.Fatalf("insert session page fixture: %v", err)
 	}
+	var idleSessionID int64
+	if err := connections[0].QueryRow(ctx, `
+INSERT INTO public.sessions (token_hash, user_id, issued_at, last_seen_at, validated_at, expires_at)
+VALUES (decode(repeat('ee', 32), 'hex'), $1, $2, $3, $3, $4)
+RETURNING id`, memberID, observedAt.Add(-10*time.Hour), observedAt.Add(-9*time.Hour), observedAt.Add(time.Hour)).Scan(&idleSessionID); err != nil {
+		t.Fatalf("insert idle session fixture: %v", err)
+	}
 	sessions, err := ListSessions(ctx, querier, actor, observedAt.Add(20*time.Second), memberID)
 	if err != nil || sessions.DisplayName != "Local Member" || sessions.Revision != 4 || len(sessions.Sessions) != 50 || !sessions.More {
 		t.Fatalf("ListSessions(51 boundary) = (%+v, %v)", sessions, err)
+	}
+	if _, err := RevokeOneSession(ctx, connections[0], func() time.Time { return observedAt.Add(21 * time.Second) }, actor, memberID, idleSessionID, "Reject idle session revocation", testAdministrationRequestID(39)); !errors.Is(err, ErrAccountAdministrationConflict) {
+		t.Fatalf("idle RevokeOneSession() error = %v", err)
 	}
 	if _, err := connections[0].Exec(ctx, `
 CREATE FUNCTION public.reject_session_administration_audit()
@@ -249,8 +259,9 @@ EXECUTE FUNCTION public.reject_session_administration_audit()`); err != nil {
 	if err != nil || all.Revoked != 50 || all.SessionID != 0 || all.AuditID <= one.AuditID {
 		t.Fatalf("RevokeAllSessions() = (%+v, %v)", all, err)
 	}
-	if err := connections[0].QueryRow(ctx, `SELECT count(*) FROM public.sessions WHERE user_id = $1 AND revoked_at IS NULL`, memberID).Scan(&activeSessions); err != nil || activeSessions != 0 {
-		t.Fatalf("remaining active sessions = (%d, %v)", activeSessions, err)
+	var idleSessionUnrevoked bool
+	if err := connections[0].QueryRow(ctx, `SELECT count(*), (SELECT revoked_at IS NULL FROM public.sessions WHERE id = $2) FROM public.sessions WHERE user_id = $1 AND revoked_at IS NULL AND expires_at > $3 AND last_seen_at > $3 - make_interval(secs => (SELECT session_idle_seconds FROM public.site_settings WHERE singleton))`, memberID, idleSessionID, observedAt.Add(23*time.Second)).Scan(&activeSessions, &idleSessionUnrevoked); err != nil || activeSessions != 0 || !idleSessionUnrevoked {
+		t.Fatalf("remaining active sessions = (%d, idle unrevoked %t, %v)", activeSessions, idleSessionUnrevoked, err)
 	}
 
 	secondActor := policy.AccessContext{Authenticated: true, UserID: secondAdministratorID, Role: policy.RoleAdministrator}

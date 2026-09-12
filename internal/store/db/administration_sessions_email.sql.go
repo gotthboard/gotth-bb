@@ -360,13 +360,24 @@ func (q *Queries) ReserveEmailTestAndAudit(ctx context.Context, arg ReserveEmail
 }
 
 const revokeAllSessionsForAdministrationAndAudit = `-- name: RevokeAllSessionsForAdministrationAndAudit :one
-WITH revoked AS (
+WITH settings AS MATERIALIZED (
+    SELECT session_idle_seconds
+    FROM public.site_settings
+    WHERE singleton
+      AND (SELECT count(*) FROM public.site_settings) = 1
+), revoked AS (
     UPDATE public.sessions AS local_session
     SET revoked_at = GREATEST(local_session.issued_at, $1::timestamptz)
+    FROM settings
     WHERE local_session.user_id = $2
       AND local_session.revoked_at IS NULL
       AND local_session.issued_at <= $1::timestamptz
+      AND local_session.last_seen_at <= $1::timestamptz
+      AND local_session.validated_at <= $1::timestamptz
       AND local_session.expires_at > $1::timestamptz
+      AND local_session.last_seen_at >
+          $1::timestamptz
+          - pg_catalog.make_interval(secs => settings.session_idle_seconds)
     RETURNING local_session.id
 ), changed AS (
     SELECT count(*)::bigint AS revoked_count
@@ -418,14 +429,25 @@ func (q *Queries) RevokeAllSessionsForAdministrationAndAudit(ctx context.Context
 }
 
 const revokeOneSessionForAdministrationAndAudit = `-- name: RevokeOneSessionForAdministrationAndAudit :one
-WITH revoked AS (
+WITH settings AS MATERIALIZED (
+    SELECT session_idle_seconds
+    FROM public.site_settings
+    WHERE singleton
+      AND (SELECT count(*) FROM public.site_settings) = 1
+), revoked AS (
     UPDATE public.sessions AS local_session
     SET revoked_at = GREATEST(local_session.issued_at, $1::timestamptz)
+    FROM settings
     WHERE local_session.id = $2
       AND local_session.user_id = $3
       AND local_session.revoked_at IS NULL
       AND local_session.issued_at <= $1::timestamptz
+      AND local_session.last_seen_at <= $1::timestamptz
+      AND local_session.validated_at <= $1::timestamptz
       AND local_session.expires_at > $1::timestamptz
+      AND local_session.last_seen_at >
+          $1::timestamptz
+          - pg_catalog.make_interval(secs => settings.session_idle_seconds)
     RETURNING local_session.id
 ), changed AS (
     SELECT count(*)::bigint AS revoked_count
