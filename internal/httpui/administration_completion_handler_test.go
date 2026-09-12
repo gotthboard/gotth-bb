@@ -229,7 +229,7 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 			}
 			return registration.InvitationRevocationResult{Status: "revoked", Result: "confirmed", Revision: 4, AuditID: 5, Completed: true}, nil
 		},
-		Clock: func() time.Time { return clockNow }, Issuer: url.URL{Scheme: "https", Host: "auth.example.test"}, FlowSlug: "gotth-bb-invitation", SMTPConfigured: true,
+		Clock: func() time.Time { return clockNow }, Issuer: url.URL{Scheme: "http", Host: "127.0.0.1:39443"}, FlowSlug: "gotth-bb-invitation", SMTPConfigured: true,
 	}
 	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
 	if err != nil {
@@ -248,7 +248,7 @@ func TestInvitationAdministrationCreatesOneTimeLinkAndRevokesHandle(t *testing.T
 	createForm := url.Values{"_csrf": {validCSRFTokenForTest(0x51)}, "email": {"invitee@example.test"}, "display_name": {"Invited Member"}, "expires_minutes": {"60"}, "expires_reference": {now.Format(time.RFC3339)}, "delivery": {"none"}, "reason": {"Invite participant"}, "idempotency_key": {strings.Repeat("11", 16)}}
 	createResponse := httptest.NewRecorder()
 	handler.ServeHTTP(createResponse, areaAdministrationTestRequest(http.MethodPost, "/admin/invitations", createForm, admin))
-	wantLink := "https://auth.example.test/if/flow/gotth-bb-invitation/?itoken=66666666-6666-4666-8666-666666666666"
+	wantLink := "http://127.0.0.1:39443/if/flow/gotth-bb-invitation/?itoken=66666666-6666-4666-8666-666666666666"
 	if createResponse.Code != http.StatusOK || !strings.Contains(createResponse.Body.String(), wantLink) || createCalls != 1 || listCalls != 2 || strings.Join(invitationCalls, ",") != "list,list,create" {
 		t.Fatalf("create invitation = (%d, create %d, list %d, calls %v, %q)", createResponse.Code, createCalls, listCalls, invitationCalls, createResponse.Body.String())
 	}

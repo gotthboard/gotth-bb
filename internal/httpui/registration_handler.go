@@ -25,7 +25,7 @@ type registrationPageView struct {
 }
 
 func newDynamicRegistrationHandler(builder URLBuilder, services RegistrationHTTPServices) (http.Handler, error) {
-	if services.LoadSettings == nil || services.Issuer.Scheme != "https" || services.Issuer.Host == "" || services.Issuer.User != nil || services.Issuer.RawQuery != "" || services.Issuer.Fragment != "" || !registrationFlowSlug.MatchString(services.OpenFlowSlug) || !registrationFlowSlug.MatchString(services.ApprovalFlowSlug) || services.OpenFlowSlug == services.ApprovalFlowSlug {
+	if services.LoadSettings == nil || !validRegistrationIssuer(services.Issuer) || !registrationFlowSlug.MatchString(services.OpenFlowSlug) || !registrationFlowSlug.MatchString(services.ApprovalFlowSlug) || services.OpenFlowSlug == services.ApprovalFlowSlug {
 		return nil, fmt.Errorf("dynamic registration services are invalid")
 	}
 	view, err := newPageView(builder, "Registration", "register")
@@ -85,6 +85,16 @@ func newDynamicRegistrationHandler(builder URLBuilder, services RegistrationHTTP
 		}
 		renderRegistration(response, request, view, http.StatusOK, presentation)
 	}), nil
+}
+
+func validRegistrationIssuer(issuer url.URL) bool {
+	if issuer.Host == "" || issuer.Hostname() == "" || issuer.User != nil || issuer.RawQuery != "" || issuer.Fragment != "" {
+		return false
+	}
+	if issuer.Scheme == "https" {
+		return true
+	}
+	return issuer.Scheme == "http" && (issuer.Hostname() == "127.0.0.1" || issuer.Hostname() == "localhost")
 }
 
 func renderRegistration(response http.ResponseWriter, request *http.Request, view pageView, status int, presentation registrationPageView) {

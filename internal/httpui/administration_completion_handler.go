@@ -173,7 +173,7 @@ var administrationInvitationToken = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}
 
 func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
 	registrationsValid := services.Registrations == nil || services.Registrations.List != nil && services.Registrations.Decide != nil && services.Registrations.Adopt != nil
-	invitationsValid := services.Invitations == nil || services.Invitations.List != nil && services.Invitations.Create != nil && services.Invitations.Revoke != nil && services.Invitations.Clock != nil && services.Invitations.Issuer.Scheme == "https" && services.Invitations.Issuer.Host != "" && registrationFlowSlug.MatchString(services.Invitations.FlowSlug)
+	invitationsValid := services.Invitations == nil || services.Invitations.List != nil && services.Invitations.Create != nil && services.Invitations.Revoke != nil && services.Invitations.Clock != nil && validRegistrationIssuer(services.Invitations.Issuer) && registrationFlowSlug.MatchString(services.Invitations.FlowSlug)
 	controlValid := services.Control == nil || services.Control.Load != nil && services.Control.Update != nil
 	sessionsValid := services.Sessions == nil || services.Sessions.List != nil && services.Sessions.RevokeOne != nil && services.Sessions.RevokeAll != nil && services.Sessions.Clock != nil
 	if sessionsValid && services.Sessions != nil {

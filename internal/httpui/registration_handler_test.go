@@ -101,4 +101,14 @@ func TestDynamicRegistrationRejectsInvalidConstruction(t *testing.T) {
 			t.Fatalf("invalid services accepted: %+v", candidate)
 		}
 	}
+	for _, issuer := range []url.URL{
+		{Scheme: "http", Host: "127.0.0.1:39443"},
+		{Scheme: "http", Host: "localhost:39443"},
+	} {
+		candidate := valid
+		candidate.Issuer = issuer
+		if handler, err := newDynamicRegistrationHandler(callbackTestURLBuilder(t), candidate); err != nil || handler == nil {
+			t.Fatalf("loopback issuer rejected: %+v, %v", issuer, err)
+		}
+	}
 }
