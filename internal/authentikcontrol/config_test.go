@@ -1,6 +1,7 @@
 package authentikcontrol
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,38 @@ func TestLoadClosedDescriptorAndToken(t *testing.T) {
 	boardObjects, err := LoadObjects(objectsPath, "https://auth.example.test/application/o/gotth-bb/")
 	if err != nil || boardObjects != objects {
 		t.Fatalf("LoadObjects() = (%+v, %v)", boardObjects, err)
+	}
+}
+
+func TestLoadAcceptsExactLoopbackHTTPDescriptor(t *testing.T) {
+	directory := t.TempDir()
+	tokenPath := filepath.Join(directory, "token")
+	objectsPath := filepath.Join(directory, "objects.json")
+	if err := os.WriteFile(tokenPath, []byte("one-private-token"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	raw := `{"version":1,"issuer_origin":"http://127.0.0.1:39443","flows":{"open":{"slug":"gotth-bb-open","uuid":"` + testOpenFlow + `"},"approval":{"slug":"gotth-bb-approval","uuid":"` + testApprovalFlow + `"},"invitation":{"slug":"gotth-bb-invitation","uuid":"` + testInvitationFlow + `"}},"groups":{"accepted":"` + testAcceptedGroup + `","pending":"` + testPendingGroup + `","suspended":"` + testSuspendedGroup + `"}}`
+	if err := os.WriteFile(objectsPath, []byte(raw), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	secret, objects, err := Load(tokenPath, objectsPath, "http://127.0.0.1:39443/application/o/gotth-bb/")
+	if err != nil || objects.IssuerOrigin != "http://127.0.0.1:39443" {
+		t.Fatalf("loopback load = (%+v, %v)", objects, err)
+	}
+	secret.destroy()
+}
+
+func TestControlURLRejectsNonLoopbackHTTP(t *testing.T) {
+	for _, raw := range []string{
+		"http://auth.example.test/application/o/gotth-bb/",
+		"http://127.0.0.2/application/o/gotth-bb/",
+		"http://[::1]/application/o/gotth-bb/",
+		"ftp://127.0.0.1/application/o/gotth-bb/",
+	} {
+		parsed, err := url.Parse(raw)
+		if err != nil || validControlURL(parsed) {
+			t.Fatalf("unsafe control URL accepted: %q", raw)
+		}
 	}
 }
 

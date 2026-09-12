@@ -72,10 +72,12 @@ type Client struct {
 	http    *http.Client
 }
 
-// New constructs a no-redirect, system-TLS client for the issuer origin.
+// New constructs a no-redirect, system-TLS client for the issuer origin. The
+// documented standalone rehearsal may use exact loopback HTTP; every other
+// origin remains HTTPS-only.
 func New(issuer string, token Secret, objects Objects) (*Client, error) {
 	parsed, err := url.Parse(issuer)
-	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || len(token.bytes) == 0 {
+	if err != nil || !validControlURL(parsed) || len(token.bytes) == 0 {
 		token.destroy()
 		return nil, fmt.Errorf("Authentik control configuration is invalid")
 	}

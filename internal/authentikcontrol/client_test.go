@@ -46,6 +46,20 @@ func testClient(t *testing.T, handler http.Handler) (*Client, *httptest.Server) 
 	return client, server
 }
 
+func TestNewAcceptsOnlyHTTPSOrExactLoopbackHTTP(t *testing.T) {
+	loopback := "http://127.0.0.1:39443"
+	client, err := New(loopback+"/application/o/gotth-bb/", Secret{bytes: []byte("control-token")}, testObjects(loopback))
+	if err != nil {
+		t.Fatalf("loopback New() = %v", err)
+	}
+	client.Close()
+
+	secret := Secret{bytes: []byte("control-token")}
+	if _, err := New("http://auth.example.test/application/o/gotth-bb/", secret, testObjects("http://auth.example.test")); err == nil {
+		t.Fatal("non-loopback HTTP issuer accepted")
+	}
+}
+
 func TestUserByUUIDUsesOnlyPinnedQuery(t *testing.T) {
 	client, server := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/api/v3/core/users/" || request.URL.Query().Get("uuid") != testUserUUID || request.URL.Query().Get("page_size") != "2" || request.Header.Get("Authorization") != "Bearer control-token" {

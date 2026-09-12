@@ -147,7 +147,7 @@ func decodeObjects(raw []byte, issuer string) (Objects, error) {
 		return Objects{}, errors.New("invalid object document")
 	}
 	issuerURL, err := url.Parse(issuer)
-	if err != nil || issuerURL.Scheme != "https" || issuerURL.Host == "" || issuerURL.User != nil || issuerURL.RawQuery != "" || issuerURL.Fragment != "" {
+	if err != nil || !validControlURL(issuerURL) {
 		return Objects{}, errors.New("invalid issuer")
 	}
 	origin := (&url.URL{Scheme: issuerURL.Scheme, Host: issuerURL.Host}).String()
@@ -175,6 +175,16 @@ func decodeObjects(raw []byte, issuer string) (Objects, error) {
 		identities[group] = struct{}{}
 	}
 	return objects, nil
+}
+
+func validControlURL(parsed *url.URL) bool {
+	if parsed == nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if parsed.Scheme == "https" {
+		return true
+	}
+	return parsed.Scheme == "http" && (parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "localhost")
 }
 
 func duplicateObjectKey(raw []byte) bool {
