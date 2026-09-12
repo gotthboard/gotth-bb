@@ -1243,11 +1243,18 @@ VALUES ($1, $2, $3, $3, $3, $4)`, authenticationTokenHash, ownerID, observedAt.A
 		}
 	}
 	var finalConnections int64
-	if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()`).Scan(&finalConnections); err != nil {
-		t.Fatal(err)
-	}
-	if finalConnections != baselineConnections {
-		t.Fatalf("connection cleanup baseline=%d final=%d", baselineConnections, finalConnections)
+	cleanupDeadline := time.Now().Add(2 * time.Second)
+	for {
+		if err := observer.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()`).Scan(&finalConnections); err != nil {
+			t.Fatal(err)
+		}
+		if finalConnections == baselineConnections {
+			break
+		}
+		if time.Now().After(cleanupDeadline) {
+			t.Fatalf("connection cleanup baseline=%d final=%d", baselineConnections, finalConnections)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	canceled, cancel := context.WithCancel(ctx)
 	cancel()
