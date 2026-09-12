@@ -114,6 +114,7 @@ func TestNewAuthenticatedHandlerActivatesAuthenticationWithoutProtectingInfrastr
 	}{
 		{target: "/health/live", wantStatus: http.StatusOK},
 		{target: "/static/" + appStylesheetFilename, wantStatus: http.StatusOK},
+		{target: "/static/" + immediatePriorAppStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + priorAppStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + previousAppStylesheetFilename, wantStatus: http.StatusOK},
 		{target: "/static/" + olderAppStylesheetFilename, wantStatus: http.StatusOK},

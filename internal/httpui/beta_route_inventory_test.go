@@ -36,6 +36,7 @@ func TestBetaRouteInventoryMatchesProductionRegistrations(t *testing.T) {
 	}
 	for _, asset := range []string{
 		appStylesheetFilename,
+		immediatePriorAppStylesheetFilename,
 		priorAppStylesheetFilename,
 		previousAppStylesheetFilename,
 		olderAppStylesheetFilename,
@@ -186,7 +187,7 @@ func extractProductionRoutes(t *testing.T, directory string) map[string]struct{}
 			return true
 		})
 	}
-	if filesParsed == 0 || methodRegistrations != 8 {
+	if filesParsed == 0 || methodRegistrations != 9 {
 		t.Fatalf("production route source framing = files %d, dynamic Method registrations %d", filesParsed, methodRegistrations)
 	}
 	return routes

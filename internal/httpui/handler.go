@@ -77,6 +77,7 @@ func newHandler(
 	router.Get("/health/live", serveLiveness)
 	router.Get("/health/ready", readinessHandler(checkReadiness))
 	stylesheet := staticAssetHandler("text/css; charset=utf-8", appStylesheet)
+	immediatePriorStylesheet := staticAssetHandler("text/css; charset=utf-8", immediatePriorAppStylesheet)
 	priorStylesheet := staticAssetHandler("text/css; charset=utf-8", priorAppStylesheet)
 	previousStylesheet := staticAssetHandler("text/css; charset=utf-8", previousAppStylesheet)
 	olderStylesheet := staticAssetHandler("text/css; charset=utf-8", olderAppStylesheet)
@@ -86,6 +87,7 @@ func newHandler(
 	markdownToolbar := staticAssetHandler("text/javascript; charset=utf-8", markdownToolbarScript)
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		router.Method(method, "/static/"+appStylesheetFilename, stylesheet)
+		router.Method(method, "/static/"+immediatePriorAppStylesheetFilename, immediatePriorStylesheet)
 		router.Method(method, "/static/"+priorAppStylesheetFilename, priorStylesheet)
 		router.Method(method, "/static/"+previousAppStylesheetFilename, previousStylesheet)
 		router.Method(method, "/static/"+olderAppStylesheetFilename, olderStylesheet)

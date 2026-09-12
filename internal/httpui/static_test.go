@@ -16,6 +16,10 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 	if want := "app-" + stylesheetSHA256 + ".css"; appStylesheetFilename != want {
 		t.Fatalf("stylesheet filename = %q, want content-addressed %q", appStylesheetFilename, want)
 	}
+	const immediatePriorStylesheetSHA256 = "3f1bf5d28948bd8391383ee7aba5e9cf14fc5b746449e93d996dff895406cacf"
+	if want := "app-" + immediatePriorStylesheetSHA256 + ".css"; immediatePriorAppStylesheetFilename != want {
+		t.Fatalf("immediate prior stylesheet filename = %q, want content-addressed %q", immediatePriorAppStylesheetFilename, want)
+	}
 	const priorStylesheetSHA256 = "4237ef90067eac5c030813c0722cfd222a7419a85169782c672d4c96f8727893"
 	if want := "app-" + priorStylesheetSHA256 + ".css"; priorAppStylesheetFilename != want {
 		t.Fatalf("prior stylesheet filename = %q, want content-addressed %q", priorAppStylesheetFilename, want)
@@ -48,6 +52,7 @@ func TestEmbeddedStaticAssetsMatchPinnedGeneration(t *testing.T) {
 		contains   string
 	}{
 		{name: "Tailwind CSS", content: appStylesheet, wantSHA256: stylesheetSHA256, contains: ".min-h-11"},
+		{name: "immediate prior Tailwind CSS", content: immediatePriorAppStylesheet, wantSHA256: immediatePriorStylesheetSHA256, contains: ".min-h-11"},
 		{name: "prior Tailwind CSS", content: priorAppStylesheet, wantSHA256: priorStylesheetSHA256, contains: ".min-h-11"},
 		{name: "previous Tailwind CSS", content: previousAppStylesheet, wantSHA256: previousStylesheetSHA256, contains: ".focus\\:not-sr-only"},
 		{name: "older Tailwind CSS", content: olderAppStylesheet, wantSHA256: olderStylesheetSHA256, contains: ".sm\\:grid-cols-2"},
