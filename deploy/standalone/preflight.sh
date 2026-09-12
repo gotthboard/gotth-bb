@@ -20,10 +20,14 @@ set -a
 . "$deployment_env"
 set +a
 
-required_variables='GOTTH_BB_IMAGE GOTTH_BB_IMAGE_ID GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_AUTH_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_BIND GOTTH_BB_CADDY_CLIENT_ADDRESS GOTTH_BB_CADDY_UPSTREAM_SCHEME GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE'
+required_variables='GOTTH_BB_IMAGE GOTTH_BB_IMAGE_ID GOTTH_BB_ENV_FILE GOTTH_BB_PUBLIC_BASE_URL GOTTH_BB_AUTH_PUBLIC_BASE_URL GOTTH_BB_OIDC_REDIRECT_URI GOTTH_BB_BOARD_HOST GOTTH_BB_AUTH_HOST GOTTH_BB_CADDY_BIND GOTTH_BB_CADDY_CLIENT_ADDRESS GOTTH_BB_CADDY_UPSTREAM_SCHEME GOTTH_BB_CADDY_DATA_DIR GOTTH_BB_CADDY_CONFIG_DIR GOTTH_BB_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_POSTGRES_DATA_DIR GOTTH_BB_AUTHENTIK_DATA_DIR GOTTH_BB_AUTHENTIK_TEMPLATES_DIR GOTTH_BB_AUTHENTIK_CERTS_DIR GOTTH_BB_ABUSE_RULES_FILE GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE GOTTH_BB_DATABASE_URL_FILE GOTTH_BB_OIDC_CLIENT_SECRET_FILE GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE GOTTH_BB_AUTHENTIK_CONTROL_OBJECTS_FILE GOTTH_BB_AUTHENTIK_CONTROL_SOCKET_DIR GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE GOTTH_BB_SMTP_PASSWORD_FILE'
 for name in $required_variables; do
 	eval "value=\${$name-}"
 	[ -n "$value" ] || fail "$name is required"
+done
+for name in GOTTH_BB_SMTP_HOST GOTTH_BB_SMTP_PORT GOTTH_BB_SMTP_USERNAME GOTTH_BB_SMTP_FROM GOTTH_BB_SMTP_TLS_MODE GOTTH_BB_SMTP_TIMEOUT_SECONDS GOTTH_BB_SMTP_USE_TLS GOTTH_BB_SMTP_USE_SSL; do
+	eval "present=\${$name+x}"
+	[ "$present" = x ] || fail "$name is required, including its disabled sentinel"
 done
 
 [ "$GOTTH_BB_OIDC_REDIRECT_URI" = "$GOTTH_BB_PUBLIC_BASE_URL/auth/callback" ] || fail "OIDC redirect URI differs from the Board callback"
@@ -151,6 +155,7 @@ check_secret "$GOTTH_BB_POSTGRES_MIGRATE_PASSWORD_FILE" 999
 check_secret "$GOTTH_BB_POSTGRES_RUNTIME_PASSWORD_FILE" 999
 check_secret "$GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE" 999
 check_secret "$GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE" 1000
+check_path "$GOTTH_BB_SMTP_PASSWORD_FILE" 0:65529:440 file
 check_secret "$GOTTH_BB_DATABASE_URL_FILE" 65532
 check_secret "$GOTTH_BB_OIDC_CLIENT_SECRET_FILE" 65532
 check_secret "$GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE" 65530
@@ -179,6 +184,7 @@ $GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE
 $GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE
 $GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE
 $GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE
+$GOTTH_BB_SMTP_PASSWORD_FILE
 "
 canonical_paths=''
 old_ifs=$IFS
@@ -212,18 +218,55 @@ set +a
 [ "${AUTHENTIK_CONTROL_SOCKET-}" = "/run/gotth-bb-control/authentik-control.sock" ] || fail "app Authentik control socket path differs"
 [ "${INVITATION_FINGERPRINT_KEY_FILE-}" = "/run/secrets/invitation_fingerprint_key" ] || fail "app invitation fingerprint key path differs"
 [ "${REGISTRATION_URL-}" = "$expected_registration" ] || fail "app registration URL differs from dedicated Authentik"
-for name in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_FROM SMTP_TLS_MODE SMTP_TIMEOUT; do
+for name in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_FROM SMTP_TLS_MODE SMTP_TIMEOUT SMTP_PASSWORD_FILE; do
 	eval "present=\${$name+x}"
-	[ "$present" = x ] || fail "app $name is required, including the empty disabled sentinel"
+	[ "$present" = x ] || fail "app $name is required, including its empty sentinel"
 done
+[ "$SMTP_HOST" = "$GOTTH_BB_SMTP_HOST" ] || fail "app and Authentik SMTP hosts differ"
+[ "$SMTP_PORT" = "$GOTTH_BB_SMTP_PORT" ] || fail "app and Authentik SMTP ports differ"
+[ "$SMTP_USERNAME" = "$GOTTH_BB_SMTP_USERNAME" ] || fail "app and Authentik SMTP usernames differ"
+[ "$SMTP_FROM" = "$GOTTH_BB_SMTP_FROM" ] || fail "app and Authentik SMTP senders differ"
+[ "$SMTP_TLS_MODE" = "$GOTTH_BB_SMTP_TLS_MODE" ] || fail "app and Authentik SMTP TLS modes differ"
 smtp_tuple=$SMTP_HOST$SMTP_PORT$SMTP_USERNAME$SMTP_FROM$SMTP_TLS_MODE$SMTP_TIMEOUT
-[ -z "$smtp_tuple" ] || fail "standalone SMTP enablement remains outside B1-09-03"
-[ -z "${SMTP_PASSWORD_FILE-}" ] || fail "app SMTP password must be absent while SMTP is disabled"
+smtp_password_bytes=$(wc -c <"$GOTTH_BB_SMTP_PASSWORD_FILE" | tr -d ' ')
+if [ -z "$smtp_tuple" ]; then
+	[ -z "$GOTTH_BB_SMTP_TIMEOUT_SECONDS" ] || fail "disabled Authentik SMTP timeout sentinel is not empty"
+	[ "$GOTTH_BB_SMTP_USE_TLS:$GOTTH_BB_SMTP_USE_SSL" = false:false ] || fail "disabled Authentik SMTP TLS flags are not false"
+	[ -z "$SMTP_PASSWORD_FILE" ] || fail "app SMTP password path must be empty while SMTP is disabled"
+	[ "$smtp_password_bytes" -eq 0 ] || fail "disabled SMTP password file is not empty"
+else
+	for name in SMTP_HOST SMTP_PORT SMTP_FROM SMTP_TLS_MODE SMTP_TIMEOUT; do
+		eval "value=\${$name}"
+		[ -n "$value" ] || fail "enabled app $name is empty"
+	done
+	case "$SMTP_PORT" in '' | *[!0-9]* | 0*) fail "SMTP port is not canonical" ;; esac
+	[ "$SMTP_PORT" -le 65535 ] || fail "SMTP port is outside 1 through 65535"
+	case "$GOTTH_BB_SMTP_TIMEOUT_SECONDS" in '' | *[!0-9]* | 0*) fail "Authentik SMTP timeout is not canonical seconds" ;; esac
+	[ "$GOTTH_BB_SMTP_TIMEOUT_SECONDS" -ge 1 ] && [ "$GOTTH_BB_SMTP_TIMEOUT_SECONDS" -le 30 ] || fail "Authentik SMTP timeout is outside 1 through 30 seconds"
+	[ "$SMTP_TIMEOUT" = "${GOTTH_BB_SMTP_TIMEOUT_SECONDS}s" ] || fail "app and Authentik SMTP timeouts differ"
+	case "$SMTP_TLS_MODE:$GOTTH_BB_SMTP_USE_TLS:$GOTTH_BB_SMTP_USE_SSL" in
+		starttls:true:false | implicit_tls:false:true | plain:false:false) ;;
+		*) fail "app and Authentik SMTP TLS settings differ" ;;
+	esac
+	if [ -z "$SMTP_USERNAME" ]; then
+		[ -z "$SMTP_PASSWORD_FILE" ] || fail "unauthenticated app SMTP has a password path"
+		[ "$smtp_password_bytes" -eq 0 ] || fail "unauthenticated SMTP password file is not empty"
+	else
+		[ "$SMTP_PASSWORD_FILE" = /run/secrets/smtp_password ] || fail "authenticated app SMTP password path differs"
+		[ "$smtp_password_bytes" -gt 0 ] && [ "$smtp_password_bytes" -le 4096 ] || fail "SMTP password size is invalid"
+		smtp_password=$(cat -- "$GOTTH_BB_SMTP_PASSWORD_FILE")
+		[ "$(printf %s "$smtp_password" | wc -c | tr -d ' ')" = "$smtp_password_bytes" ] || fail "SMTP password contains invalid framing"
+		[ "$(printf %s "$smtp_password" | tr -d '\000\r\n' | wc -c | tr -d ' ')" = "$smtp_password_bytes" ] || fail "SMTP password contains invalid framing"
+		[ "$(printf %s "$smtp_password" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')" = "$smtp_password" ] || fail "SMTP password has surrounding whitespace"
+		unset smtp_password
+	fi
+fi
 case "${APP_ENV-}:$expected_public" in
 	production:https://*) ;;
 	test:http://127.0.0.1:* | test:http://localhost:*) ;;
 	*) fail "APP_ENV and public URL are not an admitted production or loopback-test pair" ;;
 esac
+[ "${APP_ENV-}:$SMTP_TLS_MODE" != production:plain ] || fail "production SMTP cannot use plain transport"
 
 docker compose --env-file "$deployment_env" --project-directory "$script_dir" -f "$script_dir/compose.yml" config --quiet
 echo STANDALONE_PREFLIGHT_OK

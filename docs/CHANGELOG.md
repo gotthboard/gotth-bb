@@ -7,7 +7,7 @@ separate artifact governed by the release and operations plan.
 
 ### 2026-09-12 — Complete B1-09 administrator controls
 
-Implementation: f4996c20854872e0521f820ee6482d58db316b5f
+Implementation: current commit; hash assigned by Git after commit
 
 B1-09-04 wires the admitted runtime-control service into a strict
 administrator form and adds bounded local-session and email diagnostics.
@@ -30,8 +30,13 @@ The six exact control/session/email routes support ordinary HTML and HTMX,
 strict CSRF and form boundaries, no-JavaScript operation, keyboard focus, and
 320-pixel/200%-zoom reflow at both root and `/bb`. Standalone readiness now
 reports the same shared SMTP configuration used by invitation and test email.
-This unit does not merge, tag, package, release, deploy, or modify the live
-Beta.1.5 service. B1-09-05 remains.
+The standalone deployment carries one exact host-owned SMTP tuple and password
+file into Board and both Authentik processes, maps Board's closed TLS mode to
+Authentik's two booleans, and rejects tuple drift, invalid password ownership,
+authentication mismatch, or production plaintext before Compose starts. The
+control gateway receives neither the tuple nor the password. This unit does
+not merge, tag, package, release, deploy, or modify the live Beta.1.5 service.
+B1-09-05 remains.
 
 ### 2026-09-12 — Complete B1-09 registration and identity reconciliation
 

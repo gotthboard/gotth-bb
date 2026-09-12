@@ -7,6 +7,13 @@ x-authentik-environment: &authentik-environment
   AUTHENTIK_POSTGRESQL__SSLMODE: disable
   AUTHENTIK_ERROR_REPORTING__ENABLED: "false"
   AUTHENTIK_DISABLE_UPDATE_CHECK: "true"
+  AUTHENTIK_EMAIL__HOST: ${GOTTH_BB_SMTP_HOST-}
+  AUTHENTIK_EMAIL__PORT: ${GOTTH_BB_SMTP_PORT-}
+  AUTHENTIK_EMAIL__USERNAME: ${GOTTH_BB_SMTP_USERNAME-}
+  AUTHENTIK_EMAIL__FROM: ${GOTTH_BB_SMTP_FROM-}
+  AUTHENTIK_EMAIL__USE_TLS: ${GOTTH_BB_SMTP_USE_TLS-false}
+  AUTHENTIK_EMAIL__USE_SSL: ${GOTTH_BB_SMTP_USE_SSL-false}
+  AUTHENTIK_EMAIL__TIMEOUT: ${GOTTH_BB_SMTP_TIMEOUT_SECONDS-}
   GOTTH_BB_PUBLIC_BASE_URL: ${GOTTH_BB_PUBLIC_BASE_URL:?GOTTH_BB_PUBLIC_BASE_URL is required}
   GOTTH_BB_OIDC_REDIRECT_URI: ${GOTTH_BB_OIDC_REDIRECT_URI:?GOTTH_BB_OIDC_REDIRECT_URI is required}
   GOTTH_BB_OIDC_ISSUER_URL: ${GOTTH_BB_AUTH_PUBLIC_BASE_URL:?GOTTH_BB_AUTH_PUBLIC_BASE_URL is required}/application/o/gotth-bb/
@@ -19,9 +26,11 @@ x-authentik-common: &authentik-common
   environment: *authentik-environment
   group_add:
     - "999"
+    - "65529"
   secrets:
     - authentik_postgres_password
     - authentik_secret_key
+    - smtp_password
   volumes:
     - type: bind
       source: ${GOTTH_BB_AUTHENTIK_DATA_DIR:?GOTTH_BB_AUTHENTIK_DATA_DIR is required}
@@ -110,6 +119,7 @@ services:
     user: "65532:65532"
     group_add:
       - "65531"
+      - "65529"
     env_file:
       - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
     environment:
@@ -127,6 +137,7 @@ services:
       - oidc_client_secret
       - invitation_fingerprint_key
       - activity_cursor_keyring
+      - smtp_password
     volumes:
       - type: bind
         source: ${GOTTH_BB_ABUSE_RULES_FILE:?GOTTH_BB_ABUSE_RULES_FILE is required}
@@ -294,11 +305,13 @@ services:
       - "999"
       - "65532"
       - "65530"
+      - "65529"
     secrets:
       - authentik_postgres_password
       - authentik_secret_key
       - oidc_client_secret
       - authentik_control_token
+      - smtp_password
     ports:
       - "127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000"
     healthcheck:
@@ -364,3 +377,5 @@ secrets:
     file: ${GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE:?GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE is required}
   authentik_secret_key:
     file: ${GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE:?GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE is required}
+  smtp_password:
+    file: ${GOTTH_BB_SMTP_PASSWORD_FILE:?GOTTH_BB_SMTP_PASSWORD_FILE is required}

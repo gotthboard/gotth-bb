@@ -1,8 +1,9 @@
 # Standalone deployment
 
-This directory is the version 1.0 six-service deployment boundary. It owns
-Caddy, GOTTH Board, Board PostgreSQL, Authentik server/worker, and Authentik
-PostgreSQL. It never shares Caddy configuration/state or an Authentik tenant.
+This directory is the version 1.0 seven-service deployment boundary. It owns
+Caddy, GOTTH Board, the isolated Authentik control gateway, Board PostgreSQL,
+Authentik server/worker, and Authentik PostgreSQL. It never shares Caddy
+configuration/state or an Authentik tenant.
 On a single-purpose host its Caddy binds the public HTTPS endpoints directly.
 On a multi-site host, the existing TLS edge may forward only the two public
 hostnames to loopback listeners owned by this Caddy container.
@@ -19,13 +20,17 @@ directories are mode 0700.
 Secret files must be regular root-owned mode-0440 files: use
 group 999 for both PostgreSQL passwords, group 1000 for the Authentik instance
 key, and group 65532 for the Board database URL, OIDC secret, and cursor
-keyring. The pinned Authentik server receives supplemental groups 999 and
-65532; the worker receives only 999. These numeric identities are part of the
-pinned-image verification gate, not guesses about mutable tags. The Board
+keyring. The shared SMTP password file is root/group 65529 mode 0440; it is an
+exact empty regular file while SMTP is disabled or unauthenticated and contains
+the bounded password bytes without framing only for authenticated SMTP. The
+Board application and both Authentik processes receive supplemental group
+65529; the control gateway never does. The pinned Authentik server receives
+supplemental groups 999 and 65532; the worker receives only 999 besides the
+SMTP group. These numeric identities are part of the pinned-image verification
+gate, not guesses about mutable tags. The Board
 PostgreSQL directory must not overlap the Authentik PostgreSQL directory.
-Every secret file contains the exact nonempty secret bytes with no trailing
-newline, carriage return, or other framing; Authentik's documented `file://`
-loader treats those bytes literally.
+Every nonempty secret file contains the exact secret bytes with no trailing
+newline, carriage return, or other framing.
 
 The Board database URL secret names `gotth_bb_runtime` and the loopback
 maintenance port. Its password must equal the Board runtime password secret.
@@ -36,6 +41,14 @@ documented `file://` password form consistently in its Rust database path. The
 packaged non-root entrypoint therefore reads the two mounted Authentik secrets,
 validates their framing, exports them only into the Authentik process, and
 replaces itself. Docker image/configuration metadata retains no secret value.
+The same root-owned SMTP tuple is copied into `app.env` and the
+`GOTTH_BB_SMTP_*` deployment values. Preflight rejects any difference,
+derives Authentik's TLS booleans from the closed Board mode, and requires the
+same whole-second timeout. `starttls` maps to `true:false`,
+`implicit_tls` to `false:true`, and test-only `plain` to `false:false`.
+Production plain SMTP is rejected. Authentik reads the shared password through
+its non-root entrypoint; Board reads the same mounted bytes only when
+`SMTP_PASSWORD_FILE=/run/secrets/smtp_password`.
 
 Set `GOTTH_BB_COMPOSE_ENV_FILE` to the absolute deployment-environment path.
 Run the root-only preflight before starting anything. It rejects mismatched
