@@ -4,8 +4,8 @@ B1-09-04 administrator controls evidence
 Candidate
 ---------
 
-- reviewed implementation commit: f4996c20854872e0521f820ee6482d58db316b5f
-- reviewed tree: b79fd4d9782e036e5a89a99c723604fbd9ebedfa
+- reviewed implementation commit: 1ef2b637a7674bbedfcc5cd5d363d658b5d9e8f8
+- reviewed tree: dcc0a0e26d5c9fa49ca2e1c335ad79479feba20e
 - B1-09-03 evidence predecessor: 2d7150e
 - branch: feature/beta-1-admin-control-plane
 - two fresh cold reviews of the reviewed commit/tree: CLEAN, CLEAN
@@ -14,7 +14,7 @@ Environment
 -----------
 
 - local: Go 1.26.6-X:nodwarf5, Node 26.7.0, npm 12.0.2, Linux amd64
-- development evidence host: Go 1.26.5-X:nodwarf5, Node 26.5.1,
+- development evidence host: Go 1.26.6, Node 26.5.1,
   npm 12.0.2, Docker 29.7.1, Caddy 2.11.4,
   Chromium 151.0.7922.71, Linux amd64
 - disposable database: PostgreSQL 17.10 in task-owned containers with
@@ -89,6 +89,22 @@ Exact gates
    SMTP, and HTTP race suites without cache. It returned CLEAN without
    changing the tree.
 
+7. Standalone SMTP contract and pinned-Authentik parsing proof on the
+   development host:
+
+     go test -count=1 ./deploy/standalone ./internal/config
+     docker compose -f deploy/standalone/compose.yml config --format json
+     docker run --rm --entrypoint python <pinned-authentik-2026.5.2> ...
+
+   Disabled and authenticated-STARTTLS fixtures rendered the exact expected
+   environment for both Authentik processes. The Board application received
+   the shared password mount while the isolated control gateway did not.
+   Authentik 2026.5.2 parsed the disabled tuple as exact empty values with
+   both TLS booleans false, and parsed the enabled tuple as host
+   `smtp.example.test`, port 587, username `board`, sender
+   `board@example.test`, STARTTLS true, implicit TLS false, and timeout seven
+   seconds. Both checks returned their explicit `*_CONFIG_OK` sentinels.
+
 Results
 -------
 
@@ -114,6 +130,13 @@ Results
   TLS, protocol, DATA write, and final acceptance remain under the configured
   total timeout. The test message is fixed and contains no link, credential,
   account data, or user text.
+- Standalone preflight requires one root-owned mode-0440 SMTP password file,
+  an exact matching Board/Authentik tuple, canonical port and whole-second
+  timeout, closed TLS-mode mapping, and password/authentication consistency.
+  Board and both Authentik processes receive the shared mount; the isolated
+  control gateway receives neither the tuple nor the password. Disabled and
+  unauthenticated states require the password file to be exactly empty, and
+  production plaintext is rejected before Compose starts.
 - The complete administrator navigation and exact control/session/email route
   metadata are present. Full-page and HTMX behavior share CSRF, revalidation,
   body, method, base-path, focus, cache, and error boundaries.
@@ -122,6 +145,16 @@ Results
 
 Rejected intermediate work
 --------------------------
+
+- Evidence commit `44720cc` claimed B1-09-04 admission while the standalone
+  preflight still rejected all enabled SMTP and Authentik received no shared
+  transport. That evidence was false and is superseded by this record. The
+  clean-review count was reset before the standalone repair.
+- The first standalone repair used Compose `:-` defaults. Empty host values
+  therefore rendered as Authentik `localhost` defaults after preflight had
+  compared them as empty, creating hidden disabled-state drift. The reviewed
+  candidate uses `${VAR-}` literal empty propagation, and disposable Compose
+  plus pinned-Authentik runtime checks prove both states.
 
 - The first revocation SQL treated every unrevoked, unexpired row as active.
   That could revoke and count an idle-expired session absent from the page.
