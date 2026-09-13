@@ -282,7 +282,7 @@ entries:
       user_type: external
       user_path_template: users/gotth-bb
       create_users_group: !KeyOf pending-group
-  - identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510004}
+  - identifiers: {name: gotth-bb-enrollment-email-verification}
     id: email-verification
     model: authentik_stages_email.emailstage
     attrs:

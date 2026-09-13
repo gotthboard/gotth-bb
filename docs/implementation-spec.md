@@ -3439,8 +3439,11 @@ Saving is allowed only while registration is closed. The mutation locks control
 then SMTP state, validates the expected revision, applies the candidate through
 the existing Unix gateway, verifies the returned non-secret fields, and only
 then commits the local row and one redacted `update_smtp_settings` audit. The gateway
-adds only `GET` and `PATCH` operations for the descriptor-pinned Authentik
-email-stage UUID. It verifies the fixed stage name, template, token expiry,
+adds only `GET` and `PATCH` operations for the Authentik-assigned email-stage
+UUID pinned in the root-owned deployment descriptor. Blueprint reconciliation
+selects the unique stage by its fixed name and emits its persisted UUID; it
+does not pretend an importer lookup identifier controls a newly created model's
+primary key. The gateway verifies the fixed stage name, template, token expiry,
 activation flag, and returned non-secret connection fields; it accepts no
 caller origin, path, object ID, template, subject, or activation value. The
 control role gains only object-scoped view/change on that stage. The short

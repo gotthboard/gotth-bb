@@ -166,6 +166,12 @@ func TestStandaloneCaddyAndBlueprintContracts(t *testing.T) {
 	if strings.Contains(blueprint, "hashed_user_id") {
 		t.Fatal("Board blueprint couples subjects to the Authentik instance secret")
 	}
+	if !strings.Contains(blueprint, `identifiers: {name: gotth-bb-enrollment-email-verification}`) ||
+		strings.Contains(blueprint, `identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510004}`) ||
+		!strings.Contains(apply, `EmailStage.objects.get(name="gotth-bb-enrollment-email-verification")`) ||
+		!strings.Contains(apply, `"uuid": str(email_stage.pk)`) {
+		t.Fatal("email-stage reconciliation assumes an importer lookup identifier assigns a primary key")
+	}
 	if !strings.Contains(apply, `os.environ.pop("GOTTH_BB_OIDC_CLIENT_SECRET", None)`) ||
 		!strings.Contains(apply, `os.environ.pop("GOTTH_BB_AUTHENTIK_CONTROL_TOKEN", None)`) ||
 		!strings.Contains(apply, `provider.client_secret != oidc_secret`) ||

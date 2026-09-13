@@ -64,7 +64,7 @@ try:
     initial = InitialPermissions.objects.get(name="gotth-bb-control-created-invitations")
     groups = {key: Group.objects.get(name=name) for key, name in GROUP_NAMES.items()}
     flows = {key: Flow.objects.get(slug=slug) for key, (slug, _) in FLOW_IDENTITIES.items()}
-    email_stage = EmailStage.objects.get(pk="8d29e230-3485-4ee6-a741-ec089e510004")
+    email_stage = EmailStage.objects.get(name="gotth-bb-enrollment-email-verification")
 
     if provider.client_secret != oidc_secret:
         raise RuntimeError("Board provider secret differs from mounted secret")
@@ -192,7 +192,7 @@ try:
         "groups": {key: str(group.pk) for key, group in sorted(groups.items())},
         "email_stage": {
             "slug": "gotth-bb-enrollment-email-verification",
-            "uuid": "8d29e230-3485-4ee6-a741-ec089e510004",
+            "uuid": str(email_stage.pk),
         },
     }
     print("AUTHENTIK_CONTROL_OBJECTS_JSON=" + json.dumps(descriptor, sort_keys=True, separators=(",", ":")))

@@ -61,7 +61,7 @@ foreign_invitation = Invitation.objects.create(
     fixed_data={"email": "foreign@example.invalid"},
     expires=now() + timedelta(hours=1),
 )
-email_stage = EmailStage.objects.get(pk="8d29e230-3485-4ee6-a741-ec089e510004")
+email_stage = EmailStage.objects.get(name="gotth-bb-enrollment-email-verification")
 original_email_stage = {
     field: getattr(email_stage, field)
     for field in ("host", "port", "username", "password", "use_tls", "use_ssl", "timeout", "from_address")
