@@ -1,0 +1,143 @@
+B1-09-05 LIVE CORRECTIVE DELIVERY — 2026-09-12
+
+Scope
+-----
+
+This record covers guarded B1-09 live delivery and the corrective successor
+required after the first live smoke rejected Beta.1.6. It does not record
+owner acceptance or a known-good release. Registration remains closed while
+the owner performs the physical browser review.
+
+Canonical identity
+------------------
+
+- Superseded candidate: `1.0.0-beta.1.6`, commit
+  `0298910681485a3ea04d1e74cb683e11b7bb4e1b`.
+- Corrective implementation: `5d398167ef7d9e11a48f9ef083d4abd3cc44c4f4`.
+- Corrective annotated tag: `1.0.0-beta.1.7`, tag object
+  `77c84e2938501d3edcdd2ad18390310dd6ce7792`.
+- Forgejo and GitHub `main` and the peeled successor tag agreed on the exact
+  corrective commit before packaging.
+- Neither published tag was moved or deleted.
+
+Defect and correction
+---------------------
+
+The first Beta.1.6 live smoke returned HTTP 404 for exact `GET /register`.
+The dynamic registration leaf handler existed and its mode tests passed, but
+the authenticated-router constructor never assigned that handler to the
+exact-path dispatch boundary. The correction passes the dynamic handler
+through the already-admitted optional-session wrapper and assigns it to the
+dispatcher. It changes no schema, data, role, permission, secret, Authentik
+object, Caddy route, or registration mode.
+
+The full-router regression is a negative/positive control:
+
+- on Beta.1.6 it fails with `status 404`;
+- on the corrective tree it returns HTTP 200 with request pattern
+  `GET /register` and the closed-registration presentation;
+- 50 focused race-detector repetitions pass.
+
+Verification and review
+-----------------------
+
+The exact corrective tree passed task-local Node 26.7.0/npm 12.0.2 and Go
+1.26.6 generation, evidence-custody, generated-drift, formatting, vet, and
+repository-wide race/coverage verification on `development`. The exact-tag
+public source was cloned twice and each clone independently repeated the full
+release verification. Two fresh cold review passes found no further defect in
+the three-file corrective change or its one-service final deployment delta:
+`CLEAN / CLEAN`.
+
+Release artifacts
+-----------------
+
+- Archive:
+  `gotth-bb-1.0.0-beta.1.7-linux-amd64.tar.gz`
+- Archive SHA-256:
+  `bb489f5142caa37375772d1daeec23ff0d4b2f29ebfc76b1c32e468bf464b64e`
+- `SHA256SUMS` SHA-256:
+  `02de90c0a58e2a62c082908b18f6fb9d45def1b3e3cbe995d04cc2f8ad2d07cc`
+- The two archives and checksum files were byte-identical.
+- Staged release:
+  `/opt/gotth-bb/releases/1.0.0-beta.1.7-5d39816`
+- Verified application image:
+  `gotth-bb:1.0.0-beta.1.7-5d39816`
+- Image ID:
+  `sha256:2dccbd305d0577b30d41a75b4762240e734fe22942b2cae3dab81cd7b8e7ecdf`
+
+Live state and boundary checks
+------------------------------
+
+The final corrective state replaces only the Board application. The gateway
+remains on Beta.1.6 commit `0298910`; Board/Auth PostgreSQL, Authentik,
+Caddy, secret files, object descriptor, and durable paths retain their
+Beta.1.6 identities. An initial attempt recreated the gateway because Compose
+shares the image variable; operational review rejected that excess and
+converged the final state back to the admitted app-only corrective shape.
+
+- Board application: Beta.1.7 image, healthy after explicit restart.
+- Authentik control gateway: Beta.1.6 image, healthy, exactly three mounts.
+- Board PostgreSQL 17: healthy, migration head/count `13/13`.
+- Authentik PostgreSQL 16, server, and worker: healthy.
+- Caddy: unchanged and listening only on the two dedicated loopback origins.
+- Board process: UID/GID `65532:65532`, read-only root filesystem, all
+  capabilities dropped, no-new-privileges, no published container ports.
+- Gateway socket directory/socket: `65533:65531:0750` and
+  `65533:65531:0660`; root peer rejected, Board without the control group
+  denied by the filesystem, Board with supplemental GID 65531 accepted.
+- Application and gateway logs contained no matched database URL, client
+  secret, control token, OIDC secret, or SMTP password pattern.
+- Database continuity: one local user, one external identity, registration
+  `closed`, maintenance `false`.
+
+Public smoke and browser evidence
+---------------------------------
+
+Before and after explicit application restart:
+
+- `/`, `/health/live`, and `/health/ready`: HTTP 200;
+- `/register`: HTTP 200 and `Registration is currently closed.`;
+- `/admin`, `/admin/accounts`, `/admin/groups`, `/admin/areas`,
+  `/admin/settings`, `/admin/registrations`, `/admin/invitations`,
+  `/admin/control`, and `/admin/email`: HTTP 303 to the local login boundary;
+- `/login`: HTTP 303 to the exact dedicated Authentik hostname;
+- the dedicated OIDC discovery endpoint: HTTP 200.
+
+Headless Chromium loaded the live closed-registration page, found the
+Registration heading and Log in link in the accessibility tree, reported zero
+WCAG A/AA violations, and passed 320-pixel and 200-percent reflow. Axe retained
+its known gradient-background contrast items as `incomplete`, not violations.
+
+Rollback and retained evidence
+------------------------------
+
+The immediately prior application image, Beta.1.6 image, Beta.1.5 release and
+configuration snapshot, exact stopped pre-upgrade Board/Auth database dumps,
+and Caddy/Auth state remain retained. The paired backup directory is:
+
+`/tank/gotth-bb/backups/beta1.6-preupgrade-20260912`
+
+- Board dump SHA-256:
+  `2ed012a76d565b080db4ab79c284e0dcac056f62b622964f0fc1d0849da1c4c6`
+- Authentik dump SHA-256:
+  `a5076d2adddea58dc5eabba7f29cd85da138262d148ea45bd2e2b8f1e810bf58`
+- Caddy/Auth state archive SHA-256:
+  `0a2a7bbc0945eea3f192167de7009bcfcd5d88c254dad3fe3ff52386e0481208`
+- Beta.1.5 protected configuration archive SHA-256:
+  `22e8470878369cc1880a5c96097f8b906c5c3e2fc914d22ceaa9abb285c4c542`
+- Inventory SHA-256:
+  `0c4e4776c2edfa0a04be0c83fe2d62518ee5f884892a715a2002b60eb96031d5`
+
+Both database dumps and the filesystem archive were already restored into
+clean task-owned targets before live migration. Rolling only the application
+back to Beta.1.6 is schema-compatible but restores the rejected `/register`
+defect. Rolling back to Beta.1.5 requires the retained paired stopped database
+and configuration restore; it must not be started against migration head 13.
+Same-host backup storage remains a Beta limitation, not disaster recovery.
+
+Acceptance boundary
+-------------------
+
+Automation admits Beta.1.7 as the live physical-review candidate. It is not
+known-good until the owner confirms the real administrator workflow.
