@@ -70,10 +70,10 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
-| `ADMIN-009` | administrator-managed shared SMTP, bounded status, and self-addressed test | Beta.1.7 owner review exposed the missing configuration surface; B1-09-06 implementation/evidence pending | blocked |
+| `ADMIN-009` | administrator-managed shared SMTP, bounded status, and self-addressed test | `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`; Beta.1.8 owner physical acceptance pending | implemented |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
-| `UX-003` | labels, descriptions, errors, status regions | baseline implemented; Beta.1.7 generic SMTP-prerequisite 422 requires B1-09-06 field-associated repair | blocked |
+| `UX-003` | labels, descriptions, errors, status regions | baseline plus B1-09-06 field-associated SMTP/status repair in `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt` | implemented |
 | `UX-004` | ordinary HTML with HTMX-equivalent enhancement | full/HTMX/no-script tests through AN-05 | implemented |
 | `UX-005` | diagnosable failed HTMX behavior | B1-02 failure/draft/focus/history plus focused handler/browser evidence | implemented |
 | `UX-006` | immutable GOTTH Board footer attribution | B1-08F exact-label/target, tenant-name negative control, fragment, package, and deployed HTTPS evidence | blocked |
@@ -83,7 +83,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `SEC-003` | CSP and defensive browser headers | B1-01 exact Caddy/browser header evidence at both base paths | implemented |
 | `SEC-004` | escaped templates and boundary sanitizer | B1-01 fixed-parser/raw-tag regression plus template/render/XSS tests | implemented |
 | `SEC-005` | bounded structured redacted logs | observability and AN-02/AN-05 log evidence | implemented |
-| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000013 and `docs/evidence/beta1-09-01-control-settings.txt` | implemented |
+| `OPS-001` | ordered attested PostgreSQL migrations | migration/readiness tests through 000014, `docs/evidence/beta1-09-01-control-settings.txt`, and `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt` | implemented |
 | `OPS-002` | bounded public liveness/readiness | readiness and deployed health tests | implemented |
 | `OPS-003` | structured request-correlated logs | observability tests and deployed journald configuration | implemented |
 | `OPS-004` | deployment/migration/backup/restore/rollback procedures | B1-03 and B1-09-05 packaged-helper backup/clean-restore rehearsals complete; live release record pending B1-05 | blocked |
@@ -128,6 +128,10 @@ table and rejects omission, duplication, or invention in either direction.
   `53afd3b3ac334dca719c5a44ccb5b56afc4da115` after two fresh CLEAN reviews,
   with `docs/evidence/beta1-09-05-pre-live-admission.txt`. Guarded delivery,
   live smoke/rollback, and owner acceptance remain incomplete.
+- B1-09-06 administrator SMTP repair and Beta.1.8 live candidate:
+  `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`. Guarded delivery, paired
+  restore/forward rehearsal, and live smoke are complete; owner physical
+  acceptance remains incomplete.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence

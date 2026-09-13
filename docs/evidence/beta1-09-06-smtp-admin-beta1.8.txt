@@ -1,0 +1,110 @@
+B1-09-06 administrator SMTP / Beta.1.8 live candidate evidence
+Date: 2026-09-13
+
+Scope
+-----
+
+Beta.1.7 correctly kept registration closed when SMTP was absent, but exposed
+non-closed registration choices without an administrator-owned way to satisfy
+that prerequisite and returned only a generic 422. This repair moves SMTP
+configuration into /admin/email, preserves a write-only password boundary,
+applies the exact saved revision to Authentik through the isolated gateway,
+and requires a successful self-addressed test of that revision before any
+non-closed registration mode is available.
+
+Identity and custody
+--------------------
+
+- implementation commits:
+  - 3c816c9823e1c768e46ed42d7b3bc05fb8ac4243
+  - 220e53d0ecd5bef4ca427e4136c53edc9d698c99
+- immutable candidate tag: 1.0.0-beta.1.8
+- reproducible package SHA-256:
+  fdaf33ad311fed4c6828f91c40cb5c29decb2cb082fba38fee42544176ffc7aa
+- image reference: gotth-bb:1.0.0-beta.1.8-220e53d
+- image ID:
+  sha256:87fe90db42fabe0c93af97bbcb62c8fd88de7852556c41b1578c7ace79dd73cc
+- image labels: version 1.0.0-beta.1.8, revision
+  220e53d0ecd5bef4ca427e4136c53edc9d698c99
+
+Verification
+------------
+
+- go vet -mod=readonly ./...: PASS
+- go test -mod=readonly -race -cover ./...: PASS
+- PostgreSQL 17.10 pinned-image integration race suite: PASS
+- changed administration integration coverage: 76.2%
+- changed control integration coverage: 81.7%
+- changed readiness integration coverage: 97.4%
+- two clean package builds were byte-identical: PASS
+- container binary/package identity and OCI labels: PASS
+- wrong/corrupt SMTP credential key readiness tests: PASS, fail closed
+- stale/no-op/update/rollback/current-revision SMTP tests: PASS
+- registration-before-verification rejection test: PASS
+
+The first disposable Authentik rehearsal rejected the original fixed-UUID
+assumption: Authentik 2026.5.2 uses a blueprint pk identifier for lookup but
+does not assign it to a newly created email-stage model. The repair now
+reconciles the unique fixed stage name and pins the UUID Authentik actually
+persisted in the root-owned version-2 descriptor. Focused and full suites were
+rerun after that correction.
+
+The corrected disposable Authentik 2026.5.2 rehearsal proved:
+
+- root-owned standalone preflight: PASS
+- blueprint apply/reapply descriptor stability: PASS
+- raw control-token permission matrix with documented Authentik excesses:
+  AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EXCESSES_OK
+- a third post-matrix apply reproduced the same descriptor: PASS
+- only the descriptor-pinned enrollment email stage admitted GET/PATCH: PASS
+- a foreign email stage and unrelated administrative APIs remained denied:
+  PASS
+
+Backup, restore, and migration
+------------------------------
+
+Production writers were stopped before the pre-upgrade generation. Retained
+backup directory:
+
+  /tank/gotth-bb/backups/beta1.8-preupgrade-20260913
+
+It contains separately digested Board and Authentik logical archives, protected
+configuration including the distinct 32-byte SMTP credential-protection key,
+and Caddy/Auth state. Every sidecar digest was recomputed successfully.
+
+- Board archive SHA-256:
+  f2af14be0456326581428d38a38b5723cfe0dabcda7c63b0afbe7653c54fbd67
+- Authentik archive SHA-256:
+  7610d68b90589a366613675cc51162def87c4f883e397f60580578ef580916ae
+- clean PostgreSQL 17 Board restore: PASS
+- clean PostgreSQL 16 Authentik restore: PASS, 215 public tables
+- restored Board forward migration to head 000014: PASS
+- complete restricted runtime grants after restored migration: PASS
+- restored state: 14|closed|true|1
+
+Live result
+-----------
+
+- migration head: 000014
+- registration state: closed, existing administration revision 3
+- SMTP state: disabled, revision 1, no password envelope, no verified revision
+- Authentik descriptor: version 2
+- persisted enrollment email-stage UUID:
+  e09d7ae5-a724-407c-b8db-cff24e9f67e7
+- Board root: HTTP 200
+- /health/ready: HTTP 200
+- /register: HTTP 200 and visibly closed
+- /admin: HTTP 303 into the login boundary
+- OIDC discovery: HTTP 200
+- Board and isolated gateway container health: healthy
+- recent Board panic/fatal/error count: zero
+- application image/ID/labels equal the release record: PASS
+- obsolete smtp_password mount absent from Board and Authentik: PASS
+- obsolete supplemental GID 65529 absent: PASS
+- application has only the read-only smtp_credential_key secret mount: PASS
+
+The deployment did not invent, import, print, or store SMTP relay credentials.
+Registration remains closed. The owner must enter the relay at /admin/email,
+save/apply it, receive the self-addressed test, and only then choose a
+non-closed registration mode. Physical owner acceptance remains pending, so
+Beta.1.8 is a live candidate and is not yet a known-good reference.

@@ -13,8 +13,13 @@ configured only through host files. The mode guard failed closed correctly,
 but the product boundary and generic 422 were wrong. `ADMIN-009` now requires
 revisioned SMTP configuration, write-only password handling, exact error
 guidance, pinned Authentik-stage application, and same-revision verification in
-Board. Beta.1.7 remains an immutable failed candidate; implementation and a
-successor delivery remain pending.
+Board. Beta.1.7 remains an immutable failed candidate. The repair is live as
+the immutable Beta.1.8 candidate from implementation commit
+`220e53d0ecd5bef4ca427e4136c53edc9d698c99`; its full verification and delivery
+record is `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`. Registration
+remains closed until an administrator saves/applies SMTP and completes a
+successful self-addressed test. Owner physical acceptance remains pending, so
+Beta.1.8 is not yet a known-good reference.
 
 ### 2026-09-12 — Wire dynamic registration into the public router
 
