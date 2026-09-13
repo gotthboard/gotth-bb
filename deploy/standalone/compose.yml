@@ -26,11 +26,9 @@ x-authentik-common: &authentik-common
   environment: *authentik-environment
   group_add:
     - "999"
-    - "65529"
   secrets:
     - authentik_postgres_password
     - authentik_secret_key
-    - smtp_password
   volumes:
     - type: bind
       source: ${GOTTH_BB_AUTHENTIK_DATA_DIR:?GOTTH_BB_AUTHENTIK_DATA_DIR is required}
@@ -119,7 +117,6 @@ services:
     user: "65532:65532"
     group_add:
       - "65531"
-      - "65529"
     env_file:
       - ${GOTTH_BB_ENV_FILE:?GOTTH_BB_ENV_FILE is required}
     environment:
@@ -129,6 +126,7 @@ services:
       AUTHENTIK_CONTROL_OBJECTS_FILE: /run/config/authentik-control-objects.json
       AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock
       INVITATION_FINGERPRINT_KEY_FILE: /run/secrets/invitation_fingerprint_key
+      SMTP_CREDENTIAL_KEY_FILE: /run/secrets/smtp_credential_key
       ACTIVITY_CURSOR_KEYRING_FILE: /run/secrets/activity_cursor_keyring
       ABUSE_RULES_FILE: /run/config/gotth-bb-abuse-rules
     network_mode: host
@@ -136,8 +134,8 @@ services:
       - database_runtime_url
       - oidc_client_secret
       - invitation_fingerprint_key
+      - smtp_credential_key
       - activity_cursor_keyring
-      - smtp_password
     volumes:
       - type: bind
         source: ${GOTTH_BB_ABUSE_RULES_FILE:?GOTTH_BB_ABUSE_RULES_FILE is required}
@@ -305,13 +303,11 @@ services:
       - "999"
       - "65532"
       - "65530"
-      - "65529"
     secrets:
       - authentik_postgres_password
       - authentik_secret_key
       - oidc_client_secret
       - authentik_control_token
-      - smtp_password
     ports:
       - "127.0.0.1:${GOTTH_BB_AUTH_HTTP_PORT:-19000}:9000"
     healthcheck:
@@ -371,11 +367,11 @@ secrets:
     file: ${GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE:?GOTTH_BB_AUTHENTIK_CONTROL_TOKEN_FILE is required}
   invitation_fingerprint_key:
     file: ${GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE:?GOTTH_BB_INVITATION_FINGERPRINT_KEY_FILE is required}
+  smtp_credential_key:
+    file: ${GOTTH_BB_SMTP_CREDENTIAL_KEY_FILE:?GOTTH_BB_SMTP_CREDENTIAL_KEY_FILE is required}
   activity_cursor_keyring:
     file: ${GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE:?GOTTH_BB_ACTIVITY_CURSOR_KEYRING_FILE is required}
   authentik_postgres_password:
     file: ${GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE:?GOTTH_BB_AUTHENTIK_POSTGRES_PASSWORD_FILE is required}
   authentik_secret_key:
     file: ${GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE:?GOTTH_BB_AUTHENTIK_SECRET_KEY_FILE is required}
-  smtp_password:
-    file: ${GOTTH_BB_SMTP_PASSWORD_FILE:?GOTTH_BB_SMTP_PASSWORD_FILE is required}

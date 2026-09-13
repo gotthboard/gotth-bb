@@ -100,8 +100,10 @@ mix both policies.
 
 ## 4. Configuration contract
 
-Configuration is loaded once at startup, validated, then treated as immutable.
-Unknown or malformed security-sensitive settings fail startup.
+Startup configuration is loaded once, validated, then treated as immutable.
+The explicitly database-backed site, policy, and SMTP administrator aggregates
+are runtime state rather than startup configuration. Unknown or malformed
+security-sensitive startup settings fail startup.
 Required settings distinguish a missing key from a deliberately empty value;
 the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 
@@ -119,8 +121,8 @@ the root deployment therefore supplies `BASE_PATH` as an explicit empty value.
 | `AUTHENTIK_CONTROL_OBJECTS_FILE` | Board and gateway after B1-09 | Absolute path to exact non-secret Board flow/group UUIDs and slugs emitted by blueprint admission |
 | `AUTHENTIK_CONTROL_SOCKET` | Board and gateway after B1-09 | Exact absolute Unix-socket path beneath the root-provisioned control-socket directory |
 | `INVITATION_FINGERPRINT_KEY_FILE` | Board only after B1-09 | Independent 256-bit key used solely for local invitation-request fingerprints |
-| `SMTP_PASSWORD_FILE` | When SMTP authentication is configured after B1-09 | Absolute path to the SMTP password shared with Authentik |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, `SMTP_TLS_MODE`, `SMTP_TIMEOUT` | Yes after B1-09 | Non-secret SMTP transport settings identical to Authentik's effective global email configuration; an exact disabled sentinel is allowed only while registration stays closed |
+| `SMTP_CREDENTIAL_KEY_FILE` | Yes after B1-09-06 | Absolute immutable file containing exactly 32 raw bytes of independent key material used only to protect administrator-managed SMTP passwords in Board PostgreSQL |
+| `SMTP_PASSWORD_FILE`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`, `SMTP_TLS_MODE`, `SMTP_TIMEOUT` | Disabled compatibility sentinel in B1-09-06 | These startup values remain explicitly empty during the migration release; the revisioned database aggregate is authoritative |
 | `ACTIVITY_CURSOR_KEYRING_FILE` | Yes after AN-02 | Absolute path to the read-only cursor-keyring secret |
 | `ABUSE_RULES_FILE` | Yes after AN-05 | Absolute path to the bounded read-only blocked-destination rules |
 | `REQUEST_RATE_LIMIT` | Yes after AN-05 | Positive requests allowed per client window; initial value `300` |
@@ -231,14 +233,16 @@ Rules:
   unclean exit, only the host operator may remove a stale socket, after proving
   no gateway process owns it and that its device/inode still matches the
   inspected path; startup never guesses that an occupant is stale.
-- SMTP disabled is one exact configuration state: all six required non-secret
-  `SMTP_*` values are present but empty and `SMTP_PASSWORD_FILE` is absent or
-  empty. It has no host, username, password, or sender. Enabled SMTP requires a canonical DNS name or numeric
+- SMTP disabled is one exact persisted state with no host, username, encrypted
+  password, or sender. Enabled SMTP requires a canonical DNS name or numeric
   address, port 1–65535, bounded username/sender, timeout 1–30 seconds, and one
-  closed TLS mode: `starttls`, `implicit_tls`, or `plain`. Production forbids
-  `plain`. Password presence must match authenticated SMTP. Board and
-  Authentik receive the same host-managed values; Board never reads Authentik's
-  database or exposes these values.
+  closed TLS mode: `starttls` or `implicit_tls`; production and administrator
+  forms never admit `plain`. Password presence must match authenticated SMTP.
+  The Board password envelope uses AES-256-GCM with a random nonce, a versioned
+  format, and settings identity/revision as associated data under the separate
+  installation key. Authentik receives the password only through an exact
+  patch of its pinned email stage and stores it in its own protected database;
+  neither service returns it through the administrator surface.
 - OIDC claims never assign forum roles or local group membership.
 - `OIDC_CLIENT_SECRET` is required in production and may be absent only for a
   non-production public-client test setup.
@@ -3323,7 +3327,7 @@ reason. A short Board transaction reserves the unique invitation name in
 the remote call. Board creates an exact flow-bound, single-use Authentik
 invitation with fixed prompt data and verifies the returned flow/fields. When
 delivery is requested, Board sends the fixed invitation template itself through
-the same host-managed SMTP transport; it does not grant the Authentik token
+the current applied and verified database-backed SMTP transport; it does not grant the Authentik token
 `change_invitation` merely to call the invitation email action. SMTP acceptance
 means `queued`, a definite pre-accept failure means `failed`, and an ambiguous
 post-DATA result means `unknown`; none is retried automatically. A second short
@@ -3364,13 +3368,17 @@ remote call.
 
 ### 24.4 Control settings, maintenance, and publication policy
 
-`GET /admin/control` uses one administrator-authorized settings projection.
+`GET /admin/control` uses one administrator-authorized settings projection and
+includes the current SMTP readiness state. Registration choices other than
+`closed` are disabled with an associated explanation unless one exact SMTP
+revision is applied and verified.
 `POST /admin/control` accepts exactly CSRF, positive revision, the closed
 registration mode, maintenance flag/message, publication counts/durations,
 session idle/revalidation durations, and reason. It validates strict UTF-8,
 closed values, cross-field rules, and every immutable ceiling before opening a
-transaction. A non-closed registration mode is rejected while SMTP is disabled
-or malformed. The transaction revalidates the administrator, locks the
+transaction. A non-closed registration mode is rejected with the exact SMTP
+prerequisite error while SMTP is disabled, unapplied, unverified, or malformed.
+The transaction revalidates the administrator, locks the
 singleton, rejects stale/no-op/overflow, updates all control fields, increments
 the shared revision, and appends one audit.
 
@@ -3411,21 +3419,44 @@ time, and append one audit with a count. Revoking the request's current session
 clears its cookie after commit. Zero-row and unknown-commit results are
 reported honestly and never retried automatically.
 
-Email configuration is loaded once from the shared host values and exposed as
-only `configured` or `disabled`. The page shows only the requesting
-administrator's bounded `email_test_state`; it never calls Authentik's task or
-event APIs. Authentik's task-list representation includes log-bearing objects,
-so fetching and discarding those fields would still breach the intended data
-boundary. Enrollment-email worker health is therefore proved only by the
-operator's disposable-stack and deployment smoke journeys, not exposed through
-the browser control plane.
+`GET /admin/email` exposes the non-secret persisted transport fields, whether a
+password exists, the saved/applied/verified revision state, exact bounded
+failure guidance, and the requesting administrator's bounded
+`email_test_state`. It never exposes a stored password and never calls
+Authentik task or event APIs. `POST /admin/email/settings` accepts exact CSRF,
+revision, host, canonical port, sender, TLS mode, timeout, optional username,
+one write-only password action (`preserve`, `replace`, or `clear`), and audit
+reason. Duplicate fields, partial authentication, plaintext transport,
+noncanonical values, no-op/stale updates, and clearing a transport still used
+by non-closed registration are rejected with field-associated errors.
+
+Migration 000014 adds one SMTP singleton, encrypted-password envelope,
+administration revision, nullable verified revision, and update timestamp. Disabled state
+requires empty connection fields and no envelope; configured state requires
+all connection fields and requires an envelope exactly when username is
+present. A verified revision is either null or exactly the current administration revision.
+Saving is allowed only while registration is closed. The mutation locks control
+then SMTP state, validates the expected revision, applies the candidate through
+the existing Unix gateway, verifies the returned non-secret fields, and only
+then commits the local row and one redacted `update_smtp_settings` audit. The gateway
+adds only `GET` and `PATCH` operations for the descriptor-pinned Authentik
+email-stage UUID. It verifies the fixed stage name, template, token expiry,
+activation flag, and returned non-secret connection fields; it accepts no
+caller origin, path, object ID, template, subject, or activation value. The
+control role gains only object-scoped view/change on that stage. The short
+transaction deliberately spans that bounded Unix-gateway call so concurrent
+administrators cannot leave Board and Authentik on different revisions. A
+failure rolls back Board state and keeps registration closed; an ambiguous
+database commit also keeps registration closed until state is inspected. The
+gateway call is never retried automatically.
 
 An email test has no recipient field. It uses the requesting administrator's
 current verified local email snapshot, a server-generated idempotency UUID, and
 one-per-five-minute per-administrator reservation in `email_test_state`.
 The reservation transaction appends `request_test_email` and commits before
 SMTP. A separate completion
-transaction revalidates that UUID, records the closed result, and appends the
+transaction revalidates that UUID, records the closed result, marks only the
+same applied settings revision verified after `accepted`, and appends the
 `test_email` result audit; no database transaction or row lock spans network I/O.
 The fixed text message contains no link, credential, account detail, or user
 content. SMTP uses the configured TLS mode, validates certificates and server

@@ -61,7 +61,7 @@ exists.
 | MOD-007–MOD-008 | audit transaction/store | DB, HTTP, REV | Alpha.1 |
 | ADMIN-001–ADMIN-003 | area/account/group administration | UT, DB, HTTP, E2E | Alpha.1 minimum; Beta complete |
 | ADMIN-004–ADMIN-005 | settings and authorized counts | DB, HTTP, E2E | Beta.1 |
-| ADMIN-006–ADMIN-009 | Board control settings, registrations, sessions, and email operations | UT, DB, HTTP, E2E, A11Y, SEC, OPS | B1-09 |
+| ADMIN-006–ADMIN-009 | Board control settings, registrations, sessions, and administrator-managed email transport/operations | UT, DB, HTTP, E2E, A11Y, SEC, OPS | B1-09 including B1-09-06 repair |
 | UX-001–UX-005 | Templ/HTMX/Tailwind UI | HTTP, E2E, A11Y | Beta.1 |
 | SEC-001–SEC-005 | middleware, rendering, logging, config | UT, HTTP, SEC, REV | Alpha.1, repeated at RC |
 | OPS-001–OPS-005 | migrations, health, logs, deployment | DB, OPS, REV | Alpha.1 minimum; Stable complete |
@@ -1398,8 +1398,9 @@ rules remain mandatory.
   UTF-8/control/size edge, startup ceiling, cross-field rule, stale/no-op/
   overflow revision, actor revocation, timeout, rollback, audit failure, and
   unknown commit. Each successful request has one settings change and one
-  redacted audit. Non-closed registration with disabled/malformed SMTP is
-  rejected by mutation and fails readiness if introduced out of band.
+  redacted audit. Non-closed registration with disabled, unapplied, unverified,
+  or malformed SMTP is rejected with the exact prerequisite error and fails
+  readiness if introduced out of band.
 - Publication tests prove new database policy is used in the existing locked
   counter transaction under concurrent old/new-account requests, restart, and
   a simultaneous policy change. The immutable request limiter and blocked-link
@@ -1562,11 +1563,22 @@ container's mounts, environment, and open descriptors.
   cross-user/action tests fail before mutation. One/all revocation covers zero,
   current-session cookie clearing, concurrency, audit failure, and unknown
   commit.
+- SMTP-settings tests cover fresh disabled state,
+  strict host/port/sender/TLS/timeout/authentication fields, password
+  preserve/replace/clear, AES-GCM nonce uniqueness and associated-data
+  rejection, wrong/missing key, ciphertext corruption, revision/no-op/
+  concurrency, registration-open refusal, apply failure/rollback
+  transitions, Authentik exact-stage readback, and redacted audits/logs. The
+  permission matrix proves object-scoped view/change of only the pinned email
+  stage and denial of stage create/delete, other-stage access, arbitrary
+  fields/paths, and every previously forbidden capability. Authentik source
+  and backup evidence explicitly record that its write-only stage password is
+  stored in the Authentik database and never returned by the API.
 - Email tests cover disabled/malformed configuration, STARTTLS and implicit TLS
   with hostname verification, authentication failure, timeout before DATA,
   disconnect after DATA, accepted result, per-admin rate/idempotency, absent
   verified address, reservation/completion failures, no database lock across
-  SMTP, request/result audit pairing, unknown completion, and fixed self-addressed content. Board persists/logs no
+  SMTP, settings-revision binding, request/result audit pairing, unknown completion, and fixed self-addressed content. Board persists/logs no
   recipient, SMTP transcript, or message body. Board never requests Authentik
   task or event data; disposable-stack and deployment smoke prove the actual
   Authentik enrollment-email worker path outside the browser control plane.

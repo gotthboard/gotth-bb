@@ -34,7 +34,8 @@ GRANT SELECT ON TABLE
     public.topics,
     public.user_warnings,
     public.users,
-    public.email_test_state
+    public.email_test_state,
+    public.smtp_settings
 TO :"runtime_role";
 
 GRANT SELECT (id, user_id, issued_at, last_seen_at, validated_at, expires_at,
@@ -112,10 +113,16 @@ ON TABLE public.registration_invitations
 TO :"runtime_role";
 
 GRANT INSERT (administrator_id, idempotency_key, status, requested_at,
-              completed_at, next_allowed_at),
+              completed_at, next_allowed_at, smtp_revision),
       UPDATE (idempotency_key, status, requested_at, completed_at,
-              next_allowed_at)
+              next_allowed_at, smtp_revision)
 ON TABLE public.email_test_state
+TO :"runtime_role";
+
+GRANT UPDATE (host, port, username, from_address, tls_mode, timeout_seconds,
+              password_envelope, administration_revision, verified_revision,
+              updated_at)
+ON TABLE public.smtp_settings
 TO :"runtime_role";
 
 GRANT INSERT, DELETE ON TABLE public.area_groups TO :"runtime_role";

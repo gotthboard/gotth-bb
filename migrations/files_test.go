@@ -27,6 +27,7 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		"000011_publication_limits.sql",
 		"000012_external_identity_rebind.sql",
 		"000013_board_control_plane.sql",
+		"000014_administrator_smtp.sql",
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Files() entry count = %d, want %d", len(entries), len(want))
@@ -38,6 +39,25 @@ func TestFilesReturnsOnlyContiguousSQLMigrations(t *testing.T) {
 		body, err := fs.ReadFile(Files(), entry.Name())
 		if err != nil || len(body) == 0 {
 			t.Fatalf("read %s = (%d bytes, %v), want nonempty SQL", entry.Name(), len(body), err)
+		}
+	}
+}
+
+func TestAdministratorSMTPSchemaIsClosedAndAuditable(t *testing.T) {
+	t.Parallel()
+	body, err := fs.ReadFile(Files(), "000014_administrator_smtp.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sql := string(body)
+	for _, forbidden := range []string{"authentik_", "dblink", "postgres_fdw", "DELETE FROM", "DROP TABLE"} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("administrator SMTP migration contains forbidden boundary %q", forbidden)
+		}
+	}
+	for _, required := range []string{"CREATE TABLE public.smtp_settings", "smtp_settings_state_closed", "password_envelope bytea", "verified_revision bigint", "'update_smtp_settings'"} {
+		if !strings.Contains(sql, required) {
+			t.Fatalf("administrator SMTP migration lacks %q", required)
 		}
 	}
 }

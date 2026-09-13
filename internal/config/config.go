@@ -26,6 +26,7 @@ type Config struct {
 	AuthentikControlObjectsFile  string
 	AuthentikControlSocket       string
 	InvitationFingerprintKeyFile string
+	SMTPCredentialKeyFile        string
 	SMTP                         SMTPConfig
 	BootstrapAdminSubject        string
 	RegistrationURL              url.URL
@@ -161,6 +162,17 @@ func Load(lookup LookupEnv) (Config, error) {
 	if authentikControlObjectsFile == invitationFingerprintKeyFile {
 		return Config{}, fmt.Errorf("Authentik control objects and invitation fingerprint key files must differ")
 	}
+	smtpCredentialKeyRaw, err := required("SMTP_CREDENTIAL_KEY_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	smtpCredentialKeyFile, err := ParseAuthentikControlFile("SMTP_CREDENTIAL_KEY_FILE", smtpCredentialKeyRaw)
+	if err != nil {
+		return Config{}, err
+	}
+	if smtpCredentialKeyFile == authentikControlObjectsFile || smtpCredentialKeyFile == invitationFingerprintKeyFile {
+		return Config{}, fmt.Errorf("SMTP credential key file must be distinct")
+	}
 	smtp, err := loadSMTPConfig(lookup, environment)
 	if err != nil {
 		return Config{}, err
@@ -260,6 +272,7 @@ func Load(lookup LookupEnv) (Config, error) {
 		AuthentikControlObjectsFile:  authentikControlObjectsFile,
 		AuthentikControlSocket:       authentikControlSocket,
 		InvitationFingerprintKeyFile: invitationFingerprintKeyFile,
+		SMTPCredentialKeyFile:        smtpCredentialKeyFile,
 		SMTP:                         smtp,
 		BootstrapAdminSubject:        bootstrapAdminSubject,
 		RegistrationURL:              registrationURL,

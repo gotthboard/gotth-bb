@@ -47,6 +47,7 @@ type EmailTestState struct {
 	RequestedAt     pgtype.Timestamptz
 	CompletedAt     pgtype.Timestamptz
 	NextAllowedAt   pgtype.Timestamptz
+	SmtpRevision    pgtype.Int8
 }
 
 type ExternalIdentity struct {
@@ -231,6 +232,20 @@ type SiteSetting struct {
 	NewAccountPeriodSeconds    int32
 	SessionIdleSeconds         int32
 	AuthRevalidateSeconds      int32
+}
+
+type SmtpSetting struct {
+	Singleton              bool
+	Host                   string
+	Port                   int32
+	Username               string
+	FromAddress            string
+	TlsMode                string
+	TimeoutSeconds         int32
+	PasswordEnvelope       []byte
+	AdministrationRevision int64
+	VerifiedRevision       pgtype.Int8
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type Topic struct {

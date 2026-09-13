@@ -18,6 +18,7 @@ type RegistrationHTTPServices struct {
 	OpenFlowSlug     string
 	ApprovalFlowSlug string
 	SMTPConfigured   bool
+	SMTPReady        func(context.Context) (bool, error)
 }
 
 type registrationPageView struct {
@@ -68,13 +69,13 @@ func newDynamicRegistrationHandler(builder URLBuilder, services RegistrationHTTP
 		case control.RegistrationInvitationOnly:
 			presentation.Message = "Registration is by invitation only. Use the private link you received."
 		case control.RegistrationVerifiedEmailOpen:
-			if !services.SMTPConfigured {
+			if !registrationSMTPReady(ctx, services.SMTPConfigured, services.SMTPReady) {
 				renderRegistration(response, request, view, http.StatusServiceUnavailable, registrationPageView{Heading: "Registration unavailable", Message: "Registration is temporarily unavailable."})
 				return
 			}
 			presentation.Message, presentation.FlowURL, presentation.LinkLabel = "Create an account after verifying your email address.", openURL, "Continue to registration"
 		case control.RegistrationAdministratorApproval:
-			if !services.SMTPConfigured {
+			if !registrationSMTPReady(ctx, services.SMTPConfigured, services.SMTPReady) {
 				renderRegistration(response, request, view, http.StatusServiceUnavailable, registrationPageView{Heading: "Registration unavailable", Message: "Registration is temporarily unavailable."})
 				return
 			}
@@ -85,6 +86,14 @@ func newDynamicRegistrationHandler(builder URLBuilder, services RegistrationHTTP
 		}
 		renderRegistration(response, request, view, http.StatusOK, presentation)
 	}), nil
+}
+
+func registrationSMTPReady(ctx context.Context, fallback bool, ready func(context.Context) (bool, error)) bool {
+	if ready == nil {
+		return fallback
+	}
+	value, err := ready(ctx)
+	return err == nil && value
 }
 
 func validRegistrationIssuer(issuer url.URL) bool {

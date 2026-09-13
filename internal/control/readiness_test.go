@@ -58,7 +58,7 @@ func TestReadyAcceptsClosedSettingsAndExactBoundary(t *testing.T) {
 	t.Parallel()
 
 	stub := &readinessStub{valid: true, registration: "closed", publishLimit: 10}
-	if err := Ready(context.Background(), stub, testCeilings(), false); err != nil {
+	if err := Ready(context.Background(), stub, testCeilings(), func(context.Context) (bool, error) { t.Fatal("closed registration checked SMTP"); return false, nil }); err != nil {
 		t.Fatalf("Ready() returned error: %v", err)
 	}
 	if stub.calls != 3 {
@@ -84,23 +84,27 @@ func TestReadyFailsClosedForCatalogStateSMTPAndPrivileges(t *testing.T) {
 		test := test
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if err := Ready(context.Background(), &test.stub, testCeilings(), test.smtp); err == nil {
+			if err := Ready(context.Background(), &test.stub, testCeilings(), func(context.Context) (bool, error) { return test.smtp, nil }); err == nil {
 				t.Fatal("Ready() returned nil error")
 			}
 		})
 	}
-	if err := Ready(nil, &readinessStub{}, testCeilings(), false); err == nil {
+	ready := func(context.Context) (bool, error) { return true, nil }
+	if err := Ready(nil, &readinessStub{}, testCeilings(), ready); err == nil {
 		t.Fatal("Ready(nil context) returned nil")
 	}
-	if err := Ready(context.Background(), nil, testCeilings(), false); err == nil {
+	if err := Ready(context.Background(), nil, testCeilings(), ready); err == nil {
 		t.Fatal("Ready(nil database) returned nil")
 	}
-	if err := Ready(context.Background(), &readinessStub{}, Ceilings{}, false); err == nil {
+	if err := Ready(context.Background(), &readinessStub{}, Ceilings{}, ready); err == nil {
 		t.Fatal("Ready(invalid ceilings) returned nil")
+	}
+	if err := Ready(context.Background(), &readinessStub{}, testCeilings(), nil); err == nil {
+		t.Fatal("Ready(nil SMTP verifier) returned nil")
 	}
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := Ready(canceled, &readinessStub{}, testCeilings(), false); !errors.Is(err, context.Canceled) {
+	if err := Ready(canceled, &readinessStub{}, testCeilings(), ready); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Ready(canceled) error = %v", err)
 	}
 }

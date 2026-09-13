@@ -1769,66 +1769,94 @@ func administrationControlBody(page administrationControlView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if page.Registration == "verified_email_open" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, " selected")
+		if !page.SMTPReady {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 152, " disabled")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, ">Verified email open</option> <option value=\"administrator_approval\"")
+		if page.Registration == "verified_email_open" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 153, " selected")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, ">Verified email open</option> <option value=\"administrator_approval\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
+		}
+		if !page.SMTPReady {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, " disabled")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
 		if page.Registration == "administrator_approval" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 154, " selected")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 155, ">Administrator approval</option> <option value=\"invitation_only\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if page.Registration == "invitation_only" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 156, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, ">Invitation only</option></select></label> <label class=\"grid gap-2 font-semibold text-slate-200\">Maintenance <select name=\"maintenance_enabled\" class=\"min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"><option value=\"disabled\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 157, ">Administrator approval</option> <option value=\"invitation_only\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if !page.SMTPReady {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, " disabled")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if page.Registration == "invitation_only" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, " selected")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, ">Invitation only</option></select> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if !page.SMTPReady {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, "<span class=\"text-sm font-normal text-amber-200\">Configure and successfully test Email before selecting a registration mode.</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "</label> <label class=\"grid gap-2 font-semibold text-slate-200\">Maintenance <select name=\"maintenance_enabled\" class=\"min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"><option value=\"disabled\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !page.MaintenanceEnabled {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 158, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 159, ">Disabled</option> <option value=\"enabled\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, ">Disabled</option> <option value=\"enabled\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if page.MaintenanceEnabled {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 160, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 161, ">Enabled</option></select></label> <label class=\"grid gap-2 font-semibold text-slate-200\">Maintenance message <input name=\"maintenance_message\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, ">Enabled</option></select></label> <label class=\"grid gap-2 font-semibold text-slate-200\">Maintenance message <input name=\"maintenance_message\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var100 string
 		templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.MaintenanceMessage)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 233, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 236, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var100)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "\" maxlength=\"280\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label><div class=\"grid min-w-0 gap-5 sm:grid-cols-2\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "\" maxlength=\"280\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label><div class=\"grid min-w-0 gap-5 sm:grid-cols-2\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1856,7 +1884,7 @@ func administrationControlBody(page administrationControlView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</div><label class=\"grid gap-2 font-semibold text-slate-200\">Audit reason <input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950\">Save control settings</button></form></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "</div><label class=\"grid gap-2 font-semibold text-slate-200\">Audit reason <input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950\">Save control settings</button></form></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1885,46 +1913,46 @@ func administrationControlNumber(label, name, value string) templ.Component {
 			templ_7745c5c3_Var101 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<label class=\"grid min-w-0 gap-2 font-semibold text-slate-200\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "<label class=\"grid min-w-0 gap-2 font-semibold text-slate-200\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var102 string
 		templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 252, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 255, Col: 71}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, " <input required type=\"number\" min=\"1\" name=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, " <input required type=\"number\" min=\"1\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var103 string
 		templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 253, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 256, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var103)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var104 string
 		templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 253, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 256, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var104)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1953,198 +1981,198 @@ func administrationSessionsBody(page administrationSessionsView) templ.Component
 			templ_7745c5c3_Var105 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "<section aria-labelledby=\"sessions-title\"><h1 id=\"sessions-title\" class=\"break-words text-3xl font-bold text-white\">Local sessions for ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "<section aria-labelledby=\"sessions-title\"><h1 id=\"sessions-title\" class=\"break-words text-3xl font-bold text-white\">Local sessions for ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var106 string
 		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(page.DisplayName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 259, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 262, Col: 113}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "</h1><p class=\"mt-3 max-w-3xl text-slate-300\">Only finite local session times are shown. Network addresses, user agents, credentials, and Authentik sessions are never exposed.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "</h1><p class=\"mt-3 max-w-3xl text-slate-300\">Only finite local session times are shown. Network addresses, user agents, credentials, and Authentik sessions are never exposed.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(page.Sessions) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "<p class=\"mt-6 rounded-lg border border-slate-800 bg-slate-900 p-5 text-slate-300\">No active local sessions.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "<p class=\"mt-6 rounded-lg border border-slate-800 bg-slate-900 p-5 text-slate-300\">No active local sessions.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "<ul class=\"mt-6 grid gap-4\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "<ul class=\"mt-6 grid gap-4\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, session := range page.Sessions {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4\"><dl class=\"grid gap-2 text-sm sm:grid-cols-2\"><div><dt class=\"text-slate-400\">Issued</dt><dd class=\"break-words text-white\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4\"><dl class=\"grid gap-2 text-sm sm:grid-cols-2\"><div><dt class=\"text-slate-400\">Issued</dt><dd class=\"break-words text-white\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var107 string
 				templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(session.IssuedAt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 268, Col: 103}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 271, Col: 103}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "</dd></div><div><dt class=\"text-slate-400\">Last seen</dt><dd class=\"break-words text-white\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "</dd></div><div><dt class=\"text-slate-400\">Last seen</dt><dd class=\"break-words text-white\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var108 string
 				templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(session.LastSeenAt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 269, Col: 108}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 272, Col: 108}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "</dd></div><div><dt class=\"text-slate-400\">Last validated</dt><dd class=\"break-words text-white\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "</dd></div><div><dt class=\"text-slate-400\">Last validated</dt><dd class=\"break-words text-white\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var109 string
 				templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(session.ValidatedAt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 270, Col: 114}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 273, Col: 114}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "</dd></div><div><dt class=\"text-slate-400\">Expires</dt><dd class=\"break-words text-white\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</dd></div><div><dt class=\"text-slate-400\">Expires</dt><dd class=\"break-words text-white\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var110 string
 				templ_7745c5c3_Var110, templ_7745c5c3_Err = templ.JoinStringErrs(session.ExpiresAt)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 271, Col: 105}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 274, Col: 105}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var110))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</dd></div></dl><form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "</dd></div></dl><form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var111 templ.SafeURL
 				templ_7745c5c3_Var111, templ_7745c5c3_Err = templ.JoinURLErrs(session.RevokeURL)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 273, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 276, Col: 52}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var111))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "\" hx-post=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "\" hx-post=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var112 string
 				templ_7745c5c3_Var112, templ_7745c5c3_Err = templ.ResolveAttributeValue(session.RevokeURL)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 273, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 276, Col: 82}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var112)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "\" class=\"mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "\" class=\"mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var113 string
 				templ_7745c5c3_Var113, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 274, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 277, Col: 63}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var113)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md border border-rose-700 px-4 py-2 font-semibold text-rose-100\">Revoke session</button></form></li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md border border-rose-700 px-4 py-2 font-semibold text-rose-100\">Revoke session</button></form></li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</ul>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</ul>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if page.More {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "<p class=\"mt-4 text-sm text-amber-200\">More active sessions exist than this bounded page can show.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<p class=\"mt-4 text-sm text-amber-200\">More active sessions exist than this bounded page can show.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, " <form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, " <form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var114 templ.SafeURL
 			templ_7745c5c3_Var114, templ_7745c5c3_Err = templ.JoinURLErrs(page.RevokeAllURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 284, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 287, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var114))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "\" hx-post=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var115 string
 			templ_7745c5c3_Var115, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.RevokeAllURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 284, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 287, Col: 79}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var115)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "\" class=\"mt-8 grid min-w-0 gap-3 rounded-lg border border-rose-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "\" class=\"mt-8 grid min-w-0 gap-3 rounded-lg border border-rose-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var116 string
 			templ_7745c5c3_Var116, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 285, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 288, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var116)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "\"> <input type=\"hidden\" name=\"revision\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "\"> <input type=\"hidden\" name=\"revision\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var117 string
 			templ_7745c5c3_Var117, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Revision)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 286, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 289, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var117)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason for revoking all sessions<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md bg-rose-900 px-4 py-2 font-semibold text-rose-100\">Revoke all sessions</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason for revoking all sessions<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md bg-rose-900 px-4 py-2 font-semibold text-rose-100\">Revoke all sessions</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2173,100 +2201,43 @@ func administrationEmailBody(page administrationEmailView) templ.Component {
 			templ_7745c5c3_Var118 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<section aria-labelledby=\"email-title\"><h1 id=\"email-title\" class=\"text-3xl font-bold text-white\">Email</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "<section aria-labelledby=\"email-title\"><h1 id=\"email-title\" class=\"text-3xl font-bold text-white\">Email</h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if page.Configured {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "<p role=\"status\" class=\"mt-4 text-emerald-200\">Shared SMTP transport is configured.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "<p role=\"status\" class=\"mt-4 text-emerald-200\">Shared SMTP transport is configured, saved, and applied to Authentik.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
+			}
+			if page.Verified {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "<p class=\"mt-2 text-emerald-200\">This exact revision passed a Board delivery test. Registration email modes are available.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "<p class=\"mt-2 text-amber-200\">Send a test successfully before opening registration.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<p role=\"status\" class=\"mt-4 text-amber-200\">Email is disabled.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "<p role=\"status\" class=\"mt-4 text-amber-200\">Email is not configured. Registration email modes remain unavailable.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		if page.Status != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "<dl class=\"mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm sm:grid-cols-2\"><div><dt class=\"text-slate-400\">Last result</dt><dd class=\"text-white\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var119 string
-			templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinStringErrs(page.Status)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 304, Col: 88}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</dd></div><div><dt class=\"text-slate-400\">Requested</dt><dd class=\"break-words text-white\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var120 string
-			templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.JoinStringErrs(page.RequestedAt)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 305, Col: 103}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var120))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "</dd></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if page.CompletedAt != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "<div><dt class=\"text-slate-400\">Completed</dt><dd class=\"break-words text-white\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var121 string
-				templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.JoinStringErrs(page.CompletedAt)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 307, Col: 104}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var121))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "</dd></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "<div><dt class=\"text-slate-400\">Next allowed</dt><dd class=\"break-words text-white\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var122 string
-			templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.JoinStringErrs(page.NextAllowedAt)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 309, Col: 108}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var122))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 197, "</dd></div></dl>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		if page.Configured {
+		if page.SettingsURL != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 198, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var123 templ.SafeURL
-			templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.JoinURLErrs(page.ActionURL)
+			var templ_7745c5c3_Var119 templ.SafeURL
+			templ_7745c5c3_Var119, templ_7745c5c3_Err = templ.JoinURLErrs(page.SettingsURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 313, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 311, Col: 47}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var123))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var119))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2274,34 +2245,265 @@ func administrationEmailBody(page administrationEmailView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var124 string
-			templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.ActionURL)
+			var templ_7745c5c3_Var120 string
+			templ_7745c5c3_Var120, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.SettingsURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 313, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 311, Col: 76}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var120)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "\" class=\"mt-8 grid min-w-0 gap-5 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-2 sm:p-6\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var121 string
+			templ_7745c5c3_Var121, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 312, Col: 59}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var121)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "\"> <input type=\"hidden\" name=\"revision\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var122 string
+			templ_7745c5c3_Var122, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Revision)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 313, Col: 61}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var122)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">SMTP host<input required name=\"host\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var123 string
+			templ_7745c5c3_Var123, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Host)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 314, Col: 113}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var123)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "\" maxlength=\"253\" autocapitalize=\"none\" autocomplete=\"off\" placeholder=\"smtp.example.org\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Port<input required type=\"number\" min=\"1\" max=\"65535\" name=\"port\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var124 string
+			templ_7745c5c3_Var124, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Port)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 315, Col: 142}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var124)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 200, "\" class=\"mt-8 grid min-w-0 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Sender address<input required type=\"email\" name=\"from_address\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var125 string
-			templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+			templ_7745c5c3_Var125, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.FromAddress)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 314, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 316, Col: 146}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var125)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 201, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950\">Send test to my verified address</button></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\" maxlength=\"320\" autocomplete=\"off\" placeholder=\"board@example.org\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">TLS mode<select required name=\"tls_mode\" class=\"min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"><option value=\"starttls\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if page.TLSMode == "starttls" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, ">STARTTLS</option> <option value=\"implicit_tls\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if page.TLSMode == "implicit_tls" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, ">Implicit TLS</option></select></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Timeout in seconds<input required type=\"number\" min=\"1\" max=\"30\" name=\"timeout_seconds\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var126 string
+			templ_7745c5c3_Var126, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Timeout)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 321, Col: 167}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var126)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Username <span class=\"text-xs font-normal text-slate-400\">Optional</span><input name=\"username\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var127 string
+			templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Username)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 322, Col: 176}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var127)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "\" maxlength=\"320\" autocomplete=\"username\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Password action<select name=\"password_action\" class=\"min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if page.PasswordPresent {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "<option value=\"preserve\" selected>Keep saved password</option> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "<option value=\"replace\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if !page.PasswordPresent {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, " selected")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, ">Replace with password below</option> <option value=\"clear\">Clear password</option></select></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">New password <span class=\"text-xs font-normal text-slate-400\">Never displayed after save</span><input type=\"password\" name=\"password\" maxlength=\"4096\" autocomplete=\"new-password\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold sm:col-span-2\">Audit reason<input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 sm:col-span-2\">Save and apply SMTP settings</button></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 202, "</section>")
+		if page.Status != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "<dl class=\"mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm sm:grid-cols-2\"><div><dt class=\"text-slate-400\">Last result</dt><dd class=\"text-white\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var128 string
+			templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.JoinStringErrs(page.Status)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 337, Col: 88}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var128))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</dd></div><div><dt class=\"text-slate-400\">Requested</dt><dd class=\"break-words text-white\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var129 string
+			templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.JoinStringErrs(page.RequestedAt)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 338, Col: 103}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var129))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "</dd></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if page.CompletedAt != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "<div><dt class=\"text-slate-400\">Completed</dt><dd class=\"break-words text-white\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var130 string
+				templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinStringErrs(page.CompletedAt)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 340, Col: 104}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "</dd></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "<div><dt class=\"text-slate-400\">Next allowed</dt><dd class=\"break-words text-white\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var131 string
+			templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.JoinStringErrs(page.NextAllowedAt)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 342, Col: 108}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var131))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "</dd></div></dl>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if page.Configured {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "<form method=\"post\" action=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var132 templ.SafeURL
+			templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.JoinURLErrs(page.TestURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 346, Col: 44}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var132))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "\" hx-post=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var133 string
+			templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.TestURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 346, Col: 69}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var133)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "\" class=\"mt-8 grid min-w-0 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var134 string
+			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 347, Col: 60}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var134)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold\">Audit reason<input required name=\"reason\" maxlength=\"2000\" class=\"min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base\"></label> <button class=\"min-h-11 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950\">Send test to my verified address</button></form>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2325,162 +2527,162 @@ func administrationGroupsBody(page administrationGroupsView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var126 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var126 == nil {
-			templ_7745c5c3_Var126 = templ.NopComponent
+		templ_7745c5c3_Var135 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var135 == nil {
+			templ_7745c5c3_Var135 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 203, "<section aria-labelledby=\"groups-title\"><h1 id=\"groups-title\" class=\"text-3xl font-bold text-white\">Groups</h1><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, "<section aria-labelledby=\"groups-title\"><h1 id=\"groups-title\" class=\"text-3xl font-bold text-white\">Groups</h1><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var127 templ.SafeURL
-		templ_7745c5c3_Var127, templ_7745c5c3_Err = templ.JoinURLErrs(page.CreateAction)
+		var templ_7745c5c3_Var136 templ.SafeURL
+		templ_7745c5c3_Var136, templ_7745c5c3_Err = templ.JoinURLErrs(page.CreateAction)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 324, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 357, Col: 48}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var127))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 204, "\" hx-post=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var136))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var128 string
-		templ_7745c5c3_Var128, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CreateAction)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 324, Col: 78}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var128)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, "\" hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 205, "\" class=\"mt-6 flex flex-wrap gap-2 rounded border border-slate-800 p-4\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+		var templ_7745c5c3_Var137 string
+		templ_7745c5c3_Var137, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CreateAction)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 357, Col: 78}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var137)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var129 string
-		templ_7745c5c3_Var129, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 324, Col: 207}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var129)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, "\" class=\"mt-6 flex flex-wrap gap-2 rounded border border-slate-800 p-4\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "\"><input required name=\"name\" aria-label=\"Group name\" class=\"bg-slate-950\"><input required name=\"reason\" aria-label=\"Audit reason\" class=\"bg-slate-950\"><button class=\"rounded bg-cyan-300 px-3 py-1 text-slate-950\">Create group</button></form><ul class=\"mt-6 space-y-4\">")
+		var templ_7745c5c3_Var138 string
+		templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 357, Col: 207}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var138)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "\"><input required name=\"name\" aria-label=\"Group name\" class=\"bg-slate-950\"><input required name=\"reason\" aria-label=\"Audit reason\" class=\"bg-slate-950\"><button class=\"rounded bg-cyan-300 px-3 py-1 text-slate-950\">Create group</button></form><ul class=\"mt-6 space-y-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, group := range page.Groups {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 207, "<li class=\"rounded border border-slate-800 bg-slate-900 p-4\"><form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "<li class=\"rounded border border-slate-800 bg-slate-900 p-4\"><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var130 templ.SafeURL
-			templ_7745c5c3_Var130, templ_7745c5c3_Err = templ.JoinURLErrs(group.ActionURL)
+			var templ_7745c5c3_Var139 templ.SafeURL
+			templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.JoinURLErrs(group.ActionURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 327, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 360, Col: 109}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var130))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 208, "\" hx-post=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var139))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var131 string
-			templ_7745c5c3_Var131, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.ActionURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 327, Col: 137}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var131)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 209, "\" class=\"flex flex-wrap gap-2\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			var templ_7745c5c3_Var140 string
+			templ_7745c5c3_Var140, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.ActionURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 360, Col: 137}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var140)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var132 string
-			templ_7745c5c3_Var132, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 327, Col: 225}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var132)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "\" class=\"flex flex-wrap gap-2\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 210, "\"><input type=\"hidden\" name=\"revision\" value=\"")
+			var templ_7745c5c3_Var141 string
+			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 360, Col: 225}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var141)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var133 string
-			templ_7745c5c3_Var133, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Revision)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 327, Col: 288}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var133)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, "\"><input type=\"hidden\" name=\"revision\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 211, "\"><input required name=\"name\" value=\"")
+			var templ_7745c5c3_Var142 string
+			templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Revision)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 360, Col: 288}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var142)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var134 string
-			templ_7745c5c3_Var134, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 327, Col: 338}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var134)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, "\"><input required name=\"name\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 212, "\" aria-label=\"Group name\" class=\"bg-slate-950\"><input required name=\"reason\" aria-label=\"Audit reason\" class=\"bg-slate-950\"><button class=\"rounded border border-cyan-700 px-3 py-1\">Rename</button></form></li>")
+			var templ_7745c5c3_Var143 string
+			templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 360, Col: 338}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var143)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "\" aria-label=\"Group name\" class=\"bg-slate-950\"><input required name=\"reason\" aria-label=\"Audit reason\" class=\"bg-slate-950\"><button class=\"rounded border border-cyan-700 px-3 py-1\">Rename</button></form></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 213, "</ul>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, "</ul>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if page.NextURL != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 214, "<a class=\"mt-6 inline-block text-cyan-200\" href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, "<a class=\"mt-6 inline-block text-cyan-200\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var135 templ.SafeURL
-			templ_7745c5c3_Var135, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextURL)
+			var templ_7745c5c3_Var144 templ.SafeURL
+			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 331, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 364, Col: 65}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var135))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 215, "\" hx-get=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var136 string
-			templ_7745c5c3_Var136, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 331, Col: 89}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var136)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 216, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next groups</a>")
+			var templ_7745c5c3_Var145 string
+			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 364, Col: 89}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var145)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next groups</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 217, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2504,51 +2706,51 @@ func administrationAreasBody(page administrationAreasView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var137 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var137 == nil {
-			templ_7745c5c3_Var137 = templ.NopComponent
+		templ_7745c5c3_Var146 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var146 == nil {
+			templ_7745c5c3_Var146 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 218, "<section aria-labelledby=\"areas-admin-title\"><p class=\"text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"areas-admin-title\" class=\"mt-2 text-3xl font-bold tracking-tight text-white\">Areas</h1><p class=\"mt-3 max-w-3xl text-slate-300\">Create and manage the discussion areas where topics and replies live.</p><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 243, "<section aria-labelledby=\"areas-admin-title\"><p class=\"text-sm font-semibold uppercase tracking-wider text-cyan-300\">Administration</p><h1 id=\"areas-admin-title\" class=\"mt-2 text-3xl font-bold tracking-tight text-white\">Areas</h1><p class=\"mt-3 max-w-3xl text-slate-300\">Create and manage the discussion areas where topics and replies live.</p><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var138 templ.SafeURL
-		templ_7745c5c3_Var138, templ_7745c5c3_Err = templ.JoinURLErrs(page.CreateAction)
+		var templ_7745c5c3_Var147 templ.SafeURL
+		templ_7745c5c3_Var147, templ_7745c5c3_Err = templ.JoinURLErrs(page.CreateAction)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 341, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 374, Col: 48}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var138))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 219, "\" hx-post=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var147))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var139 string
-		templ_7745c5c3_Var139, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CreateAction)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 341, Col: 78}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var139)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 244, "\" hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 220, "\" class=\"mt-8 grid gap-6 rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/20 sm:p-6\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+		var templ_7745c5c3_Var148 string
+		templ_7745c5c3_Var148, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CreateAction)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 374, Col: 78}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var148)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var140 string
-		templ_7745c5c3_Var140, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 342, Col: 59}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var140)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 245, "\" class=\"mt-8 grid gap-6 rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/20 sm:p-6\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 221, "\"><h2 class=\"text-xl font-semibold text-white\">Create area</h2>")
+		var templ_7745c5c3_Var149 string
+		templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 375, Col: 59}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var149)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "\"><h2 class=\"text-xl font-semibold text-white\">Create area</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2556,144 +2758,144 @@ func administrationAreasBody(page administrationAreasView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "<button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">Create area</button></form><h2 class=\"mt-10 text-2xl font-bold text-white\">Existing areas</h2><ul class=\"mt-5 grid gap-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "<button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">Create area</button></form><h2 class=\"mt-10 text-2xl font-bold text-white\">Existing areas</h2><ul class=\"mt-5 grid gap-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, area := range page.Areas {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 223, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:p-5\"><a class=\"break-words font-semibold text-cyan-200 underline decoration-cyan-700 underline-offset-4 hover:text-cyan-100 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:p-5\"><a class=\"break-words font-semibold text-cyan-200 underline decoration-cyan-700 underline-offset-4 hover:text-cyan-100 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var141 templ.SafeURL
-			templ_7745c5c3_Var141, templ_7745c5c3_Err = templ.JoinURLErrs(area.URL)
+			var templ_7745c5c3_Var150 templ.SafeURL
+			templ_7745c5c3_Var150, templ_7745c5c3_Err = templ.JoinURLErrs(area.URL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 351, Col: 251}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 384, Col: 251}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var141))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 224, "\" hx-get=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var150))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var142 string
-			templ_7745c5c3_Var142, templ_7745c5c3_Err = templ.ResolveAttributeValue(area.URL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 351, Col: 271}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var142)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, "\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 225, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">")
+			var templ_7745c5c3_Var151 string
+			templ_7745c5c3_Var151, templ_7745c5c3_Err = templ.ResolveAttributeValue(area.URL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 384, Col: 271}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var151)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var143 string
-			templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(area.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 351, Col: 350}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 226, "</a><p class=\"mt-2 break-words text-sm text-slate-400\">/")
+			var templ_7745c5c3_Var152 string
+			templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinStringErrs(area.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 384, Col: 350}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var144 string
-			templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.JoinStringErrs(area.Slug)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 352, Col: 68}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var144))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "</a><p class=\"mt-2 break-words text-sm text-slate-400\">/")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 227, " · ")
+			var templ_7745c5c3_Var153 string
+			templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.JoinStringErrs(area.Slug)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 385, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var153))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var145 string
-			templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.JoinStringErrs(area.Visibility)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 352, Col: 91}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var145))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, " · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 228, " · ")
+			var templ_7745c5c3_Var154 string
+			templ_7745c5c3_Var154, templ_7745c5c3_Err = templ.JoinStringErrs(area.Visibility)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 385, Col: 91}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var154))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var146 string
-			templ_7745c5c3_Var146, templ_7745c5c3_Err = templ.JoinStringErrs(area.PostingMode)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 352, Col: 115}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var146))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, " · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 229, " · ")
+			var templ_7745c5c3_Var155 string
+			templ_7745c5c3_Var155, templ_7745c5c3_Err = templ.JoinStringErrs(area.PostingMode)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 385, Col: 115}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var155))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var147 string
-			templ_7745c5c3_Var147, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(area.GroupCount, 10))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 352, Col: 161}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var147))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, " · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 230, " groups</p></li>")
+			var templ_7745c5c3_Var156 string
+			templ_7745c5c3_Var156, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.FormatInt(area.GroupCount, 10))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 385, Col: 161}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var156))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, " groups</p></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 231, "</ul>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "</ul>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if page.NextURL != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 232, "<a class=\"mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200 hover:border-cyan-700 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 257, "<a class=\"mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200 hover:border-cyan-700 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var148 templ.SafeURL
-			templ_7745c5c3_Var148, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextURL)
+			var templ_7745c5c3_Var157 templ.SafeURL
+			templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 357, Col: 273}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 390, Col: 273}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var148))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 233, "\" hx-get=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var149 string
-			templ_7745c5c3_Var149, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 357, Col: 297}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var149)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 258, "\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 234, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next areas</a>")
+			var templ_7745c5c3_Var158 string
+			templ_7745c5c3_Var158, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 390, Col: 297}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var158)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 259, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next areas</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 235, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 260, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2717,77 +2919,77 @@ func administrationAreaBody(page administrationAreaView) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var150 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var150 == nil {
-			templ_7745c5c3_Var150 = templ.NopComponent
+		templ_7745c5c3_Var159 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var159 == nil {
+			templ_7745c5c3_Var159 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 236, "<section aria-labelledby=\"area-admin-title\"><p class=\"text-sm font-semibold uppercase tracking-wider text-cyan-300\">Area administration</p><h1 id=\"area-admin-title\" class=\"mt-2 break-words text-3xl font-bold tracking-tight text-white\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 261, "<section aria-labelledby=\"area-admin-title\"><p class=\"text-sm font-semibold uppercase tracking-wider text-cyan-300\">Area administration</p><h1 id=\"area-admin-title\" class=\"mt-2 break-words text-3xl font-bold tracking-tight text-white\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var151 string
-		templ_7745c5c3_Var151, templ_7745c5c3_Err = templ.JoinStringErrs(page.Name)
+		var templ_7745c5c3_Var160 string
+		templ_7745c5c3_Var160, templ_7745c5c3_Err = templ.JoinStringErrs(page.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 365, Col: 109}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 398, Col: 109}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var151))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 237, "</h1><p class=\"mt-2 break-words text-slate-300\">/")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var160))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var152 string
-		templ_7745c5c3_Var152, templ_7745c5c3_Err = templ.JoinStringErrs(page.Slug)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 366, Col: 57}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var152))
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 262, "</h1><p class=\"mt-2 break-words text-slate-300\">/")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 238, "</p><form method=\"post\" action=\"")
+		var templ_7745c5c3_Var161 string
+		templ_7745c5c3_Var161, templ_7745c5c3_Err = templ.JoinStringErrs(page.Slug)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 399, Col: 57}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var161))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var153 templ.SafeURL
-		templ_7745c5c3_Var153, templ_7745c5c3_Err = templ.JoinURLErrs(page.ActionURL)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 367, Col: 45}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var153))
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 263, "</p><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 239, "\" hx-post=\"")
+		var templ_7745c5c3_Var162 templ.SafeURL
+		templ_7745c5c3_Var162, templ_7745c5c3_Err = templ.JoinURLErrs(page.ActionURL)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 400, Col: 45}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var162))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var154 string
-		templ_7745c5c3_Var154, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.ActionURL)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 367, Col: 72}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var154)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 264, "\" hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 240, "\" class=\"mt-8 grid gap-6 rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/20 sm:p-6\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+		var templ_7745c5c3_Var163 string
+		templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.ActionURL)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 400, Col: 72}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var163)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var155 string
-		templ_7745c5c3_Var155, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 368, Col: 59}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var155)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 265, "\" class=\"mt-8 grid gap-6 rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/20 sm:p-6\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 241, "\"><h2 class=\"text-xl font-semibold text-white\">Area settings</h2>")
+		var templ_7745c5c3_Var164 string
+		templ_7745c5c3_Var164, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 401, Col: 59}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var164)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, "\"><h2 class=\"text-xl font-semibold text-white\">Area settings</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2795,144 +2997,144 @@ func administrationAreaBody(page administrationAreaView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 242, "<button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">Update area</button></form><h2 class=\"mt-10 text-2xl font-bold text-white\">Group access</h2><p class=\"mt-2 max-w-3xl text-slate-300\">Grant or revoke access for one group at a time. Every change requires an audit reason.</p><ul class=\"mt-5 grid gap-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 267, "<button class=\"min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">Update area</button></form><h2 class=\"mt-10 text-2xl font-bold text-white\">Group access</h2><p class=\"mt-2 max-w-3xl text-slate-300\">Grant or revoke access for one group at a time. Every change requires an audit reason.</p><ul class=\"mt-5 grid gap-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, group := range page.Groups {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 243, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:p-5\"><h3 class=\"break-words font-semibold text-white\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 268, "<li class=\"min-w-0 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:p-5\"><h3 class=\"break-words font-semibold text-white\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var156 string
-			templ_7745c5c3_Var156, templ_7745c5c3_Err = templ.JoinStringErrs(group.Name)
+			var templ_7745c5c3_Var165 string
+			templ_7745c5c3_Var165, templ_7745c5c3_Err = templ.JoinStringErrs(group.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 378, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 411, Col: 66}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var156))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 244, "</h3><form method=\"post\" action=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var165))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var157 templ.SafeURL
-			templ_7745c5c3_Var157, templ_7745c5c3_Err = templ.JoinURLErrs(group.ActionURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 379, Col: 49}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var157))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 269, "</h3><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 245, "\" hx-post=\"")
+			var templ_7745c5c3_Var166 templ.SafeURL
+			templ_7745c5c3_Var166, templ_7745c5c3_Err = templ.JoinURLErrs(group.ActionURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 412, Col: 49}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var166))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var158 string
-			templ_7745c5c3_Var158, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.ActionURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 379, Col: 77}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var158)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 270, "\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 246, "\" data-area-group-action class=\"mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
+			var templ_7745c5c3_Var167 string
+			templ_7745c5c3_Var167, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.ActionURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 412, Col: 77}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var167)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var159 string
-			templ_7745c5c3_Var159, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 380, Col: 62}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var159)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 271, "\" data-area-group-action class=\"mt-4 grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end\"><input type=\"hidden\" name=\"_csrf\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 247, "\"> <input type=\"hidden\" name=\"revision\" value=\"")
+			var templ_7745c5c3_Var168 string
+			templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.CSRFToken)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 413, Col: 62}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var168)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var160 string
-			templ_7745c5c3_Var160, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Revision)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 381, Col: 64}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var160)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 272, "\"> <input type=\"hidden\" name=\"revision\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 248, "\"> <input type=\"hidden\" name=\"action\" value=\"")
+			var templ_7745c5c3_Var169 string
+			templ_7745c5c3_Var169, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.Revision)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 414, Col: 64}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var169)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var161 string
-			templ_7745c5c3_Var161, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Action)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 382, Col: 61}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var161)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 273, "\"> <input type=\"hidden\" name=\"action\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 249, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Audit reason<input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> <button class=\"min-h-11 w-fit rounded-md border border-cyan-700 px-4 py-2 font-semibold text-cyan-100 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">")
+			var templ_7745c5c3_Var170 string
+			templ_7745c5c3_Var170, templ_7745c5c3_Err = templ.ResolveAttributeValue(group.Action)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 415, Col: 61}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var170)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var162 string
-			templ_7745c5c3_Var162, templ_7745c5c3_Err = templ.JoinStringErrs(group.Label)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 384, Col: 230}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var162))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 274, "\"> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Audit reason<input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> <button class=\"min-h-11 w-fit rounded-md border border-cyan-700 px-4 py-2 font-semibold text-cyan-100 hover:border-cyan-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 250, "</button></form></li>")
+			var templ_7745c5c3_Var171 string
+			templ_7745c5c3_Var171, templ_7745c5c3_Err = templ.JoinStringErrs(group.Label)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 417, Col: 230}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var171))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 275, "</button></form></li>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 251, "</ul>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 276, "</ul>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if page.NextGroupsURL != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 252, "<a class=\"mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200 hover:border-cyan-700 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 277, "<a class=\"mt-6 inline-flex min-h-11 items-center rounded-md border border-slate-700 px-4 py-2 font-semibold text-cyan-200 hover:border-cyan-700 hover:text-cyan-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var163 templ.SafeURL
-			templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextGroupsURL)
+			var templ_7745c5c3_Var172 templ.SafeURL
+			templ_7745c5c3_Var172, templ_7745c5c3_Err = templ.JoinURLErrs(page.NextGroupsURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 390, Col: 279}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 423, Col: 279}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var163))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 253, "\" hx-get=\"")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var172))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var164 string
-			templ_7745c5c3_Var164, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextGroupsURL)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 390, Col: 309}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var164)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 278, "\" hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 254, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next groups</a>")
+			var templ_7745c5c3_Var173 string
+			templ_7745c5c3_Var173, templ_7745c5c3_Err = templ.ResolveAttributeValue(page.NextGroupsURL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 423, Col: 309}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var173)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 279, "\" hx-target=\"#main-content\" hx-swap=\"outerHTML\" hx-push-url=\"true\">Next groups</a>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 255, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 280, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2956,12 +3158,12 @@ func administrationAreaCreateFields() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var165 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var165 == nil {
-			templ_7745c5c3_Var165 = templ.NopComponent
+		templ_7745c5c3_Var174 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var174 == nil {
+			templ_7745c5c3_Var174 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "<div data-area-identity-fields class=\"grid min-w-0 gap-5 sm:grid-cols-2\"><label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Slug<input required name=\"slug\" maxlength=\"80\" pattern=\"[a-z0-9]+(-[a-z0-9]+)*\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><span class=\"text-xs font-normal text-slate-400\">Lowercase letters, numbers, and single hyphens.</span></label> <label class=\"grid min-w-0 content-start gap-2 text-sm font-semibold text-slate-200\">Name<input required name=\"name\" maxlength=\"120\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 281, "<div data-area-identity-fields class=\"grid min-w-0 gap-5 sm:grid-cols-2\"><label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Slug<input required name=\"slug\" maxlength=\"80\" pattern=\"[a-z0-9]+(-[a-z0-9]+)*\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><span class=\"text-xs font-normal text-slate-400\">Lowercase letters, numbers, and single hyphens.</span></label> <label class=\"grid min-w-0 content-start gap-2 text-sm font-semibold text-slate-200\">Name<input required name=\"name\" maxlength=\"120\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2989,25 +3191,25 @@ func administrationAreaUpdateFields(name, description, order, visibility, postin
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var166 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var166 == nil {
-			templ_7745c5c3_Var166 = templ.NopComponent
+		templ_7745c5c3_Var175 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var175 == nil {
+			templ_7745c5c3_Var175 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 257, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Name<input required name=\"name\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 282, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Name<input required name=\"name\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var167 string
-		templ_7745c5c3_Var167, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
+		var templ_7745c5c3_Var176 string
+		templ_7745c5c3_Var176, templ_7745c5c3_Err = templ.ResolveAttributeValue(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 404, Col: 116}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 437, Col: 116}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var167)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var176)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 258, "\" maxlength=\"120\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 283, "\" maxlength=\"120\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3015,20 +3217,20 @@ func administrationAreaUpdateFields(name, description, order, visibility, postin
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 259, "<input type=\"hidden\" name=\"revision\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 284, "<input type=\"hidden\" name=\"revision\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var168 string
-		templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.ResolveAttributeValue(revision)
+		var templ_7745c5c3_Var177 string
+		templ_7745c5c3_Var177, templ_7745c5c3_Err = templ.ResolveAttributeValue(revision)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 406, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 439, Col: 54}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var168)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var177)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 260, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 285, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -3052,113 +3254,113 @@ func administrationAreaCoreFields(description, order, visibility, posting string
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var169 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var169 == nil {
-			templ_7745c5c3_Var169 = templ.NopComponent
+		templ_7745c5c3_Var178 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var178 == nil {
+			templ_7745c5c3_Var178 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 261, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Description<textarea name=\"description\" maxlength=\"4000\" rows=\"4\" class=\"w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 286, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Description<textarea name=\"description\" maxlength=\"4000\" rows=\"4\" class=\"w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var170 string
-		templ_7745c5c3_Var170, templ_7745c5c3_Err = templ.JoinStringErrs(description)
+		var templ_7745c5c3_Var179 string
+		templ_7745c5c3_Var179, templ_7745c5c3_Err = templ.JoinStringErrs(description)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 410, Col: 339}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 443, Col: 339}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var170))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 262, "</textarea></label><div data-area-policy-fields class=\"grid min-w-0 gap-5 sm:grid-cols-3\"><label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Display order<input required type=\"number\" min=\"0\" max=\"2147483647\" name=\"display_order\" value=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var179))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var171 string
-		templ_7745c5c3_Var171, templ_7745c5c3_Err = templ.ResolveAttributeValue(order)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 412, Col: 175}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var171)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 287, "</textarea></label><div data-area-policy-fields class=\"grid min-w-0 gap-5 sm:grid-cols-3\"><label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Display order<input required type=\"number\" min=\"0\" max=\"2147483647\" name=\"display_order\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 263, "\" inputmode=\"numeric\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Visibility<select name=\"visibility\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><option")
+		var templ_7745c5c3_Var180 string
+		templ_7745c5c3_Var180, templ_7745c5c3_Err = templ.ResolveAttributeValue(order)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/httpui/administration_completion.templ`, Line: 445, Col: 175}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var180)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 288, "\" inputmode=\"numeric\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Visibility<select name=\"visibility\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if visibility == "public" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 264, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 289, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 265, " value=\"public\">Public</option><option")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 290, " value=\"public\">Public</option><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if visibility == "authenticated" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 291, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 267, " value=\"authenticated\">Signed-in members</option><option")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 292, " value=\"authenticated\">Signed-in members</option><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if visibility == "groups" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 268, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 293, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 269, " value=\"groups\">Selected groups</option></select></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Posting mode<select name=\"posting_mode\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><option")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 294, " value=\"groups\">Selected groups</option></select></label> <label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Posting mode<select name=\"posting_mode\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if posting == "normal" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 270, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 295, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 271, " value=\"normal\">Normal</option><option")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 296, " value=\"normal\">Normal</option><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if posting == "read_only" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 272, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 297, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 273, " value=\"read_only\">Read only</option><option")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 298, " value=\"read_only\">Read only</option><option")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if posting == "archived" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 274, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 299, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 275, " value=\"archived\">Archived</option></select></label></div><div class=\"grid min-w-0 gap-5 sm:grid-cols-2\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 300, " value=\"archived\">Archived</option></select></label></div><div class=\"grid min-w-0 gap-5 sm:grid-cols-2\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if creating {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 276, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Initial access group ID <span class=\"text-xs font-normal text-slate-400\">Required only when creating an area visible to selected groups.</span><input name=\"initial_group_id\" type=\"number\" min=\"1\" inputmode=\"numeric\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 301, "<label class=\"grid min-w-0 gap-2 text-sm font-semibold text-slate-200\">Initial access group ID <span class=\"text-xs font-normal text-slate-400\">Required only when creating an area visible to selected groups.</span><input name=\"initial_group_id\" type=\"number\" min=\"1\" inputmode=\"numeric\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 277, "<input type=\"hidden\" name=\"initial_group_id\" value=\"\"> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 302, "<input type=\"hidden\" name=\"initial_group_id\" value=\"\"> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 278, "<label class=\"grid min-w-0 content-start gap-2 text-sm font-semibold text-slate-200\">Audit reason<input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 303, "<label class=\"grid min-w-0 content-start gap-2 text-sm font-semibold text-slate-200\">Audit reason<input required name=\"reason\" maxlength=\"2000\" autocomplete=\"off\" class=\"min-h-11 w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300\"></label></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

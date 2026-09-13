@@ -70,10 +70,10 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
-| `ADMIN-009` | B1-09 email capability, bounded test status, and self-addressed test | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
+| `ADMIN-009` | administrator-managed shared SMTP, bounded status, and self-addressed test | Beta.1.7 owner review exposed the missing configuration surface; B1-09-06 implementation/evidence pending | blocked |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
-| `UX-003` | labels, descriptions, errors, status regions | B1-02 Axe, accessibility-tree, error/status, and manual contrast evidence | implemented |
+| `UX-003` | labels, descriptions, errors, status regions | baseline implemented; Beta.1.7 generic SMTP-prerequisite 422 requires B1-09-06 field-associated repair | blocked |
 | `UX-004` | ordinary HTML with HTMX-equivalent enhancement | full/HTMX/no-script tests through AN-05 | implemented |
 | `UX-005` | diagnosable failed HTMX behavior | B1-02 failure/draft/focus/history plus focused handler/browser evidence | implemented |
 | `UX-006` | immutable GOTTH Board footer attribution | B1-08F exact-label/target, tenant-name negative control, fragment, package, and deployed HTTPS evidence | blocked |

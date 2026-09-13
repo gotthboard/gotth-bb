@@ -198,7 +198,7 @@ FROM public.reports`).Scan(&assignedOpenNormalized, &unassignedReviewNormalized,
 	); err != nil {
 		t.Fatalf("inspect identity sync backfill: %v", err)
 	}
-	if migrationCount != 13 || upgradedMarkerCount != 2 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
+	if migrationCount != 14 || upgradedMarkerCount != 2 || rootParent != nil || !reflect.DeepEqual(rootPath, []int32{1}) || replyParent == nil || *replyParent != rootID || !reflect.DeepEqual(replyPath, []int32{1, 2}) || !assignedOpenNormalized || !unassignedReviewNormalized || !terminalAssignmentNormalized {
 		t.Fatalf("upgraded state = (migrations %d, root %v/%v, reply %v/%v, reports %t/%t/%t)", migrationCount, rootParent, rootPath, replyParent, replyPath, assignedOpenNormalized, unassignedReviewNormalized, terminalAssignmentNormalized)
 	}
 	if activeSyncState != "accepted" || suspendedSyncState != "removal_required" {

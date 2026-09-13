@@ -5,6 +5,17 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-13 — Admit administrator-managed SMTP as a Beta completion repair
+
+Beta.1.7 physical review proved that the Board administrator suite exposed
+non-closed registration modes while requiring their SMTP prerequisite to be
+configured only through host files. The mode guard failed closed correctly,
+but the product boundary and generic 422 were wrong. `ADMIN-009` now requires
+revisioned SMTP configuration, write-only password handling, exact error
+guidance, pinned Authentik-stage application, and same-revision verification in
+Board. Beta.1.7 remains an immutable failed candidate; implementation and a
+successor delivery remain pending.
+
 ### 2026-09-12 — Wire dynamic registration into the public router
 
 Implementation: current commit; hash assigned by Git after commit

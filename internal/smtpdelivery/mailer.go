@@ -36,13 +36,6 @@ type Settings struct {
 }
 
 func New(configuration Settings, issuer url.URL, flowSlug string) (*Mailer, error) {
-	if configuration.Host == "" || configuration.Port == 0 || configuration.From == "" || configuration.Timeout < time.Second || configuration.Timeout > 30*time.Second ||
-		(configuration.TLSMode != config.SMTPStartTLS && configuration.TLSMode != config.SMTPImplicitTLS && configuration.TLSMode != config.SMTPPlain) ||
-		strings.ContainsAny(configuration.Host+configuration.Username+configuration.From, "\r\n\x00") ||
-		(configuration.Username == "") != (configuration.PasswordFile == "") ||
-		!validIssuer(issuer) || flowSlug == "" || strings.ContainsAny(flowSlug, "/?#") {
-		return nil, fmt.Errorf("SMTP delivery is invalid")
-	}
 	var password []byte
 	var err error
 	if configuration.Username != "" {
@@ -50,11 +43,25 @@ func New(configuration Settings, issuer url.URL, flowSlug string) (*Mailer, erro
 		if err != nil {
 			return nil, fmt.Errorf("SMTP delivery is invalid")
 		}
+		defer clear(password)
+	}
+	return NewWithPassword(configuration, password, issuer, flowSlug)
+}
+
+// NewWithPassword constructs a mailer from an already protected credential.
+// It owns a private copy so the caller can erase its source immediately.
+func NewWithPassword(configuration Settings, password []byte, issuer url.URL, flowSlug string) (*Mailer, error) {
+	if configuration.Host == "" || configuration.Port == 0 || configuration.From == "" || configuration.Timeout < time.Second || configuration.Timeout > 30*time.Second ||
+		(configuration.TLSMode != config.SMTPStartTLS && configuration.TLSMode != config.SMTPImplicitTLS && configuration.TLSMode != config.SMTPPlain) ||
+		strings.ContainsAny(configuration.Host+configuration.Username+configuration.From, "\r\n\x00") ||
+		(configuration.Username == "") != (len(password) == 0) || len(password) > maximumPasswordBytes || strings.ContainsAny(string(password), "\r\n\x00") ||
+		!validIssuer(issuer) || flowSlug == "" || strings.ContainsAny(flowSlug, "/?#") {
+		return nil, fmt.Errorf("SMTP delivery is invalid")
 	}
 	flowBase := url.URL{Scheme: issuer.Scheme, Host: issuer.Host, Path: "/if/flow/" + flowSlug + "/"}
 	dialer := &net.Dialer{Timeout: configuration.Timeout}
 	return &Mailer{
-		configuration: configuration, password: password, flowBase: flowBase,
+		configuration: configuration, password: append([]byte(nil), password...), flowBase: flowBase,
 		dial: dialer.DialContext,
 	}, nil
 }

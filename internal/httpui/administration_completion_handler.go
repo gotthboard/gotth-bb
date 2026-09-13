@@ -65,11 +65,13 @@ type InvitationAdministrationHTTPServices struct {
 	Issuer         url.URL
 	FlowSlug       string
 	SMTPConfigured bool
+	SMTPReady      func(context.Context) (bool, error)
 }
 
 type ControlAdministrationHTTPServices struct {
-	Load   func(context.Context, auth.AccessContext) (control.EditableSettings, error)
-	Update func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error)
+	Load      func(context.Context, auth.AccessContext) (control.EditableSettings, error)
+	Update    func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error)
+	SMTPReady func(context.Context) (bool, error)
 }
 
 type SessionAdministrationHTTPServices struct {
@@ -82,9 +84,11 @@ type SessionAdministrationHTTPServices struct {
 }
 
 type EmailAdministrationHTTPServices struct {
-	Load       func(context.Context, auth.AccessContext) (administration.EmailTestState, error)
-	Test       func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error)
-	Configured bool
+	Load         func(context.Context, auth.AccessContext) (administration.EmailTestState, error)
+	LoadSettings func(context.Context, auth.AccessContext) (administration.SMTPSettings, error)
+	Update       func(context.Context, auth.AccessContext, administration.SMTPSettingsInput, pgtype.UUID) (administration.SMTPSettingsResult, error)
+	Test         func(context.Context, auth.AccessContext, string, pgtype.UUID) (administration.EmailTestResult, error)
+	Configured   bool
 }
 
 type administrationDashboardView struct {
@@ -112,6 +116,7 @@ type administrationControlView struct {
 	NewAccountLimit, PublishWindow, NewAccountPeriod, SessionIdle,
 	AuthRevalidate, Revision string
 	MaintenanceEnabled bool
+	SMTPReady          bool
 }
 
 type administrationSessionView struct {
@@ -125,8 +130,9 @@ type administrationSessionsView struct {
 }
 
 type administrationEmailView struct {
-	Configured                                                            bool
-	Status, RequestedAt, CompletedAt, NextAllowedAt, ActionURL, CSRFToken string
+	Configured, Verified, PasswordPresent                                            bool
+	Host, Port, Username, FromAddress, TLSMode, Timeout, Revision                    string
+	Status, RequestedAt, CompletedAt, NextAllowedAt, TestURL, SettingsURL, CSRFToken string
 }
 type administrationGroupItemView struct{ Name, Revision, ActionURL string }
 type administrationGroupsView struct {
@@ -180,7 +186,8 @@ func validAdministrationHTTPServices(services AdministrationHTTPServices) bool {
 		name, err := config.ParseSessionCookieName(services.Sessions.CookieName)
 		sessionsValid = err == nil && name == services.Sessions.CookieName
 	}
-	emailValid := services.Email == nil || services.Email.Load != nil && services.Email.Test != nil
+	emailValid := services.Email == nil || services.Email.Load != nil && services.Email.Test != nil &&
+		(services.Email.LoadSettings != nil && services.Email.Update != nil || services.Email.LoadSettings == nil && services.Email.Update == nil)
 	return registrationsValid && invitationsValid && controlValid && sessionsValid && emailValid && services.Dashboard != nil && services.ListAccounts != nil && services.LoadAccount != nil && services.ListAccountGroups != nil && services.ListGroups != nil &&
 		services.CreateGroup != nil && services.RenameGroup != nil && services.ChangeMembership != nil && services.ChangeRole != nil && services.ReconcileIdentity != nil &&
 		services.ListAreas != nil && services.LoadArea != nil && services.CreateArea != nil && services.UpdateArea != nil && services.ChangeAreaGroup != nil
@@ -456,7 +463,8 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			if reference.IsZero() {
 				return administrationInvitationsView{}, errors.New("invalid invitation clock")
 			}
-			presentation := administrationInvitationsView{Invitations: make([]administrationInvitationView, len(page.Invitations)), ActionURL: views["invitations"].CanonicalURL, CSRFToken: csrfTokenFromContext(request.Context()), IdempotencyKey: fmt.Sprintf("%x", requestID.Bytes), ExpiryReference: reference.Format(time.RFC3339), More: page.More, SMTPConfigured: services.Invitations.SMTPConfigured}
+			smtpReady := registrationSMTPReady(request.Context(), services.Invitations.SMTPConfigured, services.Invitations.SMTPReady)
+			presentation := administrationInvitationsView{Invitations: make([]administrationInvitationView, len(page.Invitations)), ActionURL: views["invitations"].CanonicalURL, CSRFToken: csrfTokenFromContext(request.Context()), IdempotencyKey: fmt.Sprintf("%x", requestID.Bytes), ExpiryReference: reference.Format(time.RFC3339), More: page.More, SMTPConfigured: smtpReady}
 			for index, invitation := range page.Invitations {
 				revokeURL := ""
 				if invitation.Handle != "" {
@@ -495,7 +503,7 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			reference, referenceErr := time.Parse(time.RFC3339, form.Get("expires_reference"))
 			deliver := form.Get("delivery") == "email"
 			if parseErr != nil || minutesErr != nil || referenceErr != nil || reference.Location() != time.UTC || reference.Format(time.RFC3339) != form.Get("expires_reference") ||
-				minutes < 16 || minutes > 7*24*60-1 || strconv.FormatInt(minutes, 10) != form.Get("expires_minutes") || (!deliver && form.Get("delivery") != "none") || deliver && !services.Invitations.SMTPConfigured {
+				minutes < 16 || minutes > 7*24*60-1 || strconv.FormatInt(minutes, 10) != form.Get("expires_minutes") || (!deliver && form.Get("delivery") != "none") || deliver && !registrationSMTPReady(request.Context(), services.Invitations.SMTPConfigured, services.Invitations.SMTPReady) {
 				renderAdministrationError(response, request, views["invitations"], http.StatusBadRequest, "Invalid form", "Check the invitation fields and try again.")
 				return
 			}
@@ -559,7 +567,12 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 				serveAdministrationServiceError(response, request, views["control"], loadErr)
 				return
 			}
-			render(response, request, views["control"], administrationControlBody(controlPresentation(views["control"].CanonicalURL, csrfTokenFromContext(request.Context()), editable.Settings)))
+			presentation := controlPresentation(views["control"].CanonicalURL, csrfTokenFromContext(request.Context()), editable.Settings)
+			presentation.SMTPReady = true
+			if services.Control.SMTPReady != nil {
+				presentation.SMTPReady, _ = services.Control.SMTPReady(request.Context())
+			}
+			render(response, request, views["control"], administrationControlBody(presentation))
 		})
 		router.Post("/admin/control", func(response http.ResponseWriter, request *http.Request) {
 			actor, ok := authorized(response, request)
@@ -580,6 +593,17 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			if parseErr != nil || requestErr != nil {
 				renderAdministrationError(response, request, views["control"], http.StatusBadRequest, "Invalid form", "Reload control settings and try again.")
 				return
+			}
+			if input.Registration != control.RegistrationClosed && services.Control.SMTPReady != nil {
+				ready, readinessErr := services.Control.SMTPReady(request.Context())
+				if readinessErr != nil {
+					serveAdministrationServiceError(response, request, views["control"], readinessErr)
+					return
+				}
+				if !ready {
+					renderAdministrationError(response, request, views["control"], http.StatusUnprocessableEntity, "Email not ready", "Save SMTP settings and complete a successful test before opening registration.")
+					return
+				}
 			}
 			result, updateErr := services.Control.Update(request.Context(), actor, input, requestID)
 			if updateErr != nil {
@@ -725,9 +749,67 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 				serveAdministrationServiceError(response, request, views["email"], loadErr)
 				return
 			}
-			presentation := emailPresentation(views["email"].CanonicalURL, csrfTokenFromContext(request.Context()), services.Email.Configured, state)
+			settings := administration.SMTPSettings{Revision: 1}
+			if services.Email.LoadSettings != nil {
+				var settingsErr error
+				settings, settingsErr = services.Email.LoadSettings(request.Context(), actor)
+				if settingsErr != nil {
+					serveAdministrationServiceError(response, request, views["email"], settingsErr)
+					return
+				}
+			} else if services.Email.Configured {
+				settings.Host, settings.Port, settings.TLSMode, settings.TimeoutSeconds = "legacy-configured", 587, "starttls", 10
+			}
+			presentation := emailPresentation(views["email"].CanonicalURL, csrfTokenFromContext(request.Context()), settings, state)
+			if services.Email.Update == nil {
+				presentation.SettingsURL = ""
+			}
 			render(response, request, views["email"], administrationEmailBody(presentation))
 		})
+		if services.Email.Update != nil {
+			router.Post("/admin/email/settings", func(response http.ResponseWriter, request *http.Request) {
+				actor, ok := authorized(response, request)
+				if !ok {
+					return
+				}
+				fields := []string{"_csrf", "host", "port", "username", "from_address", "tls_mode", "timeout_seconds", "password_action", "password", "revision", "reason"}
+				form, ok := parseAdministrationForm(response, request, views["email"], maximumAdministrationSmallFormBytes, fields)
+				if !ok {
+					return
+				}
+				revision, revisionErr := strconv.ParseInt(form.Get("revision"), 10, 64)
+				if revisionErr != nil || revision < 1 || strconv.FormatInt(revision, 10) != form.Get("revision") {
+					renderAdministrationError(response, request, views["email"], http.StatusUnprocessableEntity, "Invalid email settings", "The SMTP revision is stale or invalid.")
+					return
+				}
+				requestID, requestErr := moderationRequestUUID(request.Context())
+				if requestErr != nil {
+					serveAdministrationServiceError(response, request, views["email"], requestErr)
+					return
+				}
+				password := []byte(form.Get("password"))
+				result, updateErr := services.Email.Update(request.Context(), actor, administration.SMTPSettingsInput{
+					Host: form.Get("host"), Port: form.Get("port"), Username: form.Get("username"), FromAddress: form.Get("from_address"),
+					TLSMode: form.Get("tls_mode"), TimeoutSeconds: form.Get("timeout_seconds"), PasswordAction: form.Get("password_action"),
+					Password: password, ExpectedRevision: revision, Reason: form.Get("reason"),
+				}, requestID)
+				clear(password)
+				if updateErr != nil {
+					if errors.Is(updateErr, administration.ErrAccountAdministrationInput) {
+						message := strings.TrimPrefix(updateErr.Error(), administration.ErrAccountAdministrationInput.Error()+": ")
+						renderAdministrationError(response, request, views["email"], http.StatusUnprocessableEntity, "Invalid email settings", message)
+						return
+					}
+					serveAdministrationMutationError(response, request, views["email"], updateErr)
+					return
+				}
+				if result.Revision != revision+1 || result.AuditID <= 0 {
+					serveAdministrationServiceError(response, request, views["email"], errors.New("invalid SMTP update result"))
+					return
+				}
+				serveMutationNavigation(response, request, views["email"].CanonicalURL)
+			})
+		}
 		router.Post("/admin/email/test", func(response http.ResponseWriter, request *http.Request) {
 			actor, ok := authorized(response, request)
 			if !ok {
@@ -737,7 +819,16 @@ func newAdministrationCompletionHandler(builder URLBuilder, services Administrat
 			if !ok {
 				return
 			}
-			if !services.Email.Configured {
+			configured := services.Email.Configured
+			if services.Email.LoadSettings != nil {
+				settings, settingsErr := services.Email.LoadSettings(request.Context(), actor)
+				if settingsErr != nil {
+					serveAdministrationServiceError(response, request, views["email"], settingsErr)
+					return
+				}
+				configured = settings.Host != ""
+			}
+			if !configured {
 				renderAdministrationError(response, request, views["email"], http.StatusConflict, "Email disabled", "Configure the shared SMTP transport before testing email.")
 				return
 			}
@@ -1374,8 +1465,16 @@ func parseControlInput(form url.Values) (control.Input, error) {
 	}, nil
 }
 
-func emailPresentation(action, csrf string, configured bool, state administration.EmailTestState) administrationEmailView {
-	view := administrationEmailView{Configured: configured, Status: state.Status, ActionURL: action + "/test", CSRFToken: csrf}
+func emailPresentation(action, csrf string, settings administration.SMTPSettings, state administration.EmailTestState) administrationEmailView {
+	view := administrationEmailView{
+		Configured: settings.Host != "", Verified: settings.Verified, PasswordPresent: settings.PasswordPresent,
+		Host: settings.Host, Port: strconv.Itoa(settings.Port), Username: settings.Username, FromAddress: settings.FromAddress,
+		TLSMode: settings.TLSMode, Timeout: strconv.Itoa(settings.TimeoutSeconds), Revision: strconv.FormatInt(settings.Revision, 10),
+		Status: state.Status, TestURL: action + "/test", SettingsURL: action + "/settings", CSRFToken: csrf,
+	}
+	if !view.Configured {
+		view.Port, view.Timeout, view.TLSMode = "587", "10", "starttls"
+	}
 	if !state.RequestedAt.IsZero() {
 		view.RequestedAt = state.RequestedAt.Format(time.RFC3339)
 	}

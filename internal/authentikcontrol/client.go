@@ -57,6 +57,92 @@ type Invitation struct {
 	Flow      string         `json:"flow"`
 }
 
+type EmailSettings struct {
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	FromAddress string `json:"from_address"`
+	Timeout     int    `json:"timeout"`
+	UseTLS      bool   `json:"use_tls"`
+	UseSSL      bool   `json:"use_ssl"`
+}
+
+type EmailStage struct {
+	PK                    string `json:"pk"`
+	Name                  string `json:"name"`
+	UseGlobalSettings     bool   `json:"use_global_settings"`
+	Host                  string `json:"host"`
+	Port                  int    `json:"port"`
+	Username              string `json:"username"`
+	UseTLS                bool   `json:"use_tls"`
+	UseSSL                bool   `json:"use_ssl"`
+	Timeout               int    `json:"timeout"`
+	FromAddress           string `json:"from_address"`
+	Template              string `json:"template"`
+	ActivateUserOnSuccess bool   `json:"activate_user_on_success"`
+}
+
+type emailStageWire struct {
+	PK                    string `json:"pk"`
+	Name                  string `json:"name"`
+	UseGlobalSettings     bool   `json:"use_global_settings"`
+	Host                  string `json:"host"`
+	Port                  int    `json:"port"`
+	Username              string `json:"username"`
+	UseTLS                bool   `json:"use_tls"`
+	UseSSL                bool   `json:"use_ssl"`
+	Timeout               int    `json:"timeout"`
+	FromAddress           string `json:"from_address"`
+	Template              string `json:"template"`
+	ActivateUserOnSuccess bool   `json:"activate_user_on_success"`
+}
+
+func (client *Client) EmailStage(ctx context.Context) (EmailStage, error) {
+	var wire emailStageWire
+	if err := client.requestJSON(ctx, http.MethodGet, "/api/v3/stages/email/"+client.objects.EmailStage.UUID+"/", nil, nil, http.StatusOK, &wire); err != nil {
+		return EmailStage{}, err
+	}
+	return client.validateEmailStage(wire)
+}
+
+func (client *Client) ConfigureEmailStage(ctx context.Context, settings EmailSettings) (EmailStage, error) {
+	if !validEmailSettings(settings) {
+		return EmailStage{}, ErrInvalid
+	}
+	body := struct {
+		UseGlobalSettings bool   `json:"use_global_settings"`
+		Host              string `json:"host"`
+		Port              int    `json:"port"`
+		Username          string `json:"username"`
+		Password          string `json:"password"`
+		UseTLS            bool   `json:"use_tls"`
+		UseSSL            bool   `json:"use_ssl"`
+		Timeout           int    `json:"timeout"`
+		FromAddress       string `json:"from_address"`
+	}{false, settings.Host, settings.Port, settings.Username, settings.Password, settings.UseTLS, settings.UseSSL, settings.Timeout, settings.FromAddress}
+	var wire emailStageWire
+	if err := client.requestJSON(ctx, http.MethodPatch, "/api/v3/stages/email/"+client.objects.EmailStage.UUID+"/", nil, body, http.StatusOK, &wire); err != nil {
+		return EmailStage{}, err
+	}
+	stage, err := client.validateEmailStage(wire)
+	if err == nil && (stage.Host != settings.Host || stage.Port != settings.Port || stage.Username != settings.Username || stage.FromAddress != settings.FromAddress || stage.Timeout != settings.Timeout || stage.UseTLS != settings.UseTLS || stage.UseSSL != settings.UseSSL) {
+		err = ErrRemoteInvalid
+	}
+	return stage, err
+}
+
+func (client *Client) validateEmailStage(wire emailStageWire) (EmailStage, error) {
+	if wire.PK != client.objects.EmailStage.UUID || wire.Name != client.objects.EmailStage.Slug || wire.UseGlobalSettings || wire.Template != "email/account_confirmation.html" || !wire.ActivateUserOnSuccess {
+		return EmailStage{}, ErrRemoteInvalid
+	}
+	return EmailStage{PK: wire.PK, Name: wire.Name, Host: wire.Host, Port: wire.Port, Username: wire.Username, FromAddress: wire.FromAddress, Timeout: wire.Timeout, UseGlobalSettings: wire.UseGlobalSettings, UseTLS: wire.UseTLS, UseSSL: wire.UseSSL, Template: wire.Template, ActivateUserOnSuccess: wire.ActivateUserOnSuccess}, nil
+}
+
+func validEmailSettings(settings EmailSettings) bool {
+	return settings.Host != "" && len(settings.Host) <= 253 && settings.Port > 0 && settings.Port <= 65535 && settings.FromAddress != "" && len(settings.FromAddress) <= 320 && settings.Timeout >= 1 && settings.Timeout <= 30 && settings.UseTLS != settings.UseSSL && (settings.Username == "") == (settings.Password == "") && !strings.ContainsAny(settings.Host+settings.Username+settings.Password+settings.FromAddress, "\r\n\x00")
+}
+
 type page[T any] struct {
 	Pagination struct {
 		Next int `json:"next"`

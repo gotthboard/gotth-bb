@@ -20,7 +20,17 @@ WITH completed AS (
       AND state.idempotency_key = $4
       AND state.status = 'requested'
       AND $1::text IN ('accepted', 'failed', 'unknown')
-    RETURNING state.administrator_id, state.status, state.completed_at
+    RETURNING state.administrator_id, state.status, state.completed_at,
+              state.smtp_revision
+), verified AS (
+    UPDATE public.smtp_settings AS settings
+    SET verified_revision = settings.administration_revision
+    FROM completed
+    WHERE completed.status = 'accepted'
+      AND completed.smtp_revision = settings.administration_revision
+      AND settings.host <> ''
+      AND settings.singleton
+    RETURNING settings.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -41,9 +51,12 @@ WITH completed AS (
     FROM completed
     RETURNING id
 )
-SELECT completed.status, completed.completed_at, audit.id AS audit_id
+SELECT completed.status, completed.completed_at, completed.smtp_revision,
+       (verified.administration_revision IS NOT NULL)::boolean AS smtp_verified,
+       audit.id AS audit_id
 FROM completed
 JOIN audit ON true
+LEFT JOIN verified ON true
 `
 
 type CompleteEmailTestAndAuditParams struct {
@@ -57,9 +70,11 @@ type CompleteEmailTestAndAuditParams struct {
 }
 
 type CompleteEmailTestAndAuditRow struct {
-	Status      string
-	CompletedAt pgtype.Timestamptz
-	AuditID     int64
+	Status       string
+	CompletedAt  pgtype.Timestamptz
+	SmtpRevision pgtype.Int8
+	SmtpVerified bool
+	AuditID      int64
 }
 
 func (q *Queries) CompleteEmailTestAndAudit(ctx context.Context, arg CompleteEmailTestAndAuditParams) (CompleteEmailTestAndAuditRow, error) {
@@ -73,7 +88,13 @@ func (q *Queries) CompleteEmailTestAndAudit(ctx context.Context, arg CompleteEma
 		arg.RequestID,
 	)
 	var i CompleteEmailTestAndAuditRow
-	err := row.Scan(&i.Status, &i.CompletedAt, &i.AuditID)
+	err := row.Scan(
+		&i.Status,
+		&i.CompletedAt,
+		&i.SmtpRevision,
+		&i.SmtpVerified,
+		&i.AuditID,
+	)
 	return i, err
 }
 
@@ -222,7 +243,8 @@ WITH actor AS MATERIALIZED (
 SELECT (actor.id IS NOT NULL)::boolean AS actor_present,
        (state.administrator_id IS NOT NULL)::boolean AS state_present,
        COALESCE(state.status, '')::text AS status,
-       state.requested_at, state.completed_at, state.next_allowed_at
+       state.requested_at, state.completed_at, state.next_allowed_at,
+       state.smtp_revision
 FROM (VALUES (true)) AS anchor(singleton)
 LEFT JOIN actor ON true
 LEFT JOIN public.email_test_state AS state
@@ -241,6 +263,7 @@ type LoadEmailTestStateForAdministrationRow struct {
 	RequestedAt   pgtype.Timestamptz
 	CompletedAt   pgtype.Timestamptz
 	NextAllowedAt pgtype.Timestamptz
+	SmtpRevision  pgtype.Int8
 }
 
 func (q *Queries) LoadEmailTestStateForAdministration(ctx context.Context, arg LoadEmailTestStateForAdministrationParams) (LoadEmailTestStateForAdministrationRow, error) {
@@ -253,6 +276,7 @@ func (q *Queries) LoadEmailTestStateForAdministration(ctx context.Context, arg L
 		&i.RequestedAt,
 		&i.CompletedAt,
 		&i.NextAllowedAt,
+		&i.SmtpRevision,
 	)
 	return i, err
 }
@@ -293,21 +317,23 @@ const reserveEmailTestAndAudit = `-- name: ReserveEmailTestAndAudit :one
 WITH reserved AS (
     INSERT INTO public.email_test_state (
         administrator_id, idempotency_key, status,
-        requested_at, completed_at, next_allowed_at
+        requested_at, completed_at, next_allowed_at, smtp_revision
     )
     VALUES (
         $1, $2, 'requested',
         $3::timestamptz, NULL,
-        $3::timestamptz + interval '5 minutes'
+        $3::timestamptz + interval '5 minutes',
+        $4
     )
     ON CONFLICT (administrator_id) DO UPDATE
     SET idempotency_key = EXCLUDED.idempotency_key,
         status = EXCLUDED.status,
         requested_at = EXCLUDED.requested_at,
         completed_at = EXCLUDED.completed_at,
-        next_allowed_at = EXCLUDED.next_allowed_at
+        next_allowed_at = EXCLUDED.next_allowed_at,
+        smtp_revision = EXCLUDED.smtp_revision
     WHERE email_test_state.next_allowed_at <= EXCLUDED.requested_at
-    RETURNING administrator_id, requested_at, next_allowed_at
+    RETURNING administrator_id, requested_at, next_allowed_at, smtp_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -315,17 +341,18 @@ WITH reserved AS (
         request_id, created_at
     )
     SELECT 'forum_user', reserved.administrator_id, 'user',
-           reserved.administrator_id, 'request_test_email', $4,
+           reserved.administrator_id, 'request_test_email', $5,
            '{}'::jsonb,
            jsonb_build_object(
                'status', 'requested',
-               'idempotency_sha256', $5::text
+               'idempotency_sha256', $6::text
            ),
-           $6, reserved.requested_at
+           $7, reserved.requested_at
     FROM reserved
     RETURNING id
 )
-SELECT reserved.requested_at, reserved.next_allowed_at, audit.id AS audit_id
+SELECT reserved.requested_at, reserved.next_allowed_at,
+       reserved.smtp_revision, audit.id AS audit_id
 FROM reserved
 JOIN audit ON true
 `
@@ -334,6 +361,7 @@ type ReserveEmailTestAndAuditParams struct {
 	ActorUserID       int64
 	IdempotencyKey    pgtype.UUID
 	ObservedAt        pgtype.Timestamptz
+	SmtpRevision      pgtype.Int8
 	Reason            pgtype.Text
 	IdempotencySha256 string
 	RequestID         pgtype.UUID
@@ -342,6 +370,7 @@ type ReserveEmailTestAndAuditParams struct {
 type ReserveEmailTestAndAuditRow struct {
 	RequestedAt   pgtype.Timestamptz
 	NextAllowedAt pgtype.Timestamptz
+	SmtpRevision  pgtype.Int8
 	AuditID       int64
 }
 
@@ -350,12 +379,18 @@ func (q *Queries) ReserveEmailTestAndAudit(ctx context.Context, arg ReserveEmail
 		arg.ActorUserID,
 		arg.IdempotencyKey,
 		arg.ObservedAt,
+		arg.SmtpRevision,
 		arg.Reason,
 		arg.IdempotencySha256,
 		arg.RequestID,
 	)
 	var i ReserveEmailTestAndAuditRow
-	err := row.Scan(&i.RequestedAt, &i.NextAllowedAt, &i.AuditID)
+	err := row.Scan(
+		&i.RequestedAt,
+		&i.NextAllowedAt,
+		&i.SmtpRevision,
+		&i.AuditID,
+	)
 	return i, err
 }
 

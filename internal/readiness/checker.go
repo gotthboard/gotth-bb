@@ -107,14 +107,14 @@ type Checker struct {
 	verifyMigrations MigrationVerifier
 	now              func() time.Time
 	controlCeilings  control.Ceilings
-	smtpConfigured   bool
+	smtpReady        control.SMTPReadiness
 }
 
 // New constructs a checker without touching PostgreSQL. Dependencies are
 // validated at startup so request handling cannot silently omit an invariant.
 //
 // Complexity: tight Theta(1) time and auxiliary space.
-func New(database database, verifyMigrations MigrationVerifier, now func() time.Time, controlCeilings control.Ceilings, smtpConfigured bool) (*Checker, error) {
+func New(database database, verifyMigrations MigrationVerifier, now func() time.Time, controlCeilings control.Ceilings, smtpReady control.SMTPReadiness) (*Checker, error) {
 	if database == nil {
 		return nil, fmt.Errorf("readiness database is required")
 	}
@@ -127,9 +127,12 @@ func New(database database, verifyMigrations MigrationVerifier, now func() time.
 	if !controlCeilings.Valid() {
 		return nil, fmt.Errorf("readiness control ceilings are invalid")
 	}
+	if smtpReady == nil {
+		return nil, fmt.Errorf("readiness SMTP verifier is required")
+	}
 	return &Checker{
 		database: database, verifyMigrations: verifyMigrations, now: now,
-		controlCeilings: controlCeilings, smtpConfigured: smtpConfigured,
+		controlCeilings: controlCeilings, smtpReady: smtpReady,
 	}, nil
 }
 
@@ -141,7 +144,7 @@ func New(database database, verifyMigrations MigrationVerifier, now func() time.
 // bounded by probeTimeout plus scheduler delay and otherwise delegated to one
 // migration verification and one constant-shape SQL query.
 func (checker *Checker) Check(ctx context.Context) error {
-	if checker == nil || checker.database == nil || checker.verifyMigrations == nil || checker.now == nil || !checker.controlCeilings.Valid() {
+	if checker == nil || checker.database == nil || checker.verifyMigrations == nil || checker.now == nil || !checker.controlCeilings.Valid() || checker.smtpReady == nil {
 		return fmt.Errorf("readiness checker is incomplete")
 	}
 	if ctx == nil {
@@ -183,7 +186,7 @@ func (checker *Checker) Check(ctx context.Context) error {
 	if err := abuse.PublicationReady(probeContext, checker.database); err != nil {
 		return fmt.Errorf("publication readiness failed: %w", err)
 	}
-	if err := control.Ready(probeContext, checker.database, checker.controlCeilings, checker.smtpConfigured); err != nil {
+	if err := control.Ready(probeContext, checker.database, checker.controlCeilings, checker.smtpReady); err != nil {
 		return fmt.Errorf("control readiness failed: %w", err)
 	}
 	return nil

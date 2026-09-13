@@ -413,18 +413,22 @@ func validAuthenticationFactory() authenticationFactory {
 	}
 }
 
-func validAuthentikObjectsFactory(string, string, string, string) (registrationControlRuntime, error) {
+func validAuthentikObjectsFactory(string, string, string, string, string) (registrationControlRuntime, error) {
 	return registrationControlRuntime{
 		Objects: authentikcontrol.Objects{Flows: authentikcontrol.FlowObjects{
 			Open:       authentikcontrol.Object{Slug: "gotth-bb-open", UUID: "8d29e230-3485-4ee6-a741-ec089e510001"},
 			Approval:   authentikcontrol.Object{Slug: "gotth-bb-approval", UUID: "8d29e230-3485-4ee6-a741-ec089e510002"},
 			Invitation: authentikcontrol.Object{Slug: "gotth-bb-invitation", UUID: "8d29e230-3485-4ee6-a741-ec089e510003"},
-		}},
-		Gateway: fakeRegistrationGateway{}, ReferenceKey: [32]byte{1}, Close: func() {},
+		}, EmailStage: authentikcontrol.Object{Slug: "gotth-bb-enrollment-email-verification", UUID: "8d29e230-3485-4ee6-a741-ec089e510004"}},
+		Gateway: fakeRegistrationGateway{}, ReferenceKey: [32]byte{1}, SMTPCredentialKey: [32]byte{2}, Close: func() {},
 	}, nil
 }
 
 type fakeRegistrationGateway struct{}
+
+func (fakeRegistrationGateway) ConfigureEmail(_ context.Context, settings authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error) {
+	return authentikcontrol.EmailStage{PK: "8d29e230-3485-4ee6-a741-ec089e510004", Name: "gotth-bb-enrollment-email-verification", Host: settings.Host, Port: settings.Port, Username: settings.Username, FromAddress: settings.FromAddress, Timeout: settings.Timeout, UseTLS: settings.UseTLS, UseSSL: settings.UseSSL, Template: "email/account_confirmation.html", ActivateUserOnSuccess: true}, nil
+}
 
 func (fakeRegistrationGateway) AddUser(context.Context, string, string) error    { return nil }
 func (fakeRegistrationGateway) RemoveUser(context.Context, string, string) error { return nil }
@@ -900,6 +904,7 @@ func validEnvironment(listenAddress string) map[string]string {
 		"AUTHENTIK_CONTROL_OBJECTS_FILE":  "/run/config/authentik-control-objects.json",
 		"AUTHENTIK_CONTROL_SOCKET":        "/run/gotth-bb-control/authentik-control.sock",
 		"INVITATION_FINGERPRINT_KEY_FILE": "/run/secrets/invitation-fingerprint-key",
+		"SMTP_CREDENTIAL_KEY_FILE":        "/run/secrets/smtp-credential-key",
 		"SMTP_HOST":                       "",
 		"SMTP_PORT":                       "",
 		"SMTP_USERNAME":                   "",

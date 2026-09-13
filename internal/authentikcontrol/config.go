@@ -52,6 +52,7 @@ type Objects struct {
 	IssuerOrigin string       `json:"issuer_origin"`
 	Flows        FlowObjects  `json:"flows"`
 	Groups       GroupObjects `json:"groups"`
+	EmailStage   Object       `json:"email_stage"`
 }
 
 // Secret owns the API token and deliberately provides no formatting method.
@@ -143,7 +144,7 @@ func decodeObjects(raw []byte, issuer string) (Objects, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var objects Objects
-	if err := decoder.Decode(&objects); err != nil || requireEOF(decoder) != nil || objects.Version != 1 {
+	if err := decoder.Decode(&objects); err != nil || requireEOF(decoder) != nil || objects.Version != 2 {
 		return Objects{}, errors.New("invalid object document")
 	}
 	issuerURL, err := url.Parse(issuer)
@@ -173,6 +174,12 @@ func decodeObjects(raw []byte, issuer string) (Objects, error) {
 			return Objects{}, errors.New("reused identity")
 		}
 		identities[group] = struct{}{}
+	}
+	if objects.EmailStage.Slug != "gotth-bb-enrollment-email-verification" || !canonicalUUID.MatchString(objects.EmailStage.UUID) {
+		return Objects{}, errors.New("invalid email stage")
+	}
+	if _, duplicate := identities[objects.EmailStage.UUID]; duplicate {
+		return Objects{}, errors.New("reused identity")
 	}
 	return objects, nil
 }

@@ -292,14 +292,19 @@ Requirements:
   hash, cookie value, IP address, user-agent value, OIDC token, or Authentik
   session shall be exposed. Session-policy changes and revocations shall take
   effect on the next protected Board request and shall be audited.
-- **ADMIN-009:** Administrators shall see whether the shared Authentik email
-  transport is configured and the bounded result of Board's most recent
-  self-addressed transport test, and may request one rate-limited test message
-  to their own current verified address. SMTP credentials,
-  arbitrary-recipient relay, message body, recipient address, and Authentik
-  task or event data shall not appear in email-administration responses, logs,
-  or audit, or be duplicated into email-test state beyond the existing verified
-  address on the local account.
+- **ADMIN-009:** Administrators shall configure the Board and Authentik shared
+  SMTP transport from Board using host, port, sender, TLS mode, timeout,
+  optional username, and write-only password controls. They shall see whether
+  the current revision is saved, applied to the pinned Authentik enrollment
+  stage, and verified by the bounded result of Board's most recent
+  self-addressed transport test. They may explicitly request one rate-limited
+  test message to their own current verified address. A non-closed
+  registration mode shall remain unavailable until that same transport
+  revision is applied and its test is accepted. Stored passwords shall never
+  be rendered or returned; SMTP credentials, arbitrary-recipient relay,
+  message body, recipient address, and Authentik task or event data shall not
+  appear in responses, logs, or audit, or be duplicated into email-test state
+  beyond the existing verified address on the local account.
 
 ### 5.7 Experience and accessibility
 
@@ -843,10 +848,12 @@ into an identity provider or a host-management console:
    last-seen, last-validated, and expiry times plus a server-authenticated
    action handle; they may revoke one or all local sessions. Client address,
    user-agent data, token material, and Authentik sessions remain absent.
-7. Email administration exposes only configured/unconfigured state and
-   bounded Board test results. A test is
+7. Email administration accepts the shared transport fields, exposes their
+   non-secret saved/applied/verified state, and provides bounded Board test
+   results. Password input is write-only and an existing password may be
+   preserved or explicitly replaced/cleared without ever rendering it. A test is
    addressed solely to the requesting administrator's current verified email,
-   uses the same host-managed SMTP transport configuration as Authentik, is
+   uses the same applied transport revision as the pinned Authentik email stage, is
    rate limited, and reports accepted/failed/unknown honestly. Board neither
    accepts an arbitrary recipient nor requests Authentik task or event data.
 8. Every B1-09 page and mutation requires a current, revalidated,
@@ -855,7 +862,8 @@ into an identity provider or a host-management console:
    private/no-store, base-path-safe, keyboard-accessible, mobile-first, and
    usable without JavaScript. Public admission responses reveal only a fixed
    allow/deny result and never private configuration.
-9. PostgreSQL and Authentik upgrades, clean install, mode-direct-URL denial,
+9. PostgreSQL and Authentik upgrades, clean install, SMTP save/apply/verify,
+   mode-direct-URL denial,
    invitation and approval journeys, cross-system failure/retry, suspension,
    session revocation, maintenance recovery, email transport behavior,
    permission
@@ -893,9 +901,10 @@ restore button, retention-policy decision, or RC.1/stable claim.
 - The stack's dedicated Authentik exposes the configured OIDC issuer and the
   required identity claims.
 - SMTP is required before any email-verifying or invitation-email registration
-  mode is enabled; a closed deployment may start without it and must report the
-  missing capability. Object storage, WebSockets, SCIM, and external search are
-  not required for version 1.0.
+  mode is enabled. A closed deployment may start without it and the first
+  administrator shall be able to configure and verify it without host-file or
+  command-line access. Object storage, WebSockets, SCIM, and external search
+  are not required for version 1.0.
 - Production secrets are supplied at runtime and are never committed.
 - The service initially targets one site and one identity issuer.
 

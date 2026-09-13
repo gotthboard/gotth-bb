@@ -579,11 +579,26 @@ silently break referential or audit integrity.
   and link remain ephemeral bearer material rather than Board database state.
   A missing single-use object is recorded only as absent/consumed-or-removed;
   only Board's confirmed delete is called revoked.
+- SMTP configuration: persist one revisioned desired transport in Board,
+  encrypt its optional password under a distinct installation key, and use the
+  existing token-isolated Unix gateway to patch and read back only the pinned
+  Authentik enrollment email stage. The browser never receives a stored
+  password, the Board never receives an Authentik token, and the gateway never
+  receives Board database access. A saved revision means the exact non-secret
+  fields were read back from Authentik; verification is a separate successful
+  Board delivery-test state. Any partial or unknown result keeps registration
+  closed.
+- Password custody: Board encrypts its database copy with AES-256-GCM under a
+  dedicated installation key and clears transient plaintext buffers after
+  constructing a one-operation mailer or gateway request. Authentik 2026.5.2
+  necessarily stores the write-only stage password in its own database so its
+  worker can send verification messages. Paired database backups and the Board
+  encryption key are therefore one protected recovery generation.
 - Email test: reserve one idempotency/rate slot in Board before the external
-  call, send through the same host-managed SMTP transport as Authentik, and
-  store only accepted/failed/unknown state plus finite timestamps. Unknown is
-  never retried automatically because SMTP may already have accepted the
-  message.
+  call, send through the applied database-backed transport, and store only
+  accepted/failed/unknown state plus finite timestamps. An accepted result
+  verifies only that exact settings revision. Unknown is never retried
+  automatically because SMTP may already have accepted the message.
 
 Report-detail reads prove current persisted staff authority in both the detail
 and notes queries. The notes query returns an explicit authorized empty

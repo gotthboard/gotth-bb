@@ -23,14 +23,15 @@ const (
 )
 
 type fakeRemote struct {
-	calls       atomic.Int64
-	block       <-chan struct{}
-	entered     chan<- struct{}
-	err         error
-	group       string
-	userPK      int64
-	member      bool
-	displayName string
+	calls         atomic.Int64
+	block         <-chan struct{}
+	entered       chan<- struct{}
+	err           error
+	group         string
+	userPK        int64
+	member        bool
+	displayName   string
+	emailSettings authentikcontrol.EmailSettings
 }
 
 func (remote *fakeRemote) wait() {
@@ -86,12 +87,32 @@ func (remote *fakeRemote) DeleteInvitation(context.Context, string) error {
 	remote.wait()
 	return remote.err
 }
+func (remote *fakeRemote) EmailStage(context.Context) (authentikcontrol.EmailStage, error) {
+	remote.wait()
+	return testEmailStage(authentikcontrol.EmailSettings{}), remote.err
+}
+func (remote *fakeRemote) ConfigureEmailStage(_ context.Context, settings authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error) {
+	remote.wait()
+	remote.emailSettings = settings
+	return testEmailStage(settings), remote.err
+}
+
+func testEmailStage(settings authentikcontrol.EmailSettings) authentikcontrol.EmailStage {
+	return authentikcontrol.EmailStage{
+		PK: "8d29e230-3485-4ee6-a741-ec089e510004", Name: "gotth-bb-enrollment-email-verification",
+		Host: settings.Host, Port: settings.Port, Username: settings.Username, FromAddress: settings.FromAddress,
+		Timeout: settings.Timeout, UseTLS: settings.UseTLS, UseSSL: settings.UseSSL,
+		Template: "email/account_confirmation.html", ActivateUserOnSuccess: true,
+	}
+}
 
 func testObjects() authentikcontrol.Objects {
-	return authentikcontrol.Objects{Groups: authentikcontrol.GroupObjects{
+	return authentikcontrol.Objects{Version: 2, Groups: authentikcontrol.GroupObjects{
 		Accepted:  "11111111-1111-4111-8111-111111111111",
 		Pending:   "22222222-2222-4222-8222-222222222222",
 		Suspended: "33333333-3333-4333-8333-333333333333",
+	}, EmailStage: authentikcontrol.Object{
+		Slug: "gotth-bb-enrollment-email-verification", UUID: "8d29e230-3485-4ee6-a741-ec089e510004",
 	}}
 }
 
@@ -147,6 +168,29 @@ func TestHandlerHealthAndClosedSurface(t *testing.T) {
 	handler.ServeHTTP(response, request(http.MethodPost, "/v1/invitations/"+testInvitation+"/send_email", `{}`))
 	if response.Code != http.StatusBadRequest || remote.calls.Load() != 0 {
 		t.Fatalf("generic route reached remote: %d calls=%d", response.Code, remote.calls.Load())
+	}
+}
+
+func TestHandlerEmailSettingsPatchesOnlyClosedProjection(t *testing.T) {
+	t.Parallel()
+	remote := &fakeRemote{}
+	handler, err := NewHandler(remote, testObjects(), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"host":"smtp.example.test","port":587,"username":"board","password":"one-secret","from_address":"board@example.test","timeout":10,"use_tls":true,"use_ssl":false}`
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request(http.MethodPatch, "/v1/email-settings", body))
+	if response.Code != http.StatusOK || remote.emailSettings.Password != "one-secret" || remote.emailSettings.Host != "smtp.example.test" {
+		t.Fatalf("email settings response = (%d, %q, %+v)", response.Code, response.Body.String(), remote.emailSettings)
+	}
+	if strings.Contains(response.Body.String(), "one-secret") || strings.Contains(response.Body.String(), "Password") {
+		t.Fatal("gateway returned the SMTP password")
+	}
+	bad := httptest.NewRecorder()
+	handler.ServeHTTP(bad, request(http.MethodPatch, "/v1/email-settings", body[:len(body)-1]+`,"stage":"other"}`))
+	if bad.Code != http.StatusBadRequest || remote.calls.Load() != 1 {
+		t.Fatalf("unknown email setting reached remote: status=%d calls=%d", bad.Code, remote.calls.Load())
 	}
 }
 

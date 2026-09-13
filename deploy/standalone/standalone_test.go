@@ -43,7 +43,7 @@ func TestStandaloneTopologyIsPinnedAndPrivate(t *testing.T) {
 		"AUTHENTIK_EMAIL__FROM: ${GOTTH_BB_SMTP_FROM-}",
 		"AUTHENTIK_EMAIL__USE_TLS: ${GOTTH_BB_SMTP_USE_TLS-false}",
 		"AUTHENTIK_EMAIL__USE_SSL: ${GOTTH_BB_SMTP_USE_SSL-false}",
-		"AUTHENTIK_EMAIL__TIMEOUT: ${GOTTH_BB_SMTP_TIMEOUT_SECONDS-}", "smtp_password",
+		"AUTHENTIK_EMAIL__TIMEOUT: ${GOTTH_BB_SMTP_TIMEOUT_SECONDS-}",
 		"network_mode: host", "internal: true", "create_host_path: false",
 	} {
 		if !strings.Contains(compose, required) {
@@ -76,7 +76,9 @@ func TestControlGatewayKeepsRawTokenOutOfBoard(t *testing.T) {
 		"group_add:\n      - \"65531\"",
 		"AUTHENTIK_CONTROL_SOCKET: /run/gotth-bb-control/authentik-control.sock",
 		"INVITATION_FINGERPRINT_KEY_FILE: /run/secrets/invitation_fingerprint_key",
+		"SMTP_CREDENTIAL_KEY_FILE: /run/secrets/smtp_credential_key",
 		"invitation_fingerprint_key",
+		"smtp_credential_key",
 		"condition: service_healthy",
 	} {
 		if !strings.Contains(app, required) {
@@ -110,16 +112,15 @@ func TestAuthentikEntrypointLoadsOnlyMountedSecrets(t *testing.T) {
 	for _, required := range []string{
 		"AUTHENTIK_POSTGRESQL__PASSWORD=$(read_secret /run/secrets/authentik_postgres_password)",
 		"AUTHENTIK_SECRET_KEY=$(read_secret /run/secrets/authentik_secret_key)",
-		"AUTHENTIK_EMAIL__PASSWORD=$(read_optional_secret /run/secrets/smtp_password)",
-		"export AUTHENTIK_POSTGRESQL__PASSWORD AUTHENTIK_SECRET_KEY AUTHENTIK_EMAIL__PASSWORD",
+		"export AUTHENTIK_POSTGRESQL__PASSWORD AUTHENTIK_SECRET_KEY",
 		"exec dumb-init -- ak \"$1\"", "exec ak \"$@\"",
 	} {
 		if !strings.Contains(entrypoint, required) {
 			t.Errorf("Authentik entrypoint lacks %q", required)
 		}
 	}
-	if strings.Contains(entrypoint, "oidc_client_secret") {
-		t.Fatal("Authentik common entrypoint can read the server-only OIDC secret")
+	if strings.Contains(entrypoint, "oidc_client_secret") || strings.Contains(entrypoint, "smtp_password") {
+		t.Fatal("Authentik common entrypoint can read a server-only or administrator-owned secret")
 	}
 }
 
@@ -216,14 +217,12 @@ func TestStandalonePreflightRejectsDriftBeforeCompose(t *testing.T) {
 		`contains NUL, CR, or LF framing`,
 		`app must not receive an Authentik control token path`,
 		`invitation fingerprint key must contain exactly 32 bytes`,
+		`SMTP credential key must contain exactly 32 bytes`,
 		`GOTTH_BB_SMTP_HOST GOTTH_BB_SMTP_PORT GOTTH_BB_SMTP_USERNAME`,
 		`app and Authentik SMTP hosts differ`,
-		`app and Authentik SMTP timeouts differ`,
-		`SMTP port is outside 1 through 65535`,
-		`starttls:true:false | implicit_tls:false:true | plain:false:false`,
-		`authenticated app SMTP password path differs`,
-		`disabled SMTP password file is not empty`,
-		`production SMTP cannot use plain transport`,
+		`legacy app SMTP tuple must be empty`,
+		`legacy Authentik SMTP tuple must be empty`,
+		`legacy Authentik SMTP TLS flags must be false`,
 		`65533:65531:750 directory`,
 		`app OIDC issuer differs from dedicated Authentik`,
 		`docker compose --env-file "$deployment_env"`,
@@ -240,6 +239,10 @@ func TestStandaloneSharedSMTPContract(t *testing.T) {
 	compose := readContractFile(t, "compose.yml")
 	applicationEnvironment := readContractFile(t, "app.env.example")
 	deploymentEnvironment := readContractFile(t, "deployment.env.example")
+	if !strings.Contains(applicationEnvironment, "\nSMTP_CREDENTIAL_KEY_FILE=/run/secrets/smtp_credential_key\n") ||
+		!strings.Contains(deploymentEnvironment, "\nGOTTH_BB_SMTP_CREDENTIAL_KEY_FILE=/etc/gotth-bb/secrets/smtp-credential-key\n") {
+		t.Fatal("administrator SMTP credential key contract is incomplete")
+	}
 	for _, name := range []string{"SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_FROM", "SMTP_TLS_MODE", "SMTP_TIMEOUT"} {
 		if !strings.Contains(applicationEnvironment, "\n"+name+"=\n") {
 			t.Errorf("app.env.example lacks the empty %s sentinel", name)
@@ -256,12 +259,8 @@ func TestStandaloneSharedSMTPContract(t *testing.T) {
 			t.Errorf("deployment.env.example lacks the empty %s sentinel", name)
 		}
 	}
-	for _, setting := range []string{
-		"GOTTH_BB_SMTP_USE_TLS=false", "GOTTH_BB_SMTP_USE_SSL=false",
-		"GOTTH_BB_SMTP_PASSWORD_FILE=/etc/gotth-bb/secrets/smtp-password",
-		"AUTHENTIK_EMAIL__PASSWORD=$(read_optional_secret /run/secrets/smtp_password)",
-	} {
-		if !strings.Contains(deploymentEnvironment+"\n"+readContractFile(t, "authentik/entrypoint.sh"), setting) {
+	for _, setting := range []string{"GOTTH_BB_SMTP_USE_TLS=false", "GOTTH_BB_SMTP_USE_SSL=false"} {
+		if !strings.Contains(deploymentEnvironment, setting) {
 			t.Errorf("standalone SMTP contract lacks %q", setting)
 		}
 	}
@@ -280,9 +279,12 @@ func TestStandaloneSharedSMTPContract(t *testing.T) {
 		"Board app":        compose[appStart:gatewayStart],
 		"Authentik server": compose[serverStart:workerStart],
 	} {
-		if !strings.Contains(section, `- "65529"`) || !strings.Contains(section, "smtp_password") {
-			t.Errorf("%s does not receive the shared SMTP password group/secret", label)
+		if strings.Contains(section, `- "65529"`) || strings.Contains(section, "smtp_password") {
+			t.Errorf("%s receives the retired host-owned SMTP password boundary", label)
 		}
+	}
+	if strings.Contains(compose, "GOTTH_BB_SMTP_PASSWORD_FILE") || strings.Contains(compose, "smtp_password:") || strings.Contains(readContractFile(t, "authentik/entrypoint.sh"), "SMTP") {
+		t.Fatal("standalone deployment retains a host-owned SMTP password path")
 	}
 }
 

@@ -282,13 +282,17 @@ entries:
       user_type: external
       user_path_template: users/gotth-bb
       create_users_group: !KeyOf pending-group
-  - identifiers: {name: gotth-bb-enrollment-email-verification}
+  - identifiers: {pk: 8d29e230-3485-4ee6-a741-ec089e510004}
     id: email-verification
     model: authentik_stages_email.emailstage
     attrs:
-      use_global_settings: true
+      name: gotth-bb-enrollment-email-verification
+      use_global_settings: false
       template: email/account_confirmation.html
       activate_user_on_success: true
+    permissions:
+      - {permission: authentik_stages_email.view_emailstage, role: !KeyOf control-role}
+      - {permission: authentik_stages_email.change_emailstage, role: !KeyOf control-role}
   - identifiers: {name: gotth-bb-invitation-consume}
     id: invitation-consume
     model: authentik_stages_invitation.invitationstage

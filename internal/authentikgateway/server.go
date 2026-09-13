@@ -48,6 +48,8 @@ type Remote interface {
 	Invitations(context.Context) ([]authentikcontrol.Invitation, bool, error)
 	Invitation(context.Context, string) (authentikcontrol.Invitation, error)
 	DeleteInvitation(context.Context, string) error
+	EmailStage(context.Context) (authentikcontrol.EmailStage, error)
+	ConfigureEmailStage(context.Context, authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error)
 }
 
 type Handler struct {
@@ -173,6 +175,18 @@ func (handler *Handler) route(response http.ResponseWriter, request *http.Reques
 		}{projected, more}, err)
 	case request.URL.Path == "/v1/invitations" && request.Method == http.MethodPost:
 		handler.createInvitation(response, request)
+	case request.URL.Path == "/v1/email-settings" && request.Method == http.MethodGet:
+		stage, err := handler.remote.EmailStage(request.Context())
+		writeRemote(response, http.StatusOK, stage, err)
+	case request.URL.Path == "/v1/email-settings" && request.Method == http.MethodPatch:
+		var settings authentikcontrol.EmailSettings
+		if err := decodeBody(response, request, &settings); err != nil {
+			writeError(response, http.StatusBadRequest, "invalid_request")
+			return
+		}
+		stage, err := handler.remote.ConfigureEmailStage(request.Context(), settings)
+		settings.Password = ""
+		writeRemote(response, http.StatusOK, stage, err)
 	case strings.HasPrefix(request.URL.Path, "/v1/invitations/") && (request.Method == http.MethodGet || request.Method == http.MethodDelete):
 		handler.invitation(response, request)
 	default:

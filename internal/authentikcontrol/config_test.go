@@ -15,7 +15,7 @@ func TestLoadClosedDescriptorAndToken(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte("one-private-token"), 0o400); err != nil {
 		t.Fatal(err)
 	}
-	raw := `{"version":1,"issuer_origin":"https://auth.example.test","flows":{"open":{"slug":"gotth-bb-open","uuid":"` + testOpenFlow + `"},"approval":{"slug":"gotth-bb-approval","uuid":"` + testApprovalFlow + `"},"invitation":{"slug":"gotth-bb-invitation","uuid":"` + testInvitationFlow + `"}},"groups":{"accepted":"` + testAcceptedGroup + `","pending":"` + testPendingGroup + `","suspended":"` + testSuspendedGroup + `"}}`
+	raw := testObjectDocument("https://auth.example.test")
 	if err := os.WriteFile(objectsPath, []byte(raw), 0o400); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestLoadAcceptsExactLoopbackHTTPDescriptor(t *testing.T) {
 	if err := os.WriteFile(tokenPath, []byte("one-private-token"), 0o400); err != nil {
 		t.Fatal(err)
 	}
-	raw := `{"version":1,"issuer_origin":"http://127.0.0.1:39443","flows":{"open":{"slug":"gotth-bb-open","uuid":"` + testOpenFlow + `"},"approval":{"slug":"gotth-bb-approval","uuid":"` + testApprovalFlow + `"},"invitation":{"slug":"gotth-bb-invitation","uuid":"` + testInvitationFlow + `"}},"groups":{"accepted":"` + testAcceptedGroup + `","pending":"` + testPendingGroup + `","suspended":"` + testSuspendedGroup + `"}}`
+	raw := testObjectDocument("http://127.0.0.1:39443")
 	if err := os.WriteFile(objectsPath, []byte(raw), 0o400); err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +67,14 @@ func TestControlURLRejectsNonLoopbackHTTP(t *testing.T) {
 
 func TestLoadRejectsUnsafeInputs(t *testing.T) {
 	directory := t.TempDir()
-	validObjects := `{"version":1,"issuer_origin":"https://auth.example.test","flows":{"open":{"slug":"gotth-bb-open","uuid":"` + testOpenFlow + `"},"approval":{"slug":"gotth-bb-approval","uuid":"` + testApprovalFlow + `"},"invitation":{"slug":"gotth-bb-invitation","uuid":"` + testInvitationFlow + `"}},"groups":{"accepted":"` + testAcceptedGroup + `","pending":"` + testPendingGroup + `","suspended":"` + testSuspendedGroup + `"}}`
+	validObjects := testObjectDocument("https://auth.example.test")
 	tests := []struct {
 		name, token, objects string
 		mutate               func(string, string)
 	}{
 		{"token newline", "token\n", validObjects, nil},
-		{"unknown field", "token", strings.Replace(validObjects, `"version":1`, `"version":1,"extra":true`, 1), nil},
-		{"duplicate field", "token", strings.Replace(validObjects, `"version":1`, `"version":1,"version":1`, 1), nil},
+		{"unknown field", "token", strings.Replace(validObjects, `"version":2`, `"version":2,"extra":true`, 1), nil},
+		{"duplicate field", "token", strings.Replace(validObjects, `"version":2`, `"version":2,"version":2`, 1), nil},
 		{"duplicate identity", "token", strings.Replace(validObjects, testSuspendedGroup, testPendingGroup, 1), nil},
 		{"issuer mismatch", "token", validObjects, func(_, _ string) {}},
 	}
@@ -97,4 +97,8 @@ func TestLoadRejectsUnsafeInputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testObjectDocument(origin string) string {
+	return `{"version":2,"issuer_origin":"` + origin + `","flows":{"open":{"slug":"gotth-bb-open","uuid":"` + testOpenFlow + `"},"approval":{"slug":"gotth-bb-approval","uuid":"` + testApprovalFlow + `"},"invitation":{"slug":"gotth-bb-invitation","uuid":"` + testInvitationFlow + `"}},"groups":{"accepted":"` + testAcceptedGroup + `","pending":"` + testPendingGroup + `","suspended":"` + testSuspendedGroup + `"},"email_stage":{"slug":"gotth-bb-enrollment-email-verification","uuid":"` + testEmailStageUUID + `"}}`
 }

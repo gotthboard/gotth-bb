@@ -20,14 +20,12 @@ directories are mode 0700.
 Secret files must be regular root-owned mode-0440 files: use
 group 999 for both PostgreSQL passwords, group 1000 for the Authentik instance
 key, and group 65532 for the Board database URL, OIDC secret, and cursor
-keyring. The shared SMTP password file is root/group 65529 mode 0440; it is an
-exact empty regular file while SMTP is disabled or unauthenticated and contains
-the bounded password bytes without framing only for authenticated SMTP. The
-Board application and both Authentik processes receive supplemental group
-65529; the control gateway never does. The pinned Authentik server receives
-supplemental groups 999 and 65532; the worker receives only 999 besides the
-SMTP group. These numeric identities are part of the pinned-image verification
-gate, not guesses about mutable tags. The Board
+keyring. The SMTP credential-protection key is a distinct exact 32-byte
+root/group-65532 mode-0440 file mounted only into Board; no administrator
+password is entered in host configuration or mounted into a container. The
+pinned Authentik server receives supplemental groups 999 and 65532; its worker
+receives only 999. These numeric identities are part of the pinned-image
+verification gate, not guesses about mutable tags. The Board
 PostgreSQL directory must not overlap the Authentik PostgreSQL directory.
 Every nonempty secret file contains the exact secret bytes with no trailing
 newline, carriage return, or other framing.
@@ -41,14 +39,13 @@ documented `file://` password form consistently in its Rust database path. The
 packaged non-root entrypoint therefore reads the two mounted Authentik secrets,
 validates their framing, exports them only into the Authentik process, and
 replaces itself. Docker image/configuration metadata retains no secret value.
-The same root-owned SMTP tuple is copied into `app.env` and the
-`GOTTH_BB_SMTP_*` deployment values. Preflight rejects any difference,
-derives Authentik's TLS booleans from the closed Board mode, and requires the
-same whole-second timeout. `starttls` maps to `true:false`,
-`implicit_tls` to `false:true`, and test-only `plain` to `false:false`.
-Production plain SMTP is rejected. Authentik reads the shared password through
-its non-root entrypoint; Board reads the same mounted bytes only when
-`SMTP_PASSWORD_FILE=/run/secrets/smtp_password`.
+The legacy `SMTP_*` and `GOTTH_BB_SMTP_*` tuples must both remain exactly
+empty. Preflight rejects any nonempty value or disagreement so host files
+cannot become a second source of truth. An administrator configures STARTTLS
+or implicit TLS at `/admin/email`; Board encrypts its password under the
+distinct credential-protection key and applies the same settings to the pinned
+Authentik enrollment email stage through the isolated gateway. Production
+plain SMTP remains rejected.
 
 Set `GOTTH_BB_COMPOSE_ENV_FILE` to the absolute deployment-environment path.
 Run the root-only preflight before starting anything. It rejects mismatched

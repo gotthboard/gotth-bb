@@ -320,7 +320,8 @@ Required secrets include at minimum:
   one beyond strong random opaque tokens and stored hashes.
 - B1-09's dedicated Authentik Board-control API token, distinct from the OIDC
   client secret and from every administrator token.
-- The SMTP password when the shared Authentik/Board transport authenticates.
+- The B1-09-06 SMTP credential-protection key and administrator-managed SMTP
+  password when the shared Authentik/Board transport authenticates.
 
 Secret handling requirements:
 
@@ -343,9 +344,11 @@ Secret handling requirements:
   values without copying rule contents into deployment logs or evidence.
 - B1-09 mounts the Authentik control token only into the isolated control
   gateway and authoritative Authentik server container where operator-invoked
-  bootstrap executes, never Board. The
-  optional SMTP password and independent invitation-fingerprint key are
-  separate Compose secrets. Its non-secret control-object JSON is a root-owned
+  bootstrap executes, never Board. The independent invitation-fingerprint and
+  SMTP credential-protection keys are separate Board-only Compose secrets; the
+  administrator SMTP password is encrypted in Board PostgreSQL and applied to
+  the pinned Authentik stage, never mounted from the host. Its non-secret
+  control-object JSON is a root-owned
   read-only bind shared by Board and the gateway only after exact UUID/slug
   attestation. No secret is passed on a process argument, copied into an image,
   rendered by `docker compose config`, or exposed in the Board container.
@@ -967,9 +970,10 @@ Proceed in this order:
    Before migration, prove every existing local external identity is represented
    in the dedicated accepted group; any mismatch blocks rather than poisoning
    the sync-state backfill.
-2. Generate a new independent 256-bit control token and a distinct 256-bit
-   invitation-fingerprint key into separate root-owned protected files. Prepare
-   the non-secret SMTP values, optional separate password secret, and a
+2. Generate a new independent 256-bit control token and distinct 256-bit
+   invitation-fingerprint and SMTP credential-protection keys into separate
+   root-owned protected files. Keep both legacy SMTP environment tuples empty
+   and prepare a
    gateway-owned `65533:65531` mode-0750 socket directory. Grant dedicated
    control GID `65531` only as a supplemental group to Board, which mounts the
    directory read-only. Never reuse the OIDC client,
@@ -1060,6 +1064,20 @@ Board may tighten the admitted dynamic values but cannot widen those deployment
 ceilings. Migration 000013 seeds registration closed. Enabling open, approval,
 or invitation enrollment requires verified SMTP and is an explicit audited
 administrator action, not a release-script default.
+
+B1-09-06 replaces host-file SMTP administration with the Board administrator
+surface. Before migration 000014, generate and back up a distinct 256-bit SMTP
+credential-protection key; it is not the OIDC secret, control token,
+invitation-fingerprint key, cursor key, or Authentik secret key. Keep
+registration closed, import any existing host SMTP tuple once, apply and
+read back the exact pinned Authentik email stage, and require an accepted
+self-addressed Board test before a non-closed mode is available. The legacy
+SMTP environment tuple must then be empty so it cannot become a second source
+of truth. Backup and restore must treat the Board database, Authentik database,
+and SMTP protection key as one recovery generation. A missing/wrong key,
+failed/unknown stage update, failed test, or cross-generation restore leaves
+registration closed. No deployment step enters or prints the administrator's
+SMTP password.
 
 The following decisions remain open for their later affected behavior:
 

@@ -109,7 +109,7 @@ func TestCheckerTracksReleaseAndAdministratorInvariantsOnPostgreSQL17(t *testing
 	}
 	checker, err := New(connection, func(checkContext context.Context) error {
 		return release.Verify(checkContext, connection)
-	}, time.Now, integrationControlCeilings, false)
+	}, time.Now, integrationControlCeilings, func(context.Context) (bool, error) { return false, nil })
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -155,7 +155,7 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 	t.Cleanup(func() { _ = restricted.Close(context.Background()) })
 	restrictedChecker, err := New(restricted, func(checkContext context.Context) error {
 		return release.Verify(checkContext, restricted)
-	}, time.Now, integrationControlCeilings, false)
+	}, time.Now, integrationControlCeilings, func(context.Context) (bool, error) { return false, nil })
 	if err != nil {
 		t.Fatalf("New(restricted) returned error: %v", err)
 	}
@@ -169,8 +169,8 @@ GRANT SELECT ON TABLE public.gotth_schema_migrations, public.governance_state, p
 		t.Fatalf("read packaged runtime grants: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 21 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 21", count)
+	if count := strings.Count(string(grantTemplate), rolePlaceholder); count != 22 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 22", count)
 	}
 	grantSQL := strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)
 	for attempt := 1; attempt <= 2; attempt++ {

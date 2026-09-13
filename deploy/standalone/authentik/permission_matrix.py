@@ -10,6 +10,7 @@ from authentik.core.models import Group, Token, User
 from authentik.flows.models import Flow
 from authentik.rbac.models import InitialPermissions
 from authentik.stages.invitation.models import Invitation
+from authentik.stages.email.models import EmailStage
 from guardian.models import RoleObjectPermission
 
 
@@ -60,6 +61,12 @@ foreign_invitation = Invitation.objects.create(
     fixed_data={"email": "foreign@example.invalid"},
     expires=now() + timedelta(hours=1),
 )
+email_stage = EmailStage.objects.get(pk="8d29e230-3485-4ee6-a741-ec089e510004")
+original_email_stage = {
+    field: getattr(email_stage, field)
+    for field in ("host", "port", "username", "password", "use_tls", "use_ssl", "timeout", "from_address")
+}
+foreign_email_stage = EmailStage.objects.create(name=FIXTURE + "-email")
 fixture_invitation_uuids = {str(foreign_invitation.pk)}
 created_uuid = None
 try:
@@ -108,6 +115,29 @@ try:
             ):
                 raise RuntimeError("pinned pending-group query omitted fixture")
         call("POST", f"/core/groups/{group.pk}/remove_user/", {204}, {"pk": test_user.pk})
+
+    # The only admitted configuration mutation is the pinned enrollment email stage.
+    email_response = call(
+        "PATCH",
+        f"/stages/email/{email_stage.pk}/",
+        {200},
+        {
+            "use_global_settings": False,
+            "host": "smtp.fixture.invalid",
+            "port": 587,
+            "username": "fixture",
+            "password": "fixture-secret",
+            "use_tls": True,
+            "use_ssl": False,
+            "timeout": 2,
+            "from_address": "board@fixture.invalid",
+        },
+    )
+    if "fixture-secret" in email_response.text or email_response.json().get("password"):
+        raise RuntimeError("email-stage API returned its write-only password")
+    call("GET", f"/stages/email/{email_stage.pk}/", {200})
+    forbidden("GET", f"/stages/email/{foreign_email_stage.pk}/")
+    forbidden("PATCH", f"/stages/email/{foreign_email_stage.pk}/", {"host": "forbidden.invalid"})
 
     # Creator-scoped initial permissions apply only to the invitation just created.
     call("GET", f"/stages/invitation/invitations/{created_uuid}/", {200})
@@ -235,6 +265,10 @@ try:
 
     print("AUTHENTIK_RAW_PERMISSION_MATRIX_WITH_DOCUMENTED_EXCESSES_OK")
 finally:
+    for field, value in original_email_stage.items():
+        setattr(email_stage, field, value)
+    email_stage.save(update_fields=list(original_email_stage))
+    foreign_email_stage.delete()
     if created_uuid:
         Invitation.objects.filter(pk=created_uuid).delete()
     Invitation.objects.filter(pk=foreign_invitation.pk).delete()

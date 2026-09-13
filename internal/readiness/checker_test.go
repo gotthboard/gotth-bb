@@ -99,7 +99,7 @@ func TestCheckerAcceptsExactReleaseAndGovernanceState(t *testing.T) {
 			t.Fatal("migration verifier received no deadline")
 		}
 		return nil
-	}, func() time.Time { return observedAt }, validControlCeilings, false)
+	}, func() time.Time { return observedAt }, validControlCeilings, func(context.Context) (bool, error) { return false, nil })
 	if err != nil {
 		t.Fatalf("New() returned error: %v", err)
 	}
@@ -127,6 +127,7 @@ func TestCheckerFailsClosed(t *testing.T) {
 	validDatabase := &readinessDatabase{row: readinessRow{valid: true}}
 	validVerifier := func(context.Context) error { return nil }
 	validClock := func() time.Time { return time.Date(2026, time.September, 2, 12, 0, 0, 0, time.UTC) }
+	validSMTP := func(context.Context) (bool, error) { return false, nil }
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
 	tests := []struct {
@@ -138,12 +139,12 @@ func TestCheckerFailsClosed(t *testing.T) {
 	}{
 		{name: "nil checker", ctx: context.Background()},
 		{name: "incomplete checker", checker: &Checker{}, ctx: context.Background()},
-		{name: "nil context", checker: &Checker{database: validDatabase, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings}},
-		{name: "canceled", checker: &Checker{database: validDatabase, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings}, ctx: canceled, cause: context.Canceled},
-		{name: "migration failure", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: true}}, verifyMigrations: func(context.Context) error { return failure }, now: validClock, controlCeilings: validControlCeilings}, ctx: context.Background(), cause: failure},
-		{name: "zero clock", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: true}}, verifyMigrations: validVerifier, now: func() time.Time { return time.Time{} }, controlCeilings: validControlCeilings}, ctx: context.Background()},
-		{name: "query failure", checker: &Checker{database: &readinessDatabase{row: readinessRow{err: failure}}, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings}, ctx: context.Background(), cause: failure},
-		{name: "invalid governance", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: false}}, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings}, ctx: context.Background()},
+		{name: "nil context", checker: &Checker{database: validDatabase, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings, smtpReady: validSMTP}},
+		{name: "canceled", checker: &Checker{database: validDatabase, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings, smtpReady: validSMTP}, ctx: canceled, cause: context.Canceled},
+		{name: "migration failure", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: true}}, verifyMigrations: func(context.Context) error { return failure }, now: validClock, controlCeilings: validControlCeilings, smtpReady: validSMTP}, ctx: context.Background(), cause: failure},
+		{name: "zero clock", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: true}}, verifyMigrations: validVerifier, now: func() time.Time { return time.Time{} }, controlCeilings: validControlCeilings, smtpReady: validSMTP}, ctx: context.Background()},
+		{name: "query failure", checker: &Checker{database: &readinessDatabase{row: readinessRow{err: failure}}, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings, smtpReady: validSMTP}, ctx: context.Background(), cause: failure},
+		{name: "invalid governance", checker: &Checker{database: &readinessDatabase{row: readinessRow{valid: false}}, verifyMigrations: validVerifier, now: validClock, controlCeilings: validControlCeilings, smtpReady: validSMTP}, ctx: context.Background()},
 	}
 	for _, test := range tests {
 		test := test
@@ -157,16 +158,19 @@ func TestCheckerFailsClosed(t *testing.T) {
 		})
 	}
 
-	if checker, err := New(nil, validVerifier, validClock, validControlCeilings, false); err == nil || checker != nil {
+	if checker, err := New(nil, validVerifier, validClock, validControlCeilings, validSMTP); err == nil || checker != nil {
 		t.Fatalf("New(nil database) = (%v, %v), want nil/error", checker, err)
 	}
-	if checker, err := New(validDatabase, nil, validClock, validControlCeilings, false); err == nil || checker != nil {
+	if checker, err := New(validDatabase, nil, validClock, validControlCeilings, validSMTP); err == nil || checker != nil {
 		t.Fatalf("New(nil verifier) = (%v, %v), want nil/error", checker, err)
 	}
-	if checker, err := New(validDatabase, validVerifier, nil, validControlCeilings, false); err == nil || checker != nil {
+	if checker, err := New(validDatabase, validVerifier, nil, validControlCeilings, validSMTP); err == nil || checker != nil {
 		t.Fatalf("New(nil clock) = (%v, %v), want nil/error", checker, err)
 	}
-	if checker, err := New(validDatabase, validVerifier, validClock, control.Ceilings{}, false); err == nil || checker != nil {
+	if checker, err := New(validDatabase, validVerifier, validClock, control.Ceilings{}, validSMTP); err == nil || checker != nil {
 		t.Fatalf("New(invalid control ceilings) = (%v, %v), want nil/error", checker, err)
+	}
+	if checker, err := New(validDatabase, validVerifier, validClock, validControlCeilings, nil); err == nil || checker != nil {
+		t.Fatalf("New(nil SMTP verifier) = (%v, %v), want nil/error", checker, err)
 	}
 }

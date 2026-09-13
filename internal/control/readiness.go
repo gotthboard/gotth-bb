@@ -12,11 +12,14 @@ type readinessDatabase interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
+type SMTPReadiness func(context.Context) (bool, error)
+
 const controlCatalogReadySQL = `WITH expected_relations(name, columns) AS (
     VALUES ('users'::text, 20), ('site_settings'::text, 18),
            ('pending_registrations'::text, 12),
            ('registration_invitations'::text, 12),
-           ('email_test_state'::text, 6)
+           ('email_test_state'::text, 7),
+           ('smtp_settings'::text, 11)
 ), expected_constraints(name) AS (
     VALUES
       ('users_authentik_sync_state_closed'::text),
@@ -45,6 +48,12 @@ const controlCatalogReadySQL = `WITH expected_relations(name, columns) AS (
       ('email_test_state_status_closed'::text),
       ('email_test_state_times_ordered'::text),
       ('email_test_state_completion_consistent'::text),
+      ('email_test_state_smtp_revision_positive'::text),
+      ('smtp_settings_singleton_true'::text),
+      ('smtp_settings_revision_positive'::text),
+      ('smtp_settings_verified_current'::text),
+      ('smtp_settings_updated_at_finite'::text),
+      ('smtp_settings_state_closed'::text),
       ('moderation_actions_expiry_actor_consistent'::text)
 ), expected_indexes(name) AS (
     VALUES ('pending_registrations_queue_idx'::text),
@@ -57,11 +66,11 @@ SELECT
      WHERE namespace.nspname = 'public' AND relation.relkind = 'r'
        AND (SELECT count(*) FROM pg_catalog.pg_attribute AS attribute
             WHERE attribute.attrelid = relation.oid AND attribute.attnum > 0
-              AND NOT attribute.attisdropped) = expected.columns) = 5
+              AND NOT attribute.attisdropped) = expected.columns) = 6
     AND (SELECT count(*) FROM expected_constraints AS expected
          JOIN pg_catalog.pg_constraint AS actual ON actual.conname = expected.name
          WHERE actual.connamespace = 'public'::regnamespace
-           AND actual.convalidated) = 27
+           AND actual.convalidated) = 33
     AND (SELECT count(*) FROM expected_indexes AS expected
          JOIN pg_catalog.pg_class AS actual ON actual.relname = expected.name
          WHERE actual.relnamespace = 'public'::regnamespace
@@ -94,6 +103,7 @@ const controlPrivilegeReadySQL = `WITH owners AS (
         'public.pending_registrations'::regclass,
         'public.registration_invitations'::regclass,
         'public.email_test_state'::regclass,
+        'public.smtp_settings'::regclass,
         'public.sessions'::regclass
     )
 )
@@ -118,6 +128,11 @@ SELECT NOT owners.owns_control_relation
    AND has_column_privilege(current_user, 'public.email_test_state', 'status', 'INSERT')
    AND has_column_privilege(current_user, 'public.email_test_state', 'status', 'UPDATE')
    AND NOT has_table_privilege(current_user, 'public.email_test_state', 'DELETE')
+   AND has_table_privilege(current_user, 'public.smtp_settings', 'SELECT')
+   AND has_column_privilege(current_user, 'public.smtp_settings', 'host', 'UPDATE')
+   AND has_column_privilege(current_user, 'public.smtp_settings', 'password_envelope', 'UPDATE')
+   AND NOT has_table_privilege(current_user, 'public.smtp_settings', 'INSERT')
+   AND NOT has_table_privilege(current_user, 'public.smtp_settings', 'DELETE')
    AND has_column_privilege(current_user, 'public.sessions', 'id', 'SELECT')
    AND NOT has_column_privilege(current_user, 'public.sessions', 'token_hash', 'SELECT')
    AND NOT has_table_privilege(current_user, 'public.sessions', 'UPDATE')
@@ -131,8 +146,8 @@ FROM owners`
 
 // Ready attests the B1-09 control schema, runtime state, immutable startup
 // ceilings, SMTP registration gate, and the connected role's narrow grants.
-func Ready(ctx context.Context, database readinessDatabase, ceilings Ceilings, smtpConfigured bool) error {
-	if ctx == nil || database == nil || !ceilings.Valid() {
+func Ready(ctx context.Context, database readinessDatabase, ceilings Ceilings, smtpReady SMTPReadiness) error {
+	if ctx == nil || database == nil || !ceilings.Valid() || smtpReady == nil {
 		return fmt.Errorf("control readiness boundary is incomplete")
 	}
 	if err := ctx.Err(); err != nil {
@@ -159,8 +174,11 @@ func Ready(ctx context.Context, database readinessDatabase, ceilings Ceilings, s
 	if err != nil {
 		return fmt.Errorf("control state readiness failed: %w", err)
 	}
-	if settings.Registration != RegistrationClosed && !smtpConfigured {
-		return fmt.Errorf("control registration readiness failed")
+	if settings.Registration != RegistrationClosed {
+		ready, readinessErr := smtpReady(ctx)
+		if readinessErr != nil || !ready {
+			return fmt.Errorf("control registration readiness failed")
+		}
 	}
 	if err := database.QueryRow(ctx, controlPrivilegeReadySQL).Scan(&valid); err != nil {
 		return fmt.Errorf("query control privilege readiness: %w", err)

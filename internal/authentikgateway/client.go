@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
 )
 
 const clientTimeout = 2500 * time.Millisecond
@@ -174,6 +176,25 @@ func (client *Client) DeleteInvitation(ctx context.Context, uuid string) error {
 
 func (client *Client) Health(ctx context.Context) error {
 	return client.request(ctx, http.MethodGet, "/health/live", nil, http.StatusNoContent, nil)
+}
+
+func (client *Client) ConfigureEmail(ctx context.Context, settings authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error) {
+	var result authentikcontrol.EmailStage
+	err := client.request(ctx, http.MethodPatch, "/v1/email-settings", settings, http.StatusOK, &result)
+	settings.Password = ""
+	if err == nil && (result.PK == "" || result.Name != "gotth-bb-enrollment-email-verification") {
+		err = ErrRemoteInvalid
+	}
+	return result, err
+}
+
+func (client *Client) EmailStage(ctx context.Context) (authentikcontrol.EmailStage, error) {
+	var result authentikcontrol.EmailStage
+	err := client.request(ctx, http.MethodGet, "/v1/email-settings", nil, http.StatusOK, &result)
+	if err == nil && (result.PK == "" || result.Name != "gotth-bb-enrollment-email-verification") {
+		err = ErrRemoteInvalid
+	}
+	return result, err
 }
 
 func (client *Client) request(ctx context.Context, method, path string, body any, expected int, destination any) error {

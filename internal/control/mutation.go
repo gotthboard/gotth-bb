@@ -97,14 +97,14 @@ func LoadEditable(ctx context.Context, querier editableQuerier, actor policy.Acc
 	return EditableSettings{Settings: settings}, nil
 }
 
-func Update(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, input Input, ceilings Ceilings, smtpConfigured bool, requestID pgtype.UUID) (MutationResult, error) {
+func Update(ctx context.Context, beginner transactionBeginner, clock func() time.Time, actor policy.AccessContext, input Input, ceilings Ceilings, _ bool, requestID pgtype.UUID) (MutationResult, error) {
 	if ctx == nil || beginner == nil || clock == nil || !ceilings.Valid() {
 		return MutationResult{}, fmt.Errorf("runtime control settings mutation boundary is incomplete")
 	}
 	if !policy.CanAdminister(actor) {
 		return MutationResult{}, ErrDenied
 	}
-	requested, err := validateInput(input, ceilings, smtpConfigured)
+	requested, err := validateInput(input, ceilings, true)
 	if err != nil || !requestID.Valid || requestID.Bytes == ([16]byte{}) {
 		return MutationResult{}, ErrInput
 	}
@@ -156,6 +156,12 @@ func Update(ctx context.Context, beginner transactionBeginner, clock func() time
 		}
 		if sameSettings(currentSettings, requested) {
 			return ErrConflict
+		}
+		if requested.Registration != RegistrationClosed {
+			smtp, smtpErr := queries.LockRuntimeSMTPSettings(mutationContext)
+			if smtpErr != nil || smtp.Host == "" || !smtp.VerifiedRevision.Valid || smtp.VerifiedRevision.Int64 != smtp.AdministrationRevision {
+				return ErrInput
+			}
 		}
 		changed, updateErr := queries.UpdateControlSettingsAndAudit(mutationContext, db.UpdateControlSettingsAndAuditParams{
 			RegistrationMode: string(input.Registration), MaintenanceEnabled: input.MaintenanceEnabled,

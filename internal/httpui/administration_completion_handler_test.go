@@ -861,6 +861,75 @@ func TestAdministrationDisabledAndRateLimitedEmailRemainCSRFProtected(t *testing
 	}
 }
 
+func TestAdministrationControlExplainsUnverifiedSMTP(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)
+	services := administrationControlSessionEmailTestServices(t, now)
+	updateCalls := 0
+	services.Control.SMTPReady = func(context.Context) (bool, error) { return false, nil }
+	services.Control.Update = func(context.Context, auth.AccessContext, control.Input, pgtype.UUID) (control.MutationResult, error) {
+		updateCalls++
+		return control.MutationResult{}, nil
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	form := url.Values{
+		"_csrf": {validCSRFTokenForTest(0x51)}, "registration_mode": {"verified_email_open"},
+		"maintenance_enabled": {"enabled"}, "maintenance_message": {"Brief maintenance"},
+		"publish_rate_limit": {"8"}, "new_account_publish_rate_limit": {"3"},
+		"publish_window_seconds": {"60"}, "new_account_period_seconds": {"86400"},
+		"session_idle_seconds": {"1800"}, "auth_revalidate_seconds": {"900"},
+		"revision": {"4"}, "reason": {"Open registration"},
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, administrationPrivilegedTestRequest(http.MethodPost, "/admin/control", form, admin))
+	if response.Code != http.StatusUnprocessableEntity || !strings.Contains(response.Body.String(), "Email not ready") || !strings.Contains(response.Body.String(), "successful test") || updateCalls != 0 {
+		t.Fatalf("unverified SMTP response = (%d, calls %d, %q)", response.Code, updateCalls, response.Body.String())
+	}
+}
+
+func TestAdministratorSMTPSettingsAreEditableWithoutRenderingPassword(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.September, 13, 11, 0, 0, 0, time.UTC)
+	services := administrationControlSessionEmailTestServices(t, now)
+	var received administration.SMTPSettingsInput
+	var receivedPassword string
+	services.Email.Configured = false
+	services.Email.LoadSettings = func(context.Context, auth.AccessContext) (administration.SMTPSettings, error) {
+		return administration.SMTPSettings{Host: "smtp.example.test", Port: 587, Username: "board", FromAddress: "board@example.test", TLSMode: "starttls", TimeoutSeconds: 10, PasswordPresent: true, Revision: 1}, nil
+	}
+	services.Email.Update = func(_ context.Context, _ auth.AccessContext, input administration.SMTPSettingsInput, _ pgtype.UUID) (administration.SMTPSettingsResult, error) {
+		received = input
+		receivedPassword = string(input.Password)
+		return administration.SMTPSettingsResult{Revision: 2, AuditID: 9}, nil
+	}
+	handler, err := newAdministrationCompletionHandler(callbackTestURLBuilder(t), services)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler = withModerationTestRequestID(t, handler)
+	admin := auth.SessionAuthentication{SessionID: 7, Access: auth.AccessContext{Authenticated: true, UserID: 1, Role: auth.RoleAdministrator}}
+	get := httptest.NewRecorder()
+	handler.ServeHTTP(get, administrationPrivilegedTestRequest(http.MethodGet, "/admin/email", nil, admin))
+	if get.Code != http.StatusOK || !strings.Contains(get.Body.String(), `name="host" value="smtp.example.test"`) || !strings.Contains(get.Body.String(), `name="password_action"`) || strings.Contains(get.Body.String(), "one-secret") {
+		t.Fatalf("SMTP settings GET = (%d, %q)", get.Code, get.Body.String())
+	}
+	form := url.Values{
+		"_csrf": {validCSRFTokenForTest(0x51)}, "host": {"smtp.example.test"}, "port": {"587"}, "username": {"board"},
+		"from_address": {"board@example.test"}, "tls_mode": {"starttls"}, "timeout_seconds": {"10"},
+		"password_action": {"replace"}, "password": {"one-secret"}, "revision": {"1"}, "reason": {"Configure delivery"},
+	}
+	post := httptest.NewRecorder()
+	handler.ServeHTTP(post, administrationPrivilegedTestRequest(http.MethodPost, "/admin/email/settings", form, admin))
+	if post.Code != http.StatusSeeOther || received.Host != "smtp.example.test" || receivedPassword != "one-secret" || received.ExpectedRevision != 1 {
+		t.Fatalf("SMTP settings POST = (%d, %+v, %q)", post.Code, received, post.Body.String())
+	}
+}
+
 func TestParseControlInputRequiresCanonicalClosedValues(t *testing.T) {
 	t.Parallel()
 	valid := url.Values{

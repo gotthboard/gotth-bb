@@ -32,7 +32,6 @@ import (
 	"github.com/gotthboard/gotth-bb/internal/readiness"
 	registrationservice "github.com/gotthboard/gotth-bb/internal/registration"
 	siteservice "github.com/gotthboard/gotth-bb/internal/site"
-	"github.com/gotthboard/gotth-bb/internal/smtpdelivery"
 	"github.com/gotthboard/gotth-bb/internal/store"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
 	"github.com/gotthboard/gotth-bb/migrations"
@@ -52,17 +51,23 @@ type databasePool interface {
 	Close()
 }
 
+type registrationControlGateway interface {
+	registrationservice.ControlGateway
+	ConfigureEmail(context.Context, authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error)
+}
+
 type poolFactory func(context.Context, *pgxpool.Config) (databasePool, error)
 type authenticationFactory func(context.Context, config.Config, auth.SessionDatabase, httpui.URLBuilder) (httpui.AuthenticationService, error)
 type cursorKeyringFactory func(string) (discovery.CursorKeyring, error)
 type abuseFactory func(config.AbuseConfig) (abuse.Policy, *abuse.RequestLimiter, error)
 type registrationControlRuntime struct {
-	Objects      authentikcontrol.Objects
-	Gateway      registrationservice.ControlGateway
-	ReferenceKey [32]byte
-	Close        func()
+	Objects           authentikcontrol.Objects
+	Gateway           registrationControlGateway
+	ReferenceKey      [32]byte
+	SMTPCredentialKey [32]byte
+	Close             func()
 }
-type registrationControlFactory func(string, string, string, string) (registrationControlRuntime, error)
+type registrationControlFactory func(string, string, string, string, string) (registrationControlRuntime, error)
 
 type approvalIntakeVerifier interface {
 	VerifyApprovalIntake(context.Context, string, string) (registrationservice.Intake, error)
@@ -95,7 +100,7 @@ func runExpiryReconcilerLoop(ctx context.Context, ticks <-chan time.Time, logger
 	}
 }
 
-func loadRegistrationControl(objectsPath, issuer, socketPath, fingerprintKeyPath string) (registrationControlRuntime, error) {
+func loadRegistrationControl(objectsPath, issuer, socketPath, fingerprintKeyPath, smtpCredentialKeyPath string) (registrationControlRuntime, error) {
 	objects, err := authentikcontrol.LoadObjects(objectsPath, issuer)
 	if err != nil {
 		return registrationControlRuntime{}, fmt.Errorf("load control objects")
@@ -104,11 +109,15 @@ func loadRegistrationControl(objectsPath, issuer, socketPath, fingerprintKeyPath
 	if err != nil {
 		return registrationControlRuntime{}, fmt.Errorf("load fingerprint key")
 	}
+	smtpKey, err := administrationservice.LoadSMTPCredentialKey(smtpCredentialKeyPath)
+	if err != nil {
+		return registrationControlRuntime{}, fmt.Errorf("load SMTP credential key")
+	}
 	client, err := authentikgateway.NewClient(socketPath)
 	if err != nil {
 		return registrationControlRuntime{}, fmt.Errorf("construct control gateway client")
 	}
-	return registrationControlRuntime{Objects: objects, Gateway: client, ReferenceKey: key, Close: client.Close}, nil
+	return registrationControlRuntime{Objects: objects, Gateway: client, ReferenceKey: key, SMTPCredentialKey: smtpKey, Close: client.Close}, nil
 }
 
 // newLoggedInitialAdministratorClaimer preserves the exact claim result while
@@ -302,41 +311,32 @@ func run(
 	if !ok {
 		return fmt.Errorf("construct approval-intake verifier failed")
 	}
-	registrationControl, err := loadRegistrationControl(configured.AuthentikControlObjectsFile, configured.OIDCIssuerURL.String(), configured.AuthentikControlSocket, configured.InvitationFingerprintKeyFile)
+	registrationControl, err := loadRegistrationControl(configured.AuthentikControlObjectsFile, configured.OIDCIssuerURL.String(), configured.AuthentikControlSocket, configured.InvitationFingerprintKeyFile, configured.SMTPCredentialKeyFile)
 	if err != nil {
 		return fmt.Errorf("load registration control runtime failed")
 	}
-	if registrationControl.Gateway == nil || registrationControl.ReferenceKey == ([32]byte{}) || registrationControl.Close == nil {
+	if registrationControl.Gateway == nil || registrationControl.ReferenceKey == ([32]byte{}) || registrationControl.SMTPCredentialKey == ([32]byte{}) || registrationControl.Close == nil {
 		return fmt.Errorf("load registration control runtime returned an invalid runtime")
 	}
 	defer registrationControl.Close()
 	authentikObjects := registrationControl.Objects
-	var invitationMailer registrationservice.InvitationMailer
-	var sharedMailer *smtpdelivery.Mailer
-	if configured.SMTP.Configured() {
-		mailer, mailerErr := smtpdelivery.New(smtpdelivery.Settings{
-			Host: configured.SMTP.Host, Port: configured.SMTP.Port, Username: configured.SMTP.Username,
-			From: configured.SMTP.From, PasswordFile: configured.SMTP.PasswordFile,
-			TLSMode: configured.SMTP.TLSMode, Timeout: configured.SMTP.Timeout,
-		}, configured.OIDCIssuerURL, authentikObjects.Flows.Invitation.Slug)
-		if mailerErr != nil {
-			return fmt.Errorf("construct SMTP mailer failed")
-		}
-		defer mailer.Close()
-		sharedMailer = mailer
-		invitationMailer = mailer
-	}
+	smtpCredentialKey := registrationControl.SMTPCredentialKey
+	defer clear(smtpCredentialKey[:])
+	queries := db.New(pool)
+	sharedMailer := &runtimeSMTPMailer{queries: queries, key: smtpCredentialKey, issuer: configured.OIDCIssuerURL, flowSlug: authentikObjects.Flows.Invitation.Slug}
+	var invitationMailer registrationservice.InvitationMailer = sharedMailer
 	releaseMigrations, err := migration.NewReleaseVerifier(migrations.Files())
 	if err != nil {
 		return fmt.Errorf("construct migration release verifier: %w", err)
 	}
 	readinessChecker, err := readiness.New(pool, func(readinessContext context.Context) error {
 		return releaseMigrations.Verify(readinessContext, pool)
-	}, time.Now, controlCeilings, configured.SMTP.Configured())
+	}, time.Now, controlCeilings, func(ctx context.Context) (bool, error) {
+		return administrationservice.SMTPReady(ctx, queries, smtpCredentialKey)
+	})
 	if err != nil {
 		return fmt.Errorf("construct readiness checker: %w", err)
 	}
-	queries := db.New(pool)
 	claimInitialAdministrator, err := newLoggedInitialAdministratorClaimer(logger, func(setupContext context.Context, authentication auth.SessionAuthentication, requestID pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
 		return governance.ClaimInitialAdministrator(setupContext, pool, time.Now, authentication.Access.UserID, authentication.SessionID, configured.OIDCIssuerURL.String(), configured.BootstrapAdminSubject, requestID)
 	})
@@ -453,7 +453,9 @@ func run(
 					return control.Load(registrationContext, queries, controlCeilings)
 				},
 				Issuer: configured.OIDCIssuerURL, OpenFlowSlug: authentikObjects.Flows.Open.Slug,
-				ApprovalFlowSlug: authentikObjects.Flows.Approval.Slug, SMTPConfigured: configured.SMTP.Configured(),
+				ApprovalFlowSlug: authentikObjects.Flows.Approval.Slug, SMTPReady: func(ctx context.Context) (bool, error) {
+					return administrationservice.SMTPReady(ctx, queries, smtpCredentialKey)
+				},
 			},
 			Administration: &httpui.AdministrationHTTPServices{
 				Dashboard: func(adminContext context.Context, access auth.AccessContext) (administrationservice.Dashboard, error) {
@@ -522,7 +524,9 @@ func run(
 					Revoke: func(adminContext context.Context, access auth.AccessContext, input registrationservice.InvitationRevocationInput) (registrationservice.InvitationRevocationResult, error) {
 						return registrationservice.RevokeInvitation(adminContext, pool, registrationControl.Gateway, time.Now, access, input, registrationControl.ReferenceKey)
 					},
-					Clock: time.Now, Issuer: configured.OIDCIssuerURL, FlowSlug: authentikObjects.Flows.Invitation.Slug, SMTPConfigured: configured.SMTP.Configured(),
+					Clock: time.Now, Issuer: configured.OIDCIssuerURL, FlowSlug: authentikObjects.Flows.Invitation.Slug, SMTPReady: func(ctx context.Context) (bool, error) {
+						return administrationservice.SMTPReady(ctx, queries, smtpCredentialKey)
+					},
 				},
 				Control: &httpui.ControlAdministrationHTTPServices{
 					Load: func(adminContext context.Context, access auth.AccessContext) (control.EditableSettings, error) {
@@ -530,6 +534,9 @@ func run(
 					},
 					Update: func(adminContext context.Context, access auth.AccessContext, input control.Input, requestID pgtype.UUID) (control.MutationResult, error) {
 						return control.Update(adminContext, pool, time.Now, access, input, controlCeilings, configured.SMTP.Configured(), requestID)
+					},
+					SMTPReady: func(ctx context.Context) (bool, error) {
+						return administrationservice.SMTPReady(ctx, queries, smtpCredentialKey)
 					},
 				},
 				Sessions: &httpui.SessionAdministrationHTTPServices{
@@ -549,10 +556,15 @@ func run(
 					Load: func(adminContext context.Context, access auth.AccessContext) (administrationservice.EmailTestState, error) {
 						return administrationservice.LoadEmailTestState(adminContext, queries, access, time.Now())
 					},
+					LoadSettings: func(adminContext context.Context, access auth.AccessContext) (administrationservice.SMTPSettings, error) {
+						return administrationservice.LoadSMTPSettings(adminContext, queries, access, time.Now())
+					},
+					Update: func(adminContext context.Context, access auth.AccessContext, input administrationservice.SMTPSettingsInput, requestID pgtype.UUID) (administrationservice.SMTPSettingsResult, error) {
+						return administrationservice.UpdateSMTPSettings(adminContext, pool, registrationControl.Gateway, time.Now, rand.Reader, access, input, smtpCredentialKey, requestID)
+					},
 					Test: func(adminContext context.Context, access auth.AccessContext, reason string, requestID pgtype.UUID) (administrationservice.EmailTestResult, error) {
 						return administrationservice.TestEmail(adminContext, pool, sharedMailer, time.Now, rand.Reader, access, reason, requestID)
 					},
-					Configured: configured.SMTP.Configured(),
 				},
 			},
 		},
@@ -579,7 +591,9 @@ func run(
 		AcceptApproval: func(registrationContext context.Context, intake registrationservice.Intake) error {
 			return registrationservice.AcceptIntake(registrationContext, queries, time.Now, intake)
 		},
-		SMTPConfigured: configured.SMTP.Configured(),
+		SMTPReady: func(ctx context.Context) (bool, error) {
+			return administrationservice.SMTPReady(ctx, queries, smtpCredentialKey)
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("construct registration control routes: %w", err)

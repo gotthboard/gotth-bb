@@ -333,7 +333,7 @@ func canonicalRuntimeGrants(grants []byte) ([]byte, error) {
 	if len(grants) == 0 || len(grants) > maxRuntimeGrantsBytes || grants[len(grants)-1] != '\n' || bytes.IndexByte(grants, 0) >= 0 || bytes.IndexByte(grants, '\r') >= 0 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
-	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 21 {
+	if bytes.Count(grants, []byte(`:"runtime_role"`)) != 22 {
 		return nil, fmt.Errorf("runtime grants are invalid")
 	}
 	statements := make([]string, 0, 25)
@@ -375,7 +375,8 @@ GRANT SELECT ON TABLE
     public.topics,
     public.user_warnings,
     public.users,
-    public.email_test_state
+    public.email_test_state,
+    public.smtp_settings
 TO :"runtime_role";
 GRANT SELECT (id, user_id, issued_at, last_seen_at, validated_at, expires_at,
               revoked_at, user_agent_hash, ip_prefix)
@@ -439,10 +440,15 @@ GRANT INSERT (idempotency_key, authentik_invitation_name, transition_state,
 ON TABLE public.registration_invitations
 TO :"runtime_role";
 GRANT INSERT (administrator_id, idempotency_key, status, requested_at,
-              completed_at, next_allowed_at),
+              completed_at, next_allowed_at, smtp_revision),
       UPDATE (idempotency_key, status, requested_at, completed_at,
-              next_allowed_at)
+              next_allowed_at, smtp_revision)
 ON TABLE public.email_test_state
+TO :"runtime_role";
+GRANT UPDATE (host, port, username, from_address, tls_mode, timeout_seconds,
+              password_envelope, administration_revision, verified_revision,
+              updated_at)
+ON TABLE public.smtp_settings
 TO :"runtime_role";
 GRANT INSERT, DELETE ON TABLE public.area_groups TO :"runtime_role";
 GRANT INSERT (display_name, email, avatar_url, created_at, updated_at,

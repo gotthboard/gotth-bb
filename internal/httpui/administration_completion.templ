@@ -218,10 +218,13 @@ templ administrationControlBody(page administrationControlView) {
 			<label class="grid gap-2 font-semibold text-slate-200">Registration mode
 				<select name="registration_mode" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
 					<option value="closed" selected?={ page.Registration == "closed" }>Closed</option>
-					<option value="verified_email_open" selected?={ page.Registration == "verified_email_open" }>Verified email open</option>
-					<option value="administrator_approval" selected?={ page.Registration == "administrator_approval" }>Administrator approval</option>
-					<option value="invitation_only" selected?={ page.Registration == "invitation_only" }>Invitation only</option>
+					<option value="verified_email_open" disabled?={ !page.SMTPReady } selected?={ page.Registration == "verified_email_open" }>Verified email open</option>
+					<option value="administrator_approval" disabled?={ !page.SMTPReady } selected?={ page.Registration == "administrator_approval" }>Administrator approval</option>
+					<option value="invitation_only" disabled?={ !page.SMTPReady } selected?={ page.Registration == "invitation_only" }>Invitation only</option>
 				</select>
+				if !page.SMTPReady {
+					<span class="text-sm font-normal text-amber-200">Configure and successfully test Email before selecting a registration mode.</span>
+				}
 			</label>
 			<label class="grid gap-2 font-semibold text-slate-200">Maintenance
 				<select name="maintenance_enabled" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
@@ -295,9 +298,39 @@ templ administrationEmailBody(page administrationEmailView) {
 	<section aria-labelledby="email-title">
 		<h1 id="email-title" class="text-3xl font-bold text-white">Email</h1>
 		if page.Configured {
-			<p role="status" class="mt-4 text-emerald-200">Shared SMTP transport is configured.</p>
+			<p role="status" class="mt-4 text-emerald-200">Shared SMTP transport is configured, saved, and applied to Authentik.</p>
+			if page.Verified {
+				<p class="mt-2 text-emerald-200">This exact revision passed a Board delivery test. Registration email modes are available.</p>
+			} else {
+				<p class="mt-2 text-amber-200">Send a test successfully before opening registration.</p>
+			}
 		} else {
-			<p role="status" class="mt-4 text-amber-200">Email is disabled.</p>
+			<p role="status" class="mt-4 text-amber-200">Email is not configured. Registration email modes remain unavailable.</p>
+		}
+		if page.SettingsURL != "" {
+		<form method="post" action={ page.SettingsURL } hx-post={ page.SettingsURL } class="mt-8 grid min-w-0 gap-5 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-2 sm:p-6">
+			<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
+			<input type="hidden" name="revision" value={ page.Revision }/>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">SMTP host<input required name="host" value={ page.Host } maxlength="253" autocapitalize="none" autocomplete="off" placeholder="smtp.example.org" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">Port<input required type="number" min="1" max="65535" name="port" value={ page.Port } class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">Sender address<input required type="email" name="from_address" value={ page.FromAddress } maxlength="320" autocomplete="off" placeholder="board@example.org" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">TLS mode<select required name="tls_mode" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
+				<option value="starttls" selected?={ page.TLSMode == "starttls" }>STARTTLS</option>
+				<option value="implicit_tls" selected?={ page.TLSMode == "implicit_tls" }>Implicit TLS</option>
+			</select></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">Timeout in seconds<input required type="number" min="1" max="30" name="timeout_seconds" value={ page.Timeout } class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">Username <span class="text-xs font-normal text-slate-400">Optional</span><input name="username" value={ page.Username } maxlength="320" autocomplete="username" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">Password action<select name="password_action" class="min-h-11 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base">
+				if page.PasswordPresent {
+					<option value="preserve" selected>Keep saved password</option>
+				}
+				<option value="replace" selected?={ !page.PasswordPresent }>Replace with password below</option>
+				<option value="clear">Clear password</option>
+			</select></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold">New password <span class="text-xs font-normal text-slate-400">Never displayed after save</span><input type="password" name="password" maxlength="4096" autocomplete="new-password" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<label class="grid min-w-0 gap-2 text-sm font-semibold sm:col-span-2">Audit reason<input required name="reason" maxlength="2000" autocomplete="off" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
+			<button class="min-h-11 w-fit rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950 sm:col-span-2">Save and apply SMTP settings</button>
+		</form>
 		}
 		if page.Status != "" {
 			<dl class="mt-6 grid gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 text-sm sm:grid-cols-2">
@@ -310,7 +343,7 @@ templ administrationEmailBody(page administrationEmailView) {
 			</dl>
 		}
 		if page.Configured {
-			<form method="post" action={ page.ActionURL } hx-post={ page.ActionURL } class="mt-8 grid min-w-0 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+			<form method="post" action={ page.TestURL } hx-post={ page.TestURL } class="mt-8 grid min-w-0 gap-3 rounded-lg border border-slate-800 bg-slate-900 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
 				<input type="hidden" name="_csrf" value={ page.CSRFToken }/>
 				<label class="grid min-w-0 gap-2 text-sm font-semibold">Audit reason<input required name="reason" maxlength="2000" class="min-h-11 min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-base"/></label>
 				<button class="min-h-11 rounded-md bg-cyan-300 px-4 py-2 font-semibold text-slate-950">Send test to my verified address</button>

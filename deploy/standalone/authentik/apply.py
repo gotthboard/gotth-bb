@@ -9,6 +9,7 @@ from authentik.policies.models import PolicyBinding
 from authentik.providers.oauth2.models import OAuth2Provider
 from authentik.rbac.models import InitialPermissions, Role
 from authentik.stages.invitation.models import Invitation
+from authentik.stages.email.models import EmailStage
 from guardian.models import RoleModelPermission, RoleObjectPermission
 
 
@@ -63,6 +64,7 @@ try:
     initial = InitialPermissions.objects.get(name="gotth-bb-control-created-invitations")
     groups = {key: Group.objects.get(name=name) for key, name in GROUP_NAMES.items()}
     flows = {key: Flow.objects.get(slug=slug) for key, (slug, _) in FLOW_IDENTITIES.items()}
+    email_stage = EmailStage.objects.get(pk="8d29e230-3485-4ee6-a741-ec089e510004")
 
     if provider.client_secret != oidc_secret:
         raise RuntimeError("Board provider secret differs from mounted secret")
@@ -141,6 +143,10 @@ try:
         for invitation_pk in live_invitation_pks
         for codename in ("view_invitation", "delete_invitation")
     )
+    expected_object_permissions.update(
+        ("authentik_stages_email", codename, str(email_stage.pk))
+        for codename in ("view_emailstage", "change_emailstage")
+    )
     actual_object_permissions = {
         (app, codename, object_pk)
         for app, codename, object_pk in object_permissions.values_list(
@@ -167,16 +173,27 @@ try:
                 raise RuntimeError("Board enrollment guard policy differs")
     if Flow.objects.filter(slug="gotth-bb-enrollment").exists():
         raise RuntimeError("Legacy unguarded enrollment flow remains")
+    if (
+        email_stage.name != "gotth-bb-enrollment-email-verification"
+        or email_stage.use_global_settings
+        or email_stage.template != "email/account_confirmation.html"
+        or not email_stage.activate_user_on_success
+    ):
+        raise RuntimeError("Board enrollment email stage differs")
 
     issuer_origin = os.environ["GOTTH_BB_OIDC_ISSUER_URL"].split("/application/", 1)[0]
     descriptor = {
-        "version": 1,
+        "version": 2,
         "issuer_origin": issuer_origin,
         "flows": {
             key: {"slug": flow.slug, "uuid": str(flow.pk)}
             for key, flow in sorted(flows.items())
         },
         "groups": {key: str(group.pk) for key, group in sorted(groups.items())},
+        "email_stage": {
+            "slug": "gotth-bb-enrollment-email-verification",
+            "uuid": "8d29e230-3485-4ee6-a741-ec089e510004",
+        },
     }
     print("AUTHENTIK_CONTROL_OBJECTS_JSON=" + json.dumps(descriptor, sort_keys=True, separators=(",", ":")))
     print("AUTHENTIK_BOARD_BLUEPRINT_APPLIED")

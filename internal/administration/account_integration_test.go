@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/authentikcontrol"
 	"github.com/gotthboard/gotth-bb/internal/migration"
 	"github.com/gotthboard/gotth-bb/internal/policy"
 	"github.com/gotthboard/gotth-bb/internal/store/db"
@@ -99,11 +100,74 @@ RETURNING id`, createdAt).Scan(&actorID); err != nil {
 	if err != nil || emailState != (EmailTestState{}) {
 		t.Fatalf("LoadEmailTestState(absent) = (%+v, %v)", emailState, err)
 	}
-	mailer := &administrationEmailTestMailer{status: "accepted"}
+	smtpKey := [32]byte{0x71}
+	smtpGateway := &administrationSMTPGateway{}
+	smtpResult, err := UpdateSMTPSettings(ctx, connections[0], smtpGateway, func() time.Time { return observedAt.Add(-time.Second) }, bytes.NewReader(bytes.Repeat([]byte{0x44}, 12)), actor, SMTPSettingsInput{
+		Host: "smtp.example.test", Port: "587", Username: "board", FromAddress: "board@example.test", TLSMode: "starttls", TimeoutSeconds: "10",
+		PasswordAction: "replace", Password: []byte("database-secret"), ExpectedRevision: 1, Reason: "Configure administrator SMTP",
+	}, smtpKey, testAdministrationRequestID(29))
+	if err != nil || smtpResult.Revision != 2 || smtpGateway.settings.Password != "database-secret" {
+		t.Fatalf("UpdateSMTPSettings() = (%+v, %v, gateway %+v)", smtpResult, err, smtpGateway.settings)
+	}
+	loadedSMTP, err := LoadSMTPSettings(ctx, db.New(connections[0]), actor, observedAt)
+	if err != nil || loadedSMTP.Revision != 2 || loadedSMTP.Verified || !loadedSMTP.PasswordPresent {
+		t.Fatalf("LoadSMTPSettings() = (%+v, %v)", loadedSMTP, err)
+	}
+	if ready, readyErr := SMTPReady(ctx, db.New(connections[0]), smtpKey); readyErr != nil || ready {
+		t.Fatalf("unverified SMTP readiness = (%t, %v)", ready, readyErr)
+	}
+	var smtpAuditText string
+	if err := connections[0].QueryRow(ctx, `SELECT previous_state::text || resulting_state::text FROM public.moderation_actions WHERE action_type = 'update_smtp_settings'`).Scan(&smtpAuditText); err != nil || strings.Contains(smtpAuditText, "database-secret") || strings.Contains(smtpAuditText, "smtp.example.test") {
+		t.Fatalf("SMTP audit projection = (%q, %v)", smtpAuditText, err)
+	}
+	mailer := &administrationEmailTestMailer{status: "accepted", revision: 2}
 	mailClock := administrationSequenceClock(observedAt, observedAt.Add(time.Second))
 	emailResult, err := TestEmail(ctx, connections[0], mailer, mailClock, bytes.NewReader(bytes.Repeat([]byte{0x31}, 16)), actor, "Verify the shared SMTP transport", testAdministrationRequestID(30))
 	if err != nil || emailResult.Status != "accepted" || emailResult.AuditID <= 0 || len(mailer.recipients) != 1 || mailer.recipients[0] != "administrator@example.test" {
 		t.Fatalf("TestEmail(accepted) = (%+v, %v, recipients %v)", emailResult, err, mailer.recipients)
+	}
+	loadedSMTP, err = LoadSMTPSettings(ctx, db.New(connections[0]), actor, observedAt.Add(2*time.Second))
+	if err != nil || !loadedSMTP.Verified || loadedSMTP.Revision != 2 {
+		t.Fatalf("verified SMTP state = (%+v, %v)", loadedSMTP, err)
+	}
+	if ready, readyErr := SMTPReady(ctx, db.New(connections[0]), smtpKey); readyErr != nil || !ready {
+		t.Fatalf("verified SMTP readiness = (%t, %v)", ready, readyErr)
+	}
+	if ready, readyErr := SMTPReady(ctx, db.New(connections[0]), [32]byte{0x72}); readyErr == nil || ready {
+		t.Fatalf("wrong-key SMTP readiness = (%t, %v)", ready, readyErr)
+	}
+	baseSMTPInput := SMTPSettingsInput{
+		Host: "smtp.example.test", Port: "587", Username: "board", FromAddress: "board@example.test", TLSMode: "starttls", TimeoutSeconds: "10",
+		PasswordAction: "preserve", ExpectedRevision: 2, Reason: "Exercise SMTP rejection",
+	}
+	priorGatewayCalls := smtpGateway.calls
+	if _, noOpErr := UpdateSMTPSettings(ctx, connections[0], smtpGateway, func() time.Time { return observedAt.Add(2 * time.Second) }, bytes.NewReader(bytes.Repeat([]byte{0x45}, 12)), actor, baseSMTPInput, smtpKey, testAdministrationRequestID(34)); !errors.Is(noOpErr, ErrAccountAdministrationConflict) || smtpGateway.calls != priorGatewayCalls {
+		t.Fatalf("SMTP no-op = (error %v, gateway calls %d)", noOpErr, smtpGateway.calls)
+	}
+	staleInput := baseSMTPInput
+	staleInput.ExpectedRevision = 1
+	if _, staleErr := UpdateSMTPSettings(ctx, connections[0], smtpGateway, func() time.Time { return observedAt.Add(2 * time.Second) }, bytes.NewReader(bytes.Repeat([]byte{0x46}, 12)), actor, staleInput, smtpKey, testAdministrationRequestID(35)); !errors.Is(staleErr, ErrAccountAdministrationConflict) || smtpGateway.calls != priorGatewayCalls {
+		t.Fatalf("SMTP stale revision = (error %v, gateway calls %d)", staleErr, smtpGateway.calls)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.site_settings SET registration_mode = 'verified_email_open' WHERE singleton`); err != nil {
+		t.Fatalf("open registration fixture: %v", err)
+	}
+	reconfigureInput := baseSMTPInput
+	reconfigureInput.Host = "smtp2.example.test"
+	if _, openErr := UpdateSMTPSettings(ctx, connections[0], smtpGateway, func() time.Time { return observedAt.Add(2 * time.Second) }, bytes.NewReader(bytes.Repeat([]byte{0x47}, 12)), actor, reconfigureInput, smtpKey, testAdministrationRequestID(36)); !errors.Is(openErr, ErrAccountAdministrationConflict) || smtpGateway.calls != priorGatewayCalls {
+		t.Fatalf("SMTP change while registration open = (error %v, gateway calls %d)", openErr, smtpGateway.calls)
+	}
+	if _, err := connections[0].Exec(ctx, `UPDATE public.site_settings SET registration_mode = 'closed' WHERE singleton`); err != nil {
+		t.Fatalf("close registration fixture: %v", err)
+	}
+	smtpGateway.err = errors.New("remote unavailable")
+	if _, remoteErr := UpdateSMTPSettings(ctx, connections[0], smtpGateway, func() time.Time { return observedAt.Add(2 * time.Second) }, bytes.NewReader(bytes.Repeat([]byte{0x48}, 12)), actor, reconfigureInput, smtpKey, testAdministrationRequestID(37)); !errors.Is(remoteErr, ErrAccountAdministrationUnavailable) {
+		t.Fatalf("SMTP remote failure = %v", remoteErr)
+	}
+	smtpGateway.err = nil
+	loadedSMTP, err = LoadSMTPSettings(ctx, db.New(connections[0]), actor, observedAt.Add(2*time.Second))
+	if err != nil || loadedSMTP.Revision != 2 || loadedSMTP.Host != "smtp.example.test" || !loadedSMTP.Verified {
+		t.Fatalf("SMTP remote rollback = (%+v, %v)", loadedSMTP, err)
 	}
 	emailState, err = LoadEmailTestState(ctx, querier, actor, observedAt.Add(2*time.Second))
 	if err != nil || emailState.Status != "accepted" || !emailState.RequestedAt.Equal(observedAt) || !emailState.CompletedAt.Equal(observedAt.Add(time.Second)) || !emailState.NextAllowedAt.Equal(observedAt.Add(5*time.Minute)) {
@@ -343,8 +407,8 @@ GRANT USAGE, SELECT ON SEQUENCE public.moderation_actions_id_seq TO ` + roleIden
 		t.Fatalf("read runtime grant contract: %v", err)
 	}
 	const rolePlaceholder = `:"runtime_role"`
-	if strings.Count(string(grantTemplate), rolePlaceholder) != 21 {
-		t.Fatalf("runtime grant role placeholder count = %d, want 21", strings.Count(string(grantTemplate), rolePlaceholder))
+	if strings.Count(string(grantTemplate), rolePlaceholder) != 22 {
+		t.Fatalf("runtime grant role placeholder count = %d, want 22", strings.Count(string(grantTemplate), rolePlaceholder))
 	}
 	if _, err := connections[0].Exec(ctx, strings.ReplaceAll(string(grantTemplate), rolePlaceholder, roleIdentifier)); err != nil {
 		t.Fatalf("apply runtime grant contract: %v", err)
@@ -408,14 +472,36 @@ type administrationEmailTestMailer struct {
 	err        error
 	recipients []string
 	cancel     context.CancelFunc
+	revision   int64
 }
 
-func (mailer *administrationEmailTestMailer) SendTest(_ context.Context, recipient string) (string, error) {
+func (mailer *administrationEmailTestMailer) SMTPRevision(context.Context) (int64, error) {
+	if mailer.revision == 0 {
+		return 1, nil
+	}
+	return mailer.revision, nil
+}
+func (mailer *administrationEmailTestMailer) SendTest(_ context.Context, recipient string, _ int64) (string, error) {
 	mailer.recipients = append(mailer.recipients, recipient)
 	if mailer.cancel != nil {
 		mailer.cancel()
 	}
 	return mailer.status, mailer.err
+}
+
+type administrationSMTPGateway struct {
+	settings authentikcontrol.EmailSettings
+	calls    int
+	err      error
+}
+
+func (gateway *administrationSMTPGateway) ConfigureEmail(_ context.Context, settings authentikcontrol.EmailSettings) (authentikcontrol.EmailStage, error) {
+	gateway.calls++
+	gateway.settings = settings
+	if gateway.err != nil {
+		return authentikcontrol.EmailStage{}, gateway.err
+	}
+	return authentikcontrol.EmailStage{PK: "8d29e230-3485-4ee6-a741-ec089e510004", Name: "gotth-bb-enrollment-email-verification", Host: settings.Host, Port: settings.Port, Username: settings.Username, FromAddress: settings.FromAddress, Timeout: settings.Timeout, UseTLS: settings.UseTLS, UseSSL: settings.UseSSL, Template: "email/account_confirmation.html", ActivateUserOnSuccess: true}, nil
 }
 
 func administrationSequenceClock(values ...time.Time) func() time.Time {

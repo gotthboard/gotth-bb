@@ -23,6 +23,7 @@ type RegistrationControlHTTPServices struct {
 	VerifyApproval func(context.Context, string) (registration.Intake, error)
 	AcceptApproval func(context.Context, registration.Intake) error
 	SMTPConfigured bool
+	SMTPReady      func(context.Context) (bool, error)
 }
 
 // NewRegistrationControlHandler installs only the public admission and signed
@@ -73,7 +74,7 @@ func serveRegistrationAdmission(response http.ResponseWriter, request *http.Requ
 		response.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
-	if settings.MaintenanceEnabled || settings.Registration != mode || !services.SMTPConfigured {
+	if settings.MaintenanceEnabled || settings.Registration != mode || !registrationSMTPReady(ctx, services.SMTPConfigured, services.SMTPReady) {
 		response.WriteHeader(http.StatusNotFound)
 		return
 	}

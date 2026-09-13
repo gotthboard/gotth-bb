@@ -95,6 +95,7 @@ state and read markers are explicit mutations but are not moderation audits.
 | `POST` | `/admin/sessions/{handle}/revoke` | current/revalidated administrator plus expiring session-bound handle | yes | `private, no-store` | yes / one local session / yes | fixed `403`/conflict/error |
 | `POST` | `/admin/accounts/{userID}/sessions/revoke` | current/revalidated administrator plus target revision | yes | `private, no-store` | yes / all current local sessions / yes | equivalent `404`/conflict/error |
 | `GET` | `/admin/email` | current/revalidated administrator | no | `private, no-store` | yes / no / no | fixed `403`/bounded `503` |
+| `POST` | `/admin/email/settings` | current/revalidated administrator | yes | `private, no-store` | yes / SMTP transition / yes | fixed `403`/conflict/field or remote error |
 | `POST` | `/admin/email/test` | current/revalidated administrator | yes | `private, no-store` | yes / email-test state / yes | fixed `403`/rate limit/SMTP result |
 
 All other method/path/query/raw-path forms go through the bounded not-found or

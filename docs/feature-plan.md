@@ -946,7 +946,7 @@ B1-09 depends on owner acceptance and closure of B1-08G/Beta.1.5. Contract and
 isolated implementation work may proceed while that physical acceptance is
 pending, but B1-09 cannot be merged, tagged, or deployed around an unresolved
 predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
-`ADMIN-001`–`ADMIN-009` through six serial units in the
+`ADMIN-001`–`ADMIN-009` through seven serial units in the
 `feature/beta-1-admin-control-plane` worktree:
 
 1. **B1-09-00 — contract, Authentik mechanism, and permission admission.**
@@ -991,11 +991,23 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    Retain exact evidence, obtain two fresh CLEAN final reviews, then use the
    guarded fast-forward/mirror, annotated Beta tag, package/image, live
    deployment, smoke, rollback, and owner physical-acceptance workflow.
+7. **B1-09-06 — administrator-managed SMTP physical-review repair.** Beta.1.7
+   failed owner review because the browser exposed registration modes whose
+   required SMTP transport could only be supplied through host files. Revise
+   `ADMIN-009`, add migration 000014 and an independent password-protection
+   key, revisioned saved/applied/verified SMTP state, exact field errors, and
+   write-only password controls. Extend the Unix gateway only for the pinned
+   Authentik enrollment email stage with object-scoped view/change authority.
+   Prove migration, encryption and redaction, remote failure/rollback,
+   reconfigure/restart/restore, Board and Authentik delivery,
+   registration gating, ordinary HTML/HTMX, 320-pixel reflow, and permission
+   negatives before any successor delivery. Beta.1.7 remains immutable failed
+   evidence and cannot become known-good.
 
 The unit owns no B1-10 Discussion-area hierarchy, gotth-* stable-product
-inventory, RC.1 freeze work, host-management UI, Docker socket, arbitrary
-Authentik browser, local password, arbitrary mail relay, or retention-policy
-decision. Workers do not create PRs, merge, push, tag, release, or deploy
+inventory, RC.1 freeze work, Docker socket, arbitrary Authentik browser, local
+account password, arbitrary-recipient relay, or retention-policy decision.
+Workers do not create PRs, merge, push, tag, release, or deploy
 without the already established gated delivery authority and predecessor
 closure.
 

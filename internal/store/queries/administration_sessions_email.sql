@@ -167,7 +167,8 @@ WITH actor AS MATERIALIZED (
 SELECT (actor.id IS NOT NULL)::boolean AS actor_present,
        (state.administrator_id IS NOT NULL)::boolean AS state_present,
        COALESCE(state.status, '')::text AS status,
-       state.requested_at, state.completed_at, state.next_allowed_at
+       state.requested_at, state.completed_at, state.next_allowed_at,
+       state.smtp_revision
 FROM (VALUES (true)) AS anchor(singleton)
 LEFT JOIN actor ON true
 LEFT JOIN public.email_test_state AS state
@@ -191,21 +192,23 @@ FOR UPDATE OF forum_user;
 WITH reserved AS (
     INSERT INTO public.email_test_state (
         administrator_id, idempotency_key, status,
-        requested_at, completed_at, next_allowed_at
+        requested_at, completed_at, next_allowed_at, smtp_revision
     )
     VALUES (
         sqlc.arg(actor_user_id), sqlc.arg(idempotency_key), 'requested',
         sqlc.arg(observed_at)::timestamptz, NULL,
-        sqlc.arg(observed_at)::timestamptz + interval '5 minutes'
+        sqlc.arg(observed_at)::timestamptz + interval '5 minutes',
+        sqlc.arg(smtp_revision)
     )
     ON CONFLICT (administrator_id) DO UPDATE
     SET idempotency_key = EXCLUDED.idempotency_key,
         status = EXCLUDED.status,
         requested_at = EXCLUDED.requested_at,
         completed_at = EXCLUDED.completed_at,
-        next_allowed_at = EXCLUDED.next_allowed_at
+        next_allowed_at = EXCLUDED.next_allowed_at,
+        smtp_revision = EXCLUDED.smtp_revision
     WHERE email_test_state.next_allowed_at <= EXCLUDED.requested_at
-    RETURNING administrator_id, requested_at, next_allowed_at
+    RETURNING administrator_id, requested_at, next_allowed_at, smtp_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -223,7 +226,8 @@ WITH reserved AS (
     FROM reserved
     RETURNING id
 )
-SELECT reserved.requested_at, reserved.next_allowed_at, audit.id AS audit_id
+SELECT reserved.requested_at, reserved.next_allowed_at,
+       reserved.smtp_revision, audit.id AS audit_id
 FROM reserved
 JOIN audit ON true;
 
@@ -236,7 +240,17 @@ WITH completed AS (
       AND state.idempotency_key = sqlc.arg(idempotency_key)
       AND state.status = 'requested'
       AND sqlc.arg(status)::text IN ('accepted', 'failed', 'unknown')
-    RETURNING state.administrator_id, state.status, state.completed_at
+    RETURNING state.administrator_id, state.status, state.completed_at,
+              state.smtp_revision
+), verified AS (
+    UPDATE public.smtp_settings AS settings
+    SET verified_revision = settings.administration_revision
+    FROM completed
+    WHERE completed.status = 'accepted'
+      AND completed.smtp_revision = settings.administration_revision
+      AND settings.host <> ''
+      AND settings.singleton
+    RETURNING settings.administration_revision
 ), audit AS (
     INSERT INTO public.moderation_actions (
         actor_kind, actor_user_id, target_type, target_user_id,
@@ -257,6 +271,9 @@ WITH completed AS (
     FROM completed
     RETURNING id
 )
-SELECT completed.status, completed.completed_at, audit.id AS audit_id
+SELECT completed.status, completed.completed_at, completed.smtp_revision,
+       (verified.administration_revision IS NOT NULL)::boolean AS smtp_verified,
+       audit.id AS audit_id
 FROM completed
-JOIN audit ON true;
+JOIN audit ON true
+LEFT JOIN verified ON true;

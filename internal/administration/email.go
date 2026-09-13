@@ -34,7 +34,8 @@ type EmailTestResult struct {
 }
 
 type EmailTestMailer interface {
-	SendTest(context.Context, string) (string, error)
+	SMTPRevision(context.Context) (int64, error)
+	SendTest(context.Context, string, int64) (string, error)
 }
 
 type emailAdministrationQuerier interface {
@@ -106,6 +107,10 @@ func TestEmail(ctx context.Context, beginner accountTransactionBeginner, mailer 
 	idempotencyText := fmt.Sprintf("%x", idempotencyKey.Bytes)
 	digest := sha256.Sum256([]byte(idempotencyText))
 	idempotencyDigest := hex.EncodeToString(digest[:])
+	smtpRevision, err := mailer.SMTPRevision(ctx)
+	if err != nil || smtpRevision < 1 {
+		return EmailTestResult{}, fmt.Errorf("%w: SMTP is not configured", ErrAccountAdministrationUnavailable)
+	}
 
 	var recipient string
 	var requestedAudit int64
@@ -131,7 +136,7 @@ func TestEmail(ctx context.Context, beginner accountTransactionBeginner, mailer 
 		reserved, reserveErr := queries.ReserveEmailTestAndAudit(reservationContext, db.ReserveEmailTestAndAuditParams{
 			ActorUserID: actor.UserID, IdempotencyKey: idempotencyKey,
 			ObservedAt: administrationTime(requestedAt), Reason: pgtype.Text{String: reason, Valid: true},
-			IdempotencySha256: idempotencyDigest, RequestID: requestID,
+			IdempotencySha256: idempotencyDigest, RequestID: requestID, SmtpRevision: pgtype.Int8{Int64: smtpRevision, Valid: true},
 		})
 		if errors.Is(reserveErr, pgx.ErrNoRows) {
 			return ErrEmailTestRateLimited
@@ -140,7 +145,8 @@ func TestEmail(ctx context.Context, beginner accountTransactionBeginner, mailer 
 			return fmt.Errorf("reserve email test: %w", reserveErr)
 		}
 		if !finiteAdministrationTime(reserved.RequestedAt) || !finiteAdministrationTime(reserved.NextAllowedAt) ||
-			!reserved.RequestedAt.Time.Equal(requestedAt) || !reserved.NextAllowedAt.Time.Equal(requestedAt.Add(5*time.Minute)) || reserved.AuditID <= 0 {
+			!reserved.RequestedAt.Time.Equal(requestedAt) || !reserved.NextAllowedAt.Time.Equal(requestedAt.Add(5*time.Minute)) ||
+			!reserved.SmtpRevision.Valid || reserved.SmtpRevision.Int64 != smtpRevision || reserved.AuditID <= 0 {
 			return fmt.Errorf("email test reservation returned invalid state")
 		}
 		requestedAudit = reserved.AuditID
@@ -150,7 +156,7 @@ func TestEmail(ctx context.Context, beginner accountTransactionBeginner, mailer 
 		return EmailTestResult{}, fmt.Errorf("email test reservation transaction: %w", err)
 	}
 
-	status, sendErr := mailer.SendTest(ctx, recipient)
+	status, sendErr := mailer.SendTest(ctx, recipient, smtpRevision)
 	if !validCompletedEmailTestStatus(status) || status == "accepted" && sendErr != nil || status != "accepted" && sendErr == nil {
 		status = "unknown"
 	}
@@ -180,7 +186,7 @@ func TestEmail(ctx context.Context, beginner accountTransactionBeginner, mailer 
 			return fmt.Errorf("complete email test: %w", completeErr)
 		}
 		if completed.Status != status || !finiteAdministrationTime(completed.CompletedAt) ||
-			!completed.CompletedAt.Time.Equal(completedAt) || completed.AuditID <= requestedAudit {
+			!completed.CompletedAt.Time.Equal(completedAt) || !completed.SmtpRevision.Valid || completed.SmtpRevision.Int64 != smtpRevision || completed.AuditID <= requestedAudit {
 			return fmt.Errorf("email test completion returned invalid state")
 		}
 		result = EmailTestResult{Status: status, RequestedAt: requestedAt, CompletedAt: completedAt, AuditID: completed.AuditID}

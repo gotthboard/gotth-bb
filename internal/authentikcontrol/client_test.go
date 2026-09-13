@@ -21,16 +21,18 @@ const (
 	testSuspendedGroup = "66666666-6666-4666-8666-666666666666"
 	testUserUUID       = "77777777-7777-4777-8777-777777777777"
 	testInvitationUUID = "88888888-8888-4888-8888-888888888888"
+	testEmailStageUUID = "8d29e230-3485-4ee6-a741-ec089e510004"
 )
 
 func testObjects(origin string) Objects {
-	return Objects{Version: 1, IssuerOrigin: origin,
+	return Objects{Version: 2, IssuerOrigin: origin,
 		Flows: FlowObjects{
 			Open:       Object{Slug: "gotth-bb-open", UUID: testOpenFlow},
 			Approval:   Object{Slug: "gotth-bb-approval", UUID: testApprovalFlow},
 			Invitation: Object{Slug: "gotth-bb-invitation", UUID: testInvitationFlow},
 		},
-		Groups: GroupObjects{Accepted: testAcceptedGroup, Pending: testPendingGroup, Suspended: testSuspendedGroup},
+		Groups:     GroupObjects{Accepted: testAcceptedGroup, Pending: testPendingGroup, Suspended: testSuspendedGroup},
+		EmailStage: Object{Slug: "gotth-bb-enrollment-email-verification", UUID: testEmailStageUUID},
 	}
 }
 
@@ -204,6 +206,47 @@ func TestInvitationOperationsForceFlowAndSingleUse(t *testing.T) {
 	}
 	if err := client.DeleteInvitation(context.Background(), testInvitationUUID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEmailStageOperationsUseOnlyPinnedStageAndWriteOnlyPassword(t *testing.T) {
+	t.Parallel()
+	requests := 0
+	client, server := testClient(t, http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests++
+		if request.URL.Path != "/api/v3/stages/email/"+testEmailStageUUID+"/" {
+			t.Errorf("unpinned email stage path: %s", request.URL.Path)
+		}
+		if request.Method == http.MethodPatch {
+			var body struct {
+				Host              string `json:"host"`
+				Username          string `json:"username"`
+				Password          string `json:"password"`
+				FromAddress       string `json:"from_address"`
+				Port              int    `json:"port"`
+				Timeout           int    `json:"timeout"`
+				UseTLS            bool   `json:"use_tls"`
+				UseSSL            bool   `json:"use_ssl"`
+				UseGlobalSettings bool   `json:"use_global_settings"`
+			}
+			if json.NewDecoder(request.Body).Decode(&body) != nil || body.Password != "one-secret" || body.UseGlobalSettings || !body.UseTLS || body.UseSSL {
+				t.Errorf("invalid email-stage patch: %+v", body)
+			}
+		}
+		_, _ = io.WriteString(response, `{"pk":"`+testEmailStageUUID+`","name":"gotth-bb-enrollment-email-verification","use_global_settings":false,"host":"smtp.example.test","port":587,"username":"board","use_tls":true,"use_ssl":false,"timeout":10,"from_address":"board@example.test","template":"email/account_confirmation.html","activate_user_on_success":true}`)
+	}))
+	defer server.Close()
+	defer client.Close()
+	settings := EmailSettings{Host: "smtp.example.test", Port: 587, Username: "board", Password: "one-secret", FromAddress: "board@example.test", Timeout: 10, UseTLS: true}
+	stage, err := client.ConfigureEmailStage(context.Background(), settings)
+	if err != nil || stage.PK != testEmailStageUUID || stage.Host != settings.Host {
+		t.Fatalf("ConfigureEmailStage() = (%+v, %v)", stage, err)
+	}
+	if _, err := client.EmailStage(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 2 {
+		t.Fatalf("email stage requests = %d", requests)
 	}
 }
 
