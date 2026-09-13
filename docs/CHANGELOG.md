@@ -5,6 +5,18 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-12 — Wire dynamic registration into the public router
+
+Implementation: current commit; hash assigned by Git after commit
+
+The B1-09 dynamic registration page is now passed through the existing
+optional-session boundary and assigned to the exact `/register` dispatcher.
+The first live candidate exposed the missing assignment as a 404 while the
+leaf handler tests still passed. A full-router regression now proves that
+closed registration renders its fail-closed page through the production
+construction path. The rejected Beta.1.6 tag remains immutable; this repair is
+released only as a successor candidate.
+
 ### 2026-09-12 — Rehearse B1-09 pre-live integrated admission
 
 Implementation: `5034527ffad5a57db014805fbb42d3756d1e31c5`

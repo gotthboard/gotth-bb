@@ -8,9 +8,64 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/gotthboard/gotth-bb/internal/abuse"
+	"github.com/gotthboard/gotth-bb/internal/auth"
 	"github.com/gotthboard/gotth-bb/internal/control"
+	"github.com/gotthboard/gotth-bb/internal/governance"
+	"github.com/gotthboard/gotth-bb/internal/store"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+func TestAuthenticatedRouterDispatchesDynamicRegistration(t *testing.T) {
+	t.Parallel()
+	service := &authenticatedHandlerTestService{
+		begin: func(context.Context, string) (string, string, error) { return "", "", nil },
+		beginRevalidation: func(context.Context, int64, string) (string, string, error) {
+			return "", "", nil
+		},
+		complete: func(context.Context, string, string) (string, string, time.Time, error) {
+			return "", "", time.Time{}, nil
+		},
+		completeRevalidation: func(context.Context, string, string, string) (string, string, time.Time, error) {
+			return "", "", time.Time{}, nil
+		},
+		authenticate: func(context.Context, string) (auth.SessionAuthentication, error) {
+			return auth.SessionAuthentication{}, nil
+		},
+		revoke: func(context.Context, string) (bool, error) { return false, nil },
+	}
+	sites := validSiteHTTPServices()
+	sites.Registration = &RegistrationHTTPServices{
+		LoadSettings: func(context.Context) (control.Settings, error) {
+			return control.Settings{Registration: control.RegistrationClosed, Revision: 1}, nil
+		},
+		Issuer: url.URL{Scheme: "https", Host: "auth.example"}, OpenFlowSlug: "open", ApprovalFlowSlug: "approval", SMTPConfigured: true,
+	}
+	handler, err := newAuthenticatedHandler(
+		callbackTestURLBuilder(t), service, emptyAreaIndexLister, panicAreaTopicPageLoader, store.MaximumTopicPage,
+		panicTopicPostPageLoader, store.MaximumPostPage, abuse.DestinationPolicy{}, &captureAbuseObserver{},
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, &sites,
+		url.URL{Scheme: "https", Host: "auth.example", Path: "/if/flow/open/"}, false,
+		func(context.Context, auth.SessionAuthentication) (governance.InitialAdministratorSetupStatus, error) {
+			return governance.InitialAdministratorSetupStatus{}, nil
+		},
+		func(context.Context, auth.SessionAuthentication, pgtype.UUID) (governance.InitialAdministratorClaimResult, error) {
+			return governance.InitialAdministratorClaimResult{}, nil
+		},
+		"gotth_bb_session", true, unavailableReadiness,
+	)
+	if err != nil {
+		t.Fatalf("newAuthenticatedHandler() returned error: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/register", nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || request.Pattern != "GET /register" || !strings.Contains(response.Body.String(), "Registration is currently closed.") {
+		t.Fatalf("dynamic registration route = (status %d, pattern %q, body %q)", response.Code, request.Pattern, response.Body.String())
+	}
+}
 
 func TestDynamicRegistrationRendersExactCurrentMode(t *testing.T) {
 	t.Parallel()

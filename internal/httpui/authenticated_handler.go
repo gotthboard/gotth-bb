@@ -537,6 +537,15 @@ func newAuthenticatedHandler(
 		}
 		if siteServices != nil && siteServices.Registration != nil {
 			registrationHandler, err = newDynamicRegistrationHandler(builder, *siteServices.Registration)
+			if err != nil {
+				return nil, fmt.Errorf("construct registration route: %w", err)
+			}
+			authenticatedRegistrationHandler, err = newSessionAuthenticationHandler(
+				registrationHandler, service.AuthenticateSession, sessionCookieName, builder, secure,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("construct registration session boundary: %w", err)
+			}
 			registrationAvailable = true
 		} else if registrationEnabled {
 			registrationHandler, err = newRegistrationRedirectHandler(builder, registrationURL)
