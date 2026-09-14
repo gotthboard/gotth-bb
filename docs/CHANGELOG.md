@@ -23,6 +23,12 @@ The existing adversarial concurrency matrix continues to prove that area and
 membership changes cannot race publication policy. No schema, grant, route,
 Caddy, identity, SMTP, or discussion-hierarchy behavior changes.
 
+The correction is deployed as immutable successor `1.0.0-beta.1.9` from
+commit `ba23abd4c3bc825efafd31d56c671c15a31bf902`. Its verification, artifact,
+deployment, and rollback record is
+`docs/evidence/beta1-publish-runtime-corrective-beta1.9.txt`. Owner physical
+publication confirmation remains pending, so Beta.1.9 is not yet known-good.
+
 ### 2026-09-13 — Plan the Version 5 Extensions administrator
 
 The future Board extension surface now includes one host-owned administrator

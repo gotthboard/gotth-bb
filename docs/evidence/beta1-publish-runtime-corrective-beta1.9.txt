@@ -1,0 +1,108 @@
+BETA.1 RESTRICTED-RUNTIME PUBLICATION CORRECTIVE — 2026-09-14
+
+Scope
+-----
+
+This record covers only the topic-publication failure observed on
+`https://bb.alhstudios.com`. It includes the narrow application correction,
+regression evidence, immutable successor release, and application-only live
+cutover. It does not implement B1-10 discussion-area hierarchy or alter Caddy,
+PostgreSQL schema/data/grants, Authentik, SMTP, secrets, or configuration.
+
+Canonical identity
+------------------
+
+- Superseded live candidate: `1.0.0-beta.1.8`, commit
+  `220e53d0ecd5bef4ca427e4136c53edc9d698c99`.
+- Corrective implementation: `ba23abd4c3bc825efafd31d56c671c15a31bf902`.
+- Corrective source tree: `2f26e91e542ad59c0df032d09d9feff6b9020dc3`.
+- Corrective annotated tag: `1.0.0-beta.1.9`, tag object
+  `a9e59395a9c522f92c1594364456a66c5cd6f202`.
+- Forgejo and GitHub `main` and the peeled tag agreed on the exact corrective
+  commit before packaging. Neither Beta tag was moved or deleted.
+
+Defect and correction
+---------------------
+
+Every live `POST /topics` reached the server and returned HTTP 503 while
+preview remained HTTP 200. PostgreSQL logged SQLSTATE 42501 for `area_groups`.
+The application selected the area's mappings with `SELECT ... FOR SHARE`, but
+PostgreSQL requires UPDATE privilege for that row-lock mode. The packaged
+runtime contract deliberately grants SELECT/INSERT/DELETE and denies UPDATE on
+the mapping table.
+
+The correction removes only that redundant mapping-row lock and renames the
+generated query to describe the mechanism honestly. Publication already holds
+the parent area `FOR SHARE`; area administration takes the conflicting parent
+area `FOR UPDATE` before changing mappings. This preserves the existing
+serialization and least-privilege contracts without a schema or grant change.
+Readiness now positively requires area-group SELECT and continues to reject
+area-group UPDATE.
+
+Verification and review
+-----------------------
+
+- Exact Node 26.7.0/npm 12.0.2 generation produced no unrelated generated
+  drift; focused abuse, generated-store, and forum tests passed.
+- A disposable PostgreSQL 17 restricted-role regression applied the packaged
+  runtime grants, proved the superseded row lock fails with SQLSTATE 42501,
+  proved readiness accepts SELECT while rejecting UPDATE, and published a
+  grouped-area topic through `CreateTopicWithControl` successfully.
+- The full PostgreSQL integration race suite passed. It includes the existing
+  adversarial publication/area-membership concurrency matrix.
+- The complete repository vet and race/coverage suite passed with Go 1.26.6.
+  Integration coverage included forum 91.0%, readiness 97.4%, store 97.1%,
+  migration 100.0%, and migrations 100.0%.
+- Two independent public-tag clones each passed deterministic generation,
+  evidence custody, generated drift, formatting, vet, and the complete
+  repository race/coverage gate.
+- The maintainer review and final admission review both returned CLEAN. The
+  change adds no privilege, migration, route, UI, Caddy, or identity delta.
+
+Release artifacts
+-----------------
+
+- Archive: `gotth-bb-1.0.0-beta.1.9-linux-amd64.tar.gz`
+- Archive SHA-256:
+  `a6c611e1f3d402fe4eab460fda7864eb14669f2a98e628cde0884d724ce99690`
+- `SHA256SUMS` SHA-256:
+  `3d70330095e1ceb79940b3e9ea2665135d6c3bc5d5389d3f6524bc485bbd4df2`
+- Two clean public-tag builds produced byte-identical archives and checksum
+  files.
+- Staged release: `/opt/gotth-bb/releases/1.0.0-beta.1.9-ba23abd`
+- Verified image: `gotth-bb:1.0.0-beta.1.9-ba23abd`
+- Image ID:
+  `sha256:08dbd2dfb5713f1f3605a27d4087c7ba3d83b1ef82df851a5fda9dcabfb40a11`
+
+Live state
+----------
+
+Only `gotth-bb-standalone-app-1` was recreated. It reports Beta.1.9 commit
+`ba23abd4c3bc825efafd31d56c671c15a31bf902`, the exact image ID above, and
+healthy state before and after an explicit restart.
+
+The Authentik control gateway retained its original container identity and
+Beta.1.8 image. Board/Auth PostgreSQL, Authentik server/worker, stack Caddy,
+host Caddy, secrets, grants, object descriptor, and durable paths were not
+recreated or changed. Packaged Beta.1.8 and Beta.1.9 Compose and Caddy files
+are byte-identical.
+
+Before and after cutover, the Board database retained exactly one user, four
+areas, three topics, twenty-one posts, and migration head/count `14/14`.
+The live runtime role reports area-group SELECT true and UPDATE false, and its
+plain mapping query succeeds. Public liveness, readiness, root GET, login OIDC
+redirect, strict unknown-route 404, and security headers pass after restart.
+Application logs contain no matched database URL, password, client-secret,
+SMTP-password, or control-token pattern.
+
+Rollback and acceptance
+-----------------------
+
+The exact Beta.1.8 release, image, environment/configuration, gateway, and
+database state remain retained. Because this correction has no schema, data,
+grant, or configuration mutation, rollback is an application-only recreation
+from `gotth-bb:1.0.0-beta.1.8-220e53d`; no database restore is required.
+
+Automation admits Beta.1.9 as the live physical-review candidate. It is not a
+known-good rollback reference until the owner successfully publishes through
+the real authenticated browser workflow and confirms the result.
