@@ -35,20 +35,19 @@ git clone https://github.com/gotthboard/gotth-bb.git
 
 Review the exact checked-out commit or peeled annotated tag. Do not mistake
 `main`, a failed candidate, or any prerelease tag for a stable compatibility
-promise or a grant of license rights.
+promise.
 
 The repository pins Go 1.26.6 where a Go module exists. Supported protocol,
 runtime, database, and tool versions remain the ones stated in the README and
 project verification documents; this distribution change does not widen those
 contracts.
 
-## Licensing gate
+## License
 
-No license file is present. No license has been inferred or selected, and
-source or prerelease-tag visibility grants no permission to copy, modify, or
-redistribute the project. License selection and any release that promises such
-downstream rights remain blocked until the maintainer makes that decision; the
-restricted-test Beta correction does not make it for them.
+The maintainer selected the MIT license for the owner-authored contents of
+this repository. The standard grant is in `LICENSE`; third-party dependencies
+and assets retain their own licenses. This decision does not publish a release
+or create a support or compatibility promise.
 
 ## Migration traceability
 
@@ -57,5 +56,5 @@ restricted-test Beta correction does not make it for them.
 | DIST-001 | Existing history, tags, worktrees, and mirror direction remain unchanged | pinned ref and worktree inventory |
 | DIST-002 | Module directive, exact self-imports, fixtures, and examples use the GitHub identity | stale-prefix search, tidy, vet, test, and clean public import |
 | DIST-003/004 | README, contribution, security, changelog, and release contracts describe public use and support | documentation audit |
-| DIST-006 | Missing license is stated as a decision gate | license inventory |
+| DIST-006 | MIT license is present and scoped to owner-authored contents | license and dependency inventory |
 | DIST-008 | Forgejo remains source and GitHub remains the one-way mirror target | push-mirror configuration and exact ref comparison |

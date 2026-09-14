@@ -5,6 +5,14 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-13 — Adopt the MIT license
+
+The owner-authorized MIT license now covers the owner-authored contents of this
+repository. Third-party dependencies and assets retain their existing
+licenses. This closes only the license-selection gate; it does not admit a
+release, alter Beta.1.8 acceptance state, create a compatibility or support
+promise, move a tag, or deploy anything.
+
 ### 2026-09-13 — Admit administrator-managed SMTP as a Beta completion repair
 
 Beta.1.7 physical review proved that the Board administrator suite exposed
