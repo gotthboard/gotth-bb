@@ -344,6 +344,26 @@ Coverage gaps require:
 - Owner confirms the deployed candidate works.
 - Working commit and artifact digest recorded as the known-good reference.
 
+### Planned Version 5 extension administrator
+
+- installed-extension list/detail projections are complete, bounded, and
+  secret-free;
+- extension metadata cannot inject HTML, JavaScript, CSS, templates, redirects,
+  arbitrary actions, secret values, or authority;
+- setup and test cannot enable an unpinned, unauthenticated, incompatible, or
+  unhealthy extension;
+- disable revokes the grant and blocks new routing before process shutdown;
+- update previews bind actor, artifact, manifest, configuration, grant,
+  privilege diff, and expiry, and retain a proved rollback pin;
+- uninstall and secret deletion remain separate confirmed audited actions;
+- keyboard, focus, status announcements, 320-pixel reflow, contrast, and
+  ordinary HTML/no-JavaScript flows pass; and
+- Board cannot enumerate or mutate Mail or another product's extension
+  registry, grants, secrets, processes, or audit state.
+
+These are future Version 5 gates, not evidence or implementation claims for
+Version 1.0.
+
 ## 16. Evidence record template
 
 ```text

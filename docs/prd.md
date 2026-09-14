@@ -402,6 +402,22 @@ communities, PWA/offline behavior, large-media delivery, high-volume job
 isolation, horizontal scaling, read replicas, archival storage, and mature
 migration/export compatibility guarantees.
 
+The Version 5 extension surface includes one host-owned Extensions page in the
+Board administrator. It lists installed extensions and supports configuration,
+write-only secrets, permission review, bounded testing, enable/disable,
+updates, audit, versions, and rollback. Board renders every control itself;
+extensions may supply only constrained, versioned configuration metadata and
+named secret slots, never HTML, JavaScript, CSS, templates, redirects, or
+arbitrary form actions.
+
+Each concrete extension remains independently packaged in a
+`gotth-extension-<slug>` repository. Board independently pins its artifact and
+manifest digest, issues its grant, authenticates its transport identity, owns
+its process and secret lifecycle, and audits every mutation. Disabling revokes
+the grant and blocks new routing before shutdown. Uninstall and secret deletion
+are separate confirmed actions. Board does not gain authority over GOTTH Mail
+or another product's extension registry.
+
 ## 7. Alpha.1 acceptance boundary
 
 `1.0.0-alpha.1` is acceptable when all of the following work in one deployed

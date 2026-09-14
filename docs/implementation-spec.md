@@ -15,6 +15,12 @@ Implement the smallest direct mechanism satisfying the version 1.0
 requirements. Do not create plugin systems, generic entity repositories,
 distributed-service interfaces, or a client-side application shell.
 
+The planned Version 5 Extensions administrator is not an exception to this
+Version 1.0 boundary. Its configuration metadata, registry, lifecycle,
+secret-storage, transport, routes, migrations, and verification contracts must
+be written in the Version 5 implementation specification before code begins;
+none are prebuilt in 1.0.
+
 The implementation must preserve these invariants:
 
 1. Authentik is the only authentication authority.

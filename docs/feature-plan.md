@@ -1049,6 +1049,26 @@ The PRD owns the product scope. Before implementation of each major version:
 
 Do not prebuild version 4 or 5 abstractions in version 1.0.
 
+For Version 5 extension management, the version-specific decomposition must
+contain at least these serial units:
+
+1. adopt and prove the exact `gotth-extensions` foundation against one real
+   Board seam;
+2. define the Board-owned registry, encrypted secret, grant, transport,
+   supervision, audit, update, and rollback contracts;
+3. implement the server-rendered Extensions list and detail surfaces using the
+   established Go, templ, Tailwind, and HTMX administrator language with
+   ordinary HTML fallback;
+4. prove setup/test/enable/disable ordering, privilege-changing update preview,
+   rollback, hostile metadata rejection, write-only secret handling,
+   accessibility, and cross-product isolation against one independently
+   packaged `gotth-extension-<slug>` artifact; and
+5. admit additional extension seams or repositories separately rather than as
+   a provider pack.
+
+No cross-product global administrator is planned. Board owns only Board
+extension instances.
+
 ## 10. Issue contract
 
 Every implementation issue contains:

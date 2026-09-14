@@ -1182,7 +1182,16 @@ issuer acceptance is not invented.
 Version 2 adds background delivery, object storage, and richer content without
 splitting the monolith. Version 3 adds communication and trust state. Version 4
 adds SCIM, APIs, and stronger governance boundaries. Version 5 may justify
-separate workers, external search, federation services, or read replicas.
+separate workers, external search, federation services, read replicas, and a
+host-owned extension administrator.
+
+The future Extensions page remains inside Board's administrator and calls
+Board-owned authorization, CSRF/confirmation, registry, encrypted secret,
+service, supervision, and audit paths. It may consume constrained metadata from
+the shared `gotth-extensions` contract, but an extension never renders inside
+Board or receives a Board administrator session. Mail and Board may share
+reviewed presentation conventions while keeping separate registries, grants,
+secrets, process authority, and failure domains.
 
 Those later boundaries are introduced only when their mechanics exist. Version
 1.0 shall not build fake service abstractions for imaginary distributed

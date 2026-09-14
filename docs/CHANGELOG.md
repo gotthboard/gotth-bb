@@ -5,6 +5,28 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-13 — Plan the Version 5 Extensions administrator
+
+The future Board extension surface now includes one host-owned administrator
+for inventory, configuration, write-only secrets, permission review, bounded
+testing, enable/disable, updates, audit, versions, and rollback. Board renders
+the interface and retains registry, authorization, CSRF/confirmation, secret,
+grant, transport, supervision, mutation, and audit authority; extensions may
+not inject presentation or inherit an administrator session.
+
+The feature plan requires exact `gotth-extensions` adoption before UI work and
+proves one independently packaged `gotth-extension-<slug>` artifact before
+additional seams. Mail and Board may share visual conventions but never a
+cross-product authority or registry.
+
+This is a Version 5 planning change only. It does not alter Version 1.0 scope,
+Beta.1.8 acceptance, runtime code, migrations, credentials, deployment, tags,
+releases, or mirrors.
+
+The canonical PRD, architecture, implementation boundary, feature plan,
+verification plan, and changelog reconcile cleanly, and `git diff --check`
+passed. Runtime verification belongs to the future Version 5 feature.
+
 ### 2026-09-13 — Adopt the MIT license
 
 The owner-authorized MIT license now covers the owner-authored contents of this
