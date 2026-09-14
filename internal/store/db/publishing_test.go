@@ -18,6 +18,17 @@ func TestPublicationActorQueryUsesOnlyNoKeyUpdate(t *testing.T) {
 	}
 }
 
+func TestAreaGroupPublicationQueryUsesSelectWithoutRowLocking(t *testing.T) {
+	t.Parallel()
+	if !strings.Contains(listAreaGroupIDsForPublication, "FROM public.area_groups AS mapping") ||
+		strings.Contains(listAreaGroupIDsForPublication, "FOR UPDATE") ||
+		strings.Contains(listAreaGroupIDsForPublication, "FOR NO KEY UPDATE") ||
+		strings.Contains(listAreaGroupIDsForPublication, "FOR SHARE") ||
+		strings.Contains(listAreaGroupIDsForPublication, "FOR KEY SHARE") {
+		t.Fatalf("area-group publication query = %q", listAreaGroupIDsForPublication)
+	}
+}
+
 func TestPublishingRowQueriesBindAndScanExactValues(t *testing.T) {
 	t.Parallel()
 
@@ -103,15 +114,15 @@ func TestPublishingSQLNeverTouchesPrivateReadMarkers(t *testing.T) {
 	}
 }
 
-func TestLockAreaGroupIDsBindsScansClosesAndPreservesFailures(t *testing.T) {
+func TestListAreaGroupIDsForPublicationBindsScansClosesAndPreservesFailures(t *testing.T) {
 	t.Parallel()
 
 	rows := &publishingRows{values: [][]any{{int64(3)}, {int64(5)}}}
 	database := &publishingDBTX{rows: rows}
-	got, err := New(database).LockAreaGroupIDs(context.Background(), 7)
+	got, err := New(database).ListAreaGroupIDsForPublication(context.Background(), 7)
 	if err != nil || !reflect.DeepEqual(got, []int64{3, 5}) || !reflect.DeepEqual(database.args, []any{int64(7)}) || rows.closeCalls != 1 ||
-		!strings.Contains(database.query, "ORDER BY mapping.group_id") || !strings.Contains(database.query, "FOR SHARE OF mapping") {
-		t.Fatalf("LockAreaGroupIDs() = (%v, %v), query %q args %#v closes %d", got, err, database.query, database.args, rows.closeCalls)
+		!strings.Contains(database.query, "ORDER BY mapping.group_id") || strings.Contains(database.query, "FOR SHARE OF mapping") {
+		t.Fatalf("ListAreaGroupIDsForPublication() = (%v, %v), query %q args %#v closes %d", got, err, database.query, database.args, rows.closeCalls)
 	}
 	cause := errors.New("rows failed")
 	for _, failing := range []*publishingDBTX{
@@ -119,8 +130,8 @@ func TestLockAreaGroupIDsBindsScansClosesAndPreservesFailures(t *testing.T) {
 		{rows: &publishingRows{values: [][]any{{int64(3)}}, scanErr: cause}},
 		{rows: &publishingRows{rowsErr: cause}},
 	} {
-		if got, err := New(failing).LockAreaGroupIDs(context.Background(), 7); !errors.Is(err, cause) || len(got) != 0 {
-			t.Fatalf("failing LockAreaGroupIDs() = (%v, %v), want empty/cause", got, err)
+		if got, err := New(failing).ListAreaGroupIDsForPublication(context.Background(), 7); !errors.Is(err, cause) || len(got) != 0 {
+			t.Fatalf("failing ListAreaGroupIDsForPublication() = (%v, %v), want empty/cause", got, err)
 		}
 	}
 }

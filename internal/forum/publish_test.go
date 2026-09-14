@@ -493,7 +493,7 @@ func (tx *publishTestTx) Query(_ context.Context, query string, arguments ...any
 		if tx.failure == "actor-groups" {
 			return nil, errPublishTest
 		}
-	} else if !strings.Contains(query, "LockAreaGroupIDs") || arguments[0].(int64) != tx.areaID {
+	} else if !strings.Contains(query, "ListAreaGroupIDsForPublication") || arguments[0].(int64) != tx.areaID {
 		panic("unexpected publishing rows query")
 	} else if tx.failure == "groups" {
 		return nil, errPublishTest

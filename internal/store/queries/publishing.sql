@@ -34,12 +34,11 @@ FROM public.areas AS area
 WHERE area.slug = sqlc.arg(area_slug)
 FOR SHARE OF area;
 
--- name: LockAreaGroupIDs :many
+-- name: ListAreaGroupIDsForPublication :many
 SELECT mapping.group_id
 FROM public.area_groups AS mapping
 WHERE mapping.area_id = sqlc.arg(area_id)
-ORDER BY mapping.group_id
-FOR SHARE OF mapping;
+ORDER BY mapping.group_id;
 
 -- name: PublicationDatabaseTime :one
 SELECT clock_timestamp()::timestamp with time zone AS database_now;

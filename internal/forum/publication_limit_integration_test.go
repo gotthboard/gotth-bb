@@ -25,7 +25,11 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const publicationLimitTestDatabase = "gotth_bb_an05_02_publication_limit_test"
+const (
+	publicationLimitTestDatabase = "gotth_bb_an05_02_publication_limit_test"
+	publicationRuntimeRole       = "gotth_bb_publication_runtime_test"
+	publicationRuntimePassword   = "publication-runtime-test-only"
+)
 
 func TestDurablePublicationAdmissionOnPostgreSQL17(t *testing.T) {
 	databaseURL := os.Getenv("GOTTH_BB_TEST_DATABASE_URL")
@@ -159,6 +163,7 @@ SET publish_rate_limit=1, new_account_publish_rate_limit=1,
     administration_revision=administration_revision+1`); err != nil {
 		t.Fatal(err)
 	}
+	proveRestrictedRuntimeTopicPublication(t, ctx, admin, connections[0], testConfig, controlCeilings, ownerID)
 	dynamicActor := policy.AccessContext{Authenticated: true, UserID: dynamicID, Role: policy.RoleMember}
 	policyLoaded := make(chan struct{}, 1)
 	resumePublication := make(chan struct{})
@@ -660,6 +665,107 @@ VALUES ('Canceled account', clock_timestamp() - interval '2 days', clock_timesta
 		t.Fatalf("canceled publication error = %v", canceledErr)
 	}
 	assertPublicationTuple(t, ctx, connections[0], canceledID, 0)
+}
+
+func proveRestrictedRuntimeTopicPublication(
+	t *testing.T,
+	ctx context.Context,
+	admin, owner *pgx.Conn,
+	testConfig *pgx.ConnConfig,
+	ceilings control.Ceilings,
+	ownerID int64,
+) {
+	t.Helper()
+	roleIdentifier := pgx.Identifier{publicationRuntimeRole}.Sanitize()
+	if _, err := admin.Exec(ctx, "DROP ROLE IF EXISTS "+roleIdentifier); err != nil {
+		t.Fatalf("drop stale publication runtime role: %v", err)
+	}
+	if _, err := admin.Exec(ctx, "CREATE ROLE "+roleIdentifier+" LOGIN PASSWORD '"+publicationRuntimePassword+"'"); err != nil {
+		t.Fatalf("create publication runtime role: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_, _ = owner.Exec(cleanup, "DROP OWNED BY "+roleIdentifier)
+		_, _ = admin.Exec(cleanup, "DROP ROLE IF EXISTS "+roleIdentifier)
+	})
+	if _, err := admin.Exec(ctx, "GRANT CONNECT ON DATABASE "+pgx.Identifier{publicationLimitTestDatabase}.Sanitize()+" TO "+roleIdentifier); err != nil {
+		t.Fatalf("grant publication runtime database access: %v", err)
+	}
+	grantTemplate, err := os.ReadFile("../../deploy/postgresql/runtime-grants.sql")
+	if err != nil {
+		t.Fatalf("read publication runtime grants: %v", err)
+	}
+	if _, err := owner.Exec(ctx, strings.ReplaceAll(string(grantTemplate), `:"runtime_role"`, roleIdentifier)); err != nil {
+		t.Fatalf("apply publication runtime grants: %v", err)
+	}
+	var publisherID, groupID, areaID int64
+	if err := owner.QueryRow(ctx, `INSERT INTO public.users (
+display_name, created_at, updated_at, last_login_at, authentik_sync_state
+) VALUES (
+'Restricted runtime publisher', clock_timestamp() - interval '2 days',
+clock_timestamp() - interval '2 days', clock_timestamp() - interval '2 days', 'accepted'
+) RETURNING id`).Scan(&publisherID); err != nil {
+		t.Fatalf("create restricted runtime publisher: %v", err)
+	}
+	if err := owner.QueryRow(ctx, `INSERT INTO public.forum_groups (name, created_by)
+VALUES ('Restricted runtime publication group', $1) RETURNING id`, ownerID).Scan(&groupID); err != nil {
+		t.Fatalf("create restricted runtime publication group: %v", err)
+	}
+	if _, err := owner.Exec(ctx, `INSERT INTO public.forum_group_members (group_id, user_id, granted_by)
+VALUES ($1, $2, $3)`, groupID, publisherID, ownerID); err != nil {
+		t.Fatalf("grant restricted runtime publication membership: %v", err)
+	}
+	if err := owner.QueryRow(ctx, `INSERT INTO public.areas (
+slug, name, visibility, posting_mode, created_by, updated_by
+) VALUES (
+'restricted-runtime-publication', 'Restricted runtime publication', 'groups', 'normal', $1, $1
+) RETURNING id`, ownerID).Scan(&areaID); err != nil {
+		t.Fatalf("create restricted runtime publication area: %v", err)
+	}
+	if _, err := owner.Exec(ctx, `INSERT INTO public.area_groups (area_id, group_id, added_by)
+VALUES ($1, $2, $3)`, areaID, groupID, ownerID); err != nil {
+		t.Fatalf("protect restricted runtime publication area: %v", err)
+	}
+
+	runtimeConfig := testConfig.Copy()
+	runtimeConfig.User = publicationRuntimeRole
+	runtimeConfig.Password = publicationRuntimePassword
+	runtimeConnection, err := pgx.ConnectConfig(ctx, runtimeConfig)
+	if err != nil {
+		t.Fatalf("connect restricted publication runtime: %v", err)
+	}
+	t.Cleanup(func() { _ = runtimeConnection.Close(context.Background()) })
+	var areaGroupsSelect, areaGroupsUpdate bool
+	if err := runtimeConnection.QueryRow(ctx, `SELECT
+pg_catalog.has_table_privilege(current_user, 'public.area_groups', 'SELECT'),
+pg_catalog.has_table_privilege(current_user, 'public.area_groups', 'UPDATE')`).Scan(&areaGroupsSelect, &areaGroupsUpdate); err != nil {
+		t.Fatalf("inspect restricted publication privileges: %v", err)
+	}
+	if !areaGroupsSelect || areaGroupsUpdate {
+		t.Fatalf("restricted publication area-group privileges = (select %t, update %t)", areaGroupsSelect, areaGroupsUpdate)
+	}
+	var lockedGroupID int64
+	lockErr := runtimeConnection.QueryRow(ctx, `SELECT group_id FROM public.area_groups
+WHERE area_id=$1 FOR SHARE`, areaID).Scan(&lockedGroupID)
+	var postgresError *pgconn.PgError
+	if !errors.As(lockErr, &postgresError) || postgresError.Code != "42501" {
+		t.Fatalf("restricted publication row-lock error = %v, want SQLSTATE 42501", lockErr)
+	}
+	if err := abuse.PublicationReady(ctx, runtimeConnection); err != nil {
+		t.Fatalf("restricted publication readiness: %v", err)
+	}
+	actor := policy.AccessContext{Authenticated: true, UserID: publisherID, Role: policy.RoleMember}
+	created, err := CreateTopicWithControl(
+		ctx, runtimeConnection, ceilings, testDestinationPolicy, actor,
+		"restricted-runtime-publication", "Restricted runtime topic", "published through exact runtime grants",
+	)
+	if err != nil {
+		t.Fatalf("restricted runtime topic publication: %v", err)
+	}
+	if created.TopicID <= 0 || created.PostID <= 0 || created.PostNumber != 1 || created.NodeOrdinal != 1 {
+		t.Fatalf("restricted runtime topic publication result = %+v", created)
+	}
 }
 
 func admitPublicationUsers(t *testing.T, ctx context.Context, connection *pgx.Conn, userIDs ...int64) {

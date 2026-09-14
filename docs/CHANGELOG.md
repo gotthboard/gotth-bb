@@ -5,6 +5,24 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-14 — Repair topic publication under the restricted runtime role
+
+Beta.1.8 attempted to lock `area_groups` rows with `SELECT ... FOR SHARE` even
+though the deliberate runtime privilege contract grants `SELECT`, `INSERT`,
+and `DELETE` but no `UPDATE` on that mapping table. PostgreSQL 17 correctly
+rejected every topic publication before authorization completed. Publication
+now reads the mappings under the already-held parent-area lock; area
+administration takes the conflicting parent-area lock before changing those
+mappings, so the existing serialization contract remains intact without
+widening runtime authority.
+
+Readiness now requires `SELECT` and rejects `UPDATE` on `area_groups`. A
+restricted-role PostgreSQL regression applies the packaged grants, proves the
+old row lock is denied, then publishes through the real controlled transaction.
+The existing adversarial concurrency matrix continues to prove that area and
+membership changes cannot race publication policy. No schema, grant, route,
+Caddy, identity, SMTP, or discussion-hierarchy behavior changes.
+
 ### 2026-09-13 — Plan the Version 5 Extensions administrator
 
 The future Board extension surface now includes one host-owned administrator

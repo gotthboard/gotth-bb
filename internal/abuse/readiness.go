@@ -47,6 +47,8 @@ const publicationPrivilegeReadySQL = `SELECT
     NOT pg_catalog.pg_has_role(current_user, owner.oid, 'USAGE')
     AND has_table_privilege(current_user, 'public.users', 'SELECT')
     AND NOT has_table_privilege(current_user, 'public.users', 'UPDATE')
+    AND has_table_privilege(current_user, 'public.area_groups', 'SELECT')
+    AND NOT has_table_privilege(current_user, 'public.area_groups', 'UPDATE')
     AND has_column_privilege(current_user, 'public.users', 'publication_window_started_at', 'UPDATE')
     AND has_column_privilege(current_user, 'public.users', 'publication_count', 'UPDATE')
     AND NOT EXISTS (

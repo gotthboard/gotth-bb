@@ -226,7 +226,7 @@ func (tx *editTestTx) QueryRow(_ context.Context, query string, arguments ...any
 }
 
 func (tx *editTestTx) Query(_ context.Context, query string, arguments ...any) (pgx.Rows, error) {
-	if !strings.Contains(query, "LockAreaGroupIDs") || arguments[0].(int64) != tx.areaID {
+	if !strings.Contains(query, "ListAreaGroupIDsForPublication") || arguments[0].(int64) != tx.areaID {
 		panic("unexpected edit rows query")
 	}
 	if tx.failure == "groups" {

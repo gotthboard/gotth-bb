@@ -224,6 +224,33 @@ func (q *Queries) CreateTopicAndFirstPost(ctx context.Context, arg CreateTopicAn
 	return i, err
 }
 
+const listAreaGroupIDsForPublication = `-- name: ListAreaGroupIDsForPublication :many
+SELECT mapping.group_id
+FROM public.area_groups AS mapping
+WHERE mapping.area_id = $1
+ORDER BY mapping.group_id
+`
+
+func (q *Queries) ListAreaGroupIDsForPublication(ctx context.Context, areaID int64) ([]int64, error) {
+	rows, err := q.db.Query(ctx, listAreaGroupIDsForPublication, areaID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []int64{}
+	for rows.Next() {
+		var group_id int64
+		if err := rows.Scan(&group_id); err != nil {
+			return nil, err
+		}
+		items = append(items, group_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLockedPublicationActorGroupIDs = `-- name: ListLockedPublicationActorGroupIDs :many
 SELECT membership.group_id
 FROM public.forum_group_members AS membership
@@ -272,34 +299,6 @@ func (q *Queries) LockAreaForTopicCreation(ctx context.Context, areaSlug string)
 	var i LockAreaForTopicCreationRow
 	err := row.Scan(&i.ID, &i.Visibility, &i.PostingMode)
 	return i, err
-}
-
-const lockAreaGroupIDs = `-- name: LockAreaGroupIDs :many
-SELECT mapping.group_id
-FROM public.area_groups AS mapping
-WHERE mapping.area_id = $1
-ORDER BY mapping.group_id
-FOR SHARE OF mapping
-`
-
-func (q *Queries) LockAreaGroupIDs(ctx context.Context, areaID int64) ([]int64, error) {
-	rows, err := q.db.Query(ctx, lockAreaGroupIDs, areaID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []int64{}
-	for rows.Next() {
-		var group_id int64
-		if err := rows.Scan(&group_id); err != nil {
-			return nil, err
-		}
-		items = append(items, group_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const lockPublicationActor = `-- name: LockPublicationActor :one

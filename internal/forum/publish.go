@@ -566,9 +566,9 @@ func publishingTime(clock func() time.Time) (pgtype.Timestamptz, error) {
 // work varies. It performs one database round trip and no copy beyond sqlc's
 // result slice.
 func lockedAreaPolicy(ctx context.Context, queries *db.Queries, areaID int64, visibility, postingMode string) (policy.AreaPolicy, error) {
-	groupIDs, err := queries.LockAreaGroupIDs(ctx, areaID)
+	groupIDs, err := queries.ListAreaGroupIDsForPublication(ctx, areaID)
 	if err != nil {
-		return policy.AreaPolicy{}, fmt.Errorf("lock area group mappings: %w", err)
+		return policy.AreaPolicy{}, fmt.Errorf("read area group mappings: %w", err)
 	}
 	return policy.AreaPolicy{Visibility: policy.Visibility(visibility), PostingMode: policy.PostingMode(postingMode), GroupIDs: groupIDs}, nil
 }
