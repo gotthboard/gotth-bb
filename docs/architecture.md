@@ -1193,6 +1193,14 @@ Board or receives a Board administrator session. Mail and Board may share
 reviewed presentation conventions while keeping separate registries, grants,
 secrets, process authority, and failure domains.
 
+Board's future translation adapter is `gotth-extension-translate`. Board first
+authorizes the post, then tokenizes canonical Markdown into protected
+structure and bounded translatable text. The extension sees neither Board's
+database nor an administrator session and cannot fetch a post. Board
+reassembles and escapes the derived response; code blocks, URLs, mentions,
+quotes, and original Markdown remain host-owned. A translation outage leaves
+the original discussion fully usable.
+
 Those later boundaries are introduced only when their mechanics exist. Version
 1.0 shall not build fake service abstractions for imaginary distributed
 components.

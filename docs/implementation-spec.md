@@ -3504,7 +3504,36 @@ requires two fresh CLEAN reviews on one exact commit before guarded merge,
 package, tag, deployment, smoke, and owner physical acceptance. It stops before
 B1-10 and RC.1.
 
-## 25. Definition of implementation complete
+## 25. Future Version 5 translation extension
+
+This contract is planned only. It adds no current route, dependency, database
+column, configuration key, process, or release claim.
+
+Board will call the separately versioned `gotth-extension-translate` over an
+authenticated transport admitted through `gotth-extensions`. Before the call,
+Board shall:
+
+1. authenticate the requester and authorize the exact post with the existing
+   visibility predicate;
+2. parse canonical Markdown and split only eligible visible text into bounded
+   opaque-ID segments;
+3. preserve code fences, inline code, links, mentions, quote structure, and
+   other syntax as host-owned tokens; and
+4. select a target BCP 47 language, explicit cache/retention class, deadline,
+   and correlation ID.
+
+The extension response is derived text, not trusted markup. Board verifies
+segment identity/order and output bounds, reassembles against the protected
+structure, escapes through its own renderer, and never overwrites the stored
+post. Requests and responses are not placed in logs, metrics, audit fields, or
+workflow evidence. Cache, consent, disclosure, and derived-result expiry are
+Board policy. Failure shows the untouched original and a fixed error.
+
+Large translations may use a future `gotth-jobs` contract only after that
+boundary is admitted. No callback, generic event bus, or extension-generated
+frontend is implied.
+
+## 26. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

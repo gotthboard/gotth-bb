@@ -418,6 +418,16 @@ the grant and blocks new routing before shutdown. Uninstall and secret deletion
 are separate confirmed actions. Board does not gain authority over GOTTH Mail
 or another product's extension registry.
 
+The first planned cross-product mechanism is translation through
+`gotth-extension-translate` and the standalone `gotth-translate` service.
+Board authorizes the post before calling the extension and sends only bounded
+translatable segments. Markdown structure, code blocks, links, mentions, and
+quote boundaries stay host-controlled; original Markdown remains canonical.
+The extension returns derived text only and may not return HTML, JavaScript,
+CSS, templates, redirects, or mutations. Longer translations may use an
+independently admitted `gotth-jobs` boundary. This is Version 5 scope and does
+not widen Beta.1, RC.1, or stable 1.0.
+
 ## 7. Alpha.1 acceptance boundary
 
 `1.0.0-alpha.1` is acceptable when all of the following work in one deployed

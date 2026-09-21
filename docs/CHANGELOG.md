@@ -5,6 +5,17 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-09-21 — Plan the Version 5 translation extension
+
+Record `gotth-extension-translate` as Board's future optional adapter to the
+standalone `gotth-translate` service. Board retains authorization, Markdown
+parsing and protected structure, original content, escaping, consent, audit,
+retention, and presentation. The extension receives only bounded text
+segments and returns derived text, never executable markup or mutations.
+
+This is Version 5 planning only. It adds no Beta.1/RC.1/stable-1.0 scope,
+runtime code, dependency, route, migration, deployment, tag, or release.
+
 ### 2026-09-14 — Repair topic publication under the restricted runtime role
 
 Beta.1.8 attempted to lock `area_groups` rows with `SELECT ... FOR SHARE` even
