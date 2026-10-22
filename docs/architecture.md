@@ -395,6 +395,11 @@ OR authenticated member AND visibility is groups
 The actual SQL shall use parameters and indexed relations. It shall not build
 SQL from group names or role strings.
 
+For B1-10, this predicate is evaluated for each node from root through the
+requested area, requiring every node to pass for ordinary readers. Staff
+retain explicit elevated reads. Authorization belongs in SQL before limits,
+counts, snippets, or breadcrumb construction, not in a later tree filter.
+
 ### 7.3 Posting predicate
 
 Publishing additionally requires:
@@ -407,6 +412,11 @@ Publishing additionally requires:
 
 Archived areas reject publishing for every actor until an administrator
 restores the area; moderators do not bypass archival state accidentally.
+
+B1-10 applies posting modes along the entire ancestry: any archived ancestor
+blocks every publisher and any read-only ancestor blocks ordinary members.
+Local child settings remain stored separately; restoring a parent never
+silently resets a child's own restrictions.
 
 ### 7.4 Elevated access
 
@@ -444,8 +454,8 @@ identity access, or content history.
 - `email_test_state`: bounded idempotency/rate/status state for tests sent
   only to the requesting administrator's current verified address; no address
   or body is stored.
-- `areas`: hierarchy-free version 1.0 category, visibility, posting mode, order,
-  and administration revision.
+- `areas`: category, visibility, posting mode, order, and administration
+  revision; currently flat, with nullable parent ownership planned in B1-10.
 - `area_groups`: local groups allowed to view a group-restricted area.
 - `topics`: area, author, title, state, activity pointers, counters.
 - `posts`: topic, author, stable number, Markdown source, sanitized rendering,
@@ -1218,3 +1228,41 @@ components.
   logical restore.
 - **Treating the disabled Alpha.1 systemd unit as rollback:** ignores the active
   Alpha.2 container and the schema compatibility boundary.
+
+## 18. Planned B1-10 category hierarchy
+
+B1-10 supersedes the flat-area portions of sections 8 and 10, not the current
+implementation evidence. Its authoritative detailed contract is
+[implementation specification section 25](implementation-spec.md#25-planned-b1-10-nested-discussion-areas).
+
+An adjacency list gives each category zero or one parent. Root depth is one;
+ten is the maximum. Parentage is content organization, not a geographic scale
+or physical elevation. A category can own topics and children simultaneously.
+Sibling ordering is `(display_order, id)`. Immutable globally unique slugs keep
+`/areas/{slug}` valid through moves; topics and posts retain their existing URLs.
+
+Local policies remain explicit. Ordinary effective visibility is the
+intersection of each ancestor's local predicate; group membership may satisfy
+each level through different groups, but must satisfy every restricted level.
+No public child can expose a hidden parent. Posting restrictions compose in
+the same restrictive direction, retaining explicit staff and archival rules.
+
+Moves change one parent edge atomically, carry the whole descendant subtree,
+and require fresh validation of destination, ancestry, resulting maximum
+depth, current administrator authority, and revision. A per-area revision alone
+is insufficient against concurrent opposing moves. B1-10 must admit a concrete
+shared serialization contract covering hierarchy mutations, area-policy/group
+changes, and publication before implementation; it must preserve existing
+user/group authority lock ordering and restricted database grants. It must not
+repurpose the administrator-continuity governance lock as a global tree mutex.
+
+Authorized root/child lists and breadcrumbs are bounded. Counts/latest/unread
+summaries describe direct topics only; no implicit subtree aggregation or
+recursive search scope is added. All discovery and direct reads evaluate the
+complete ancestry within their database snapshot. Separate HTTP requests need
+not form one snapshot; subsequent requests reauthorize against current state.
+No process-local authority cache may outlive a committed policy or move.
+
+Existing areas migrate to roots without changing content or access. Areas
+remain nondeletable; archive/restore changes posting policy, not parentage.
+B1-10 adds no worldbook, map, wiki, plugin, or identity-provider functionality.

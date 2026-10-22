@@ -111,3 +111,16 @@ revalidation, CSRF, bounded-body, request-ID, private/no-store, and audit rules.
 The signed intake route requires a narrowly amended inventory rule because its
 authority is an external signed assertion rather than a browser cookie; that
 exception must be exact and cannot weaken CSRF coverage for any browser POST.
+
+
+## Planned B1-10 form and navigation changes
+
+This is a future extension, not a claim about registered production routes.
+B1-10 preserves `/areas/{slug}` and existing topic/post canonical paths. Existing
+area create/edit forms gain parent selection and hierarchy-conflict protection;
+reader pages gain bounded roots, children and breadcrumbs. Exact parent-picker
+query/route grammar and hierarchy-token fields must be admitted in B1-10-00
+before implementation and then reconciled with this actual route inventory.
+All protected controls retain current administrator authority, CSRF, private
+no-store responses and atomic audits. See
+[implementation section 25](implementation-spec.md#25-planned-b1-10-nested-discussion-areas).

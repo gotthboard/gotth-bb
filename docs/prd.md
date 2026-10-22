@@ -198,11 +198,20 @@ Requirements:
 - **ACL-008:** Moderators and administrators may access restricted areas for
   their duties; this elevated access shall be explicit and auditable.
 
+- **ACL-009:** Ordinary access shall require satisfying the visibility policy
+  of the area and every ancestor. A child cannot widen parent access. Posting
+  shall satisfy every ancestor's posting mode: archived blocks all actors;
+  read-only blocks ordinary members. Existing explicit staff read elevation,
+  current-identity checks, suspension, mute, and publication limits still apply.
+
 ### 5.3 Forum structure and content
 
-- **FORUM-001:** Version 1.0 shall support one level of areas/categories.
+- **FORUM-001:** Version 1.0 shall support nested areas/categories, with one
+  optional parent per area and at most ten levels including the root. Areas
+  may contain both topics and subcategories; no fixed names or meanings are
+  assigned to levels. This is planned B1-10 scope, not shipped behavior.
 - **FORUM-002:** An area shall have a name, slug, description, display order,
-  visibility, posting mode, and optional group restrictions.
+  visibility, posting mode, optional parent, and optional group restrictions.
 - **FORUM-003:** Members shall create topics in eligible areas and replies to
   visible posts inside eligible topics.
 - **FORUM-004:** A topic shall form one rooted reply tree. The first post is the
@@ -212,6 +221,18 @@ Requirements:
   archived by authorized staff.
 - **FORUM-006:** Topics and posts shall have stable identifiers and canonical
   URLs beneath the configured public base URL.
+- **FORUM-007:** Administrators shall create, reorder, and reparent categories
+  with atomic audited subtree moves, revision-conflict detection, and rejection
+  of cycles, self-parenting, missing parents, and depth overflow. Reparenting
+  shall recompute effective restrictions, not copy or loosen ancestor policy.
+- **FORUM-008:** Readers shall navigate authorized root/child lists and
+  breadcrumbs. Counts, activity, search, unread state, and direct URLs shall
+  not disclose descendants through inaccessible ancestors. Lists shall be
+  bounded; per-area summaries and area search filters remain direct-only.
+- **FORUM-009:** Migration shall preserve existing categories as roots, their
+  topics, policy, identifiers, and published URLs. Reparenting shall not change
+  identifiers or URLs. Category deletion and cascading content deletion remain
+  excluded; archive/restore shall preserve the hierarchy and content.
 - **CONTENT-001:** Authors shall write Markdown and preview the sanitized
   rendered result before publication.
 - **CONTENT-002:** Supported version 1.0 formatting shall implement GitHub

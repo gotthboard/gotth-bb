@@ -19,12 +19,17 @@ Authentik as the identity provider.
 forum presentation and parent-addressed threaded replies while preserving the
 server-rendered and HTMX fallback contracts.
 
-Unreleased development through AN-05 is merged, completing the named version
-1.0 feature surface. Beta.1 admission is the current boundary: complete
+Unreleased development through AN-05 is merged, completing the then-named
+version 1.0 feature surface. Beta.1 admission is the current boundary: complete
 requirement/route/leakage and security closure, core accessibility and
 representative-plan evidence, an actual Alpha.2 upgrade plus logical
 backup/clean-restore rehearsal, reproducible delivery, and a guarded Beta
 deployment. It does not claim RC.1 evidence freeze or stable recovery posture.
+
+Nested categories are now required for version 1.0 under planned **B1-10**:
+up to ten levels, inherited restrictions, stable URLs, and safe subtree moves.
+They are not implemented by this documentation update and remain a release
+scope gap. See [the hierarchy plan](docs/feature-plan.md#b1-10-nested-discussion-areas).
 
 Project documentation lives in [`docs/`](docs/README.md).
 

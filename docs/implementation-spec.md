@@ -466,6 +466,9 @@ State is single use. Cleanup is bounded and safe to repeat.
 
 ### 6.8 `areas` and `area_groups`
 
+The following is the implemented flat baseline. Planned B1-10 additions and
+superseding administration/authorization contracts are in [section 25](#25-planned-b1-10-nested-discussion-areas).
+
 `areas` includes:
 
 - `id`, unique `slug`, `name`, `description`
@@ -2447,6 +2450,11 @@ existing member-only authority. No surface allows self-suspension.
 
 ### 21.5 Areas and administrator counts
 
+This section records the implemented flat baseline. B1-10 parent fields,
+ancestry authorization and concurrency admission are specified in
+[section 25](#25-planned-b1-10-nested-discussion-areas); its exact protocol
+must supersede these local-only lock sequences before hierarchy code ships.
+
 The existing area core transaction remains the sole create/rename/reorder/
 visibility/posting-mode mutation. AN-04 makes it revalidate the current
 administrator inside the transaction, use and increment the positive numeric
@@ -3504,7 +3512,117 @@ requires two fresh CLEAN reviews on one exact commit before guarded merge,
 package, tag, deployment, smoke, and owner physical acceptance. It stops before
 B1-10 and RC.1.
 
-## 25. Definition of implementation complete
+## 25. Planned B1-10 nested discussion areas
+
+**Status: specification only, not implemented or admitted for deployment.**
+This section supersedes flat-area assumptions in sections 6.8 and 21.5 for
+B1-10. Earlier release evidence remains historical. Implement FORUM-001,
+FORUM-002, FORUM-007–FORUM-009, and ACL-009 through the serial B1-10 plan.
+
+### 25.1 Storage and invariants
+
+- Add nullable `areas.parent_id`, a self-referencing foreign key with deletion
+  restricted. Null means root. Keep globally unique immutable slugs, stable
+  IDs, existing topic foreign keys, policy columns, and administration revisions.
+- Root depth is one; maximum depth is ten, counting the moved subtree's
+  deepest descendant at its proposed destination. No ten-level chain is
+  required. Categories can contain topics and child categories together.
+- Reject self-parenting, missing parents, cycles, and depth overflow. A simple
+  foreign key/check is not proof of acyclicity: revalidate under the admitted
+  cross-transaction serialization protocol. Corrupt ancestry fails closed.
+- Index parent and sibling order `(parent_id, display_order, id)`; root handling
+  must be explicit. No denormalized inherited ACL or copied descendant content.
+- Reserve the next migration number at implementation admission, not by editing
+  an already released migration. Seed all existing parents null. Prove exact
+  runtime grants/readiness, including any new lock relation; never add UPDATE
+  on `area_groups` just to acquire a row lock.
+
+### 25.2 Effective authority and query semantics
+
+For an ordinary actor, evaluate the existing local visibility predicate for
+**every** ancestor and the area itself. Each group-restricted node requires
+membership in at least one of that node's groups; different nodes may be
+satisfied by different memberships. Public children do not bypass ancestors.
+Preserve current authenticated/suspended/accepted-sync identity predicates and
+explicit auditable moderator/administrator read elevation.
+
+Publication additionally requires every ancestor's posting mode to permit the
+actor. Any archived node blocks everyone; any read-only node blocks ordinary
+members. Preserve current role, mute, topic-lock, rate-limit, and actor/group
+revalidation contracts. Child policy is never overwritten by parent changes.
+
+Apply ancestry before candidate limits, ranks, snippets, counts, unread/latest
+projections, reports, profiles, feeds, direct-object responses, and breadcrumbs.
+Missing and unauthorized objects retain the existing nondisclosure response.
+Each statement uses a consistent database snapshot; multi-query projections
+requiring internal consistency use one read-only repeatable-read transaction.
+Pagination is not a cross-request snapshot and every request reauthorizes.
+Existing signed discovery cursors confer no access and must never bypass this
+recheck. No stale process-local ancestry or effective-ACL cache is permitted.
+
+Area topic counts, latest activity, unread summaries, and an exact area search
+filter remain **direct-area only**, explicitly labeled in the UI. A child list
+shows independently authorized child summaries, not an implicit subtree total.
+No recursive search/filter/count option is introduced in B1-10.
+
+### 25.3 Administration and concurrency admission
+
+Use the existing administrator create/edit surfaces, adding required
+`parent_id`: exact empty means root; otherwise canonical positive int64.
+Retain strict unknown/duplicate-field rejection, CSRF, current administrator
+revalidation, numeric area revision, reasons, private/no-store responses, and
+existing immutable slug behavior. Add a hierarchy revision token to mutations
+whose validation depends on ancestry, so intervening tree/policy changes cannot
+silently invalidate an administrator's reviewed move. Stale/no-op mutations
+conflict; ambiguous commits are reported as unknown and never auto-retried.
+
+The parent picker must be bounded and searchable/pageable, not render the
+entire tree. Exclude self and descendants as destinations and revalidate on
+submission. Display current/proposed ancestry and explain that a move may
+restrict or broaden descendant access. Require explicit confirmation of the
+move; it changes the parent edge, never individual topics or descendants' local
+policies. Reordering is sibling-local. Archive/restore preserves parentage and
+content; category deletion remains unavailable.
+
+Before runtime work, B1-10-00 must pin the exact hierarchy revision storage,
+form grammar, bounded parent-picker query and route inventory, SQL ancestry
+strategy, and database serialization/lock order. The protocol must serialize
+opposing moves and concurrent destination/descendant changes; make hierarchy
+and area-policy/group writers conflict with publication's ancestry validation;
+retain existing user/group authority serialization; and prevent deadlocks by
+one documented global lock order. Do not use the administrator-continuity
+singleton as a generic hierarchy mutex. State actual PostgreSQL privileges for
+any shared/exclusive locks and test with the restricted runtime role.
+
+Reparent plus revision increment and one bounded immutable audit event commit
+atomically. Record old/new parent IDs and hierarchy revision alongside the
+existing bounded area audit fields, not an unbounded descendant list. Retain
+transaction-local two-second statement and 250-ms lock bounds and fail
+atomically on timeout. Reads after commit see the new ancestry; publications
+must serialize either wholly before or wholly after the policy/move change.
+A pre-transaction policy check or a target-row revision alone is insufficient.
+
+### 25.4 Navigation and recovery
+
+Keep canonical `/areas/{slug}` and existing topic/post URLs. The index lists
+roots; an area page lists its direct topics and children; breadcrumbs show the
+authorized root-to-node path. Child and root pages render at most 25 areas plus
+one continuation sentinel, ordered within a parent by `(display_order, id)`.
+Bound parent selection to 25 options plus one sentinel and ancestry to ten
+nodes. Do not render the full recursive tree in one response. Preserve HTML
+without JavaScript, HTMX parity, keyboard navigation, field errors, and
+320-pixel reflow. Administrators retain their private bounded inventory.
+
+Test upgrade from the current flat schema with all areas becoming roots and
+unchanged visibility/content/URLs. An older binary must not run against nested
+data: its flat policy could disclose a child through a restricted parent.
+Rollback therefore restores the paired pre-migration backup and old binary,
+with an explicit write cutover/data-loss decision; otherwise use an admitted
+forward repair. Never flatten silently or run a destructive down migration.
+Implementation admission must pin compatibility/readiness checks, backup and
+restore steps, and exact successor delivery evidence before rollout.
+
+## 26. Definition of implementation complete
 
 A feature is not complete because its happy-path handler exists. It is complete
 when:

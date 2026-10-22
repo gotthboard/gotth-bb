@@ -46,9 +46,11 @@ exists.
 | ACL-001–ACL-003 | area schema and policy types | UT, DB, REV | Alpha.1 |
 | ACL-004–ACL-006 | every area-owned query and route | DB, HTTP, E2E, SEC | Alpha.1 |
 | ACL-007–ACL-008 | admin/moderation transactions and audit | DB, HTTP, REV | Alpha.1 |
-| FORUM-001–FORUM-002 | area schema, stores, and pages | UT, DB, HTTP, E2E | Alpha.1 |
+| FORUM-001–FORUM-002 | area schema, stores, and pages | UT, DB, HTTP, E2E | Alpha.1 flat baseline; B1-10 nesting pending |
 | FORUM-003–FORUM-004 | parent-addressed publishing and threaded topic pages | UT, DB, HTTP, E2E | Alpha.2 |
 | FORUM-005–FORUM-006 | moderation state and stable URLs | UT, DB, HTTP, E2E | Alpha.1 |
+| ACL-009 | ancestor visibility and posting predicates | DB, HTTP, E2E, SEC, REV | B1-10 pending |
+| FORUM-007–FORUM-009 | subtree moves, navigation, root migration and recovery | DB, HTTP, E2E, SEC, OPS, PERF, REV | B1-10 pending |
 | CONTENT-001–CONTENT-007 | composer, renderer, post services | UT, DB, HTTP, SEC | Alpha.1 |
 | READ-001 | index/list/threaded-topic handlers | HTTP, E2E, A11Y | Alpha.1 baseline; Alpha.2 threaded |
 | READ-002 | read markers and unread views | UT, DB, HTTP, E2E, SEC, PERF | Alpha.N (AN-03) |
@@ -1619,3 +1621,41 @@ commit/tree. Guarded merge/mirror, annotated successor Beta tag, package/image,
 live deployment, smoke, rollback proof, and owner physical acceptance remain
 separate explicit gates. B1-09 cannot bypass unresolved Beta.1.5 acceptance and
 does not admit B1-10 or RC.1.
+
+
+## Planned B1-10 hierarchy verification
+
+No B1-10 runtime checks have run. This is the future acceptance matrix for
+FORUM-001, FORUM-002, FORUM-007–FORUM-009, and ACL-009, extending existing ACL,
+reading, and administration tests without replacing their prior evidence.
+
+1. **Structure:** create roots/children with topics at both levels; accept depth
+   ten and reject eleven, self-parenting, missing parent, cycles, and a move
+   whose deepest descendant overflows. Reject corrupt ancestry fail-closed.
+2. **Policy:** public child beneath restricted ancestor stays hidden; ordinary
+   group access satisfies every level independently; test different matching
+   groups per level, no match, anonymous, suspended and nonaccepted-sync actors,
+   explicit staff elevation, and archived/read-only ancestor posting behavior.
+3. **No disclosure:** test HTML/HTMX, direct links, search/rank/snippets, activity,
+   counts, unread/latest, profiles, reports, feeds and breadcrumbs before/after
+   moves and ancestor-policy changes. Reuse signed cursors after access loss;
+   verify they confer no access. Direct-only summaries/filter semantics hold.
+4. **Concurrency:** opposing and overlapping moves, moving into a concurrently
+   changed descendant/destination, policy and area-group changes during
+   publication, user-group/role/suspension changes, stale hierarchy/area revision,
+   timeout/cancellation and ambiguous commit. Prove serial outcomes, atomic
+   audit, bounded locks, and no partial move or automatic ambiguous retry.
+   Run against PostgreSQL 17 with the exact restricted runtime grants.
+5. **Navigation/admin:** immutable category/topic/post URLs survive moves;
+   sibling ordering, bounded root/child/parent-picker pages and ten-node
+   breadcrumbs work with ordinary HTML and HTMX, keyboard and 320-pixel reflow.
+   Confirm broadening/restricting moves explicitly; archive preserves children.
+6. **Recovery/resources:** migrate populated flat data without content or ACL
+   change; test current readiness/old-binary exclusion, paired backup/restore
+   and forward repair. Exercise wide trees and maximum-depth paths, index/query
+   plans and real timeout behavior; do not claim constant work for subtree scans.
+
+B1-10-00 must resolve the concrete protocol and route/form details in
+[implementation section 25](implementation-spec.md#25-planned-b1-10-nested-discussion-areas)
+before implementation starts. Record actual future evidence and remaining gaps;
+planned tests do not pass the Beta/RC release gate.

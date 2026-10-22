@@ -1,9 +1,31 @@
 # Change log
 
-This file records admitted implementation changes. Release notes remain a
+This file records admitted implementation changes and explicitly labeled plans. Release notes remain a
 separate artifact governed by the release and operations plan.
 
 ## Unreleased
+
+### 2026-10-21 — Specify B1-10 nested categories (documentation only)
+
+Replace the one-level version 1.0 requirement with optional-parent categories,
+up to ten levels including root, topics alongside children, inherited visibility
+and posting restrictions, stable URLs, and audited atomic subtree moves. Add
+FORUM-007–FORUM-009 and ACL-009, reconcile architecture/specification/planning,
+and mark the expanded requirements blocked until B1-10 implementation evidence
+exists. Prior flat-category and Beta.1.9 evidence is not hierarchy evidence.
+
+B1-10-00 still owns admission of the exact lock/revision protocol and route/form
+contract before runtime work. Existing categories migrate as roots. Restore
+requires a compatible binary/database pair; an old flat-policy binary cannot
+safely read nested data. Existing predecessor acceptance gates remain intact.
+
+Documentation validation: `git diff --check`; 82 unique PRD requirements match
+traceability exactly using the repository admission-test patterns; changed paths
+are Markdown only; added local links/anchors, fenced blocks and numbered section
+uniqueness checked. No code, migration, generated file, dependency, runtime
+configuration, tag, or deployment changed. Runtime/full/race/database/browser/
+performance tests are not applicable to this documentation-only edit; listed
+B1-10 tests are future acceptance criteria, not results.
 
 ### 2026-09-14 — Repair topic publication under the restricted runtime role
 

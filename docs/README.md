@@ -23,6 +23,10 @@ AN-05 is merged, and the Beta.1 contract is being admitted before serial
 implementation. Beta.1 delivery, release-candidate, and stable admission remain
 separate boundaries before `1.0.0`.
 
+B1-10 now explicitly requires nested categories. Its contract is planned;
+[the feature plan](feature-plan.md#b1-10-nested-discussion-areas) and blocked
+traceability rows distinguish this scope from current flat-category behavior.
+
 ## Document status
 
 | Document | Status | Governs |

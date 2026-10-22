@@ -35,12 +35,16 @@ table and rejects omission, duplication, or invention in either direction.
 | `ACL-006` | missing/unauthorized direct-object equivalence | database and HTTP leakage tests | implemented |
 | `ACL-007` | audited area/group/posting transitions | AN-04 evidence | implemented |
 | `ACL-008` | explicit moderator/administrator elevated reads | policy/store/moderation tests | implemented |
-| `FORUM-001` | one-level `areas` model | migrations and area store/HTTP tests | implemented |
-| `FORUM-002` | area fields, ordering, modes, visibility | Alpha.2/AN-04 tests and evidence | implemented |
+| `ACL-009` | B1-10 ancestor visibility/posting predicates planned | implementation section 25; B1-10 verification matrix pending | blocked |
+| `FORUM-001` | B1-10 nested categories planned; current model flat | existing flat tests do not prove nesting; B1-10 matrix pending | blocked |
+| `FORUM-002` | existing fields; B1-10 parent field pending | Alpha.2/AN-04 baseline; B1-10 matrix pending | blocked |
 | `FORUM-003` | topic and parent-addressed reply publication | forum/publishing integration and browser tests | implemented |
 | `FORUM-004` | rooted bounded reply tree | Alpha.2 schema/store/browser tests | implemented |
 | `FORUM-005` | topic/post moderation transitions | AN-01 evidence and moderation integration tests | implemented |
 | `FORUM-006` | stable identifiers, canonical URLs, direct post | URL, topic, and AN-02 direct-post tests | implemented |
+| `FORUM-007` | B1-10 atomic audited category moves planned | implementation section 25; B1-10 concurrency matrix pending | blocked |
+| `FORUM-008` | B1-10 bounded authorized hierarchy navigation planned | implementation section 25; B1-10 navigation/leakage matrix pending | blocked |
+| `FORUM-009` | B1-10 root migration and URL-preserving moves planned | implementation section 25; B1-10 recovery matrix pending | blocked |
 | `CONTENT-001` | Markdown authoring, preview, sanitized persistence | Alpha.3 integrated evidence | implemented |
 | `CONTENT-002` | pinned GFM renderer | Alpha.3 integrated evidence | implemented |
 | `CONTENT-003` | raw HTML disabled and exact sanitizer policy | renderer/XSS tests and Alpha.3 evidence | implemented |
@@ -132,6 +136,11 @@ table and rejects omission, duplication, or invention in either direction.
   `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`. Guarded delivery, paired
   restore/forward rehearsal, and live smoke are complete; owner physical
   acceptance remains incomplete.
+
+Existing implemented ACL, READ and ADMIN rows above describe their admitted
+flat-model baseline only. Their B1-10 ancestry extensions are blocked by the
+new rows and require the complete future hierarchy verification matrix; none
+of the historical test results proves nested-category authority.
 
 The final Beta evidence replaces pending references with exact commit/tree,
 command, environment, result, and gap records. RC.1 still owns final evidence
