@@ -5,6 +5,22 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-10-21 — Generalize planned B1-10 category depth
+
+At the owner's direction, replace the earlier ten-level limit with arbitrary
+finite category depth: one optional parent, no fixed product-level depth cap.
+The preceding ten-level specification is superseded, not an implementation.
+Keep cycle prevention, inherited authority, stable URLs and atomic moves.
+Bound work with traversal time/memory budgets and bounded/paged presentation;
+never treat incomplete ancestry as permission or partially commit a move.
+Deep breadcrumbs remain navigable while every ancestor participates in access
+checks. B1-10-00 still owns the exact resource/serialization protocol admission.
+
+Documentation checks: whitespace, documentation-only paths, exact 82-requirement
+traceability, changed links/anchors, and section/fence structure. Runtime tests
+remain not applicable: no code, migration, deployment or release changed.
+
+
 ### 2026-10-21 — Specify B1-10 nested categories (documentation only)
 
 Replace the one-level version 1.0 requirement with optional-parent categories,

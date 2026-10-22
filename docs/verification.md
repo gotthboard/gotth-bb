@@ -1629,9 +1629,11 @@ No B1-10 runtime checks have run. This is the future acceptance matrix for
 FORUM-001, FORUM-002, FORUM-007–FORUM-009, and ACL-009, extending existing ACL,
 reading, and administration tests without replacing their prior evidence.
 
-1. **Structure:** create roots/children with topics at both levels; accept depth
-   ten and reject eleven, self-parenting, missing parent, cycles, and a move
-   whose deepest descendant overflows. Reject corrupt ancestry fail-closed.
+1. **Structure:** create roots/children with topics at both levels; accept
+   chains beyond ten levels (including at least 100 under admitted resource
+   budgets), and move deep subtrees. These are fixtures, not a maximum depth.
+   Reject self-parenting, missing parents and cycles; corrupt or incompletely
+   checked ancestry fails closed. Prove no stack-recursion/fixed-path-depth cap.
 2. **Policy:** public child beneath restricted ancestor stays hidden; ordinary
    group access satisfies every level independently; test different matching
    groups per level, no match, anonymous, suspended and nonaccepted-sync actors,
@@ -1647,13 +1649,18 @@ reading, and administration tests without replacing their prior evidence.
    audit, bounded locks, and no partial move or automatic ambiguous retry.
    Run against PostgreSQL 17 with the exact restricted runtime grants.
 5. **Navigation/admin:** immutable category/topic/post URLs survive moves;
-   sibling ordering, bounded root/child/parent-picker pages and ten-node
-   breadcrumbs work with ordinary HTML and HTMX, keyboard and 320-pixel reflow.
+   sibling ordering, bounded root/child/parent-picker pages and collapsed/paged
+   ancestor navigation work with ordinary HTML and HTMX, keyboard and 320-pixel
+   reflow. Every level remains reachable; restrictions beyond a visible
+   breadcrumb page still apply to all reads and writes.
    Confirm broadening/restricting moves explicitly; archive preserves children.
 6. **Recovery/resources:** migrate populated flat data without content or ACL
    change; test current readiness/old-binary exclusion, paired backup/restore
-   and forward repair. Exercise wide trees and maximum-depth paths, index/query
-   plans and real timeout behavior; do not claim constant work for subtree scans.
+   and forward repair. Exercise wide trees and progressively deeper paths,
+   index/query plans, memory/response budgets and real timeout behavior.
+   Exhaust traversal budgets during reads and moves: no partial authorization,
+   disclosure or mutation is permitted. Do not claim infinite capacity or
+   constant work for ancestry/subtree scans.
 
 B1-10-00 must resolve the concrete protocol and route/form details in
 [implementation section 25](implementation-spec.md#25-planned-b1-10-nested-discussion-areas)

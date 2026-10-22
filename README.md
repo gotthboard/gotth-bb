@@ -27,7 +27,7 @@ backup/clean-restore rehearsal, reproducible delivery, and a guarded Beta
 deployment. It does not claim RC.1 evidence freeze or stable recovery posture.
 
 Nested categories are now required for version 1.0 under planned **B1-10**:
-up to ten levels, inherited restrictions, stable URLs, and safe subtree moves.
+arbitrary finite depth, inherited restrictions, stable URLs, and safe subtree moves.
 They are not implemented by this documentation update and remain a release
 scope gap. See [the hierarchy plan](docs/feature-plan.md#b1-10-nested-discussion-areas).
 

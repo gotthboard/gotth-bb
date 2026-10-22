@@ -1020,8 +1020,8 @@ not reopen historical Beta evidence or imply that B1-09 is complete.
 
 - **Requirements:** FORUM-001, FORUM-002, FORUM-007–FORUM-009, ACL-009; extend
   existing ACL, reading/discovery, and area-administration evidence accordingly.
-- **Outcome:** categories with optional parents, at most ten levels including
-  root, topics alongside children, authorized navigation, inherited restrictions,
+- **Outcome:** categories with optional parents and arbitrary finite depth,
+  topics alongside children, authorized navigation, inherited restrictions,
   stable URLs, and audited atomic moves. No fixed meaning is assigned to depth.
 - **Dependency:** preserve B1-09 and its corrective-successor owner-acceptance
   gates, including the current Beta.1.9 publication repair. Contract work may
@@ -1032,7 +1032,7 @@ not reopen historical Beta evidence or imply that B1-09 is complete.
   runtime grants, bounded traversal/parent selection, migration compatibility,
   recovery and adversarial tests; obtain two cold CLEAN reviews before code.
 - **B1-10-01 — storage and authority:** migrate existing areas as roots; prove
-  depth/cycle invariants, inherited visibility/posting, snapshots, restricted-role
+  acyclicity and deep-tree behavior, inherited visibility/posting, snapshots, restricted-role
   grants, and move/policy/publication serialization before exposing controls.
 - **B1-10-02 — administration and reading:** bounded parent selector, explicit
   move confirmation, sibling ordering, child lists and breadcrumbs; ordinary

@@ -3524,12 +3524,18 @@ FORUM-002, FORUM-007–FORUM-009, and ACL-009 through the serial B1-10 plan.
 - Add nullable `areas.parent_id`, a self-referencing foreign key with deletion
   restricted. Null means root. Keep globally unique immutable slugs, stable
   IDs, existing topic foreign keys, policy columns, and administration revisions.
-- Root depth is one; maximum depth is ten, counting the moved subtree's
-  deepest descendant at its proposed destination. No ten-level chain is
-  required. Categories can contain topics and child categories together.
-- Reject self-parenting, missing parents, cycles, and depth overflow. A simple
+- Support arbitrary finite depth with no fixed product-level maximum. Root
+  depth is one for display; levels have no prescribed meaning. Categories can
+  contain topics and child categories together. Use iterative/set-based
+  traversal, not application call-stack recursion or fixed-depth path storage.
+- Reject self-parenting, missing parents, and cycles. A simple
   foreign key/check is not proof of acyclicity: revalidate under the admitted
   cross-transaction serialization protocol. Corrupt ancestry fails closed.
+  Bound traversal time, memory, and response size; do not translate a work
+  budget into a fixed schema/product depth cap. If complete authorization or
+  cycle validation cannot finish within those budgets, return a bounded
+  unavailable/error result and roll back writes. Never authorize a checked
+  prefix, silently truncate ancestry, or partially move a subtree.
 - Index parent and sibling order `(parent_id, display_order, id)`; root handling
   must be explicit. No denormalized inherited ACL or copied descendant content.
 - Reserve the next migration number at implementation admission, not by editing
@@ -3608,8 +3614,12 @@ Keep canonical `/areas/{slug}` and existing topic/post URLs. The index lists
 roots; an area page lists its direct topics and children; breadcrumbs show the
 authorized root-to-node path. Child and root pages render at most 25 areas plus
 one continuation sentinel, ordered within a parent by `(display_order, id)`.
-Bound parent selection to 25 options plus one sentinel and ancestry to ten
-nodes. Do not render the full recursive tree in one response. Preserve HTML
+Bound parent selection to 25 options plus one sentinel. For deep ancestry,
+show a collapsed breadcrumb with paginated ancestor navigation (at most 25
+ancestor items plus one sentinel per page), preserving access to every level.
+Every ancestor still participates in authorization before any breadcrumb is
+returned; presentation pagination never limits policy evaluation. Do not render
+the full recursive tree in one response. Preserve HTML
 without JavaScript, HTMX parity, keyboard navigation, field errors, and
 320-pixel reflow. Administrators retain their private bounded inventory.
 

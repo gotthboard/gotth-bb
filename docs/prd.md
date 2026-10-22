@@ -207,7 +207,8 @@ Requirements:
 ### 5.3 Forum structure and content
 
 - **FORUM-001:** Version 1.0 shall support nested areas/categories, with one
-  optional parent per area and at most ten levels including the root. Areas
+  optional parent per area and arbitrary finite depth, with no fixed product
+  limit on the number of levels. Areas
   may contain both topics and subcategories; no fixed names or meanings are
   assigned to levels. This is planned B1-10 scope, not shipped behavior.
 - **FORUM-002:** An area shall have a name, slug, description, display order,
@@ -223,7 +224,8 @@ Requirements:
   URLs beneath the configured public base URL.
 - **FORUM-007:** Administrators shall create, reorder, and reparent categories
   with atomic audited subtree moves, revision-conflict detection, and rejection
-  of cycles, self-parenting, missing parents, and depth overflow. Reparenting
+  of cycles, self-parenting, and missing parents. Incomplete validation under
+  resource limits shall fail atomically, never truncate ancestry. Reparenting
   shall recompute effective restrictions, not copy or loosen ancestor policy.
 - **FORUM-008:** Readers shall navigate authorized root/child lists and
   breadcrumbs. Counts, activity, search, unread state, and direct URLs shall

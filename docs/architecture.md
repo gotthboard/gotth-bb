@@ -1235,8 +1235,9 @@ B1-10 supersedes the flat-area portions of sections 8 and 10, not the current
 implementation evidence. Its authoritative detailed contract is
 [implementation specification section 25](implementation-spec.md#25-planned-b1-10-nested-discussion-areas).
 
-An adjacency list gives each category zero or one parent. Root depth is one;
-ten is the maximum. Parentage is content organization, not a geographic scale
+An adjacency list gives each category zero or one parent and supports arbitrary
+finite depth without a fixed product-level cap. Root depth is one for display.
+Parentage is content organization, not a geographic scale
 or physical elevation. A category can own topics and children simultaneously.
 Sibling ordering is `(display_order, id)`. Immutable globally unique slugs keep
 `/areas/{slug}` valid through moves; topics and posts retain their existing URLs.
@@ -1248,8 +1249,8 @@ No public child can expose a hidden parent. Posting restrictions compose in
 the same restrictive direction, retaining explicit staff and archival rules.
 
 Moves change one parent edge atomically, carry the whole descendant subtree,
-and require fresh validation of destination, ancestry, resulting maximum
-depth, current administrator authority, and revision. A per-area revision alone
+and require fresh validation of destination, complete ancestry, current
+administrator authority, and revision. A per-area revision alone
 is insufficient against concurrent opposing moves. B1-10 must admit a concrete
 shared serialization contract covering hierarchy mutations, area-policy/group
 changes, and publication before implementation; it must preserve existing
@@ -1262,6 +1263,10 @@ recursive search scope is added. All discovery and direct reads evaluate the
 complete ancestry within their database snapshot. Separate HTTP requests need
 not form one snapshot; subsequent requests reauthorize against current state.
 No process-local authority cache may outlive a committed policy or move.
+Traversal must not depend on call-stack recursion or a fixed-depth path field.
+Resource budgets bound work, not the number of permitted category levels; an
+incomplete ancestry check fails closed. Deep breadcrumbs use bounded ancestor
+pages or collapsed navigation without omitting ancestors from authorization.
 
 Existing areas migrate to roots without changing content or access. Areas
 remain nondeletable; archive/restore changes posting policy, not parentage.
