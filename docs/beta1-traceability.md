@@ -74,7 +74,7 @@ table and rejects omission, duplication, or invention in either direction.
 | `ADMIN-006` | B1-09 registration, maintenance, publication, and session policy controls | `docs/evidence/beta1-09-01-control-settings.txt`; `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-007` | B1-09 pending-registration and invitation administration | `docs/evidence/beta1-09-02-authentik-gateway.txt`; `docs/evidence/beta1-09-03-registration-reconciliation.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
 | `ADMIN-008` | B1-09 bounded local-session views and revocation | `docs/evidence/beta1-09-04-administrator-controls.txt`; `docs/evidence/beta1-09-05-pre-live-admission.txt` | implemented |
-| `ADMIN-009` | administrator-managed shared SMTP, bounded status, and self-addressed test | `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`; Beta.1.8 owner physical acceptance pending | implemented |
+| `ADMIN-009` | administrator-managed shared SMTP, bounded status, and self-addressed test | `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`; current Beta.1.9 owner physical acceptance pending | implemented |
 | `UX-001` | responsive server-rendered surface | B1-02 exact 320-pixel/200%-zoom Caddy/Chromium evidence | implemented |
 | `UX-002` | semantic keyboard-operable core flows | B1-02 native keyboard/no-script and accessibility-tree evidence | implemented |
 | `UX-003` | labels, descriptions, errors, status regions | baseline plus B1-09-06 field-associated SMTP/status repair in `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt` | implemented |
@@ -134,8 +134,13 @@ table and rejects omission, duplication, or invention in either direction.
   live smoke/rollback, and owner acceptance remain incomplete.
 - B1-09-06 administrator SMTP repair and Beta.1.8 live candidate:
   `docs/evidence/beta1-09-06-smtp-admin-beta1.8.txt`. Guarded delivery, paired
-  restore/forward rehearsal, and live smoke are complete; owner physical
-  acceptance remains incomplete.
+  restore/forward rehearsal, and live smoke are complete; that candidate was
+  superseded without inferring owner acceptance.
+- B1-09-07 restricted-runtime publication repair and current Beta.1.9 live
+  candidate: `docs/evidence/beta1-publish-runtime-corrective-beta1.9.txt`. Tag,
+  artifact, deployment, restart, and smoke evidence are complete; owner
+  physical publication acceptance remains incomplete, so Beta.1.9 is not yet
+  known-good.
 
 Existing implemented ACL, READ and ADMIN rows above describe their admitted
 flat-model baseline only. Their B1-10 ancestry extensions are blocked by the

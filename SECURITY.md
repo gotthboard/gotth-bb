@@ -2,10 +2,11 @@
 
 ## Supported versions
 
-1.0.0-alpha.2 application; existing tags predate the GitHub module identity.
-No version currently carries a separate long-term security-support promise.
-Once releases exist, supported
-versions will be listed here and in the changelog.
+Immutable Alpha/Beta candidates exist through `1.0.0-beta.1.9`; the latest
+restricted-test candidate still awaits owner physical acceptance. None is a
+stable release or carries a separate long-term security-support promise.
+Supported stable versions will be listed here and in the changelog only after
+stable admission.
 
 ## Search and activity boundaries
 

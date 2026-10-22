@@ -1,0 +1,75 @@
+RELEASE-CLOSEOUT DOCUMENTATION RECONCILIATION — 2026-10-21
+
+Scope
+-----
+
+This is a release-status and procedure-only reconciliation. It changes no runtime code,
+migration, generated file, dependency, immutable tag, release, deployment, or
+remote state.
+
+Current candidate and acceptance
+--------------------------------
+
+- Latest tagged and deployed restricted-test candidate:
+  `1.0.0-beta.1.9`.
+- Annotated tag object: `a9e59395a9c522f92c1594364456a66c5cd6f202`.
+- Peeled commit: `ba23abd4c3bc825efafd31d56c671c15a31bf902`.
+- Tree: `2f26e91e542ad59c0df032d09d9feff6b9020dc3`.
+- Automated artifact, deployment, restart, smoke, and rollback-readiness
+  evidence remains in
+  `docs/evidence/beta1-publish-runtime-corrective-beta1.9.txt`.
+- Owner physical acceptance of authenticated topic publication remains
+  pending. Beta.1.9 is not yet a known-good rollback reference.
+- No Beta.1.5 owner acceptance is inferred. Historical failed and superseded
+  candidate records remain authoritative for their own dates.
+- B1-10 nested categories remain planned and unimplemented. RC.1 and stable
+  admission are not claimed.
+
+Parity and GitHub release-state observation
+-------------------------------------------
+
+On 2026-10-21, read-only `git ls-remote` queries reported the same exact
+annotated-tag object and peeled commit above from canonical Forgejo and public
+GitHub. All twelve tag fallback URLs exist, but GitHub's authoritative
+release-by-tag API confirms that no published Release objects exist. Closeout
+creates prerelease records for all twelve. Beta.1.9 is the only candidate in
+this closeout with a recovered exact archive and checksum manifest eligible for
+upload; failed or superseded candidates are not retroactively admitted.
+
+Release closeout must repeat the procedure in `docs/RELEASING.md`. Both
+remotes must match the local annotated-tag object and peeled commit. The Beta.1.9 prerelease must carry the recorded archive and `SHA256SUMS`
+assets matching their exact SHA-256 identities. Until that state exists, GitHub closeout remains incomplete even
+though tag parity is correct.
+
+Documentation reconciliation
+----------------------------
+
+Current-facing README and project documents now identify Beta.1.9 rather than
+Alpha.2 or an earlier Beta candidate. The README describes the current
+seven-service standalone stack instead of the historical two-service package.
+Historical Alpha and Beta records are preserved. The acceptance wording keeps
+owner physical review pending and keeps B1-10, RC.1, and stable outside the
+current claim.
+
+Fresh exact-tag validation
+--------------------------
+
+A clean public clone detached at `1.0.0-beta.1.9` ran `make release` on
+development with Go 1.26.6, Node 26.7.0, and npm 12.0.2. Generation/evidence
+custody, generated-drift guards, formatting, vet, complete race/coverage tests,
+and packaging passed. The rebuilt archive and checksum file matched the dated
+record exactly: `a6c611e1f3d402fe4eab460fda7864eb14669f2a98e628cde0884d724ce99690`
+and `3d70330095e1ceb79940b3e9ea2665135d6c3bc5d5389d3f6524bc485bbd4df2`.
+No live service was changed.
+
+Validation
+----------
+
+- `git diff --check`: passed.
+- Changed-path guard: README, documentation/evidence, and the bounded closeout script only; passed.
+- `workflow.toml` absence check: passed.
+- Required-status assertions and Markdown fence-balance checks: passed.
+- Local, Forgejo, and GitHub Beta.1.9 tag object/peeled commit parity: passed.
+- GitHub Release objects: absent for all twelve tags; prerelease creation
+  remains open for all, while Beta.1.9 also requires its exact archive and
+  checksum upload.

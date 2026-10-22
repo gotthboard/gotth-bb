@@ -18,14 +18,18 @@ policy or route registration.
 
 Implementation history is recorded in the [change log](CHANGELOG.md).
 
-The current target is `1.0.0-beta.1`: every named Alpha.N feature through
-AN-05 is merged, and the Beta.1 contract is being admitted before serial
-implementation. Beta.1 delivery, release-candidate, and stable admission remain
-separate boundaries before `1.0.0`.
+The latest tagged and deployed restricted-test candidate is
+`1.0.0-beta.1.9`. Its tag, artifact, deployment, restart, and smoke evidence is
+complete. All twelve tag fallback URLs exist, but GitHub has no published
+Release objects. Release closeout must create prerelease records; Beta.1.9 alone receives the
+exact archive/checksum assets. Owner physical publication acceptance remains
+pending, so it is not yet known-good. RC.1 and stable
+admission have not occurred.
 
-B1-10 now explicitly requires nested categories. Its contract is planned;
-[the feature plan](feature-plan.md#b1-10-nested-discussion-areas) and blocked
-traceability rows distinguish this scope from current flat-category behavior.
+B1-10 explicitly requires nested categories. Its contract is planned, not
+implemented; [the feature plan](feature-plan.md#b1-10-nested-discussion-areas)
+and blocked traceability rows distinguish this scope from the current flat-
+category behavior.
 
 ## Document status
 

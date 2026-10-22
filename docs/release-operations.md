@@ -4,7 +4,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Active alpha deployment; container runtime selected |
+| Status | Restricted-test Beta.1.9 deployed; owner physical acceptance and GitHub Release-object/asset closeout pending |
 | Initial development base | `https://bb.alhstudios.com/` |
 | Target host | `development` (`10.0.0.97`) |
 | Service manager | Docker Engine 29.7.1 / Docker Compose 5.4.0; Docker daemon supervised by systemd |
@@ -958,9 +958,12 @@ forbidden because it would evict unrelated userspace.
 ### 18.4 B1-09 Board administration control-plane successor
 
 B1-09 is a schema, permission, identity-flow, and application change. It is not
-an application-only corrective deploy. It may proceed to live mutation only
-after Beta.1.5 owner acceptance closes B1-08G and the exact B1-09 candidate has
-two fresh CLEAN final reviews.
+an application-only corrective deploy. This procedure was originally gated on
+Beta.1.5 owner acceptance and two fresh CLEAN reviews of the exact B1-09
+candidate; no Beta.1.5 acceptance is inferred by later delivery records.
+Immutable successors were subsequently delivered through Beta.1.9, whose owner
+physical publication acceptance remains pending. The steps below preserve the
+historical migration procedure and rollback boundary.
 
 Proceed in this order:
 

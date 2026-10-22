@@ -5,7 +5,7 @@
 | Field | Value |
 | --- | --- |
 | Status | Draft constrained by PRD, architecture, and implementation spec |
-| Current target | `1.0.0-beta.1` — Beta.1 admission |
+| Current target | `1.0.0-beta.1.9` deployed candidate; owner acceptance pending; B1-10 planned |
 | Product scope | [Product requirements](prd.md) |
 | Technical scope | [Implementation specification](implementation-spec.md) |
 
@@ -942,12 +942,12 @@ handoff remain later gates unless a Beta defect requires an upstream change.
 
 ### B1-09: Board administration control plane
 
-B1-09 depends on owner acceptance and closure of B1-08G/Beta.1.5. Contract and
-isolated implementation work may proceed while that physical acceptance is
-pending, but B1-09 cannot be merged, tagged, or deployed around an unresolved
-predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
-`ADMIN-001`–`ADMIN-009` through seven serial units in the
-`feature/beta-1-admin-control-plane` worktree:
+B1-09 was specified behind owner acceptance and closure of B1-08G/Beta.1.5.
+No Beta.1.5 owner acceptance is inferred. Subsequent guarded work produced
+immutable candidates through the deployed `1.0.0-beta.1.9`; the unresolved
+physical-acceptance gate carries forward to that current candidate. B1-09
+implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and `ADMIN-001`–`ADMIN-009`
+through seven planned units plus one narrow post-deployment correction:
 
 1. **B1-09-00 — contract, Authentik mechanism, and permission admission.**
    Reconcile PRD, architecture, implementation specification, routes,
@@ -1003,6 +1003,13 @@ predecessor. It implements `ID-009`, `ID-014`–`ID-016`, `MOD-005`, and
    registration gating, ordinary HTML/HTMX, 320-pixel reflow, and permission
    negatives before any successor delivery. Beta.1.7 remains immutable failed
    evidence and cannot become known-good.
+8. **B1-09-07 — restricted-runtime publication corrective successor.**
+   Beta.1.8 physical review found topic publication failed under the intended
+   restricted runtime role. Preserve the existing parent-area serialization,
+   remove only the redundant mapping-row lock, prove the denied-UPDATE grant
+   contract and controlled publication path, then deliver the immutable
+   Beta.1.9 application-only successor. Automated delivery is complete; owner
+   physical publication acceptance remains pending.
 
 The unit owns no B1-10 Discussion-area hierarchy, gotth-* stable-product
 inventory, RC.1 freeze work, Docker socket, arbitrary Authentik browser, local

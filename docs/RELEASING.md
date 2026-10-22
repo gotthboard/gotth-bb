@@ -28,3 +28,25 @@ Forgejo remains the development source of truth. GitHub is the public clone,
 Go import, and release-distribution endpoint. Failure of mirror or release
 publication blocks the release; it does not authorize reversing mirror
 direction or publishing a different commit.
+
+## Release closeout parity check
+
+All twelve immutable tags currently have no published GitHub Release objects;
+tag fallback URLs are not Release publication. Verify that state:
+
+```sh
+EXPECT_STATE=incomplete sh scripts/release-closeout-check.sh
+```
+
+For complete closeout, create non-draft prerelease objects for all twelve tags.
+Every body must contain its exact `docs/release-status.md` marker. Failed or
+superseded candidates carry no custom assets; Beta.1.9 alone carries the exact
+archive plus `SHA256SUMS`:
+
+```sh
+EXPECT_STATE=complete sh scripts/release-closeout-check.sh
+```
+
+The check binds every recorded tag object and peeled commit across local,
+Forgejo, and GitHub refs and verifies exact Release metadata/assets. It never
+moves a tag or retroactively admits a failed candidate.

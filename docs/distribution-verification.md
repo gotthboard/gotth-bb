@@ -1,5 +1,12 @@
 # GitHub Distribution Verification
 
+> **Historical record; current-status claims superseded on 2026-10-21.** This
+> evidence remains valid for the exact distribution candidate and checks below.
+> It is not the current release summary: the repository now uses the MIT
+> license, immutable candidates extend through deployed Beta.1.9, and the
+> current open gates include creating Alpha/Beta prerelease objects, uploading exact Beta.1.9 assets, and owner physical
+> acceptance. The original dated conclusions are preserved below.
+
 Status: complete
 
 ## Identity and scope

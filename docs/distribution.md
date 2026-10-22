@@ -17,12 +17,17 @@ endpoints.
 
 ## Maturity and compatibility
 
-Current status: the restricted-test `1.0.0-beta.1` and
-`1.0.0-beta.1.1` tags are immutable failed candidates, not known-good
-releases. Live acceptance found the narrow-screen search defect recorded by
-B1-06 and then a breadcrumb link-distinction defect in the corrected candidate.
-The `1.0.0-beta.1.2` identity remains withheld until B1-07's guarded release
-gate and owner confirmation complete.
+Current status: `1.0.0-beta.1.9` is the latest tagged and deployed restricted-
+test candidate. Automated tag, artifact, deployment, restart, and smoke
+evidence is complete, while owner physical acceptance of authenticated topic
+publication remains pending. All twelve immutable tags have fallback URLs, but no published GitHub Release
+objects. Closeout creates prerelease records for all twelve; only current
+Beta.1.9 receives the exact archive and `SHA256SUMS`. It is not a known-good rollback
+reference. B1-10 nested categories remain planned, and neither this candidate
+nor `main` is stable.
+
+The earlier Beta tags remain immutable historical records. Some are failed or
+superseded candidates; none is rewritten or promoted by this status update.
 
 ## Current source use
 

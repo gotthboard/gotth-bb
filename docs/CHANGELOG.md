@@ -5,6 +5,29 @@ separate artifact governed by the release and operations plan.
 
 ## Unreleased
 
+### 2026-10-21 — Reconcile Beta.1.9 release-closeout status
+
+Current-facing documentation now identifies `1.0.0-beta.1.9` as the latest
+tagged and deployed restricted-test candidate and describes the seven-service
+standalone stack rather than the historical Alpha.2/two-service state. Owner
+physical topic-publication acceptance remains pending, no Beta.1.5 acceptance
+is inferred, B1-10 remains planned and unimplemented, and RC.1/stable admission
+is not claimed. Historical failed and superseded candidate records remain
+unchanged.
+
+The reconciliation record is
+`docs/evidence/release-closeout-reconciliation-20261021.txt`. Read-only checks
+found exact Beta.1.9 tag-object and peeled-commit parity between Forgejo and
+GitHub. All twelve tag fallback URLs exist, but GitHub's authoritative release-by-tag
+API confirms that no published Release objects exist. Closeout creates
+prerelease records for all twelve; Beta.1.9 alone receives the exact archive and
+`SHA256SUMS`. Failed or superseded candidates are not retroactively admitted. The bounded
+parity and GitHub-state script is recorded in `docs/RELEASING.md`; exact
+candidate release notes are retained separately. No runtime code, migration,
+generated file, dependency, tag, release, deployment, or remote state changed.
+
+
+
 ### 2026-10-21 — Generalize planned B1-10 category depth
 
 At the owner's direction, replace the earlier ten-level limit with arbitrary

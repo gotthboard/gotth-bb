@@ -15,16 +15,14 @@ The initial development deployment target is
 The planned stack is Go, Templ, HTMX, Tailwind CSS, and PostgreSQL, with
 Authentik as the identity provider.
 
-`1.0.0-alpha.2` is released. It provides the phpBB-inspired, GOTTH-owned dark
-forum presentation and parent-addressed threaded replies while preserving the
-server-rendered and HTMX fallback contracts.
-
-Unreleased development through AN-05 is merged, completing the then-named
-version 1.0 feature surface. Beta.1 admission is the current boundary: complete
-requirement/route/leakage and security closure, core accessibility and
-representative-plan evidence, an actual Alpha.2 upgrade plus logical
-backup/clean-restore rehearsal, reproducible delivery, and a guarded Beta
-deployment. It does not claim RC.1 evidence freeze or stable recovery posture.
+The latest tagged and deployed restricted-test candidate is
+`1.0.0-beta.1.9`. Automated tag, artifact, deployment, restart, and smoke
+evidence is recorded. All twelve tag fallback URLs exist, but GitHub has no
+published Release objects. Release closeout must create prerelease records; Beta.1.9 alone receives the
+exact archive/checksum assets. Owner physical acceptance of the real
+authenticated topic-publication workflow remains pending.
+The candidate is therefore not yet a known-good rollback reference and does not
+claim RC.1 or stable status.
 
 Nested categories are now required for version 1.0 under planned **B1-10**:
 arbitrary finite depth, inherited restrictions, stable URLs, and safe subtree moves.
@@ -49,15 +47,16 @@ drift, then runs formatting, vet, race, and coverage tests. Node and npm must
 match `.node-version` and `package.json`; no global templ, sqlc, or Tailwind
 installation is used.
 
-A release archive is built only from a clean exact native commit. The target
-directory must not already exist; packaging does not overwrite prior evidence.
+A release archive is built only from a clean checkout of the exact native
+tagged commit. The target directory must not already exist; packaging does not
+overwrite prior evidence.
 
 ```sh
-RELEASE_VERSION=1.0.0-alpha.2 \
-RELEASE_COMMIT="$(git rev-parse HEAD)" \
+RELEASE_VERSION=1.0.0-beta.1.9 \
+RELEASE_COMMIT="$(git rev-parse '1.0.0-beta.1.9^{commit}')" \
 RELEASE_GOOS="$(go env GOOS)" \
 RELEASE_GOARCH="$(go env GOARCH)" \
-RELEASE_OUTPUT="$PWD/dist/1.0.0-alpha.2" \
+RELEASE_OUTPUT="$PWD/dist/1.0.0-beta.1.9" \
 make release
 ```
 
@@ -73,11 +72,12 @@ admitted.
 
 ## Container runtime
 
-Production-shaped deployments use the release's `deploy/container/compose.yml`
-with two separate services: one immutable GOTTH Board application container and
-one PostgreSQL 17 container. They are deliberately not combined. This keeps
-database storage, backup, health, and rollback independent from application
-replacement.
+The current restricted-test deployment uses the release's standalone Compose
+model. It keeps seven long-running services separate: stack Caddy, GOTTH Board,
+the Authentik control gateway, Board PostgreSQL 17, Authentik PostgreSQL 16,
+Authentik server, and Authentik worker. They are deliberately not combined.
+The older two-service `deploy/container/compose.yml` remains package history,
+not the description of the current deployed topology.
 
 The application uses the host network namespace but still binds only
 `127.0.0.1:18082`, runs as UID/GID 65532 with a read-only root filesystem,
@@ -148,13 +148,11 @@ has at least one active administrator.
 
 ## Installation, compatibility, and support
 
-The latest tagged application is 1.0.0-alpha.2. Existing alpha tags predate the
-GitHub module identity; no tag is moved or replaced. Untagged `main` contains
-the complete named Alpha.N feature surface through AN-05 and is advancing
-through the separate Beta.1 admission gate.
-
-No post-migration version has been tagged. To inspect the current source
-before the first admitted release:
+The latest tagged and deployed application candidate is `1.0.0-beta.1.9`.
+All earlier tags remain immutable, including failed or superseded Beta
+candidates. Owner physical acceptance is still pending, B1-10 nested categories
+remain planned rather than implemented, and neither this prerelease nor `main`
+is a stable compatibility promise. To inspect the current source:
 
 ```sh
 git clone https://github.com/gotthboard/gotth-bb.git

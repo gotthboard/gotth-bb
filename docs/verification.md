@@ -1363,15 +1363,18 @@ image, schema, and configuration identities. The candidate becomes known-good
 only after the owner confirms the real browser workflow. Beta.1 completion
 stops before RC.1; no migration or artifact freeze is implied.
 
-Pre-live status on 2026-09-12: implementation commit
+Historical pre-live status on 2026-09-12: implementation commit
 `5034527ffad5a57db014805fbb42d3756d1e31c5` / tree
 `53afd3b3ac334dca719c5a44ccb5b56afc4da115` passed the disposable Authentik,
 SMTP, cross-system failure, dual-database recovery, exact-head source/race,
 PostgreSQL 17, browser/accessibility, representative-resource, reproducible
 package, image, and two-CLEAN-review portion of this gate. The exact record is
 `docs/evidence/beta1-09-05-pre-live-admission.txt`. Guarded merge/push/tag,
-release, live deployment/smoke/rollback, and owner confirmation have not run
-and are not admitted by that record.
+release, live deployment/smoke/rollback, and owner confirmation had not run
+and were not admitted by that record. Later corrective records supersede that
+status. The current deployed candidate is Beta.1.9; its automated delivery,
+restart, and smoke evidence is complete, while owner physical publication
+acceptance remains pending.
 
 ### 23.6 Standalone-stack corrective admission
 
@@ -1619,8 +1622,9 @@ container's mounts, environment, and open descriptors.
 Two fresh independent cold reviews must both return CLEAN on the exact final
 commit/tree. Guarded merge/mirror, annotated successor Beta tag, package/image,
 live deployment, smoke, rollback proof, and owner physical acceptance remain
-separate explicit gates. B1-09 cannot bypass unresolved Beta.1.5 acceptance and
-does not admit B1-10 or RC.1.
+separate explicit gates. No Beta.1.5 owner acceptance is inferred; the
+unresolved physical-acceptance gate carries forward to the deployed Beta.1.9
+candidate. B1-09 does not admit planned B1-10 or RC.1.
 
 
 ## Planned B1-10 hierarchy verification
